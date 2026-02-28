@@ -1,7 +1,7 @@
 # Log Format Reference
 
-The skill eval system writes to three log files. This reference describes
-each format in detail for the grader skill to use when parsing sessions.
+selftune writes to four log files. This reference describes each format
+in detail for the skill to use when parsing sessions and audit trails.
 
 ---
 
@@ -74,6 +74,37 @@ Every user query, whether or not it triggered a skill. Populated by prompt-log.t
   "source": "claude_code"
 }
 ```
+
+---
+
+## ~/.claude/evolution_audit_log.jsonl
+
+One record per evolution action. Written by the evolution and rollback modules.
+
+```json
+{
+  "timestamp": "2026-02-28T12:00:00+00:00",
+  "proposal_id": "evolve-pptx-1709125200000",
+  "action": "created",
+  "details": "original_description: Grade a skill session against expectations...",
+  "eval_snapshot": {
+    "total": 50,
+    "passed": 35,
+    "failed": 15,
+    "pass_rate": 0.70
+  }
+}
+```
+
+**action values:**
+- `created` — New evolution proposal generated. `details` starts with `original_description:` prefix preserving the pre-evolution SKILL.md content.
+- `validated` — Proposal tested against eval set. `eval_snapshot` contains before/after pass rates.
+- `deployed` — Updated SKILL.md written to disk. `eval_snapshot` contains final pass rates.
+- `rolled_back` — SKILL.md restored to pre-evolution state (from `.bak` file or audit trail).
+
+**Required fields:** `timestamp`, `proposal_id`, `action`
+
+**Optional fields:** `details`, `eval_snapshot`
 
 ---
 

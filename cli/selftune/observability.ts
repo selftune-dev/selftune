@@ -10,8 +10,8 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { LOG_DIR, REQUIRED_FIELDS } from "./constants.js";
-import type { DoctorResult, HealthCheck, HealthStatus } from "./types.js";
+import { LOG_DIR, REQUIRED_FIELDS, SELFTUNE_CONFIG_PATH } from "./constants.js";
+import type { DoctorResult, HealthCheck, HealthStatus, SelftuneConfig } from "./types.js";
 
 const LOG_FILES: Record<string, string> = {
   session_telemetry: join(LOG_DIR, "session_telemetry_log.jsonl"),
@@ -142,8 +142,39 @@ export function checkEvolutionHealth(): HealthCheck[] {
   return checks;
 }
 
+export function checkConfigHealth(): HealthCheck[] {
+  const check: HealthCheck = {
+    name: "config",
+    path: SELFTUNE_CONFIG_PATH,
+    status: "pass",
+    message: "",
+  };
+
+  if (!existsSync(SELFTUNE_CONFIG_PATH)) {
+    check.status = "warn";
+    check.message = "Config not found. Run 'selftune init' to bootstrap.";
+  } else {
+    try {
+      const raw = readFileSync(SELFTUNE_CONFIG_PATH, "utf-8");
+      const config = JSON.parse(raw) as SelftuneConfig;
+      check.status = "pass";
+      check.message = `agent_type=${config.agent_type}, llm_mode=${config.llm_mode}`;
+    } catch {
+      check.status = "fail";
+      check.message = "Config file exists but is not valid JSON";
+    }
+  }
+
+  return [check];
+}
+
 export function doctor(): DoctorResult {
-  const allChecks = [...checkLogHealth(), ...checkHookInstallation(), ...checkEvolutionHealth()];
+  const allChecks = [
+    ...checkConfigHealth(),
+    ...checkLogHealth(),
+    ...checkHookInstallation(),
+    ...checkEvolutionHealth(),
+  ];
   const passed = allChecks.filter((c) => c.status === "pass").length;
   const failed = allChecks.filter((c) => c.status === "fail").length;
   const warned = allChecks.filter((c) => c.status === "warn").length;

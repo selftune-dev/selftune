@@ -7,6 +7,9 @@ Registry of all design documents with verification status.
 | Document | Status | Last Verified | Owner |
 |----------|--------|---------------|-------|
 | core-beliefs.md | Current | 2026-02-28 | Team |
+| evolution-pipeline.md | Current | 2026-02-28 | Team |
+| monitoring-pipeline.md | Current | 2026-02-28 | Team |
+| ../exec-plans/active/agent-first-skill-restructure.md | Current | 2026-02-28 | Team |
 
 ## Verification Schedule
 

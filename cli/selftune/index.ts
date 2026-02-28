@@ -3,6 +3,7 @@
  * selftune CLI entry point.
  *
  * Usage:
+ *   selftune init [options]           — Initialize agent identity and config
  *   selftune evals [options]          — Generate eval sets from hook logs
  *   selftune grade [options]          — Grade a skill session
  *   selftune ingest-codex [options]   — Ingest Codex rollout logs
@@ -23,6 +24,7 @@ Usage:
   selftune <command> [options]
 
 Commands:
+  init               Initialize agent identity and config
   evals              Generate eval sets from hook logs
   grade              Grade a skill session
   ingest-codex       Ingest Codex rollout logs
@@ -40,6 +42,11 @@ Run 'selftune <command> --help' for command-specific options.`);
 // Route to the appropriate subcommand module.
 // We use dynamic imports so only the needed module is loaded.
 switch (command) {
+  case "init": {
+    process.argv = [process.argv[0], process.argv[1], ...process.argv.slice(3)];
+    await import("./init.js");
+    break;
+  }
   case "evals": {
     // Strip "evals" from argv so parseArgs in the module sees the right args
     process.argv = [process.argv[0], process.argv[1], ...process.argv.slice(3)];

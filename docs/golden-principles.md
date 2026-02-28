@@ -21,6 +21,9 @@ Opinionated mechanical rules that encode human taste for selftune. These go beyo
 5. **Zero-config hooks**
    After installation, hooks emit telemetry without configuration. No environment variables, no config files, no user action required.
 
+6. **Bootstrap before operate**
+   Every agent interaction starts with config. `selftune init` writes `~/.selftune/config.json` once; all workflows read it. No workflow should hardcode paths or assume agent type.
+
 6. **Real signal over synthetic**
    Evolution proposals use real user queries as ground truth, never synthetic test prompts. Eval sets are generated from actual session data.
 
@@ -59,10 +62,30 @@ Opinionated mechanical rules that encode human taste for selftune. These go beyo
 - Stale docs are worse than no docs — delete or update
 - PRD.md is the source of truth for product decisions
 
+## Evolution Rules
+
+7. **Audit every state change**
+   Every evolution proposal records `created`, `validated`, `rejected`, or `deployed` to the audit log. No silent transitions.
+
+8. **Validate before deploy, always**
+   A proposal must improve the eval pass rate with <5% regression before deployment. No exceptions, even with high confidence.
+
+9. **Backup before overwrite**
+   Every SKILL.md deployment creates a `.bak` backup. Rollback must always have a path — either backup file or audit trail.
+
+10. **Dependency injection for testability**
+    Evolution modules accept injectable dependencies (`_deps` parameter) so tests avoid `mock.module` contamination. Real imports are the default; tests inject mocks.
+
 ## Anti-Patterns
 
 - Importing grading/eval modules from hooks (violates dependency direction)
+- Importing monitoring modules from evolution (monitoring reads audit, not the reverse)
 - Platform-specific logic in shared modules (belongs in ingestors)
 - Requiring user configuration for basic telemetry capture
 - Using synthetic queries when real session data is available
 - Mutating log files after write
+- Using `mock.module` for modules shared across test files (causes global contamination; use dependency injection instead)
+- Deploying proposals without validation (even in "fast" or "confident" modes)
+- Rollback without audit trail entry (silent reverts break observability)
+- Hardcoding CLI paths in skill workflows (read from `~/.selftune/config.json` instead)
+- Running commands without checking for config first (init must precede all other commands)

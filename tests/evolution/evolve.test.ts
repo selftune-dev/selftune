@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { evolve, type EvolveDeps, type EvolveOptions } from "../../cli/selftune/evolution/evolve.js";
 import type { ValidationResult } from "../../cli/selftune/evolution/validate-proposal.js";
 import type {
   EvalEntry,
@@ -63,10 +64,9 @@ function makeValidationResult(overrides: Partial<ValidationResult> = {}): Valida
 }
 
 // ---------------------------------------------------------------------------
-// Mock setup: mock all sub-modules so orchestrator tests only verify flow
+// Mock functions (no mock.module -- injected via _deps parameter)
 // ---------------------------------------------------------------------------
 
-// Default mock behaviors
 const mockExtractFailurePatterns = mock(
   (_evalEntries: EvalEntry[], _skillUsage: SkillUsageRecord[], _skillName: string) => {
     return [makeFailurePattern()];
@@ -104,29 +104,19 @@ const mockBuildEvalSet = mock(
   },
 );
 
-mock.module("../../cli/selftune/evolution/extract-patterns.js", () => ({
-  extractFailurePatterns: (...args: unknown[]) => mockExtractFailurePatterns(...args),
-}));
+// ---------------------------------------------------------------------------
+// Default deps helper
+// ---------------------------------------------------------------------------
 
-mock.module("../../cli/selftune/evolution/propose-description.js", () => ({
-  generateProposal: (...args: unknown[]) => mockGenerateProposal(...args),
-}));
-
-mock.module("../../cli/selftune/evolution/validate-proposal.js", () => ({
-  validateProposal: (...args: unknown[]) => mockValidateProposal(...args),
-}));
-
-mock.module("../../cli/selftune/evolution/audit.js", () => ({
-  appendAuditEntry: (...args: unknown[]) => mockAppendAuditEntry(...args),
-}));
-
-mock.module("../../cli/selftune/eval/hooks-to-evals.js", () => ({
-  buildEvalSet: (...args: unknown[]) => mockBuildEvalSet(...args),
-}));
-
-// Import evolve after all mocks are registered
-const { evolve } = await import("../../cli/selftune/evolution/evolve.js");
-type EvolveOptions = Parameters<typeof evolve>[0];
+function makeDeps(): EvolveDeps {
+  return {
+    extractFailurePatterns: mockExtractFailurePatterns,
+    generateProposal: mockGenerateProposal,
+    validateProposal: mockValidateProposal,
+    appendAuditEntry: mockAppendAuditEntry,
+    buildEvalSet: mockBuildEvalSet,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Temp directory management
@@ -159,19 +149,6 @@ function createTempEvalSet(entries: EvalEntry[]): string {
   writeFileSync(evalPath, JSON.stringify(entries), "utf-8");
   tmpDirs.push(dir);
   return evalPath;
-}
-
-function createTempJsonl<T>(records: T[]): string {
-  const dir = join(
-    tmpdir(),
-    `selftune-test-jsonl-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  );
-  mkdirSync(dir, { recursive: true });
-  const filePath = join(dir, "log.jsonl");
-  const content = `${records.map((r) => JSON.stringify(r)).join("\n")}\n`;
-  writeFileSync(filePath, content, "utf-8");
-  tmpDirs.push(dir);
-  return filePath;
 }
 
 afterEach(() => {
@@ -234,7 +211,7 @@ describe("evolve orchestrator", () => {
   // 1. Dry run generates and validates but does not deploy
   test("dry run generates and validates but does not deploy", async () => {
     const opts = makeOptions({ dryRun: true });
-    const result = await evolve(opts);
+    const result = await evolve(opts, makeDeps());
 
     expect(result.proposal).not.toBeNull();
     expect(result.validation).not.toBeNull();
@@ -253,7 +230,7 @@ describe("evolve orchestrator", () => {
     mockExtractFailurePatterns.mockImplementation(() => []);
 
     const opts = makeOptions();
-    const result = await evolve(opts);
+    const result = await evolve(opts, makeDeps());
 
     expect(result.proposal).toBeNull();
     expect(result.validation).toBeNull();
@@ -269,7 +246,7 @@ describe("evolve orchestrator", () => {
     mockGenerateProposal.mockImplementation(async () => makeProposal({ confidence: 0.3 }));
 
     const opts = makeOptions({ confidenceThreshold: 0.6 });
-    const result = await evolve(opts);
+    const result = await evolve(opts, makeDeps());
 
     expect(result.proposal).not.toBeNull();
     expect(result.proposal?.confidence).toBe(0.3);
@@ -296,7 +273,7 @@ describe("evolve orchestrator", () => {
     mockGenerateProposal.mockImplementation(async () => makeProposal({ confidence: 0.9 }));
 
     const opts = makeOptions({ maxIterations: 1 });
-    const result = await evolve(opts);
+    const result = await evolve(opts, makeDeps());
 
     expect(result.deployed).toBe(false);
     expect(result.reason.toLowerCase()).toContain("valid");
@@ -311,7 +288,7 @@ describe("evolve orchestrator", () => {
   // 5. Successful evolution -> proposal + validation + deployed=true
   test("successful evolution produces proposal, validation, and deployed=true", async () => {
     const opts = makeOptions();
-    const result = await evolve(opts);
+    const result = await evolve(opts, makeDeps());
 
     expect(result.proposal).not.toBeNull();
     expect(result.validation).not.toBeNull();
@@ -340,7 +317,7 @@ describe("evolve orchestrator", () => {
 
     const maxIterations = 3;
     const opts = makeOptions({ maxIterations });
-    const result = await evolve(opts);
+    const result = await evolve(opts, makeDeps());
 
     expect(result.deployed).toBe(false);
     expect(generateCallCount).toBe(maxIterations);
@@ -352,7 +329,7 @@ describe("evolve orchestrator", () => {
       skillPath: "/tmp/nonexistent-skill-path/SKILL.md",
     });
 
-    const result = await evolve(opts);
+    const result = await evolve(opts, makeDeps());
 
     expect(result.proposal).toBeNull();
     expect(result.validation).toBeNull();
@@ -363,7 +340,7 @@ describe("evolve orchestrator", () => {
   // 8. Audit entries collected throughout the flow
   test("audit entries are collected throughout the flow", async () => {
     const opts = makeOptions();
-    const result = await evolve(opts);
+    const result = await evolve(opts, makeDeps());
 
     // Should have at least: "created", "validated", "deployed"
     expect(result.auditEntries.length).toBeGreaterThanOrEqual(3);
@@ -386,7 +363,7 @@ describe("evolve orchestrator", () => {
     const evalSetPath = createTempEvalSet(evalEntries);
 
     const opts = makeOptions({ evalSetPath });
-    const result = await evolve(opts);
+    const result = await evolve(opts, makeDeps());
 
     // buildEvalSet should NOT have been called since we provided evalSetPath
     expect(mockBuildEvalSet.mock.calls.length).toBe(0);
@@ -415,7 +392,7 @@ describe("evolve orchestrator", () => {
     });
 
     const opts = makeOptions({ maxIterations: 3 });
-    const result = await evolve(opts);
+    const result = await evolve(opts, makeDeps());
 
     // Should have been called twice (first fails, second succeeds)
     expect(capturedArgs.length).toBe(2);

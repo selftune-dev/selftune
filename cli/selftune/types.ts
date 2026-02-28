@@ -3,6 +3,19 @@
  */
 
 // ---------------------------------------------------------------------------
+// Config types (written to ~/.selftune/config.json)
+// ---------------------------------------------------------------------------
+
+export interface SelftuneConfig {
+  agent_type: "claude_code" | "codex" | "opencode" | "unknown";
+  cli_path: string;
+  llm_mode: "agent" | "api";
+  agent_cli: string | null;
+  hooks_installed: boolean;
+  initialized_at: string;
+}
+
+// ---------------------------------------------------------------------------
 // Log record types (written to ~/.claude/*.jsonl)
 // ---------------------------------------------------------------------------
 

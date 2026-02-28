@@ -31,7 +31,7 @@ selftune closes this feedback loop.
 
 ---
 
-## Installation
+## Quick Start
 
 ### 1. Install Bun
 
@@ -45,79 +45,44 @@ curl -fsSL https://bun.sh/install | bash
 bun install
 ```
 
-### 3. Register hooks (Claude Code)
-
-Edit `~/.claude/settings.json`. Merge the entries below — don't replace the whole `hooks` block if you already have one.
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bun run /PATH/TO/cli/selftune/hooks/prompt-log.ts",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bun run /PATH/TO/cli/selftune/hooks/skill-eval.ts",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bun run /PATH/TO/cli/selftune/hooks/session-stop.ts",
-            "timeout": 15
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-Replace `/PATH/TO/` with the absolute path to this repository.
-
-### 4. Verify hooks are running
-
-Start a Claude Code session, send a message, then check:
+### 3. Initialize
 
 ```bash
-cat ~/.claude/all_queries_log.jsonl      # every query
-cat ~/.claude/skill_usage_log.jsonl      # skill trigger events
-cat ~/.claude/session_telemetry_log.jsonl # session metrics (after session ends)
+bun run cli/selftune/index.ts init
 ```
 
-### 5. For Codex / OpenCode users
+The `init` command auto-detects your agent environment (Claude Code, Codex, or OpenCode), resolves the CLI path, determines the LLM mode, and writes config to `~/.selftune/config.json`. All subsequent commands read from this config.
 
-No hooks needed — use the ingestors instead:
+Use `--agent claude_code|codex|opencode` to override detection, `--llm-mode agent|api` to override LLM mode, or `--force` to reinitialize.
+
+### 4. Install hooks (Claude Code)
+
+If `init` reports hooks are not installed, merge the entries from `skill/settings_snippet.json` into `~/.claude/settings.json`. Replace `/PATH/TO/` with the absolute path to this repository.
+
+### 5. Verify setup
 
 ```bash
-# Codex: real-time wrapper (drop-in replacement for codex exec)
+bun run cli/selftune/index.ts doctor
+```
+
+Doctor checks log file health, hook installation, schema validity, and config status.
+
+### Platform-Specific Notes
+
+**Claude Code** — Hooks capture telemetry automatically after installation. Zero configuration once hooks are in `settings.json`.
+
+**Codex** — Use the wrapper for real-time capture or the batch ingestor for historical logs:
+```bash
 bun run cli/selftune/index.ts wrap-codex -- <your codex args>
-
-# Codex: batch ingest from rollout logs
 bun run cli/selftune/index.ts ingest-codex
+```
 
-# OpenCode: ingest from SQLite database
+**OpenCode** — Backfill historical sessions from SQLite:
+```bash
 bun run cli/selftune/index.ts ingest-opencode
 ```
 
-All three platforms write to the same shared JSONL log schema at `~/.claude/`.
+All platforms write to the same shared JSONL log schema at `~/.claude/`.
 
 ---
 
@@ -127,58 +92,23 @@ All three platforms write to the same shared JSONL log schema at `~/.claude/`.
 selftune <command> [options]
 ```
 
-### Observe & Detect
-
 | Command | Purpose |
 |---|---|
-| `evals --list-skills` | Show logged skills and query counts |
+| `init` | Auto-detect agent environment, write `~/.selftune/config.json` |
+| `grade --skill <name>` | Grade a session (3-tier: trigger, process, quality) |
 | `evals --skill <name>` | Generate eval set from real usage logs |
-| `evals --skill <name> --stats` | Show telemetry stats for a skill |
-| `doctor` | Health checks on logs, hooks, and schema |
-
-### Grade
-
-| Command | Purpose |
-|---|---|
-| `grade --skill <name> --expectations "..."` | Grade a session against explicit expectations |
-| `grade --skill <name> --evals-json <path> --eval-id <n>` | Grade using a pre-built eval set |
-
-Grading uses a 3-tier model:
-- **Tier 1 — Trigger:** Did the skill fire at all?
-- **Tier 2 — Process:** Given it fired, did it follow the right steps?
-- **Tier 3 — Quality:** Was the output actually good?
-
-No separate API key required — grading uses whatever agent you already have installed (`claude`, `codex`, or `opencode`). Set `ANTHROPIC_API_KEY` to use the API directly instead.
-
-### Evolve (v0.3)
-
-| Command | Purpose |
-|---|---|
-| `evolve --skill <name> --skill-path <path>` | Analyze failures, propose improved description, validate, deploy |
-| `evolve --skill <name> --skill-path <path> --dry-run` | Propose and validate without deploying |
+| `evals --list-skills` | Show logged skills and query counts |
+| `evolve --skill <name> --skill-path <path>` | Analyze failures, propose and deploy improved description |
 | `rollback --skill <name> --skill-path <path>` | Restore pre-evolution description |
-
-The evolution loop:
-1. Extracts failure patterns from eval set + grading results
-2. Generates a candidate description that would catch missed queries
-3. Validates the candidate against the eval set (must improve pass rate with <5% regressions)
-4. Deploys the updated SKILL.md with PR and audit trail
-5. Retries up to `--max-iterations` times if validation fails
-
-### Watch (v0.4)
-
-| Command | Purpose |
-|---|---|
-| `watch --skill <name> --skill-path <path>` | Monitor post-evolution pass rates |
-| `watch --skill <name> --skill-path <path> --auto-rollback` | Auto-revert on regression |
-
-### Ingest (Codex / OpenCode)
-
-| Command | Purpose |
-|---|---|
+| `watch --skill <name> --skill-path <path>` | Monitor post-deploy pass rates, detect regressions |
+| `doctor` | Health checks on logs, hooks, config, and schema |
 | `ingest-codex` | Batch ingest Codex rollout logs |
-| `ingest-opencode` | Ingest OpenCode sessions from SQLite |
-| `wrap-codex` | Real-time Codex wrapper with telemetry |
+| `ingest-opencode` | Backfill historical OpenCode sessions from SQLite |
+| `wrap-codex -- <args>` | Real-time Codex wrapper with telemetry |
+
+No separate API key required — grading and evolution use whatever agent CLI you already have installed. Set `ANTHROPIC_API_KEY` to use the API directly instead.
+
+See `skill/Workflows/` for detailed step-by-step guides for each command.
 
 ---
 
@@ -187,17 +117,23 @@ The evolution loop:
 ### Telemetry Capture
 
 ```
-Claude Code (hooks):                    Codex / OpenCode (ingestors):
-  UserPromptSubmit → prompt-log.ts        codex-wrapper.ts (real-time)
-  PostToolUse      → skill-eval.ts        codex-rollout.ts (batch)
-  Stop             → session-stop.ts      opencode-ingest.ts (SQLite)
-          │                                        │
-          └──────────┬─────────────────────────────┘
+Claude Code (hooks):                 OpenCode (hooks):
+  UserPromptSubmit → prompt-log.ts     message.*        → opencode-prompt-log.ts
+  PostToolUse      → skill-eval.ts     tool.execute.after → opencode-skill-eval.ts
+  Stop             → session-stop.ts   session.idle     → opencode-session-stop.ts
+          │                                    │
+          └──────────┬─────────────────────────┘
                      ▼
           Shared JSONL Log Schema (~/.claude/)
             ├── all_queries_log.jsonl
             ├── skill_usage_log.jsonl
             └── session_telemetry_log.jsonl
+
+Codex (wrapper/ingestor — hooks not yet available):
+  codex-wrapper.ts  (real-time tee of JSONL stream)
+  codex-rollout.ts  (batch ingest from rollout logs)
+          │
+          └──→ Same shared JSONL schema
 ```
 
 ### Eval & Grading
@@ -234,17 +170,28 @@ selftune watch:
 
 ```
 cli/selftune/
+├── index.ts                     CLI entry point (command router)
+├── init.ts                      Agent detection, config bootstrap
 ├── types.ts, constants.ts       Shared interfaces and constants
+├── observability.ts             Health checks (doctor command)
 ├── utils/                       JSONL, transcript parsing, LLM calls, schema validation
-├── hooks/                       Claude Code telemetry capture (3 hooks)
-├── ingestors/                   Codex + OpenCode adapters (3 ingestors)
+├── hooks/                       Claude Code + OpenCode telemetry capture
+├── ingestors/                   Codex adapters + OpenCode backfill
 ├── eval/                        False negative detection, eval set generation
 ├── grading/                     3-tier session grading (agent or API mode)
-├── evolution/                   v0.3: failure extraction, proposal, validation, deploy, rollback
-└── monitoring/                  v0.4: post-deploy regression detection
+├── evolution/                   Failure extraction, proposal, validation, deploy, rollback
+└── monitoring/                  Post-deploy regression detection
+
+skill/
+├── SKILL.md                     Routing table (~120 lines)
+├── settings_snippet.json        Claude Code hook config template
+├── references/                  Domain knowledge (logs, grading methodology, taxonomy)
+└── Workflows/                   Step-by-step guides (1 per command)
 ```
 
 Dependencies flow forward only: `shared → hooks/ingestors → eval → grading → evolution → monitoring`. Enforced by `lint-architecture.ts`.
+
+Config persists at `~/.selftune/config.json` (written by `init`, read by all commands via skill workflows).
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full domain map and module rules.
 
@@ -279,13 +226,14 @@ Zero runtime dependencies. Uses Bun built-ins only.
 
 ## Tips
 
+- Run `selftune init` first — everything else reads from the config it writes.
 - Let logs accumulate over several days before running evals — more diverse real queries = more reliable signal.
 - All hooks are silent (exit 0) and take <50ms. Negligible overhead.
 - Logs are append-only JSONL. Safe to delete to start fresh, or archive old files.
 - Use `--max 75` to increase eval set size once you have enough data.
 - Use `--seed 123` for a different random sample of negatives.
 - Use `--dry-run` with `evolve` to preview proposals without deploying.
-- The `doctor` command checks log health, hook presence, and schema validity.
+- The `doctor` command checks log health, hook presence, config status, and schema validity.
 
 ---
 
@@ -297,3 +245,4 @@ Zero runtime dependencies. Uses Bun built-ins only.
 | v0.2 | Session grading, grader skill | Done |
 | v0.3 | Evolution loop (propose, validate, deploy, rollback) | Done |
 | v0.4 | Post-deploy monitoring, regression detection | Done |
+| v0.5 | Agent-first skill restructure, `init` command, config bootstrap | Done |

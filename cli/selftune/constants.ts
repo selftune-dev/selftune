@@ -5,6 +5,9 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+export const SELFTUNE_CONFIG_DIR = join(homedir(), ".selftune");
+export const SELFTUNE_CONFIG_PATH = join(SELFTUNE_CONFIG_DIR, "config.json");
+
 export const LOG_DIR = join(homedir(), ".claude");
 
 export const TELEMETRY_LOG = join(LOG_DIR, "session_telemetry_log.jsonl");

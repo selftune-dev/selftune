@@ -49,6 +49,18 @@ export interface EvolveResult {
   reason: string;
 }
 
+/**
+ * Injectable dependencies for evolve(). When omitted, the real module
+ * imports are used. Pass overrides in tests to avoid mock.module().
+ */
+export interface EvolveDeps {
+  extractFailurePatterns?: typeof import("./extract-patterns.js").extractFailurePatterns;
+  generateProposal?: typeof import("./propose-description.js").generateProposal;
+  validateProposal?: typeof import("./validate-proposal.js").validateProposal;
+  appendAuditEntry?: typeof import("./audit.js").appendAuditEntry;
+  buildEvalSet?: typeof import("../eval/hooks-to-evals.js").buildEvalSet;
+}
+
 // ---------------------------------------------------------------------------
 // Audit helper
 // ---------------------------------------------------------------------------
@@ -72,7 +84,7 @@ function createAuditEntry(
 // Main orchestrator
 // ---------------------------------------------------------------------------
 
-export async function evolve(options: EvolveOptions): Promise<EvolveResult> {
+export async function evolve(options: EvolveOptions, _deps: EvolveDeps = {}): Promise<EvolveResult> {
   const {
     skillName,
     skillPath,
@@ -83,6 +95,13 @@ export async function evolve(options: EvolveOptions): Promise<EvolveResult> {
     confidenceThreshold,
     maxIterations,
   } = options;
+
+  // Resolve injectable dependencies with real-import fallbacks
+  const _extractFailurePatterns = _deps.extractFailurePatterns ?? extractFailurePatterns;
+  const _generateProposal = _deps.generateProposal ?? generateProposal;
+  const _validateProposal = _deps.validateProposal ?? validateProposal;
+  const _appendAuditEntry = _deps.appendAuditEntry ?? appendAuditEntry;
+  const _buildEvalSet = _deps.buildEvalSet ?? buildEvalSet;
 
   const auditEntries: EvolutionAuditEntry[] = [];
 
@@ -95,7 +114,7 @@ export async function evolve(options: EvolveOptions): Promise<EvolveResult> {
     const entry = createAuditEntry(proposalId, action, details, evalSnapshot);
     auditEntries.push(entry);
     try {
-      appendAuditEntry(entry);
+      _appendAuditEntry(entry);
     } catch {
       // Fail-open: audit write failures should not break the pipeline
     }
@@ -129,7 +148,7 @@ export async function evolve(options: EvolveOptions): Promise<EvolveResult> {
       // Build from logs
       const skillRecords = readJsonl<SkillUsageRecord>(SKILL_LOG);
       const queryRecords = readJsonl<QueryLogRecord>(QUERY_LOG);
-      evalSet = buildEvalSet(skillRecords, queryRecords, skillName);
+      evalSet = _buildEvalSet(skillRecords, queryRecords, skillName);
     }
 
     // -----------------------------------------------------------------------
@@ -140,7 +159,7 @@ export async function evolve(options: EvolveOptions): Promise<EvolveResult> {
     // -----------------------------------------------------------------------
     // Step 4: Extract failure patterns
     // -----------------------------------------------------------------------
-    const failurePatterns = extractFailurePatterns(evalSet, skillUsage, skillName);
+    const failurePatterns = _extractFailurePatterns(evalSet, skillUsage, skillName);
 
     // -----------------------------------------------------------------------
     // Step 5: Early exit if no patterns
@@ -173,7 +192,7 @@ export async function evolve(options: EvolveOptions): Promise<EvolveResult> {
         ? [...missedQueries, `[Previous attempt failed: ${feedbackReason}]`]
         : missedQueries;
 
-      const proposal = await generateProposal(
+      const proposal = await _generateProposal(
         currentDescription,
         failurePatterns,
         effectiveMissedQueries,
@@ -216,7 +235,7 @@ export async function evolve(options: EvolveOptions): Promise<EvolveResult> {
       }
 
       // Step 10: Validate against eval set
-      const validation = await validateProposal(proposal, evalSet, mode, agent);
+      const validation = await _validateProposal(proposal, evalSet, mode, agent);
       lastValidation = validation;
 
       // Step 11: Audit "validated"

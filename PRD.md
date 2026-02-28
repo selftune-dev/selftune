@@ -1,8 +1,8 @@
 # selftune — Product Requirements Document
 
-**Status:** Draft  
-**Version:** 0.1  
-**Date:** 2026-02-28  
+**Status:** Current
+**Version:** 0.5
+**Date:** 2026-02-28
 **Owner:** WellDunDun
 
 ---
@@ -215,6 +215,14 @@ Use reins to build the repo that makes agents effective. Use selftune to know wh
 - Post-deploy monitoring
 - Regression detection
 - Escalation when performance degrades after a deploy
+
+### v0.5 — Agent-First Skill Restructure (Complete)
+- `init` command: auto-detect agent environment, write persistent config to `~/.selftune/config.json`
+- Skill decomposed from 370-line monolith into Reins-style routing table (~120 lines)
+- 8 workflow files (1 per command) with step-by-step agent guides
+- 2 reference docs (grading methodology, invocation taxonomy) extracted from skill
+- Config-based CLI path resolution (no hardcoded paths in workflows)
+- Doctor command enhanced with config health check
 
 ### v1.0 — Autonomous
 - Fully autonomous loop: observe → grade → evolve → deploy → watch
