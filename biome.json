@@ -9,7 +9,13 @@
       "recommended": true
     }
   },
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
   "files": {
-    "include": ["*.json", "*.md"]
+    "include": ["cli/**/*.ts", "tests/**/*.ts", "*.ts", "*.json", "*.md"],
+    "ignore": ["node_modules", "bun.lock"]
   }
 }

@@ -26,30 +26,31 @@ Opinionated mechanical rules that encode human taste for selftune. These go beyo
 
 ## Naming Conventions
 
-- Files: snake_case (`codex_wrapper.py`, `grade_session.py`)
-- Functions: snake_case (`detect_false_negatives`)
-- Classes: PascalCase (`SessionGrader`)
+- Files: kebab-case (`codex-wrapper.ts`, `grade-session.ts`)
+- Functions: camelCase (`detectFalseNegatives`)
+- Interfaces: PascalCase (`SessionTelemetryRecord`)
 - Constants: SCREAMING_SNAKE_CASE (`MAX_RETRY_COUNT`)
 - Log fields: snake_case (`session_id`, `tool_calls`)
 
 ## Code Style
 
-- Python 3.12+, standard library preferred
-- Type hints on all public functions
+- TypeScript on Bun, zero runtime dependencies
+- Strict types on all exported functions
 - Prefer explicit over implicit
-- No magic strings — use constants or enums
+- No magic strings — use constants from `constants.ts`
 - Error messages must be actionable (what happened, what to do)
 - Functions do one thing
 - Prefer early returns over deep nesting
-- f-strings over `.format()` or `%`
+- Template literals over string concatenation
 
 ## Testing Rules
 
 - Every public function has at least one test
-- Tests are co-located: `test_grade_session.py` next to `grade_session.py`
+- Tests are in `tests/` mirroring source structure: `tests/hooks/prompt-log.test.ts`
 - Test names describe the expected state, not the action
 - No test interdependence — each test is isolated
 - JSONL output is validated against schema in tests
+- Run with `bun test`
 
 ## Documentation Rules
 

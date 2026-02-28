@@ -1,10 +1,10 @@
 .PHONY: lint test check
 
 lint:
-	python3 lint_architecture.py
-	ruff check cli/ || true
+	bunx biome check .
+	bun run lint-architecture.ts
 
 test:
-	python3 -m pytest tests/ -v
+	bun test
 
 check: lint test

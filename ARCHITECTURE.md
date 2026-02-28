@@ -25,6 +25,9 @@ Dependencies flow forward only through the pipeline.
 
 ```
 cli/selftune/
+├── types.ts         Shared interfaces
+├── constants.ts     Log paths, known tools, skip prefixes
+├── utils/           Shared utilities (jsonl, transcript, logging, seeded-random)
 ├── hooks/           Telemetry (capture)
 │     │
 │     v
@@ -49,17 +52,18 @@ skill/               Claude Code skill (user-facing grader)
 
 | Module | Directory | Files | Responsibility | May Import From |
 |--------|-----------|-------|---------------|-----------------|
-| Telemetry | `cli/selftune/hooks/` | `prompt_log_hook.py`, `session_stop_hook.py`, `skill_eval_hook.py` | Capture session data via hooks | Standard library only |
-| Ingestors | `cli/selftune/ingestors/` | `codex_wrapper.py`, `codex_rollout_ingest.py`, `opencode_ingest.py` | Normalize platform data | Telemetry (schema only) |
-| Eval | `cli/selftune/eval/` | `hooks_to_evals.py` | Detect false negatives, generate eval sets | Shared log schema |
-| Grading | `cli/selftune/grading/` | `grade_session.py` | Grade sessions across 3 tiers | Eval, Shared log schema |
+| Shared | `cli/selftune/` | `types.ts`, `constants.ts`, `utils/*.ts` | Shared types, constants, utilities | Bun built-ins only |
+| Telemetry | `cli/selftune/hooks/` | `prompt-log.ts`, `session-stop.ts`, `skill-eval.ts` | Capture session data via hooks | Shared only |
+| Ingestors | `cli/selftune/ingestors/` | `codex-wrapper.ts`, `codex-rollout.ts`, `opencode-ingest.ts` | Normalize platform data | Shared only |
+| Eval | `cli/selftune/eval/` | `hooks-to-evals.ts` | Detect false negatives, generate eval sets | Shared only |
+| Grading | `cli/selftune/grading/` | `grade-session.ts` | Grade sessions across 3 tiers | Shared only |
 | Evolution | (TBD) | (v0.3) | Propose and validate description improvements | Grading, Eval |
 | Skill | `skill/` | `SKILL.md`, `settings_snippet.json` | User-facing grader skill | Reads log schema |
 
 ### Enforcement
 
 These rules are enforced mechanically:
-- [x] Import direction lint: hooks must not import from grading/eval (`lint_architecture.py`)
+- [x] Import direction lint: hooks must not import from grading/eval (`lint-architecture.ts`)
 - [ ] Schema validation: all JSONL writers validate against shared schema (TODO)
 - [x] CI gate: `make check` must pass before merge (`.github/workflows/ci.yml`)
 

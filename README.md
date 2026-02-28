@@ -1,4 +1,4 @@
-# Claude Code Hooks → Skill Evals
+# selftune — Skill Observability CLI
 
 Real-usage telemetry for skill trigger evaluation — both positives AND negatives.
 
@@ -6,10 +6,10 @@ Two hooks work together to build a complete eval dataset over time:
 
 | Hook event | Script | Logs to | What it captures |
 |---|---|---|---|
-| `UserPromptSubmit` | `prompt_log_hook.py` | `all_queries_log.jsonl` | **Every** user query |
-| `PostToolUse` on `Read` | `skill_eval_hook.py` | `skill_usage_log.jsonl` | Queries that triggered a skill |
+| `UserPromptSubmit` | `prompt-log.ts` | `all_queries_log.jsonl` | **Every** user query |
+| `PostToolUse` on `Read` | `skill-eval.ts` | `skill_usage_log.jsonl` | Queries that triggered a skill |
 
-`hooks_to_evals.py` cross-references the two logs:
+`selftune evals` cross-references the two logs:
 - **Positives** (`should_trigger: true`) — queries that triggered the skill
 - **Negatives** (`should_trigger: false`) — queries that didn't trigger the skill (real prompts Claude handled another way or without any skill)
 
@@ -22,24 +22,30 @@ but didn't — which synthetic eval sets can't easily produce.
 
 | File | Purpose |
 |---|---|
-| `prompt_log_hook.py` | UserPromptSubmit hook — logs every query |
-| `skill_eval_hook.py` | PostToolUse hook — logs skill reads with triggering query |
-| `hooks_to_evals.py` | Converts both logs → eval set JSON for `run_eval.py` |
-| `settings_snippet.json` | Hook config to merge into `~/.claude/settings.json` |
+| `cli/selftune/hooks/prompt-log.ts` | UserPromptSubmit hook — logs every query |
+| `cli/selftune/hooks/skill-eval.ts` | PostToolUse hook — logs skill reads with triggering query |
+| `cli/selftune/hooks/session-stop.ts` | Stop hook — captures session telemetry |
+| `cli/selftune/eval/hooks-to-evals.ts` | Converts both logs → eval set JSON |
+| `cli/selftune/grading/grade-session.ts` | Rubric-based session grading |
+| `skill/settings_snippet.json` | Hook config to merge into `~/.claude/settings.json` |
 
 ---
 
 ## Installation
 
-### 1. Copy scripts somewhere stable
+### 1. Install Bun (if not already installed)
 
 ```bash
-mkdir -p ~/bin
-cp prompt_log_hook.py ~/bin/
-cp skill_eval_hook.py ~/bin/
+curl -fsSL https://bun.sh/install | bash
 ```
 
-### 2. Register both hooks in Claude Code
+### 2. Install dependencies
+
+```bash
+bun install
+```
+
+### 3. Register hooks in Claude Code
 
 Edit `~/.claude/settings.json`. If you already have a `hooks` block, merge the
 entries in — don't replace the whole block.
@@ -52,7 +58,7 @@ entries in — don't replace the whole block.
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/YOU/bin/prompt_log_hook.py",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/prompt-log.ts",
             "timeout": 5
           }
         ]
@@ -64,8 +70,19 @@ entries in — don't replace the whole block.
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/YOU/bin/skill_eval_hook.py",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/skill-eval.ts",
             "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/session-stop.ts",
+            "timeout": 15
           }
         ]
       }
@@ -76,7 +93,7 @@ entries in — don't replace the whole block.
 
 You can also use `/hooks` inside Claude Code for an interactive editor.
 
-### 3. Verify both hooks are running
+### 4. Verify hooks are running
 
 Start a Claude Code session, send a message, and check:
 
@@ -95,7 +112,7 @@ cat ~/.claude/skill_usage_log.jsonl
 ### See what's been logged
 
 ```bash
-python3 hooks_to_evals.py --list-skills
+bun run cli/selftune/index.ts evals --list-skills
 ```
 
 Output:
@@ -112,7 +129,7 @@ All queries in all_queries_log: 381
 ### Generate an eval set for a skill
 
 ```bash
-python3 hooks_to_evals.py --skill pptx --output pptx_eval.json
+bun run cli/selftune/index.ts evals --skill pptx --output pptx_eval.json
 ```
 
 Output:
@@ -122,23 +139,18 @@ Wrote 50 eval entries to pptx_eval.json
   Negatives (should_trigger=false): 32  (from 381 total logged queries)
 ```
 
-### Run the trigger eval
+### Grade a skill session
 
 ```bash
-# From your skill-creator project root:
-python -m scripts.run_eval \
-  --eval-set pptx_eval.json \
-  --skill-path /mnt/skills/public/pptx \
-  --runs-per-query 3 --verbose
+bun run cli/selftune/index.ts grade --skill pptx \
+  --expectations "SKILL.md was read before any files were created" \
+                 "Output is a .pptx file"
 ```
 
-### Optimize the skill description
+### Health check
 
 ```bash
-python -m scripts.run_loop \
-  --eval-set pptx_eval.json \
-  --skill-path /mnt/skills/public/pptx \
-  --max-iterations 5 --verbose
+bun run cli/selftune/index.ts doctor
 ```
 
 ---
@@ -147,14 +159,18 @@ python -m scripts.run_loop \
 
 ```
 UserPromptSubmit fires
-  └── prompt_log_hook.py logs query → all_queries_log.jsonl
+  └── prompt-log.ts logs query → all_queries_log.jsonl
 
 Claude processes the query...
   If a SKILL.md is read:
     PostToolUse fires
-      └── skill_eval_hook.py logs query + skill name → skill_usage_log.jsonl
+      └── skill-eval.ts logs query + skill name → skill_usage_log.jsonl
 
-hooks_to_evals.py cross-references:
+Session ends:
+  Stop fires
+    └── session-stop.ts logs process metrics → session_telemetry_log.jsonl
+
+selftune evals cross-references:
   Positives  = skill_usage_log entries for target skill
   Negatives  = all_queries_log entries NOT in positives
                (real queries that didn't trigger the skill)
@@ -165,8 +181,7 @@ The negatives pool is particularly valuable because it contains:
 - Queries that triggered *no* skill (genuinely off-topic or under-triggering)
 
 Human review of the negatives that seem like they *should* trigger is the
-best way to find under-triggering cases. You can manually flip their
-`should_trigger` to `true` before passing to `run_loop.py`.
+best way to find under-triggering cases.
 
 ---
 
@@ -174,7 +189,7 @@ best way to find under-triggering cases. You can manually flip their
 
 - Let the logs accumulate over several days before running evals — more
   diverse real queries = more reliable signal.
-- Both hooks are silent (exit 0) and take <50ms, negligible overhead.
+- All hooks are silent (exit 0) and take <50ms, negligible overhead.
 - The logs are append-only JSONL in `~/.claude/`. Safe to delete to start
   fresh, or archive old files.
 - Use `--max 75` to increase the eval set size once you have enough data.

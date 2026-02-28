@@ -184,7 +184,7 @@ Grade against quality expectations: correct format, correct content, no placehol
 **"Grade session <id>"**
 → Look up that session_id in the telemetry log directly.
 
-**No telemetry available (session_stop_hook.py not installed)**
-→ Tell the user the session_stop_hook.py hook isn't installed (see `settings_snippet.json`
+**No telemetry available (session-stop hook not installed)**
+→ Tell the user the session-stop hook isn't installed (see `settings_snippet.json`
 in the skill-hooks directory). Offer to grade from a transcript path directly if they
 have one, or to install the hook for future sessions.

@@ -36,17 +36,17 @@ One JSON record per line. Each record is one completed agent session.
 ```
 
 **source values:**
-- `claude_code` — written by session_stop_hook.py (Stop hook)
-- `codex` — written by adapters/codex_wrapper.py
-- `codex_rollout` — written by adapters/codex_rollout_ingest.py
-- `opencode` — written by adapters/opencode_ingest.py
+- `claude_code` — written by session-stop.ts (Stop hook)
+- `codex` — written by ingestors/codex-wrapper.ts
+- `codex_rollout` — written by ingestors/codex-rollout.ts
+- `opencode` — written by ingestors/opencode-ingest.ts
 - `opencode_json` — legacy OpenCode JSON files
 
 ---
 
 ## ~/.claude/skill_usage_log.jsonl
 
-One record per skill trigger event. Populated by skill_eval_hook.py (PostToolUse hook).
+One record per skill trigger event. Populated by skill-eval.ts (PostToolUse hook).
 
 ```json
 {
@@ -64,7 +64,7 @@ One record per skill trigger event. Populated by skill_eval_hook.py (PostToolUse
 
 ## ~/.claude/all_queries_log.jsonl
 
-Every user query, whether or not it triggered a skill. Populated by prompt_log_hook.py (UserPromptSubmit hook).
+Every user query, whether or not it triggered a skill. Populated by prompt-log.ts (UserPromptSubmit hook).
 
 ```json
 {

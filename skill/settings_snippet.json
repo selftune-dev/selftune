@@ -8,7 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /PATH/TO/prompt_log_hook.py",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/prompt-log.ts",
             "timeout": 5
           }
         ]
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /PATH/TO/skill_eval_hook.py",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/skill-eval.ts",
             "timeout": 5
           }
         ]
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /PATH/TO/session_stop_hook.py",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/session-stop.ts",
             "timeout": 15
           }
         ]

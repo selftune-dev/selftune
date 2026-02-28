@@ -114,7 +114,7 @@ selftune works across the three major agent platforms without requiring any of t
 
 **Claude Code** — Stop, PostToolUse, and UserPromptSubmit hooks write telemetry automatically. Zero configuration once hooks are installed.
 
-**Codex** — Two modes: a wrapper (`codex_wrapper.py`) that tees the `codex exec --json` JSONL stream in real time, and a batch ingestor (`codex_rollout_ingest.py`) for retroactive ingestion of the rollout files Codex auto-writes to `$CODEX_HOME/sessions/`.
+**Codex** — Two modes: a wrapper (`codex-wrapper.ts`) that tees the `codex exec --json` JSONL stream in real time, and a batch ingestor (`codex-rollout.ts`) for retroactive ingestion of the rollout files Codex auto-writes to `$CODEX_HOME/sessions/`.
 
 **OpenCode** — Reads directly from OpenCode's SQLite database at `~/.local/share/opencode/opencode.db`, with fallback support for legacy JSON session files.
 
@@ -131,7 +131,7 @@ Captures per-session process metrics across all three platforms: tool call count
 Compares the universe of logged queries against actual skill trigger events. Surfaces the queries where a skill should have fired but didn't. These are the invisible failures that accumulate into user frustration.
 
 ### Eval Set Generation
-Converts hook logs into trigger eval sets: positives (real queries that triggered), negatives (real queries that didn't), annotated with invocation type. Feeds directly into existing skill-creator eval infrastructure (`run_eval.py`, `run_loop.py`).
+Converts hook logs into trigger eval sets: positives (real queries that triggered), negatives (real queries that didn't), annotated with invocation type. Feeds directly into existing skill-creator eval infrastructure.
 
 ### Session Grading
 Grades completed sessions against expectations using the agent the user already has installed — Claude Code, Codex, or OpenCode — without requiring a separate Anthropic API key. Produces `grading.json` compatible with the skill-creator eval viewer.
@@ -195,7 +195,7 @@ Use reins to build the repo that makes agents effective. Use selftune to know wh
 - Codex adapter (wrapper + rollout ingestor)
 - OpenCode adapter (SQLite reader)
 - Shared log schema
-- False negative detection (`hooks_to_evals.py`)
+- False negative detection (`hooks-to-evals.ts`)
 - Invocation taxonomy annotation
 - Process telemetry stats
 
@@ -203,7 +203,7 @@ Use reins to build the repo that makes agents effective. Use selftune to know wh
 - Session grader via agent subprocess (no API key required)
 - `skill-eval-grader` skill
 - `grading.json` output compatible with skill-creator eval viewer
-- `grade_session.py --use-agent` with auto-detection
+- `grade-session.ts --use-agent` with auto-detection
 
 ### v0.3 — Evolve
 - Description improvement loop wired to real usage signal

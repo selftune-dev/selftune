@@ -6,11 +6,12 @@ Track known technical debt with priority and ownership.
 
 | ID | Description | Domain | Priority | Status | Created | Updated |
 |----|-------------|--------|----------|--------|---------|---------|
-| TD-001 | Add CI pipeline (pytest + lint_architecture.py) | Infra | High | Open | 2026-02-28 | 2026-02-28 |
+| TD-001 | Add CI pipeline (bun test + lint-architecture.ts) | Infra | High | Closed | 2026-02-28 | 2026-02-28 |
 | TD-002 | Schema validation for all JSONL writers | Telemetry | High | Open | 2026-02-28 | 2026-02-28 |
-| TD-003 | Tests for hooks_to_evals.py | Eval | Medium | Open | 2026-02-28 | 2026-02-28 |
-| TD-004 | Tests for grade_session.py | Grading | Medium | Open | 2026-02-28 | 2026-02-28 |
+| TD-003 | Tests for hooks-to-evals.ts | Eval | Medium | Closed | 2026-02-28 | 2026-02-28 |
+| TD-004 | Tests for grade-session.ts | Grading | Medium | Closed | 2026-02-28 | 2026-02-28 |
 | TD-005 | Implement v0.3 Evolution module | Evolution | Low | Open | 2026-02-28 | 2026-02-28 |
+| TD-006 | Migrate Python to Bun/TypeScript | Infra | High | Closed | 2026-02-28 | 2026-02-28 |
 
 ## Priority Definitions
 

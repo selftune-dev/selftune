@@ -25,8 +25,8 @@ Clear criteria for when agents proceed autonomously vs. when to involve a human.
 ### Review Before Merge (Medium Risk)
 
 - Adding new fields to JSONL output
-- Modifying eval set generation logic in `hooks_to_evals.py`
-- Changing grading thresholds in `grade_session.py`
+- Modifying eval set generation logic in `hooks-to-evals.ts`
+- Changing grading thresholds in `grade-session.ts`
 - Adding new platform ingestors
 - Updating ARCHITECTURE.md domain map
 

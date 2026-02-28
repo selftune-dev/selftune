@@ -1,7 +1,7 @@
 {
   "version": 1,
   "tiers": ["low", "medium", "high"],
-  "watchPaths": ["cli/selftune/", "skill/", "docs/"],
+  "watchPaths": ["cli/selftune/**/*.ts", "skill/", "docs/"],
   "docsDriftRules": [
     {
       "watch": "cli/selftune/",

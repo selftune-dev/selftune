@@ -4,26 +4,41 @@
 
 selftune — Skill observability and continuous improvement for Claude Code, Codex, and OpenCode. Observes real sessions, detects missed skill triggers, grades execution quality, and evolves skill descriptions toward the language real users actually use.
 
-**Stack:** Python 3.12, JSONL log schema, no external dependencies beyond standard library.
+**Stack:** TypeScript on Bun, JSONL log schema, zero runtime dependencies.
 
 ## Project Structure
 
 ```
 selftune/
-├── cli/selftune/            # Python package — the CLI
+├── cli/selftune/            # TypeScript package — the CLI
+│   ├── types.ts             # Shared interfaces
+│   ├── constants.ts         # Log paths, known tools, skip prefixes
+│   ├── utils/               # Shared utilities
+│   │   ├── jsonl.ts         # JSONL read/write/append
+│   │   ├── transcript.ts    # Transcript parsing
+│   │   ├── logging.ts       # Structured JSON logging
+│   │   └── seeded-random.ts # Deterministic PRNG
 │   ├── hooks/               # Telemetry capture (Claude Code hooks)
+│   │   ├── prompt-log.ts    # UserPromptSubmit hook
+│   │   ├── session-stop.ts  # Stop hook
+│   │   └── skill-eval.ts    # PostToolUse hook
 │   ├── ingestors/           # Platform adapters (Codex, OpenCode)
+│   │   ├── codex-wrapper.ts # Real-time Codex wrapper
+│   │   ├── codex-rollout.ts # Batch Codex ingestor
+│   │   └── opencode-ingest.ts # OpenCode SQLite/JSON adapter
 │   ├── eval/                # False negative detection, eval set generation
+│   │   └── hooks-to-evals.ts
 │   ├── grading/             # 3-tier session grading
-│   ├── observability.py     # Health checks, log integrity
-│   └── logging_config.py    # Structured JSON logging
+│   │   └── grade-session.ts
+│   ├── observability.ts     # Health checks, log integrity
+│   └── index.ts             # CLI entry point
 ├── skill/                   # Claude Code skill (skill-eval-grader)
 │   ├── SKILL.md             # Skill definition
 │   ├── settings_snippet.json
 │   └── references/
-├── tests/                   # Test suite
+├── tests/                   # Test suite (bun test)
 ├── docs/                    # Reins harness docs
-└── [root configs]           # pyproject.toml, Makefile, CI, etc.
+└── [root configs]           # package.json, tsconfig.json, Makefile, CI, etc.
 ```
 
 ## Architecture
@@ -52,14 +67,14 @@ See ARCHITECTURE.md for domain map, module layering, and dependency rules.
 
 | File | Purpose |
 |------|---------|
-| `cli/selftune/hooks/prompt_log_hook.py` | Claude Code UserPromptSubmit hook — logs queries |
-| `cli/selftune/hooks/session_stop_hook.py` | Claude Code Stop hook — captures session telemetry |
-| `cli/selftune/hooks/skill_eval_hook.py` | Claude Code PostToolUse hook — tracks skill triggers |
-| `cli/selftune/ingestors/codex_wrapper.py` | Codex real-time wrapper — tees JSONL stream |
-| `cli/selftune/ingestors/codex_rollout_ingest.py` | Codex batch ingestor — reads rollout session files |
-| `cli/selftune/ingestors/opencode_ingest.py` | OpenCode adapter — reads SQLite database |
-| `cli/selftune/eval/hooks_to_evals.py` | False negative detection — generates eval sets from logs |
-| `cli/selftune/grading/grade_session.py` | Session grader — 3-tier eval (trigger/process/quality) |
+| `cli/selftune/hooks/prompt-log.ts` | Claude Code UserPromptSubmit hook — logs queries |
+| `cli/selftune/hooks/session-stop.ts` | Claude Code Stop hook — captures session telemetry |
+| `cli/selftune/hooks/skill-eval.ts` | Claude Code PostToolUse hook — tracks skill triggers |
+| `cli/selftune/ingestors/codex-wrapper.ts` | Codex real-time wrapper — tees JSONL stream |
+| `cli/selftune/ingestors/codex-rollout.ts` | Codex batch ingestor — reads rollout session files |
+| `cli/selftune/ingestors/opencode-ingest.ts` | OpenCode adapter — reads SQLite database |
+| `cli/selftune/eval/hooks-to-evals.ts` | False negative detection — generates eval sets from logs |
+| `cli/selftune/grading/grade-session.ts` | Session grader — 3-tier eval (trigger/process/quality) |
 
 ## Development Workflow
 
@@ -67,7 +82,7 @@ See ARCHITECTURE.md for domain map, module layering, and dependency rules.
 2. Read this file, then follow pointers to relevant docs
 3. Read PRD.md for product context and the feedback loop model
 4. Implement changes following ARCHITECTURE.md layer rules
-5. Run `make check` (lint + test) or `python3 -m pytest tests/`
+5. Run `make check` (lint + test) or `bun test`
 6. Verify JSONL output schema matches appendix in PRD.md
 7. Self-review: check log schema compatibility across all three platforms
 8. Open PR with concise summary
@@ -80,6 +95,7 @@ See ARCHITECTURE.md for domain map, module layering, and dependency rules.
 - Log files are append-only JSONL at `~/.claude/`
 - Evolution proposals require validation against eval set before deploy
 - All knowledge lives in-repo, not in external tools
+- Zero runtime dependencies — uses only Bun built-ins
 
 ## Golden Principles
 
