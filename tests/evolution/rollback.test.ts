@@ -111,8 +111,8 @@ describe("rollback from backup file", () => {
 
 describe("rollback from audit trail", () => {
   test("restores from audit trail created entry when no .bak exists", async () => {
-    const originalContent = "# Original from audit trail";
-    const evolvedContent = "# Evolved description";
+    const originalDescription = "Original description from audit trail";
+    const evolvedContent = "# Test Skill\n\nEvolved description\n\n## Config\nsome config\n";
 
     writeFileSync(skillPath, evolvedContent, "utf-8");
 
@@ -121,7 +121,7 @@ describe("rollback from audit trail", () => {
       makeAuditEntry({
         proposal_id: "evo-test-001",
         action: "created",
-        details: `original_description:${originalContent}`,
+        details: `original_description:${originalDescription}`,
       }),
       logPath,
     );
@@ -141,8 +141,13 @@ describe("rollback from audit trail", () => {
     });
 
     expect(result.rolledBack).toBe(true);
-    expect(readFileSync(skillPath, "utf-8")).toBe(originalContent);
-    expect(result.restoredDescription).toBe(originalContent);
+    // Description section is replaced, but heading and subheading structure is preserved
+    const restoredContent = readFileSync(skillPath, "utf-8");
+    expect(restoredContent).toContain("# Test Skill");
+    expect(restoredContent).toContain(originalDescription);
+    expect(restoredContent).toContain("## Config");
+    expect(restoredContent).not.toContain("Evolved description");
+    expect(result.restoredDescription).toBe(originalDescription);
   });
 });
 
@@ -227,12 +232,21 @@ describe("no deployed proposal", () => {
 
 describe("rollback specific proposal by ID", () => {
   test("rolls back a specific proposal when proposalId is provided", async () => {
-    const originalContent = "# Original for specific proposal";
-    const evolvedContent = "# Evolved";
+    const originalDescription = "Original description for first proposal";
+    const evolvedContent = "# Test Skill\n\nEvolved description\n\n## Config\nsome config\n";
 
     writeFileSync(skillPath, evolvedContent, "utf-8");
-    writeFileSync(`${skillPath}.bak`, originalContent, "utf-8");
+    writeFileSync(`${skillPath}.bak`, "# Should not be used for explicit proposalId", "utf-8");
 
+    // Created entry with original_description for the target proposal
+    appendAuditEntry(
+      makeAuditEntry({
+        proposal_id: "evo-test-001",
+        action: "created",
+        details: `original_description:${originalDescription}`,
+      }),
+      logPath,
+    );
     // Two deployed proposals
     appendAuditEntry(
       makeAuditEntry({
@@ -259,6 +273,15 @@ describe("rollback specific proposal by ID", () => {
     });
 
     expect(result.rolledBack).toBe(true);
+
+    // .bak file should still exist (not consumed for explicit proposalId)
+    expect(existsSync(`${skillPath}.bak`)).toBe(true);
+
+    // Description should be replaced via audit trail, structure preserved
+    const restoredContent = readFileSync(skillPath, "utf-8");
+    expect(restoredContent).toContain(originalDescription);
+    expect(restoredContent).toContain("## Config");
+    expect(restoredContent).not.toContain("Evolved description");
 
     // Audit entry should reference the specific proposal ID
     const entries = readJsonl<EvolutionAuditEntry>(logPath);

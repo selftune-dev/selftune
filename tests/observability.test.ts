@@ -46,12 +46,19 @@ describe("checkHookInstallation", () => {
     expect(checks.length).toBe(4);
   });
 
-  test("finds installed hook files", () => {
-    // The 3 hook files should exist since we created them;
-    // the settings check is environment-dependent
+  test("reports hook files status against repo .git/hooks directory", () => {
+    // Hooks are checked in .git/hooks/ (not bundled source), so in a
+    // test environment they are typically absent and should report "fail"
     const checks = checkHookInstallation();
-    const passing = checks.filter((c) => c.status === "pass");
-    expect(passing.length).toBeGreaterThanOrEqual(3);
+    const hookFileChecks = checks.filter(
+      (c) => c.name.startsWith("hook_") && c.name !== "hook_settings",
+    );
+    expect(hookFileChecks.length).toBe(3);
+    for (const check of hookFileChecks) {
+      expect(["pass", "fail"]).toContain(check.status);
+      // path should point to .git/hooks/, not bundled source
+      expect(check.path).toContain(".git/hooks/");
+    }
   });
 });
 

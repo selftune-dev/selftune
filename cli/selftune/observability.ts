@@ -8,10 +8,14 @@
  * - Hook installation checks
  */
 
+import { execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { LOG_DIR, REQUIRED_FIELDS, SELFTUNE_CONFIG_PATH } from "./constants.js";
 import type { DoctorResult, HealthCheck, HealthStatus, SelftuneConfig } from "./types.js";
+
+const VALID_AGENT_TYPES = new Set(["claude_code", "codex", "opencode", "unknown"]);
+const VALID_LLM_MODES = new Set(["agent", "api"]);
 
 const LOG_FILES: Record<string, string> = {
   session_telemetry: join(LOG_DIR, "session_telemetry_log.jsonl"),
@@ -74,10 +78,23 @@ export function checkLogHealth(): HealthCheck[] {
 export function checkHookInstallation(): HealthCheck[] {
   const checks: HealthCheck[] = [];
 
+  // Resolve the repository root so we check the actual active hooks, not bundled source files
+  let repoRoot: string;
+  try {
+    repoRoot = execSync("git rev-parse --show-toplevel", { encoding: "utf-8" }).trim();
+  } catch {
+    // Not inside a git repo -- fall back to cwd
+    repoRoot = process.cwd();
+  }
+
   for (const hook of HOOK_FILES) {
-    const check: HealthCheck = { name: `hook_${hook}`, path: hook, status: "pass", message: "" };
-    // Check if hook file exists relative to this module's directory
-    const hookPath = join(import.meta.dir, "hooks", hook);
+    const hookPath = join(repoRoot, ".git", "hooks", hook);
+    const check: HealthCheck = {
+      name: `hook_${hook}`,
+      path: hookPath,
+      status: "pass",
+      message: "",
+    };
     if (existsSync(hookPath)) {
       check.status = "pass";
       check.message = "Hook file present";
@@ -202,8 +219,20 @@ export function checkConfigHealth(): HealthCheck[] {
     try {
       const raw = readFileSync(SELFTUNE_CONFIG_PATH, "utf-8");
       const config = JSON.parse(raw) as SelftuneConfig;
-      check.status = "pass";
-      check.message = `agent_type=${config.agent_type}, llm_mode=${config.llm_mode}`;
+      const errors: string[] = [];
+      if (!config.agent_type || !VALID_AGENT_TYPES.has(config.agent_type)) {
+        errors.push(`invalid agent_type: ${JSON.stringify(config.agent_type)}`);
+      }
+      if (!config.llm_mode || !VALID_LLM_MODES.has(config.llm_mode)) {
+        errors.push(`invalid llm_mode: ${JSON.stringify(config.llm_mode)}`);
+      }
+      if (errors.length > 0) {
+        check.status = "fail";
+        check.message = errors.join("; ");
+      } else {
+        check.status = "pass";
+        check.message = `agent_type=${config.agent_type}, llm_mode=${config.llm_mode}`;
+      }
     } catch {
       check.status = "fail";
       check.message = "Config file exists but is not valid JSON";

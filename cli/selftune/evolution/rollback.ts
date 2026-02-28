@@ -7,11 +7,13 @@
  * 3. Recording a "rolled_back" entry in the audit trail
  */
 
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 
 import type { EvolutionAuditEntry } from "../types.js";
 import { appendAuditEntry, getLastDeployedProposal, readAuditTrail } from "./audit.js";
+import { replaceDescription } from "./deploy-proposal.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,6 +37,28 @@ export interface RollbackResult {
 // ---------------------------------------------------------------------------
 
 const ORIGINAL_DESC_PREFIX = "original_description:";
+
+/**
+ * Find the most recent .bak file for the given skillPath.
+ * Matches both legacy `SKILL.md.bak` and timestamped `SKILL.md.<timestamp>.bak`.
+ * Returns the path to the most recent backup, or null if none found.
+ */
+function findLatestBackup(skillPath: string): string | null {
+  const dir = dirname(skillPath);
+  const base = basename(skillPath);
+
+  if (!existsSync(dir)) return null;
+
+  const entries = readdirSync(dir);
+  // Match <base>.bak or <base>.<anything>.bak
+  const backupFiles = entries
+    .filter((f) => f === `${base}.bak` || (f.startsWith(`${base}.`) && f.endsWith(".bak")))
+    .sort()
+    .reverse(); // lexicographic descending puts latest timestamp first
+
+  if (backupFiles.length === 0) return null;
+  return join(dir, backupFiles[0]);
+}
 
 /**
  * Find the "created" audit entry for a given proposal ID and extract
@@ -84,6 +108,7 @@ export async function rollback(options: RollbackOptions): Promise<RollbackResult
 
   // Determine which proposal to roll back
   let targetProposalId: string;
+  const explicitProposal = Boolean(proposalId);
 
   if (proposalId) {
     // Verify the specific proposal exists in audit trail
@@ -101,9 +126,10 @@ export async function rollback(options: RollbackOptions): Promise<RollbackResult
     targetProposalId = lastDeployed.proposal_id;
   }
 
-  // Strategy 1: Restore from .bak file
-  const backupPath = `${skillPath}.bak`;
-  if (existsSync(backupPath)) {
+  // Strategy 1: Restore from .bak file (only when rolling back the latest deploy,
+  // i.e., when no explicit proposalId was supplied)
+  const backupPath = !explicitProposal ? findLatestBackup(skillPath) : null;
+  if (backupPath) {
     const originalContent = readFileSync(backupPath, "utf-8");
     writeFileSync(skillPath, originalContent, "utf-8");
     unlinkSync(backupPath);
@@ -124,10 +150,13 @@ export async function rollback(options: RollbackOptions): Promise<RollbackResult
     };
   }
 
-  // Strategy 2: Restore from audit trail's created entry (full file content)
+  // Strategy 2: Restore from audit trail's created entry (description only)
   const originalFromAudit = findOriginalFromAudit(targetProposalId, logPath);
   if (originalFromAudit) {
-    writeFileSync(skillPath, originalFromAudit, "utf-8");
+    // Replace only the description section in SKILL.md, preserving structure
+    const currentContent = readFileSync(skillPath, "utf-8");
+    const updatedContent = replaceDescription(currentContent, originalFromAudit);
+    writeFileSync(skillPath, updatedContent, "utf-8");
 
     // Record rollback in audit trail
     const auditEntry: EvolutionAuditEntry = {

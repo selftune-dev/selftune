@@ -33,6 +33,16 @@ const XDG_DATA_HOME = process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "sh
 const DEFAULT_DATA_DIR = join(XDG_DATA_HOME, "opencode");
 const MARKER_FILE = join(homedir(), ".claude", "opencode_ingested_sessions.json");
 
+const SAFE_IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** Validate that a string is a safe SQL identifier. Throws on invalid input. */
+function assertSafeIdentifier(name: string): string {
+  if (!SAFE_IDENTIFIER_RE.test(name)) {
+    throw new Error(`Unsafe SQL identifier rejected: ${JSON.stringify(name)}`);
+  }
+  return name;
+}
+
 const OPENCODE_SKILLS_DIRS = [
   join(process.cwd(), ".opencode", "skills"),
   join(homedir(), ".config", "opencode", "skills"),
@@ -81,7 +91,8 @@ export function getDbSchema(dbPath: string): string {
 
   const lines: string[] = [];
   for (const { name } of tables) {
-    const cols = db.query(`PRAGMA table_info(${name})`).all() as Array<{
+    const safeName = assertSafeIdentifier(name);
+    const cols = db.query(`PRAGMA table_info(${safeName})`).all() as Array<{
       name: string;
       type: string;
     }>;
@@ -145,6 +156,9 @@ export function readSessionsFromSqlite(
     return [];
   }
 
+  const safeSessionsTable = assertSafeIdentifier(sessionsTable);
+  const safeMessagesTable = assertSafeIdentifier(messagesTable);
+
   // Get sessions
   let whereClause = "";
   if (sinceTs) {
@@ -154,7 +168,7 @@ export function readSessionsFromSqlite(
   let sessionRows: Array<Record<string, unknown>>;
   try {
     sessionRows = db
-      .query(`SELECT * FROM ${sessionsTable} ${whereClause} ORDER BY created ASC`)
+      .query(`SELECT * FROM ${safeSessionsTable} ${whereClause} ORDER BY created ASC`)
       .all() as Array<Record<string, unknown>>;
   } catch (e) {
     console.warn(`[WARN] Could not query sessions: ${e}`);
@@ -173,7 +187,7 @@ export function readSessionsFromSqlite(
     let msgRows: Array<Record<string, unknown>>;
     try {
       msgRows = db
-        .query(`SELECT * FROM ${messagesTable} WHERE session_id = ? ORDER BY created ASC`)
+        .query(`SELECT * FROM ${safeMessagesTable} WHERE session_id = ? ORDER BY created ASC`)
         .all(sessionRow.id) as Array<Record<string, unknown>>;
     } catch {
       continue;

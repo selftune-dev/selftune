@@ -282,11 +282,23 @@ Options:
     process.exit(1);
   }
 
+  const windowSessions = Number.parseInt(values.window ?? "20", 10);
+  if (!Number.isFinite(windowSessions) || windowSessions < 1) {
+    console.error("[ERROR] --window must be a positive integer >= 1");
+    process.exit(1);
+  }
+
+  const regressionThreshold = Number.parseFloat(values.threshold ?? "0.1");
+  if (!Number.isFinite(regressionThreshold) || regressionThreshold < 0 || regressionThreshold > 1) {
+    console.error("[ERROR] --threshold must be a finite number between 0 and 1");
+    process.exit(1);
+  }
+
   const result = await watch({
     skillName: values.skill,
     skillPath: values["skill-path"],
-    windowSessions: Number.parseInt(values.window ?? "20", 10),
-    regressionThreshold: Number.parseFloat(values.threshold ?? "0.1"),
+    windowSessions,
+    regressionThreshold,
     autoRollback: values["auto-rollback"] ?? false,
   });
 

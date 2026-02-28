@@ -51,22 +51,29 @@ export function clusterQueries(queries: string[], threshold = 0.3): string[][] {
   const clusters: string[][] = [];
 
   for (const query of queries) {
-    let merged = false;
-
-    for (const cluster of clusters) {
-      // Single-linkage: if ANY member has similarity >= threshold, add to cluster
-      for (const member of cluster) {
+    // Collect indices of all clusters where any member has similarity >= threshold
+    const matchingIndices: number[] = [];
+    for (let i = 0; i < clusters.length; i++) {
+      for (const member of clusters[i]) {
         if (computeQuerySimilarity(query, member) >= threshold) {
-          cluster.push(query);
-          merged = true;
+          matchingIndices.push(i);
           break;
         }
       }
-      if (merged) break;
     }
 
-    if (!merged) {
+    if (matchingIndices.length === 0) {
       clusters.push([query]);
+    } else {
+      // Merge all matching clusters into the first one, then add the query
+      const targetCluster = clusters[matchingIndices[0]];
+      // Merge in reverse order so splice indices stay valid
+      for (let j = matchingIndices.length - 1; j >= 1; j--) {
+        const idx = matchingIndices[j];
+        targetCluster.push(...clusters[idx]);
+        clusters.splice(idx, 1);
+      }
+      targetCluster.push(query);
     }
   }
 

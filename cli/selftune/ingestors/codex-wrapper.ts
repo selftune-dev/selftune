@@ -136,13 +136,15 @@ export function parseJsonlStream(lines: string[], skillNames: Set<string>): Pars
         }
       }
 
-      // Detect skill names in text on completed events
+      // Detect skill names in text on completed events (whole-word match)
       const textContent = ((item.text as string) ?? "") + ((item.command as string) ?? "");
       for (const skillName of skillNames) {
         if (
-          textContent.includes(skillName) &&
+          etype === "item.completed" &&
           !skillsTriggered.includes(skillName) &&
-          etype === "item.completed"
+          new RegExp(`\\b${skillName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(
+            textContent,
+          )
         ) {
           skillsTriggered.push(skillName);
         }
@@ -319,5 +321,8 @@ export async function cliMain(): Promise<void> {
 
 // Run main if executed directly
 if (import.meta.main) {
-  cliMain();
+  cliMain().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
 }

@@ -36,7 +36,8 @@ export function processToolUse(
   // Only care about Read tool
   if (payload.tool_name !== "Read") return null;
 
-  const filePath = (payload.tool_input?.file_path as string) ?? "";
+  const rawPath = payload.tool_input?.file_path;
+  const filePath = typeof rawPath === "string" ? rawPath : "";
   const skillName = extractSkillName(filePath);
 
   if (skillName === null) return null;

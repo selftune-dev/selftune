@@ -95,9 +95,17 @@ export function latestSessionForSkill(
 }
 
 export function loadExpectationsFromEvalsJson(evalsJsonPath: string, evalId: number): string[] {
-  const data = JSON.parse(readFileSync(evalsJsonPath, "utf-8"));
-  for (const ev of data.evals ?? []) {
-    if (ev.id === evalId) return ev.expectations ?? [];
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(readFileSync(evalsJsonPath, "utf-8"));
+  } catch (err) {
+    throw new Error(
+      `Failed to read or parse evals JSON at ${evalsJsonPath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  for (const ev of (data as Record<string, unknown[]>).evals ?? []) {
+    if ((ev as Record<string, unknown>).id === evalId)
+      return ((ev as Record<string, unknown>).expectations as string[]) ?? [];
   }
   throw new Error(`Eval ID ${evalId} not found in ${evalsJsonPath}`);
 }
@@ -228,7 +236,7 @@ function printSummary(result: GradingResult): void {
   if (feedback.suggestions?.length) {
     console.log(`\nEval feedback: ${feedback.overall}`);
     for (const s of feedback.suggestions) {
-      console.log(`  * ${s.reason.slice(0, 100)}`);
+      console.log(`  * ${String(s.reason ?? "").slice(0, 100)}`);
     }
   }
 }
@@ -309,7 +317,12 @@ export async function cliMain(): Promise<void> {
   // --- Resolve expectations ---
   let expectations: string[] = [];
   if (values["evals-json"] && values["eval-id"] != null) {
-    expectations = loadExpectationsFromEvalsJson(values["evals-json"], Number(values["eval-id"]));
+    const evalIdNum = Number(values["eval-id"]);
+    if (!Number.isFinite(evalIdNum) || !Number.isInteger(evalIdNum)) {
+      console.error(`[ERROR] --eval-id must be a finite integer, got: ${values["eval-id"]}`);
+      process.exit(1);
+    }
+    expectations = loadExpectationsFromEvalsJson(values["evals-json"], evalIdNum);
   } else if (values.expectations?.length) {
     expectations = values.expectations;
   } else {

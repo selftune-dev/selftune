@@ -13,6 +13,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { SELFTUNE_CONFIG_DIR, SELFTUNE_CONFIG_PATH } from "./constants.js";
@@ -101,10 +102,12 @@ export function determineLlmMode(
 ): { llm_mode: "agent" | "api"; agent_cli: string | null } {
   const detectedAgent = agentCli;
   const validModes = ["agent", "api"] as const;
-  const resolvedMode =
-    modeOverride && validModes.includes(modeOverride as (typeof validModes)[number])
-      ? (modeOverride as "agent" | "api")
-      : undefined;
+  if (modeOverride && !validModes.includes(modeOverride as (typeof validModes)[number])) {
+    throw new Error(
+      `Invalid --llm-mode "${modeOverride}". Allowed values: ${validModes.join(", ")}`,
+    );
+  }
+  const resolvedMode = modeOverride as "agent" | "api" | undefined;
 
   if (resolvedMode) {
     return { llm_mode: resolvedMode, agent_cli: detectedAgent };
@@ -271,7 +274,8 @@ export async function cliMain(): Promise<void> {
 
 // Guard: only run when invoked directly
 const isMain =
-  import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith("init.ts");
+  (import.meta as Record<string, unknown>).main === true ||
+  process.argv[1] === fileURLToPath(import.meta.url);
 
 if (isMain) {
   cliMain().catch((err) => {

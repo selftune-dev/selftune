@@ -65,19 +65,31 @@ export function findRolloutFiles(codexHome: string, since?: Date): string[] {
 
   for (const yearEntry of readdirSync(sessionsDir).sort()) {
     const yearDir = join(sessionsDir, yearEntry);
-    if (!statSync(yearDir).isDirectory()) continue;
+    try {
+      if (!statSync(yearDir).isDirectory()) continue;
+    } catch {
+      continue;
+    }
     const year = Number.parseInt(yearEntry, 10);
     if (Number.isNaN(year)) continue;
 
     for (const monthEntry of readdirSync(yearDir).sort()) {
       const monthDir = join(yearDir, monthEntry);
-      if (!statSync(monthDir).isDirectory()) continue;
+      try {
+        if (!statSync(monthDir).isDirectory()) continue;
+      } catch {
+        continue;
+      }
       const month = Number.parseInt(monthEntry, 10);
       if (Number.isNaN(month)) continue;
 
       for (const dayEntry of readdirSync(monthDir).sort()) {
         const dayDir = join(monthDir, dayEntry);
-        if (!statSync(dayDir).isDirectory()) continue;
+        try {
+          if (!statSync(dayDir).isDirectory()) continue;
+        } catch {
+          continue;
+        }
         const day = Number.parseInt(dayEntry, 10);
         if (Number.isNaN(day)) continue;
 
@@ -279,12 +291,12 @@ export function ingestFile(
       query: prompt,
       source: "codex_rollout",
     };
-    appendJsonl(queryLogPath, queryRecord);
+    appendJsonl(queryLogPath, queryRecord, "all_queries");
   }
 
   // Write telemetry (everything except query)
   const { query: _q, ...telemetry } = parsed;
-  appendJsonl(telemetryLogPath, telemetry);
+  appendJsonl(telemetryLogPath, telemetry, "session_telemetry");
 
   // Write skill triggers
   for (const skillName of skills) {
@@ -297,7 +309,7 @@ export function ingestFile(
       triggered: true,
       source: "codex_rollout",
     };
-    appendJsonl(skillLogPath, skillRecord);
+    appendJsonl(skillLogPath, skillRecord, "skill_usage");
   }
 
   return true;
@@ -317,7 +329,16 @@ export function cliMain(): void {
   });
 
   const codexHome = values["codex-home"] ?? DEFAULT_CODEX_HOME;
-  const since = values.since ? new Date(values.since) : undefined;
+  let since: Date | undefined;
+  if (values.since) {
+    since = new Date(values.since);
+    if (Number.isNaN(since.getTime())) {
+      console.error(
+        `Error: Invalid --since date: "${values.since}". Use a valid date format (e.g., 2026-01-01).`,
+      );
+      process.exit(1);
+    }
+  }
 
   const rolloutFiles = findRolloutFiles(codexHome, since);
   if (rolloutFiles.length === 0) {

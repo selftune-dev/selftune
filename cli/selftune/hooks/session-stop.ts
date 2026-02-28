@@ -14,12 +14,12 @@ import { parseTranscript } from "../utils/transcript.js";
 
 /**
  * Core processing logic, exported for testability.
- * Returns the record that was appended, or null if skipped.
+ * Returns the record that was appended.
  */
 export function processSessionStop(
   payload: StopPayload,
   logPath: string = TELEMETRY_LOG,
-): SessionTelemetryRecord | null {
+): SessionTelemetryRecord {
   const sessionId = payload.session_id ?? "unknown";
   const transcriptPath = payload.transcript_path ?? "";
   const cwd = payload.cwd ?? "";

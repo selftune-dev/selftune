@@ -78,18 +78,19 @@ export function replaceDescription(currentContent: string, newDescription: strin
     }
   }
 
-  // Build the new content
+  // Build the new content, preserving any preamble before the first heading
+  const preamble = headingIndex > 0 ? `${lines.slice(0, headingIndex).join("\n")}\n` : "";
   const headingLine = lines[headingIndex];
   const descriptionBlock = newDescription.length > 0 ? `\n${newDescription}\n` : "\n";
 
   if (subHeadingIndex === -1) {
-    // No sub-heading: heading + new description + trailing newline
-    return `${headingLine}\n${descriptionBlock}\n`;
+    // No sub-heading: preamble + heading + new description + trailing newline
+    return `${preamble}${headingLine}\n${descriptionBlock}\n`;
   }
 
-  // Heading + description + everything from the first ## onward
+  // Preamble + heading + description + everything from the first ## onward
   const afterSubHeading = lines.slice(subHeadingIndex).join("\n");
-  return `${headingLine}\n${descriptionBlock}\n${afterSubHeading}`;
+  return `${preamble}${headingLine}\n${descriptionBlock}\n${afterSubHeading}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -124,29 +125,44 @@ function sanitizeForGitRef(name: string): string {
 /** Generate a branch name from the prefix and skill name. */
 function makeBranchName(prefix: string, skillName: string): string {
   const timestamp = Date.now();
-  return `${prefix}/${sanitizeForGitRef(skillName)}-${timestamp}`;
+  const safeName = sanitizeForGitRef(skillName) || "untitled";
+  return `${prefix}/${safeName}-${timestamp}`;
 }
 
 /**
  * Run a git/gh command via Bun.spawn. Returns stdout on success.
- * Throws on non-zero exit code.
+ * Throws on non-zero exit code or if the command exceeds timeoutMs.
  */
-async function runCommand(args: string[], cwd?: string): Promise<string> {
+async function runCommand(args: string[], cwd?: string, timeoutMs = 30_000): Promise<string> {
   const proc = Bun.spawn(args, {
     cwd,
     stdout: "pipe",
     stderr: "pipe",
   });
 
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
-  const exitCode = await proc.exited;
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    proc.kill();
+  }, timeoutMs);
 
-  if (exitCode !== 0) {
-    throw new Error(`Command failed (exit ${exitCode}): ${args.join(" ")}\n${stderr}`);
+  try {
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+    const exitCode = await proc.exited;
+
+    if (timedOut) {
+      throw new Error(`Command timed out after ${timeoutMs}ms: ${args.join(" ")}`);
+    }
+
+    if (exitCode !== 0) {
+      throw new Error(`Command failed (exit ${exitCode}): ${args.join(" ")}\n${stderr}`);
+    }
+
+    return stdout.trim();
+  } finally {
+    clearTimeout(timer);
   }
-
-  return stdout.trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -160,8 +176,9 @@ export async function deployProposal(options: DeployOptions): Promise<DeployResu
   // Step 1: Read current SKILL.md
   const currentContent = readSkillMd(skillPath);
 
-  // Step 2: Create backup
-  const backupPath = `${skillPath}.bak`;
+  // Step 2: Create backup (unique per deploy to avoid overwriting previous backups)
+  const backupTimestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const backupPath = `${skillPath}.${backupTimestamp}.bak`;
   copyFileSync(skillPath, backupPath);
 
   // Step 3: Replace description and write
