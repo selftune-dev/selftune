@@ -196,9 +196,7 @@ function getLastDeployedProposalFromEntries(
   const needle = skillName.toLowerCase();
   // Use word-boundary regex to avoid substring false positives (e.g. "api" matching "rapid-api")
   const pattern = new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-  const deployed = entries.filter(
-    (e) => e.action === "deployed" && pattern.test(e.details ?? ""),
-  );
+  const deployed = entries.filter((e) => e.action === "deployed" && pattern.test(e.details ?? ""));
   return deployed.length > 0 ? deployed[deployed.length - 1] : null;
 }
 
