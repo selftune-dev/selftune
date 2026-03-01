@@ -1,10 +1,20 @@
 {
   "name": "selftune",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "description": "Skill observability and continuous improvement CLI for agent platforms",
   "type": "module",
+  "author": "Daniel Petro",
+  "license": "MIT",
   "bin": {
-    "selftune": "cli/selftune/index.ts"
+    "selftune": "bin/selftune.cjs"
   },
+  "files": [
+    "bin/",
+    "cli/selftune/",
+    "skill/",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "lint": "bunx biome check .",
     "lint:fix": "bunx biome check --write .",
