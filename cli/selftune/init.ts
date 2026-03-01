@@ -181,6 +181,11 @@ export function runInit(opts: InitOptions): SelftuneConfig {
 
   // Detect agent CLI
   const agentCli = detectAgent();
+  if (!agentCli) {
+    throw new Error(
+      "No supported agent CLI detected (claude, codex, opencode). Install one, then rerun `selftune init`.",
+    );
+  }
 
   // Determine LLM mode
   const { llm_mode, agent_cli } = determineLlmMode(agentCli);

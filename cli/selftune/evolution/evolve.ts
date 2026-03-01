@@ -370,7 +370,19 @@ Options:
   }
 
   const { detectAgent } = await import("../utils/llm-call.js");
-  const agent = values.agent ?? detectAgent();
+  const requestedAgent = values.agent;
+  if (requestedAgent && !Bun.which(requestedAgent)) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        code: "agent_not_in_path",
+        message: `Agent CLI '${requestedAgent}' not found in PATH.`,
+        action: "Install it or omit --agent to use auto-detection.",
+      }),
+    );
+    process.exit(1);
+  }
+  const agent = requestedAgent ?? detectAgent();
   if (!agent) {
     console.error(
       JSON.stringify({

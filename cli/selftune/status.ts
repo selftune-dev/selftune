@@ -226,7 +226,7 @@ export function formatStatus(result: StatusResult): string {
   // Skills table
   const skillCount = result.skills.length;
   lines.push(
-    `Skills (${skillCount})${" ".repeat(36 - `Skills (${skillCount})`.length)}Last 7 days`,
+    `Skills (${skillCount})${" ".repeat(36 - `Skills (${skillCount})`.length)}Recent data`,
   );
   lines.push("  Name            Pass Rate  Trend  Missed  Status");
 
