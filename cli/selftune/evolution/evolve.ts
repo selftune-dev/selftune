@@ -23,8 +23,8 @@ import { readJsonl } from "../utils/jsonl.js";
 import { appendAuditEntry } from "./audit.js";
 import { extractFailurePatterns } from "./extract-patterns.js";
 import { generateProposal } from "./propose-description.js";
-import { validateProposal } from "./validate-proposal.js";
 import type { ValidationResult } from "./validate-proposal.js";
+import { validateProposal } from "./validate-proposal.js";
 
 // ---------------------------------------------------------------------------
 // Types

@@ -8,7 +8,6 @@
  */
 
 import { EVOLUTION_AUDIT_LOG, QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "./constants.js";
-import { getLastDeployedProposal } from "./evolution/audit.js";
 import { computeMonitoringSnapshot } from "./monitoring/watch.js";
 import { doctor } from "./observability.js";
 import type {
