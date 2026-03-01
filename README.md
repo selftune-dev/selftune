@@ -38,7 +38,25 @@ selftune closes this feedback loop.
 
 ---
 
-## Quick Start
+## Install
+
+### 1. Add the skill
+
+```bash
+npx skills add WellDunDun/selftune
+```
+
+### 2. Initialize
+
+Tell your agent: **"initialize selftune"**
+
+The agent will install the CLI (`npm install -g selftune`) if needed, run `selftune init` to bootstrap config, install hooks, and verify with `selftune doctor`.
+
+---
+
+## Development
+
+For contributors running from source.
 
 ### 1. Install Bun
 

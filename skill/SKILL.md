@@ -15,20 +15,13 @@ and evolve skill descriptions toward the language real users actually use.
 ## Bootstrap
 
 If `~/.selftune/config.json` does not exist, read `Workflows/Initialize.md`
-first. Do not proceed with other commands until initialization is complete.
+first. The CLI must be installed (`selftune` on PATH) before other commands
+will work. Do not proceed with other commands until initialization is complete.
 
 ## Command Execution Policy
 
-Build every CLI invocation from the config:
-
 ```bash
-CLI_PATH=$(cat ~/.selftune/config.json | jq -r .cli_path)
-bun run $CLI_PATH <command> [options]
-```
-
-Fallback (if config is missing or stale):
-```bash
-bun run <repo-path>/cli/selftune/index.ts <command> [options]
+selftune <command> [options]
 ```
 
 All commands output deterministic JSON. Always parse JSON output -- never
