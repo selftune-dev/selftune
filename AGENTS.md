@@ -75,6 +75,11 @@ See ARCHITECTURE.md for domain map, module layering, and dependency rules.
 | Golden Principles | docs/golden-principles.md | Current |
 | Escalation Policy | docs/escalation-policy.md | Current |
 | References | docs/references/ | Current |
+| Launch Playbook | docs/launch-playbook-tracker.md | Current |
+| Security Policy | SECURITY.md | Current |
+| Contributing Guide | CONTRIBUTING.md | Current |
+| Code of Conduct | CODE_OF_CONDUCT.md | Current |
+| License | LICENSE | Current |
 
 ## Key Files
 

@@ -12,13 +12,7 @@ Bootstrap selftune for first-time use or after changing environments.
 ## Default Command
 
 ```bash
-CLI_PATH=$(cat ~/.selftune/config.json | jq -r .cli_path)
-bun run $CLI_PATH init [--agent <type>] [--cli-path <path>] [--llm-mode agent|api]
-```
-
-Fallback (if config does not exist yet):
-```bash
-bun run <repo-path>/cli/selftune/index.ts init [options]
+selftune init [--agent <type>] [--cli-path <path>] [--llm-mode agent|api]
 ```
 
 ## Options
@@ -57,7 +51,19 @@ Creates `~/.selftune/config.json`:
 
 ## Steps
 
-### 1. Check Existing Config
+### 1. Check if CLI is installed
+
+```bash
+which selftune
+```
+
+If `selftune` is not on PATH, install it:
+
+```bash
+npm install -g selftune
+```
+
+### 2. Check Existing Config
 
 ```bash
 cat ~/.selftune/config.json 2>/dev/null
@@ -66,15 +72,13 @@ cat ~/.selftune/config.json 2>/dev/null
 If the file exists and is valid JSON, selftune is already initialized.
 Skip to Step 5 (verify with doctor) unless the user wants to reinitialize.
 
-### 2. Run Init
+### 3. Run Init
 
 ```bash
-bun run /path/to/cli/selftune/index.ts init --agent claude --cli-path /path/to/cli/selftune/index.ts
+selftune init
 ```
 
-Replace paths with the actual selftune repository location.
-
-### 3. Install Hooks (Claude Code)
+### 4. Install Hooks (Claude Code)
 
 For Claude Code agents, merge the hooks from `skill/settings_snippet.json`
 into `~/.claude/settings.json`. Three hooks are required:
@@ -85,23 +89,21 @@ into `~/.claude/settings.json`. Three hooks are required:
 | `PostToolUse` (Read) | `hooks/skill-eval.ts` | Track skill triggers |
 | `Stop` | `hooks/session-stop.ts` | Capture session telemetry |
 
-Replace `/PATH/TO/` in the snippet with the actual `cli/selftune/` directory.
-
-### 4. Platform-Specific Setup
+Derive the hook script paths from the `cli_path` field in `~/.selftune/config.json`.
+The hooks directory is at `dirname(cli_path)/hooks/`.
 
 **Codex agents:**
 - Use `wrap-codex` for real-time telemetry capture (see `Workflows/Ingest.md`)
-- Or batch-ingest existing sessions with `ingest-codex`
+- Or batch-ingest existing sessions with `selftune ingest-codex`
 
 **OpenCode agents:**
-- Use `ingest-opencode` to import sessions from the SQLite database
+- Use `selftune ingest-opencode` to import sessions from the SQLite database
 - See `Workflows/Ingest.md` for details
 
 ### 5. Verify with Doctor
 
 ```bash
-CLI_PATH=$(cat ~/.selftune/config.json | jq -r .cli_path)
-bun run $CLI_PATH doctor
+selftune doctor
 ```
 
 Parse the JSON output. All checks should pass. If any fail, address the
