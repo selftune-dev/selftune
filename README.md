@@ -1,3 +1,10 @@
+[![CI](https://github.com/WellDunDun/selftune/actions/workflows/ci.yml/badge.svg)](https://github.com/WellDunDun/selftune/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/WellDunDun/selftune/actions/workflows/codeql.yml/badge.svg)](https://github.com/WellDunDun/selftune/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/WellDunDun/selftune/badge)](https://securityscorecards.dev/viewer/?uri=github.com/WellDunDun/selftune)
+[![npm version](https://img.shields.io/npm/v/selftune)](https://www.npmjs.com/package/selftune)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
+
 # selftune — Skill Observability & Continuous Improvement CLI
 
 Observe real sessions, detect missed triggers, grade execution quality, and automatically evolve skill descriptions toward the language real users actually use.
@@ -234,6 +241,26 @@ Zero runtime dependencies. Uses Bun built-ins only.
 - Use `--seed 123` for a different random sample of negatives.
 - Use `--dry-run` with `evolve` to preview proposals without deploying.
 - The `doctor` command checks log health, hook presence, config status, and schema validity.
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, architecture rules, and PR guidelines.
+
+Please follow our [Code of Conduct](CODE_OF_CONDUCT.md).
+
+---
+
+## Security
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
+---
+
+## Sponsor
+
+If selftune saves you time, consider [sponsoring the project](https://github.com/sponsors/WellDunDun).
 
 ---
 

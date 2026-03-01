@@ -1,7 +1,38 @@
 {
   "name": "selftune",
   "version": "0.1.0",
+  "description": "Skill observability and continuous improvement CLI for Claude Code, Codex, and OpenCode",
   "type": "module",
+  "license": "MIT",
+  "author": "WellDunDun",
+  "homepage": "https://github.com/WellDunDun/selftune#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WellDunDun/selftune.git"
+  },
+  "bugs": {
+    "url": "https://github.com/WellDunDun/selftune/issues"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/WellDunDun"
+  },
+  "keywords": [
+    "selftune",
+    "skill",
+    "observability",
+    "claude-code",
+    "codex",
+    "opencode",
+    "eval",
+    "grading",
+    "evolution",
+    "cli",
+    "agent",
+    "telemetry",
+    "bun",
+    "typescript"
+  ],
   "bin": {
     "selftune": "cli/selftune/index.ts"
   },
