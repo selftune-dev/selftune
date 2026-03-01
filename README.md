@@ -1,5 +1,11 @@
 # selftune — Skill Observability & Continuous Improvement CLI
 
+[![npm version](https://img.shields.io/npm/v/selftune)](https://www.npmjs.com/package/selftune)
+[![CI](https://github.com/WellDunDun/douala/actions/workflows/ci.yml/badge.svg)](https://github.com/WellDunDun/douala/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Zero Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)]()
+[![Bun](https://img.shields.io/badge/runtime-bun%20%7C%20node-black)](https://bun.sh)
+
 Observe real sessions, detect missed triggers, grade execution quality, and automatically evolve skill descriptions toward the language real users actually use.
 
 Works with **Claude Code**, **Codex**, and **OpenCode**.
@@ -7,6 +13,23 @@ Works with **Claude Code**, **Codex**, and **OpenCode**.
 ```
 Observe → Detect → Diagnose → Propose → Validate → Deploy → Watch → Repeat
 ```
+
+---
+
+## Install
+
+```bash
+npx selftune@latest doctor
+```
+
+Or install globally:
+
+```bash
+npm install -g selftune
+selftune doctor
+```
+
+Requires [Bun](https://bun.sh) or Node.js 18+ with [tsx](https://github.com/privatenumber/tsx).
 
 ---
 
@@ -33,22 +56,10 @@ selftune closes this feedback loop.
 
 ## Quick Start
 
-### 1. Install Bun
+### 1. Initialize
 
 ```bash
-curl -fsSL https://bun.sh/install | bash
-```
-
-### 2. Install dependencies
-
-```bash
-bun install
-```
-
-### 3. Initialize
-
-```bash
-bun run cli/selftune/index.ts init
+npx selftune@latest init
 ```
 
 The `init` command auto-detects your agent environment (Claude Code, Codex, or OpenCode), resolves the CLI path, determines the LLM mode, and writes config to `~/.selftune/config.json`. All subsequent commands read from this config.
@@ -62,7 +73,7 @@ If `init` reports hooks are not installed, merge the entries from `skill/setting
 ### 5. Verify setup
 
 ```bash
-bun run cli/selftune/index.ts doctor
+selftune doctor
 ```
 
 Doctor checks log file health, hook installation, schema validity, and config status.
@@ -73,13 +84,13 @@ Doctor checks log file health, hook installation, schema validity, and config st
 
 **Codex** — Use the wrapper for real-time capture or the batch ingestor for historical logs:
 ```bash
-bun run cli/selftune/index.ts wrap-codex -- <your codex args>
-bun run cli/selftune/index.ts ingest-codex
+selftune wrap-codex -- <your codex args>
+selftune ingest-codex
 ```
 
 **OpenCode** — Backfill historical sessions from SQLite:
 ```bash
-bun run cli/selftune/index.ts ingest-opencode
+selftune ingest-opencode
 ```
 
 All platforms write to the same shared JSONL log schema at `~/.claude/`.
