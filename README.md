@@ -1,4 +1,17 @@
+[![CI](https://github.com/WellDunDun/selftune/actions/workflows/ci.yml/badge.svg)](https://github.com/WellDunDun/selftune/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/WellDunDun/selftune/actions/workflows/codeql.yml/badge.svg)](https://github.com/WellDunDun/selftune/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/WellDunDun/selftune/badge)](https://securityscorecards.dev/viewer/?uri=github.com/WellDunDun/selftune)
+[![npm version](https://img.shields.io/npm/v/selftune)](https://www.npmjs.com/package/selftune)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
+
 # selftune — Skill Observability & Continuous Improvement CLI
+
+[![npm version](https://img.shields.io/npm/v/selftune)](https://www.npmjs.com/package/selftune)
+[![CI](https://github.com/WellDunDun/selftune/actions/workflows/ci.yml/badge.svg)](https://github.com/WellDunDun/selftune/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Zero Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](https://www.npmjs.com/package/selftune?activeTab=dependencies)
+[![Bun](https://img.shields.io/badge/runtime-bun%20%7C%20node-black)](https://bun.sh)
 
 Observe real sessions, detect missed triggers, grade execution quality, and automatically evolve skill descriptions toward the language real users actually use.
 
@@ -7,6 +20,23 @@ Works with **Claude Code**, **Codex**, and **OpenCode**.
 ```
 Observe → Detect → Diagnose → Propose → Validate → Deploy → Watch → Repeat
 ```
+
+---
+
+## Install
+
+```bash
+npx selftune@latest doctor
+```
+
+Or install globally:
+
+```bash
+npm install -g selftune
+selftune doctor
+```
+
+Requires [Bun](https://bun.sh) or Node.js 18+ with [tsx](https://github.com/privatenumber/tsx).
 
 ---
 
@@ -51,22 +81,10 @@ The agent will install the CLI (`npm install -g selftune`) if needed, run `selft
 
 For contributors running from source.
 
-### 1. Install Bun
+### 1. Initialize
 
 ```bash
-curl -fsSL https://bun.sh/install | bash
-```
-
-### 2. Install dependencies
-
-```bash
-bun install
-```
-
-### 3. Initialize
-
-```bash
-selftune init
+npx selftune@latest init
 ```
 
 The `init` command auto-detects your agent environment (Claude Code, Codex, or OpenCode), resolves the CLI path, determines the LLM mode, and writes config to `~/.selftune/config.json`. All subsequent commands read from this config.
@@ -127,7 +145,7 @@ selftune <command> [options]
 | `ingest-opencode` | Backfill historical OpenCode sessions from SQLite |
 | `wrap-codex -- <args>` | Real-time Codex wrapper with telemetry |
 
-No separate API key required — grading and evolution use whatever agent CLI you already have installed. Set `ANTHROPIC_API_KEY` to use the API directly instead.
+No separate API key required — grading and evolution use whatever agent CLI you already have installed (Claude Code, Codex, or OpenCode).
 
 See `skill/Workflows/` for detailed step-by-step guides for each command.
 
@@ -261,6 +279,26 @@ Zero runtime dependencies. Uses Bun built-ins only.
 - Use `--seed 123` for a different random sample of negatives.
 - Use `--dry-run` with `evolve` to preview proposals without deploying.
 - The `doctor` command checks log health, hook presence, config status, and schema validity.
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, architecture rules, and PR guidelines.
+
+Please follow our [Code of Conduct](CODE_OF_CONDUCT.md).
+
+---
+
+## Security
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
+---
+
+## Sponsor
+
+If selftune saves you time, consider [sponsoring the project](https://github.com/sponsors/WellDunDun).
 
 ---
 

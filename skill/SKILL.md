@@ -16,7 +16,8 @@ and evolve skill descriptions toward the language real users actually use.
 ## Bootstrap
 
 If `~/.selftune/config.json` does not exist, read `Workflows/Initialize.md`
-first. Do not proceed with other commands until initialization is complete.
+first. The CLI must be installed (`selftune` on PATH) before other commands
+will work. Do not proceed with other commands until initialization is complete.
 
 ## Command Execution Policy
 
@@ -24,14 +25,13 @@ first. Do not proceed with other commands until initialization is complete.
 selftune <command> [options]
 ```
 
-The CLI is installed globally via `npm install -g selftune`. All commands
-output deterministic JSON. Always parse JSON output -- never text-match
-against output strings.
+All commands output deterministic JSON. Always parse JSON output -- never
+text-match against output strings.
 
 ## Quick Reference
 
 ```bash
-selftune grade    --skill <name> [--expectations "..."] [--use-agent]
+selftune grade    --skill <name> [--expectations "..."] [--agent <name>]
 selftune evals    --skill <name> [--list-skills] [--stats] [--max N]
 selftune evolve   --skill <name> --skill-path <path> [--dry-run]
 selftune rollback --skill <name> --skill-path <path> [--proposal-id <id>]

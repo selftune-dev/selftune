@@ -17,7 +17,7 @@ selftune grade --skill <name> [options]
 | `--expectations "..."` | Explicit expectations (semicolon-separated) | Auto-derived |
 | `--evals-json <path>` | Pre-built eval set JSON file | None |
 | `--eval-id <n>` | Specific eval ID to grade from the eval set | None |
-| `--use-agent` | Grade via agent subprocess (no API key needed) | Off (uses API) |
+| `--agent <name>` | Agent CLI to use (claude, codex, opencode) | Auto-detected |
 
 ## Output Format
 
@@ -147,5 +147,6 @@ Keep the summary concise. The full details are in `grading.json`.
 > Pass `--evals-json path/to/evals.json` and optionally `--eval-id N`
 > to grade a specific eval scenario.
 
-**"I don't have an API key"**
-> Use `--use-agent` to grade via agent subprocess instead of direct API.
+**"Which agent is being used?"**
+> The grader auto-detects your installed agent CLI (claude, codex, opencode).
+> Use `--agent <name>` to override the auto-detected agent.

@@ -11,7 +11,7 @@ Bootstrap selftune for first-time use or after changing environments.
 ## Default Command
 
 ```bash
-selftune init [--agent <type>] [--llm-mode agent|api] [--force]
+selftune init [--agent <type>] [--cli-path <path>] [--llm-mode agent|api]
 ```
 
 ## Options
@@ -50,16 +50,16 @@ Creates `~/.selftune/config.json`:
 
 ## Steps
 
-### 1. Install the CLI
+### 1. Check if CLI is installed
+
+```bash
+which selftune
+```
+
+If `selftune` is not on PATH, install it:
 
 ```bash
 npm install -g selftune
-```
-
-Verify the CLI is on `PATH`:
-
-```bash
-selftune --help
 ```
 
 ### 2. Check Existing Config
@@ -77,9 +77,6 @@ Skip to Step 6 (verify with doctor) unless the user wants to reinitialize.
 selftune init
 ```
 
-The command auto-detects the agent platform, resolves the CLI path,
-determines the LLM mode, and writes `~/.selftune/config.json`.
-
 ### 4. Install Hooks (Claude Code)
 
 If `init` reports hooks are not installed, merge the entries from
@@ -92,14 +89,11 @@ are required:
 | `PostToolUse` (Read) | `hooks/skill-eval.ts` | Track skill triggers |
 | `Stop` | `hooks/session-stop.ts` | Capture session telemetry |
 
-Derive hook script paths from the `cli_path` field in
-`~/.selftune/config.json` — the hooks directory is at
-`dirname(cli_path)/hooks/`.
-
-### 5. Platform-Specific Setup
+Derive the hook script paths from the `cli_path` field in `~/.selftune/config.json`.
+The hooks directory is at `dirname(cli_path)/hooks/`.
 
 **Codex agents:**
-- Use `selftune wrap-codex` for real-time telemetry capture (see `Workflows/Ingest.md`)
+- Use `wrap-codex` for real-time telemetry capture (see `Workflows/Ingest.md`)
 - Or batch-ingest existing sessions with `selftune ingest-codex`
 
 **OpenCode agents:**
