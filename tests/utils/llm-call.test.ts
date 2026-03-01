@@ -1,9 +1,7 @@
 /**
  * Tests for cli/selftune/utils/llm-call.ts
  *
- * Covers: detectAgent, stripMarkdownFences, callViaAgent, callViaApi, callLlm
- *
- * TDD: RED phase — these tests are written before the implementation.
+ * Covers: detectAgent, stripMarkdownFences, callViaAgent, callLlm
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
@@ -11,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   callLlm,
   callViaAgent,
-  callViaApi,
   detectAgent,
   stripMarkdownFences,
 } from "../../cli/selftune/utils/llm-call.js";
@@ -248,96 +245,17 @@ describe("callViaAgent", () => {
 });
 
 // ---------------------------------------------------------------------------
-// callViaApi
-// ---------------------------------------------------------------------------
-
-describe("callViaApi", () => {
-  let originalFetch: typeof globalThis.fetch;
-  let originalEnv: string | undefined;
-
-  beforeEach(() => {
-    originalFetch = globalThis.fetch;
-    originalEnv = process.env.ANTHROPIC_API_KEY;
-  });
-
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
-    if (originalEnv === undefined) {
-      process.env.ANTHROPIC_API_KEY = undefined;
-    } else {
-      process.env.ANTHROPIC_API_KEY = originalEnv;
-    }
-  });
-
-  it("throws when ANTHROPIC_API_KEY is not set", async () => {
-    process.env.ANTHROPIC_API_KEY = undefined;
-    expect(callViaApi("system", "user")).rejects.toThrow("ANTHROPIC_API_KEY");
-  });
-
-  it("returns raw text from API response content blocks", async () => {
-    process.env.ANTHROPIC_API_KEY = "test-key-123";
-
-    // @ts-expect-error -- mocking global fetch
-    globalThis.fetch = async (_url: string, _opts: unknown) => {
-      return {
-        ok: true,
-        json: async () => ({
-          content: [{ type: "text", text: '{"expectations": []}' }],
-        }),
-      };
-    };
-
-    const result = await callViaApi("system prompt", "user prompt");
-    expect(result).toBe('{"expectations": []}');
-  });
-
-  it("throws on non-ok API response", async () => {
-    process.env.ANTHROPIC_API_KEY = "test-key-123";
-
-    // @ts-expect-error -- mocking global fetch
-    globalThis.fetch = async (_url: string, _opts: unknown) => {
-      return {
-        ok: false,
-        status: 429,
-        text: async () => "rate limited",
-      };
-    };
-
-    expect(callViaApi("system", "user")).rejects.toThrow("API error 429");
-  });
-});
-
-// ---------------------------------------------------------------------------
 // callLlm — dispatcher
 // ---------------------------------------------------------------------------
 
 describe("callLlm", () => {
-  let originalEnv: string | undefined;
-
-  beforeEach(() => {
-    originalEnv = process.env.ANTHROPIC_API_KEY;
+  it("throws when agent is not specified", async () => {
+    expect(callLlm("sys", "user", "")).rejects.toThrow("Agent must be specified");
   });
 
-  afterEach(() => {
-    if (originalEnv === undefined) {
-      process.env.ANTHROPIC_API_KEY = undefined;
-    } else {
-      process.env.ANTHROPIC_API_KEY = originalEnv;
-    }
-  });
-
-  it("dispatches to agent path when mode is 'agent'", async () => {
-    // Verify routing by checking that the agent guard clause fires
-    // (proves callLlm enters the agent branch).
-    expect(callLlm("sys", "user", "agent")).rejects.toThrow(
-      "Agent must be specified",
-    );
-  });
-
-  it("dispatches to api path when mode is 'api'", async () => {
-    // Verify routing by checking that the API key guard clause fires
-    // (proves callLlm enters the API branch).
-    process.env.ANTHROPIC_API_KEY = undefined;
-    expect(callLlm("sys", "user", "api")).rejects.toThrow("ANTHROPIC_API_KEY");
+  it("delegates to callViaAgent with the given agent", async () => {
+    // Verify routing by checking that the unknown agent error propagates
+    // (proves callLlm calls callViaAgent)
+    expect(callLlm("sys", "user", "unknown-agent")).rejects.toThrow("Unknown agent");
   });
 });

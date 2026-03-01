@@ -30,7 +30,7 @@ text-match against output strings.
 ## Quick Reference
 
 ```bash
-selftune grade    --skill <name> [--expectations "..."] [--use-agent]
+selftune grade    --skill <name> [--expectations "..."] [--agent <name>]
 selftune evals    --skill <name> [--list-skills] [--stats] [--max N]
 selftune evolve   --skill <name> --skill-path <path> [--dry-run]
 selftune rollback --skill <name> --skill-path <path> [--proposal-id <id>]

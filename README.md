@@ -142,7 +142,7 @@ selftune <command> [options]
 | `ingest-opencode` | Backfill historical OpenCode sessions from SQLite |
 | `wrap-codex -- <args>` | Real-time Codex wrapper with telemetry |
 
-No separate API key required — grading and evolution use whatever agent CLI you already have installed. Set `ANTHROPIC_API_KEY` to use the API directly instead.
+No separate API key required — grading and evolution use whatever agent CLI you already have installed (Claude Code, Codex, or OpenCode).
 
 See `skill/Workflows/` for detailed step-by-step guides for each command.
 
