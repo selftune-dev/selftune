@@ -18,7 +18,6 @@ jobs:
         run: bun install
 
       - name: Lint
-        continue-on-error: true
         run: bun run lint
 
       - name: Architecture lint
@@ -62,7 +61,12 @@ jobs:
           if [ "$CURRENT" = "$PUBLISHED" ]; then
             echo "should_publish=false" >> "$GITHUB_OUTPUT"
           else
-            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            HIGHEST=$(printf '%s\n' "$PUBLISHED" "$CURRENT" | sort -V | tail -n1)
+            if [ "$HIGHEST" = "$CURRENT" ]; then
+              echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            fi
           fi
           echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
 

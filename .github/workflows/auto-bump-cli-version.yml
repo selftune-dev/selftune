@@ -6,6 +6,8 @@ on:
     branches: [master]
     paths:
       - "cli/selftune/**"
+      - "bin/selftune.cjs"
+      - "package.json"
 
 permissions:
   contents: write

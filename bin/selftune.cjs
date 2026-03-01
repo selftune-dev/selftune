@@ -15,7 +15,7 @@ for (const [cmd, args] of runners) {
     execFileSync(cmd, args, { stdio: "inherit" });
     process.exit(0);
   } catch (e) {
-    if (e.status !== undefined) {
+    if (e.status != null) {
       process.exit(e.status);
     }
   }
