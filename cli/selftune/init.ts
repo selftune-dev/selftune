@@ -191,8 +191,7 @@ export function runInit(opts: InitOptions): SelftuneConfig {
 
   // Detect agent CLI — when an override is provided, fall back to mapped CLI
   // name so init works in test/CI environments without agent binaries in PATH
-  const agentCli =
-    detectAgent() ?? (opts.agentOverride ? (agentTypeToCli(agentType) ?? agentType) : null);
+  const agentCli = detectAgent() ?? (opts.agentOverride ? agentTypeToCli(agentType) : null);
   if (!agentCli) {
     throw new Error(
       "No supported agent CLI detected (claude, codex, opencode). Install one, then rerun `selftune init`.",
