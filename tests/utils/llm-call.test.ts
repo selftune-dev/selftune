@@ -242,4 +242,3 @@ describe("callViaAgent", () => {
     expect(callViaAgent("sys", "user", "claude")).rejects.toThrow(/exited with code 1/);
   });
 });
-
