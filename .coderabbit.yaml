@@ -96,12 +96,12 @@ reviews:
       enabled: true
 
   pre_merge_checks:
-    title_check:
+    title:
       mode: "warning"
       requirements: >
         Must use conventional commits format:
         feat|fix|docs|chore|refactor|test|perf|ci
-    description_check:
+    description:
       mode: "warning"
 
   tools:

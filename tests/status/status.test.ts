@@ -19,10 +19,12 @@ import type {
 // Fixture factories
 // ---------------------------------------------------------------------------
 
+let fixtureCounter = 0;
+
 function makeTelemetry(overrides: Partial<SessionTelemetryRecord> = {}): SessionTelemetryRecord {
   return {
     timestamp: "2026-02-28T12:00:00Z",
-    session_id: `sess-${Math.random().toString(36).slice(2, 8)}`,
+    session_id: `sess-${++fixtureCounter}`,
     cwd: "/tmp/project",
     transcript_path: "/tmp/transcript.jsonl",
     tool_calls: {},
@@ -40,7 +42,7 @@ function makeTelemetry(overrides: Partial<SessionTelemetryRecord> = {}): Session
 function makeSkillRecord(overrides: Partial<SkillUsageRecord> = {}): SkillUsageRecord {
   return {
     timestamp: "2026-02-28T12:00:00Z",
-    session_id: `sess-${Math.random().toString(36).slice(2, 8)}`,
+    session_id: `sess-${++fixtureCounter}`,
     skill_name: "test-skill",
     skill_path: "/tmp/skills/test-skill/SKILL.md",
     query: "test query",
@@ -52,7 +54,7 @@ function makeSkillRecord(overrides: Partial<SkillUsageRecord> = {}): SkillUsageR
 function makeQuery(overrides: Partial<QueryLogRecord> = {}): QueryLogRecord {
   return {
     timestamp: "2026-02-28T12:00:00Z",
-    session_id: `sess-${Math.random().toString(36).slice(2, 8)}`,
+    session_id: `sess-${++fixtureCounter}`,
     query: "test query",
     ...overrides,
   };

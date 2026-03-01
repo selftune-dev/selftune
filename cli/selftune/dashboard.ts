@@ -20,23 +20,7 @@ import type {
   SessionTelemetryRecord,
   SkillUsageRecord,
 } from "./types.js";
-
-function readJSONL<T = unknown>(path: string): T[] {
-  if (!existsSync(path)) return [];
-  const text = readFileSync(path, "utf-8").trim();
-  if (!text) return [];
-  return text
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      try {
-        return JSON.parse(line) as T;
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean) as T[];
-}
+import { readJsonl } from "./utils/jsonl.js";
 
 function findViewerHTML(): string {
   // Try relative to this module first (works for both dev and installed)
@@ -54,10 +38,10 @@ function findViewerHTML(): string {
 function buildEmbeddedHTML(): string {
   const template = readFileSync(findViewerHTML(), "utf-8");
 
-  const telemetry = readJSONL<SessionTelemetryRecord>(TELEMETRY_LOG);
-  const skills = readJSONL<SkillUsageRecord>(SKILL_LOG);
-  const queries = readJSONL<QueryLogRecord>(QUERY_LOG);
-  const evolution = readJSONL<EvolutionAuditEntry>(EVOLUTION_AUDIT_LOG);
+  const telemetry = readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG);
+  const skills = readJsonl<SkillUsageRecord>(SKILL_LOG);
+  const queries = readJsonl<QueryLogRecord>(QUERY_LOG);
+  const evolution = readJsonl<EvolutionAuditEntry>(EVOLUTION_AUDIT_LOG);
 
   const totalRecords = telemetry.length + skills.length + queries.length + evolution.length;
 
@@ -105,14 +89,16 @@ function buildEmbeddedHTML(): string {
     if (!proposalStatus[e.proposal_id]) proposalStatus[e.proposal_id] = [];
     proposalStatus[e.proposal_id].push(e.action);
   }
+  // Deduplicate by proposal_id: one entry per pending proposal
+  const terminalActions = new Set(["deployed", "rejected", "rolled_back"]);
+  const seenProposals = new Set<string>();
   const pendingProposals = auditTrail.filter((e) => {
     if (e.action !== "created" && e.action !== "validated") return false;
+    if (seenProposals.has(e.proposal_id)) return false;
     const actions = proposalStatus[e.proposal_id] || [];
-    return (
-      !actions.includes("deployed") &&
-      !actions.includes("rejected") &&
-      !actions.includes("rolled_back")
-    );
+    const isPending = !actions.some((a: string) => terminalActions.has(a));
+    if (isPending) seenProposals.add(e.proposal_id);
+    return isPending;
   });
 
   const data = {
@@ -128,7 +114,9 @@ function buildEmbeddedHTML(): string {
   };
 
   // Inject embedded data right before </body>
-  const dataScript = `<script id="embedded-data" type="application/json">${JSON.stringify(data)}</script>`;
+  // Escape </script> sequences to prevent XSS via embedded JSON
+  const safeJson = JSON.stringify(data).replace(/<\/script>/gi, "<\\/script>");
+  const dataScript = `<script id="embedded-data" type="application/json">${safeJson}</script>`;
   return template.replace("</body>", `${dataScript}\n</body>`);
 }
 

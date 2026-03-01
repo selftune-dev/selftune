@@ -69,7 +69,7 @@ cat ~/.selftune/config.json 2>/dev/null
 ```
 
 If the file exists and is valid JSON, selftune is already initialized.
-Skip to Step 6 (verify with doctor) unless the user wants to reinitialize.
+Skip to Step 5 (verify with doctor) unless the user wants to reinitialize.
 
 ### 3. Run Init
 
@@ -100,7 +100,7 @@ The hooks directory is at `dirname(cli_path)/hooks/`.
 - Use `selftune ingest-opencode` to import sessions from the SQLite database
 - See `Workflows/Ingest.md` for details
 
-### 6. Verify with Doctor
+### 5. Verify with Doctor
 
 ```bash
 selftune doctor

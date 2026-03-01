@@ -606,6 +606,9 @@ function parseJSONL(text) {
 // ========================================================================
 // Client-side computed data generation (for drag-drop mode)
 // ========================================================================
+const REGRESSION_THRESHOLD = 0.4;
+const DEFAULT_BASELINE_PASS_RATE = 0.5;
+
 function computeClientSide() {
   const skillNames = [...new Set(state.skills.map(r => r.skill_name))];
   const triggeredQueries = new Set(
@@ -627,8 +630,8 @@ function computeClientSide() {
       window_sessions: state.telemetry.length,
       pass_rate: passRate,
       false_negative_rate: fnRate,
-      regression_detected: passRate < 0.4,
-      baseline_pass_rate: 0.5,
+      regression_detected: passRate < REGRESSION_THRESHOLD,
+      baseline_pass_rate: DEFAULT_BASELINE_PASS_RATE,
     };
   }
 
@@ -828,7 +831,7 @@ function updateHealthSummary() {
 
   document.getElementById('kpi-sessions').textContent = state.telemetry.length;
   if (state.telemetry.length) {
-    const sorted = [...state.telemetry].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const sorted = [...state.telemetry].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     const first = formatDate(sorted[0].timestamp);
     const last = formatDate(sorted[sorted.length - 1].timestamp);
     document.getElementById('kpi-sessions-sub').textContent = first + ' \u2014 ' + last;

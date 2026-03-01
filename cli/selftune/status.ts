@@ -121,8 +121,12 @@ export function computeStatus(
   skills.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
 
   // Unmatched queries: queries whose text appears in zero triggered skill_usage_log entries
-  const triggeredQueryTexts = new Set(skillRecords.filter((r) => r.triggered).map((r) => r.query));
-  const unmatchedQueries = queryRecords.filter((q) => !triggeredQueryTexts.has(q.query)).length;
+  const triggeredQueryTexts = new Set(
+    skillRecords.filter((r) => r.triggered).map((r) => r.query.toLowerCase().trim()),
+  );
+  const unmatchedQueries = queryRecords.filter(
+    (q) => !triggeredQueryTexts.has(q.query.toLowerCase().trim()),
+  ).length;
 
   // Pending proposals: audit entries with action=created/validated that have
   // no later deployed/rejected/rolled_back for same proposal_id
@@ -190,8 +194,10 @@ function getLastDeployedProposalFromEntries(
   skillName: string,
 ): EvolutionAuditEntry | null {
   const needle = skillName.toLowerCase();
+  // Use word-boundary regex to avoid substring false positives (e.g. "api" matching "rapid-api")
+  const pattern = new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
   const deployed = entries.filter(
-    (e) => e.action === "deployed" && (e.details ?? "").toLowerCase().includes(needle),
+    (e) => e.action === "deployed" && pattern.test(e.details ?? ""),
   );
   return deployed.length > 0 ? deployed[deployed.length - 1] : null;
 }
