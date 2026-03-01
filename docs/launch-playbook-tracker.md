@@ -12,7 +12,7 @@ Manual actions for maximizing selftune's open-source impact. Check items off as 
 - [ ] [Sentry](https://sentry.io/for/open-source/) — Error tracking (free for OSS)
 - [ ] [Thanks.dev](https://thanks.dev) — Dependency funding attribution
 - [ ] Publish to npm — `npm publish --provenance --access public`
-- [ ] Set `NPM_TOKEN` repo secret — Settings > Secrets > Actions > New repository secret
+- [ ] Verify npm Trusted Publishing (OIDC) is configured for this repository/package
 
 ---
 
@@ -97,7 +97,7 @@ Manual actions for maximizing selftune's open-source impact. Check items off as 
 ### T-7 (One Week Before)
 
 - [ ] Verify all CI workflows pass on master
-- [ ] Publish v0.1.0 to npm
+- [ ] Publish the current release version to npm
 - [ ] Verify npm package installs cleanly: `npx selftune --help`
 - [ ] Write Show HN post draft
 - [ ] Write Twitter/X thread draft

@@ -111,7 +111,7 @@ switch (command) {
   }
   case "last": {
     const { cliMain } = await import("./last.js");
-    await cliMain();
+    cliMain();
     break;
   }
   case "dashboard": {

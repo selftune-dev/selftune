@@ -134,4 +134,5 @@ export function cliMain(): void {
   }
 
   console.log(formatInsight(insight));
+  process.exit(0);
 }

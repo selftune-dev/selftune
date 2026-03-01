@@ -11,7 +11,7 @@ Bootstrap selftune for first-time use or after changing environments.
 ## Default Command
 
 ```bash
-selftune init [--agent <type>] [--cli-path <path>] [--llm-mode agent|api] [--force]
+selftune init [--agent <type>] [--cli-path <path>] [--force]
 ```
 
 ## Options
@@ -19,7 +19,6 @@ selftune init [--agent <type>] [--cli-path <path>] [--llm-mode agent|api] [--for
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--agent <type>` | Agent platform: `claude`, `codex`, `opencode` | Auto-detected |
-| `--llm-mode <mode>` | `agent` (use agent subprocess) or `api` (use Anthropic API directly) | `agent` |
 | `--force` | Reinitialize even if config already exists | Off |
 
 ## Output Format

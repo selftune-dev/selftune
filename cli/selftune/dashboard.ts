@@ -175,4 +175,5 @@ Usage:
   } catch {
     console.log(`Open manually: file://${tmpPath}`);
   }
+  process.exit(0);
 }

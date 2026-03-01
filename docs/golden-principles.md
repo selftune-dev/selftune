@@ -67,16 +67,16 @@ Opinionated mechanical rules that encode human taste for selftune. These go beyo
 
 ## Evolution Rules
 
-7. **Audit every state change**
+9. **Audit every state change**
    Every evolution proposal records `created`, `validated`, `rejected`, or `deployed` to the audit log. No silent transitions.
 
-8. **Validate before deploy, always**
-   A proposal must improve the eval pass rate with <5% regression before deployment. No exceptions, even with high confidence.
+10. **Validate before deploy, always**
+    A proposal must improve the eval pass rate with <5% regression before deployment. No exceptions, even with high confidence.
 
-9. **Backup before overwrite**
-   Every SKILL.md deployment creates a `.bak` backup. Rollback must always have a path — either backup file or audit trail.
+11. **Backup before overwrite**
+    Every SKILL.md deployment creates a `.bak` backup. Rollback must always have a path — either backup file or audit trail.
 
-10. **Dependency injection for testability**
+12. **Dependency injection for testability**
     Evolution modules accept injectable dependencies (`_deps` parameter) so tests avoid `mock.module` contamination. Real imports are the default; tests inject mocks.
 
 ## Anti-Patterns

@@ -373,8 +373,12 @@ Options:
   const agent = values.agent ?? detectAgent();
   if (!agent) {
     console.error(
-      "[ERROR] No agent CLI (claude/codex/opencode) found in PATH.\n" +
-        "Install Claude Code, Codex, or OpenCode.",
+      JSON.stringify({
+        level: "error",
+        code: "agent_not_found",
+        message: "No agent CLI (claude/codex/opencode) found in PATH.",
+        action: "Install Claude Code, Codex, or OpenCode.",
+      }),
     );
     process.exit(1);
   }
