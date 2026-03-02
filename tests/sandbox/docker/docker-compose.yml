@@ -3,8 +3,17 @@ services:
     build:
       context: ../../..
       dockerfile: tests/sandbox/docker/Dockerfile
+    env_file:
+      - path: ../../../.env.local
+        required: false
     environment:
-      - HOME=/sandbox
+      - HOME=/home/node/sandbox
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     volumes:
+      # Persist sandbox HOME (includes .claude/ auth + config) between runs.
+      # Auth from 'claude login' survives container restarts.
+      - sandbox-home:/home/node/sandbox
       - ../results:/app/tests/sandbox/results
+
+volumes:
+  sandbox-home:

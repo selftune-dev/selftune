@@ -1,4 +1,4 @@
-.PHONY: lint test check sandbox sandbox-llm sandbox-openclaw sandbox-openclaw-keep sandbox-openclaw-clean
+.PHONY: lint test check sandbox sandbox-llm sandbox-shell sandbox-openclaw sandbox-openclaw-keep sandbox-openclaw-clean
 
 lint:
 	bunx biome check .
@@ -14,6 +14,9 @@ sandbox:
 
 sandbox-llm:
 	docker compose -f tests/sandbox/docker/docker-compose.yml up --build
+
+sandbox-shell:
+	docker compose -f tests/sandbox/docker/docker-compose.yml run --build --entrypoint bash selftune-sandbox
 
 sandbox-openclaw:
 	docker compose -f tests/sandbox/docker/docker-compose.openclaw.yml up --build

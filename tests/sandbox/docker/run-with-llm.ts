@@ -69,9 +69,13 @@ async function runSelftune(
     stderr: "pipe",
     env: { ...process.env, HOME: homedir() },
   });
-  const exitCode = await proc.exited;
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
+  // Consume streams concurrently with process exit to prevent deadlock
+  // when output exceeds the pipe buffer size.
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
   return { exitCode, stdout, stderr };
 }
 
@@ -95,12 +99,16 @@ async function claudePrompt(prompt: string, systemPrompt?: string): Promise<stri
   });
 
   const timeout = setTimeout(() => proc.kill(), 120_000);
-  const exitCode = await proc.exited;
+  // Consume streams concurrently with process exit to prevent deadlock
+  // when output exceeds the pipe buffer size.
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
   clearTimeout(timeout);
 
-  const stdout = await new Response(proc.stdout).text();
   if (exitCode !== 0) {
-    const stderr = await new Response(proc.stderr).text();
     throw new Error(`claude -p exited with code ${exitCode}: ${stderr.slice(0, 500)}`);
   }
 
@@ -145,7 +153,13 @@ async function testGrade(): Promise<unknown> {
   if (!existsSync(resultPath)) {
     throw new Error("grading-result.json not created");
   }
-  const result = JSON.parse(readFileSync(resultPath, "utf-8"));
+  const raw = readFileSync(resultPath, "utf-8");
+  let result: Record<string, unknown>;
+  try {
+    result = JSON.parse(raw);
+  } catch {
+    throw new Error(`grading-result.json is not valid JSON: ${raw.slice(0, 300)}`);
+  }
 
   if (!result.summary || typeof result.summary.pass_rate !== "number") {
     throw new Error("Grading result missing summary.pass_rate");
@@ -181,12 +195,24 @@ async function testEvolve(): Promise<unknown> {
     "1",
   ]);
 
-  if (exitCode !== 0) {
-    throw new Error(`evolve exited ${exitCode}: ${stderr.slice(0, 500)}`);
+  // evolve --dry-run exits 1 (deployed=false) which is expected.
+  // Validate that stdout contains valid JSON result, not a crash.
+  let result: Record<string, unknown>;
+  try {
+    result = JSON.parse(stdout);
+  } catch {
+    throw new Error(
+      `evolve exited ${exitCode}, stdout not valid JSON: ${stderr.slice(0, 300)} | ${stdout.slice(0, 300)}`,
+    );
   }
 
-  console.log(`  [evolve] ${stdout.slice(0, 200)}`);
-  return { stdout: stdout.slice(0, 1000), exitCode };
+  // Must have a reason or proposal — either path is valid for dry-run
+  if (!result.reason && !result.proposal) {
+    throw new Error("evolve result missing both 'reason' and 'proposal'");
+  }
+
+  console.log(`  [evolve] exit=${exitCode} reason=${result.reason ?? "proposal generated"}`);
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -231,13 +257,19 @@ async function main(): Promise<void> {
   }
   console.log(`claude CLI: ${claudeCheck}`);
 
-  // Check for auth — ANTHROPIC_API_KEY or interactive claude session
+  // Check for auth — claude login session (preferred) or ANTHROPIC_API_KEY
   const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
-  console.log(`ANTHROPIC_API_KEY: ${hasApiKey ? "set" : "not set"}`);
-  if (!hasApiKey) {
+  const claudeAuthDir = join(homedir(), ".claude");
+  const hasClaudeLogin =
+    existsSync(claudeAuthDir) && existsSync(join(claudeAuthDir, ".credentials.json"));
+  console.log(
+    `Auth: ${hasClaudeLogin ? "claude login" : hasApiKey ? "ANTHROPIC_API_KEY" : "none"}`,
+  );
+  if (!hasApiKey && !hasClaudeLogin) {
     console.log(
-      "[WARN] No ANTHROPIC_API_KEY set. LLM tests (grade, evolve) will fail.\n" +
-        "  Set ANTHROPIC_API_KEY=sk-... before running, or use VS Code devcontainer.\n",
+      "[INFO] No auth detected. Set up auth via one of:\n" +
+        "  1. Run 'claude login' inside the container (make sandbox-shell)  [recommended]\n" +
+        "  2. Set ANTHROPIC_API_KEY in .env.local\n",
     );
   } else {
     console.log("");

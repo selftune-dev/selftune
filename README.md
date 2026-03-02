@@ -84,6 +84,34 @@ selftune is the infrastructure-level solution. It doesn't hack around the proble
 Observe → Detect → Diagnose → Propose → Validate → Deploy → Watch → Repeat
 ```
 
+```
+Claude Code (hooks):                 OpenCode (hooks):
+  UserPromptSubmit → prompt-log.ts     message.*        → opencode-prompt-log.ts
+  UserPromptSubmit → auto-activate.ts  tool.execute.after → opencode-skill-eval.ts
+  PostToolUse      → skill-eval.ts     session.idle     → opencode-session-stop.ts
+  PreToolUse       → skill-change-guard.ts
+  PreToolUse       → evolution-guard.ts
+  Stop             → session-stop.ts
+          │                                    │
+          └──────────┬─────────────────────────┘
+                     ▼
+          Shared JSONL Log Schema (~/.claude/)
+            ├── all_queries_log.jsonl
+            ├── skill_usage_log.jsonl
+            └── session_telemetry_log.jsonl
+
+Claude Code (replay — retroactive backfill):
+  claude-replay.ts  (batch ingest from ~/.claude/projects/)
+          │
+          └──→ Same shared JSONL schema
+
+Codex (wrapper/ingestor — hooks not yet available):
+  codex-wrapper.ts  (real-time tee of JSONL stream)
+  codex-rollout.ts  (batch ingest from rollout logs)
+          │
+          └──→ Same shared JSONL schema
+```
+
 **1. Observe** — Hooks capture every session: what the user asked, which skills fired, what happened.
 
 **2. Detect** — Cross-reference query logs against skill usage logs. Surface the queries where your skill *should* have fired but didn't.
@@ -99,6 +127,14 @@ Observe → Detect → Diagnose → Propose → Validate → Deploy → Watch �
 **7. Watch** — Monitor pass rates post-deploy. Auto-rollback if performance drops.
 
 This isn't a one-shot tool. It's a continuous loop that runs alongside your agent, making your skills better every week.
+
+### Auto-Activation
+
+The `auto-activate.ts` UserPromptSubmit hook runs on every prompt and checks activation rules (grading thresholds, stale evolutions, regression signals). When selftune should run, it outputs formatted suggestions inline. Session state tracking prevents repeated nags within the same session. The `skill-change-guard.ts` and `evolution-guard.ts` PreToolUse hooks provide enforcement guardrails that detect direct SKILL.md edits and suggest or require running `selftune watch` first.
+
+### Evolution Memory
+
+The 3-file memory system at `~/.selftune/memory/` (context.md, plan.md, decisions.md) persists evolution state across context resets. The evolve, rollback, and watch commands automatically maintain these files so agents can resume work without losing prior analysis.
 
 ---
 
@@ -171,16 +207,25 @@ Tests 3 real skills from [skills.sh](https://skills.sh): `find-skills` (healthy)
 
 ### Devcontainer + LLM Testing
 
-For commands that require LLM calls (`grade`, `evolve`, `watch`), use the devcontainer with the Claude Code CLI:
+For commands that require LLM calls (`grade`, `evolve`, `watch`), use the devcontainer with the Claude Code CLI. Based on the [official Claude Code devcontainer reference](https://code.claude.com/docs/en/devcontainer).
 
-**VS Code:** Open the repo and click "Reopen in Container" when prompted.
+**First-time setup** (one-time, auth persists in a Docker volume):
+```bash
+make sandbox-shell       # drop into the container
+claude login             # paste your token
+exit
+```
 
-**CLI / CI:**
+**Run LLM tests:**
 ```bash
 make sandbox-llm
 ```
 
-This uses the official [Claude Code devcontainer](https://code.claude.com/docs/en/devcontainer) pattern with `claude -p` and `--dangerously-skip-permissions`. No API key needed — uses your existing Claude subscription.
+**Alternative auth:** Set `ANTHROPIC_API_KEY` in `.env.local` at the project root.
+
+**VS Code:** Open the repo and click "Reopen in Container" when prompted.
+
+Uses the official Claude Code CLI with `claude -p`. Auth persists across runs — no need to log in again.
 
 ### All Checks
 
@@ -209,5 +254,18 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full domain map, module rules, an
 If selftune saves you time, consider [sponsoring the project](https://github.com/sponsors/WellDunDun).
 
 ## License
+
+## Milestones
+
+| Version | Scope | Status |
+|---|---|---|
+| v0.1 | Hooks, ingestors, shared schema, eval generation | Done |
+| v0.2 | Session grading, grader skill | Done |
+| v0.3 | Evolution loop (propose, validate, deploy, rollback) | Done |
+| v0.4 | Post-deploy monitoring, regression detection | Done |
+| v0.5 | Agent-first skill restructure, `init` command, config bootstrap | Done |
+| v0.6 | Three-layer observability: `status`, `last`, redesigned dashboard | Done |
+| v0.7 | Retroactive replay + community contribution export | Done |
+| v0.8 | Auto-activation, evolution memory, specialized agents, enforcement guardrails, dashboard server | Done |
 
 [MIT](LICENSE)

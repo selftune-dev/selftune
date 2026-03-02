@@ -1,0 +1,64 @@
+{
+  "_readme": "Settings template for multi-skill selftune projects. Merge into ~/.claude/settings.json.",
+  "_usage": "Replace /PATH/TO with the absolute path to your selftune installation.",
+  "_note": "Multi-skill projects use activation rules to route queries to the correct skill. See templates/activation-rules-default.json.",
+
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/prompt-log.ts",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/auto-activate.ts",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/skill-change-guard.ts",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/evolution-guard.ts",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/skill-eval.ts",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/session-stop.ts",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

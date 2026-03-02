@@ -48,16 +48,23 @@ This creates a temporary `HOME` directory in `/tmp`, copies test fixtures (3 ski
 
 ### Devcontainer Testing (LLM-dependent commands)
 
-Commands like `grade` and `evolve` need LLM calls. Test them in the devcontainer:
+Commands like `grade` and `evolve` need LLM calls. Test them in the devcontainer, based on the [official Claude Code devcontainer reference](https://code.claude.com/docs/en/devcontainer):
 
-**VS Code:** Open the repo → "Reopen in Container"
+**First-time setup** (one-time, auth persists in a Docker volume):
+```bash
+make sandbox-shell       # drop into the container
+claude login             # paste your token
+exit
+```
 
-**CLI:**
+**Run LLM tests:**
 ```bash
 make sandbox-llm
 ```
 
-Uses the official Claude Code devcontainer with `claude -p --dangerously-skip-permissions`. No API key needed.
+**Alternative auth:** Set `ANTHROPIC_API_KEY` in `.env.local` at the project root.
+
+**VS Code:** Open the repo → "Reopen in Container"
 
 ## Architecture
 
