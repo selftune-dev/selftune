@@ -55,5 +55,10 @@ if [ -f "${FIXTURES_DIR}/cron/jobs.json" ]; then
   cp "${FIXTURES_DIR}/cron/jobs.json" "${TARGET_DIR}/cron/jobs.json"
 fi
 
-echo "Seeded: $(find "${TARGET_DIR}/agents" -name '*.jsonl' 2>/dev/null | wc -l | tr -d ' ') sessions"
+SEEDED_COUNT=$(find "${TARGET_DIR}/agents" -name '*.jsonl' 2>/dev/null | wc -l | tr -d ' ')
+if [ "$SEEDED_COUNT" -eq 0 ]; then
+  echo "ERROR: No sessions seeded — found 0 files matching ${TARGET_DIR}/agents/**/*.jsonl"
+  exit 1
+fi
+echo "Seeded: ${SEEDED_COUNT} sessions"
 echo "Done."
