@@ -49,6 +49,8 @@ const SANDBOX_HOME = join(SANDBOX_ROOT, "home");
 const SANDBOX_CLAUDE_DIR = join(SANDBOX_HOME, ".claude");
 const SANDBOX_PROJECTS_DIR = join(SANDBOX_CLAUDE_DIR, "projects", "default");
 const SANDBOX_SELFTUNE_DIR = join(SANDBOX_HOME, ".selftune");
+const SANDBOX_OPENCLAW_DIR = join(SANDBOX_HOME, ".openclaw");
+const SANDBOX_OPENCLAW_AGENTS = join(SANDBOX_OPENCLAW_DIR, "agents");
 
 function setupSandbox(): void {
   // Create directory structure
@@ -90,6 +92,43 @@ function setupSandbox(): void {
     join(FIXTURES_DIR, "claude-settings.json"),
     join(SANDBOX_CLAUDE_DIR, "settings.json"),
   );
+
+  // Copy OpenClaw fixture data
+  const openclawFixturesDir = join(FIXTURES_DIR, "openclaw");
+
+  // Agent sessions (dynamic discovery)
+  const agentsRoot = join(openclawFixturesDir, "agents");
+  for (const agentId of existsSync(agentsRoot) ? readdirSync(agentsRoot) : []) {
+    const srcSessions = join(agentsRoot, agentId, "sessions");
+    const dstSessions = join(SANDBOX_OPENCLAW_AGENTS, agentId, "sessions");
+    mkdirSync(dstSessions, { recursive: true });
+    if (existsSync(srcSessions)) {
+      for (const file of readdirSync(srcSessions)) {
+        if (file.endsWith(".jsonl")) {
+          copyFileSync(join(srcSessions, file), join(dstSessions, file));
+        }
+      }
+    }
+  }
+
+  // Skills (dynamic discovery)
+  const skillsRoot = join(openclawFixturesDir, "skills");
+  for (const skillName of existsSync(skillsRoot) ? readdirSync(skillsRoot) : []) {
+    const srcSkill = join(skillsRoot, skillName, "SKILL.md");
+    const dstSkillDir = join(SANDBOX_OPENCLAW_DIR, "skills", skillName);
+    mkdirSync(dstSkillDir, { recursive: true });
+    if (existsSync(srcSkill)) {
+      copyFileSync(srcSkill, join(dstSkillDir, "SKILL.md"));
+    }
+  }
+
+  // Cron jobs
+  const cronDir = join(SANDBOX_OPENCLAW_DIR, "cron");
+  mkdirSync(cronDir, { recursive: true });
+  const cronSrc = join(openclawFixturesDir, "cron", "jobs.json");
+  if (existsSync(cronSrc)) {
+    copyFileSync(cronSrc, join(cronDir, "jobs.json"));
+  }
 }
 
 // Need readdirSync for transcripts
@@ -385,6 +424,142 @@ async function main(): Promise<void> {
       sessionHookResult.error = `Expected new record in session_telemetry_log.jsonl (before: ${telemetryLinesBefore}, after: ${telemetryLinesAfter})`;
     }
     results.push(sessionHookResult);
+
+    // -----------------------------------------------------------------------
+    // OpenClaw integration tests
+    // -----------------------------------------------------------------------
+
+    // a. ingest-openclaw — standard ingestion
+    const ingestResult = await runCliCommand("ingest-openclaw", [
+      "ingest-openclaw",
+      "--agents-dir",
+      SANDBOX_OPENCLAW_AGENTS,
+    ]);
+    // Verify: exit 0 + new records in logs with source: "openclaw"
+    if (ingestResult.passed) {
+      const queryLogContent = existsSync(queryLogPath)
+        ? readFileSync(queryLogPath, "utf-8").trim().split("\n")
+        : [];
+      const openclawQueries = queryLogContent.filter((line) => {
+        try {
+          return JSON.parse(line).source === "openclaw";
+        } catch {
+          return false;
+        }
+      });
+      if (openclawQueries.length === 0) {
+        ingestResult.passed = false;
+        ingestResult.error = "No openclaw records found in all_queries_log.jsonl after ingestion";
+      }
+
+      const telemetryContent = existsSync(telemetryLogPath)
+        ? readFileSync(telemetryLogPath, "utf-8").trim().split("\n")
+        : [];
+      const openclawTelemetry = telemetryContent.filter((line) => {
+        try {
+          return JSON.parse(line).source === "openclaw";
+        } catch {
+          return false;
+        }
+      });
+      if (openclawTelemetry.length === 0) {
+        ingestResult.passed = false;
+        ingestResult.error =
+          "No openclaw records found in session_telemetry_log.jsonl after ingestion";
+      }
+
+      // Check skill_usage_log for Deploy and CodeReview
+      const skillContent = existsSync(skillLogPath)
+        ? readFileSync(skillLogPath, "utf-8").trim().split("\n")
+        : [];
+      const openclawSkills = skillContent.filter((line) => {
+        try {
+          return JSON.parse(line).source === "openclaw";
+        } catch {
+          return false;
+        }
+      });
+      if (openclawSkills.length === 0) {
+        ingestResult.passed = false;
+        ingestResult.error =
+          "No openclaw skill records found in skill_usage_log.jsonl after ingestion";
+      }
+
+      // Check marker file exists
+      const markerPath = join(SANDBOX_SELFTUNE_DIR, "openclaw-ingest-marker.json");
+      if (!existsSync(markerPath)) {
+        ingestResult.passed = false;
+        ingestResult.error = "openclaw-ingest-marker.json not created after ingestion";
+      }
+    }
+    results.push(ingestResult);
+
+    // b. ingest-openclaw --dry-run
+    // First, count current lines in query log to verify dry-run doesn't add
+    const queryLinesBeforeDry = countLines(queryLogPath);
+    const dryRunResult = await runCliCommand("ingest-openclaw --dry-run", [
+      "ingest-openclaw",
+      "--agents-dir",
+      SANDBOX_OPENCLAW_AGENTS,
+      "--dry-run",
+    ]);
+    if (dryRunResult.passed) {
+      const queryLinesAfterDry = countLines(queryLogPath);
+      if (queryLinesAfterDry !== queryLinesBeforeDry) {
+        dryRunResult.passed = false;
+        dryRunResult.error = `Dry run should not write records (before: ${queryLinesBeforeDry}, after: ${queryLinesAfterDry})`;
+      }
+    }
+    results.push(dryRunResult);
+
+    // c. ingest-openclaw (idempotent) — second run should find 0 new sessions
+    const idempotentResult = await runCliCommand("ingest-openclaw (idempotent)", [
+      "ingest-openclaw",
+      "--agents-dir",
+      SANDBOX_OPENCLAW_AGENTS,
+    ]);
+    if (idempotentResult.passed) {
+      if (!idempotentResult.fullStdout.includes("0 not yet ingested")) {
+        idempotentResult.passed = false;
+        idempotentResult.error = `Expected "0 not yet ingested" in idempotent run output, got: ${idempotentResult.fullStdout.slice(0, 200)}`;
+      }
+    }
+    results.push(idempotentResult);
+
+    // d. cron list — should show selftune jobs from fixture
+    const cronListResult = await runCliCommand("cron list", ["cron", "list"]);
+    if (cronListResult.passed) {
+      if (!cronListResult.fullStdout.includes("selftune-ingest")) {
+        cronListResult.passed = false;
+        cronListResult.error = `Expected "selftune-ingest" in cron list output, got: ${cronListResult.fullStdout.slice(0, 200)}`;
+      }
+    }
+    results.push(cronListResult);
+
+    // e. cron setup --dry-run
+    // Note: cron setup calls Bun.which("openclaw") and exits 1 if not found.
+    // In the sandbox, openclaw is not installed, so we accept exit 1 with the
+    // expected "not installed" message as a passing result.
+    const cronSetupResult = await runCliCommand("cron setup --dry-run", [
+      "cron",
+      "setup",
+      "--dry-run",
+      "--tz",
+      "UTC",
+    ]);
+    if (!cronSetupResult.passed) {
+      const combined = `${cronSetupResult.fullStdout} ${cronSetupResult.stderr}`.toLowerCase();
+      if (
+        combined.includes("not installed") ||
+        combined.includes("not found") ||
+        combined.includes("not in path")
+      ) {
+        // Expected: openclaw binary is not available in sandbox
+        cronSetupResult.passed = true;
+        cronSetupResult.error = undefined;
+      }
+    }
+    results.push(cronSetupResult);
 
     // -----------------------------------------------------------------------
     // Record results

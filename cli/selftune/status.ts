@@ -231,7 +231,7 @@ export function formatStatus(result: StatusResult): string {
   lines.push("  Name            Pass Rate  Trend  Missed  Status");
 
   for (const skill of result.skills) {
-    const name = skill.name.padEnd(16);
+    const name = skill.name.slice(0, 16).padEnd(16);
     const passRate =
       skill.passRate !== null
         ? `${Math.round(skill.passRate * 100)}%`.padEnd(11)

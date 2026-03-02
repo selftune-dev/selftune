@@ -6,7 +6,8 @@
 |--------|-----------|-------------|---------------|
 | Bootstrap | `cli/selftune/init.ts` | Agent detection, config write, hook check | B |
 | Telemetry | `cli/selftune/hooks/` | Session capture hooks and log writers | B |
-| Ingestors | `cli/selftune/ingestors/` | Platform adapters (Claude Code, Codex, OpenCode) | B |
+| Ingestors | `cli/selftune/ingestors/` | Platform adapters (Claude Code, Codex, OpenCode, OpenClaw) | B |
+| Cron | `cli/selftune/cron/` | OpenClaw cron job management (setup, list, remove) | B |
 | Eval | `cli/selftune/eval/` | False negative detection and eval set generation | C |
 | Grading | `cli/selftune/grading/` | 3-tier session grading (trigger/process/quality) | C |
 | Evolution | `cli/selftune/evolution/` | Description improvement loop, deploy, rollback | B |
@@ -59,6 +60,9 @@ cli/selftune/
 │     │
 │     v
 ├── ingestors/            Platform adapters (normalize)
+│     │              (incl. openclaw-ingest.ts)
+│     v
+├── cron/            OpenClaw cron job management
 │     │
 │     v
 │   Shared Log Schema (~/.claude/*.jsonl)
@@ -111,7 +115,8 @@ tests/sandbox/
 | Auto-Activation | `cli/selftune/hooks/`, `cli/selftune/` | `auto-activate.ts`, `activation-rules.ts` | Detect when selftune should run, output suggestions | Shared only |
 | Enforcement | `cli/selftune/hooks/` | `evolution-guard.ts`, `skill-change-guard.ts` | Block unguarded SKILL.md edits | Shared only |
 | Memory | `cli/selftune/memory/` | `writer.ts` | Persist evolution context across resets | Shared only |
-| Ingestors | `cli/selftune/ingestors/` | `codex-wrapper.ts`, `codex-rollout.ts`, `opencode-ingest.ts`, `claude-replay.ts` | Normalize platform data | Shared only |
+| Ingestors | `cli/selftune/ingestors/` | `codex-wrapper.ts`, `codex-rollout.ts`, `opencode-ingest.ts`, `openclaw-ingest.ts`, `claude-replay.ts` | Normalize platform data | Shared only |
+| Cron | `cli/selftune/cron/` | `setup.ts` | OpenClaw cron job management | Shared only |
 | Eval | `cli/selftune/eval/` | `hooks-to-evals.ts` | Detect false negatives, generate eval sets | Shared only |
 | Grading | `cli/selftune/grading/` | `grade-session.ts` | Grade sessions across 3 tiers | Shared only |
 | Evolution | `cli/selftune/evolution/` | `extract-patterns.ts`, `propose-description.ts`, `validate-proposal.ts`, `audit.ts`, `evolve.ts`, `deploy-proposal.ts`, `rollback.ts`, `stopping-criteria.ts` | Propose and validate description improvements | Shared, Eval |
@@ -136,7 +141,7 @@ The `init` command writes `~/.selftune/config.json` with agent identity and reso
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `agent_type` | `claude_code \| codex \| opencode \| unknown` | Detected agent environment |
+| `agent_type` | `claude_code \| codex \| opencode \| openclaw \| unknown` | Detected agent environment |
 | `cli_path` | `string` | Absolute path to `cli/selftune/index.ts` |
 | `llm_mode` | `agent \| api` | How grading/evolution invoke LLMs |
 | `agent_cli` | `string \| null` | Agent CLI binary name (e.g., `claude`) |

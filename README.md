@@ -17,7 +17,7 @@ This isn't a prompt engineering problem — it's a feedback loop problem. Skill 
 
 selftune closes this loop. It observes real sessions, detects missed triggers, and evolves skill descriptions using your actual usage data — not vibes.
 
-Works with **Claude Code**, **Codex**, and **OpenCode**. Zero runtime dependencies.
+Works with **Claude Code**, **Codex**, **OpenCode**, and **OpenClaw**. Zero runtime dependencies.
 
 ---
 
@@ -54,6 +54,13 @@ selftune ingest-codex
 **OpenCode** — Backfill from SQLite:
 ```bash
 selftune ingest-opencode
+```
+
+**OpenClaw** — Backfill from session transcripts and set up autonomous cron:
+
+```bash
+selftune ingest-openclaw
+selftune cron setup    # Register autonomous evolution cron jobs
 ```
 
 Requires [Bun](https://bun.sh) or Node.js 18+. No extra API keys — selftune uses your existing Claude Code, Codex, or OpenCode subscription for grading and evolution.
@@ -148,6 +155,10 @@ The 3-file memory system at `~/.selftune/memory/` (context.md, plan.md, decision
 | `selftune contribute` | Export anonymized data for community signal pooling |
 | `selftune dashboard` | Open a visual skill-health dashboard |
 | `selftune doctor` | Health check on logs, hooks, config, and schema |
+| `selftune ingest-openclaw` | Ingest OpenClaw session transcripts |
+| `selftune cron setup` | Register autonomous cron jobs with OpenClaw |
+| `selftune cron list` | Show registered selftune cron jobs |
+| `selftune cron remove` | Remove selftune cron jobs |
 
 ---
 
@@ -183,7 +194,7 @@ selftune is the only tool that treats skill descriptions as living artifacts tha
 bun test
 ```
 
-499 tests across 34 files. Runs in ~600ms.
+530 tests across 36 files. Runs in ~600ms.
 
 ### Sandbox Harness
 
@@ -244,18 +255,5 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full domain map, module rules, an
 If selftune saves you time, consider [sponsoring the project](https://github.com/sponsors/WellDunDun).
 
 ## License
-
-## Milestones
-
-| Version | Scope | Status |
-|---|---|---|
-| v0.1 | Hooks, ingestors, shared schema, eval generation | Done |
-| v0.2 | Session grading, grader skill | Done |
-| v0.3 | Evolution loop (propose, validate, deploy, rollback) | Done |
-| v0.4 | Post-deploy monitoring, regression detection | Done |
-| v0.5 | Agent-first skill restructure, `init` command, config bootstrap | Done |
-| v0.6 | Three-layer observability: `status`, `last`, redesigned dashboard | Done |
-| v0.7 | Retroactive replay + community contribution export | Done |
-| v0.8 | Auto-activation, evolution memory, specialized agents, enforcement guardrails, dashboard server | Done |
 
 [MIT](LICENSE)
