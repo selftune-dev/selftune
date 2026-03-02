@@ -11,6 +11,7 @@
 | Grading | `cli/selftune/grading/` | 3-tier session grading (trigger/process/quality) | C |
 | Evolution | `cli/selftune/evolution/` | Description improvement loop, deploy, rollback | B |
 | Monitoring | `cli/selftune/monitoring/` | Post-deploy regression detection and alerting | B |
+| Contribute | `cli/selftune/contribute/` | Opt-in anonymized data export for community contribution | C |
 | Observability CLI | `cli/selftune/status.ts`, `cli/selftune/last.ts` | Skill health summary and last session insight | B |
 | Auto-Activation | `cli/selftune/hooks/auto-activate.ts`, `cli/selftune/activation-rules.ts` | UserPromptSubmit hook with configurable trigger rules | B |
 | Memory & Context | `cli/selftune/memory/writer.ts` | 3-file evolution memory persistence (~/.selftune/memory/) | B |
@@ -44,6 +45,9 @@ cli/selftune/
 ├── types.ts              Shared interfaces (incl. SelftuneConfig)
 ├── constants.ts          Log paths, config paths, known tools
 ├── utils/                Shared utilities (jsonl, transcript, logging, llm-call, schema-validator)
+│                         LLM calls use callViaAgent() which spawns `claude -p` as a
+│                         subprocess. In devcontainer testing, this runs with
+│                         --dangerously-skip-permissions for unattended operation.
 ├── hooks/                Telemetry + activation + enforcement
 │   ├── prompt-log.ts, skill-eval.ts, session-stop.ts   (telemetry capture)
 │   ├── auto-activate.ts                                (auto-activation)
@@ -89,6 +93,12 @@ skill/                    Agent-facing skill
 ├── SKILL.md              Routing table (triggers → workflows)
 ├── Workflows/            Step-by-step guides (1 per command)
 └── references/           Domain knowledge (logs, grading, taxonomy)
+
+tests/sandbox/
+├── run-sandbox.ts          # Layer 1: Local sandbox orchestrator (10 tests, ~400ms)
+├── fixtures/               # 3 skills, 15 sessions, 30 queries, hook payloads
+├── docker/                 # Layer 2: Devcontainer + claude -p LLM test runner
+└── results/                # Test run output (gitignored)
 ```
 
 ### Module Definitions
@@ -101,7 +111,7 @@ skill/                    Agent-facing skill
 | Auto-Activation | `cli/selftune/hooks/`, `cli/selftune/` | `auto-activate.ts`, `activation-rules.ts` | Detect when selftune should run, output suggestions | Shared only |
 | Enforcement | `cli/selftune/hooks/` | `evolution-guard.ts`, `skill-change-guard.ts` | Block unguarded SKILL.md edits | Shared only |
 | Memory | `cli/selftune/memory/` | `writer.ts` | Persist evolution context across resets | Shared only |
-| Ingestors | `cli/selftune/ingestors/` | `codex-wrapper.ts`, `codex-rollout.ts`, `opencode-ingest.ts` | Normalize platform data | Shared only |
+| Ingestors | `cli/selftune/ingestors/` | `codex-wrapper.ts`, `codex-rollout.ts`, `opencode-ingest.ts`, `claude-replay.ts` | Normalize platform data | Shared only |
 | Eval | `cli/selftune/eval/` | `hooks-to-evals.ts` | Detect false negatives, generate eval sets | Shared only |
 | Grading | `cli/selftune/grading/` | `grade-session.ts` | Grade sessions across 3 tiers | Shared only |
 | Evolution | `cli/selftune/evolution/` | `extract-patterns.ts`, `propose-description.ts`, `validate-proposal.ts`, `audit.ts`, `evolve.ts`, `deploy-proposal.ts`, `rollback.ts`, `stopping-criteria.ts` | Propose and validate description improvements | Shared, Eval |
@@ -111,6 +121,7 @@ skill/                    Agent-facing skill
 | Dashboard | `cli/selftune/` | `dashboard.ts`, `dashboard-server.ts` | HTML dashboard builder + live SSE server | Shared, Monitoring, Evolution/audit |
 | Agents | `.claude/agents/` | `diagnosis-analyst.md`, `pattern-analyst.md`, `evolution-reviewer.md`, `integration-guide.md` | Specialized Claude Code agents | Reads log schema + config |
 | Skill | `skill/` | `SKILL.md`, `Workflows/*.md`, `references/*.md`, `settings_snippet.json` | Agent-facing routing, workflows, domain knowledge | Reads log schema + config |
+| Sandbox | `tests/sandbox/` | `run-sandbox.ts`, `fixtures/`, `docker/` | Sandbox test harness and Docker integration tests | All modules (test-only) |
 
 ### Enforcement
 
