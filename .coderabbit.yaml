@@ -35,7 +35,7 @@ reviews:
   path_filters:
     - "!bun.lockb"
     - "!**/*.snap"
-    - "!**/fixtures/**"
+    # fixtures are intentional test data — don't exclude from review
     - "!coverage/**"
 
   path_instructions:
