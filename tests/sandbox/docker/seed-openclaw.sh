@@ -18,7 +18,7 @@ echo "Seeding OpenClaw data from ${FIXTURES_DIR} into ${TARGET_DIR}..."
 # Wait for gateway to be healthy
 echo "Waiting for OpenClaw gateway at ${GATEWAY_URL}/healthz..."
 for i in $(seq 1 30); do
-  if curl -sf "${GATEWAY_URL}/healthz" > /dev/null 2>&1; then
+  if curl -sf --connect-timeout 2 --max-time 5 "${GATEWAY_URL}/healthz" > /dev/null 2>&1; then
     echo "Gateway healthy."
     break
   fi
