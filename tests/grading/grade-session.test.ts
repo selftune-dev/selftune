@@ -653,8 +653,7 @@ describe("failure feedback in GRADER_SYSTEM", () => {
     expect(GRADER_SYSTEM).toContain("failure_feedback");
   });
 
-  it("GRADER_SYSTEM contains failure_feedback instruction", () => {
-    expect(GRADER_SYSTEM).toContain("failure_feedback");
+  it("GRADER_SYSTEM contains improvement_hint instruction", () => {
     expect(GRADER_SYSTEM).toContain("improvement_hint");
   });
 });

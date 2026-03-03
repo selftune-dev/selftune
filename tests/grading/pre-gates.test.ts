@@ -36,10 +36,12 @@ function makeCtx(overrides: Partial<PreGateContext> = {}): PreGateContext {
 // ---------------------------------------------------------------------------
 
 describe("pre-gate pattern matching", () => {
-  test("skill_md_read gate matches 'SKILL.md was read'", () => {
+  test("skill_md_read gate matches both orderings", () => {
     const gate = DEFAULT_GATES.find((g) => g.name === "skill_md_read")!;
     expect(gate.pattern.test("SKILL.md was read")).toBe(true);
     expect(gate.pattern.test("The skill.md file was read")).toBe(true);
+    expect(gate.pattern.test("read the SKILL.md file")).toBe(true);
+    expect(gate.pattern.test("Read SKILL.md")).toBe(true);
   });
 
   test("skill_md_read gate does not match unrelated text", () => {

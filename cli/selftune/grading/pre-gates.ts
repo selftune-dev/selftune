@@ -32,7 +32,7 @@ export interface PreGateResult {
 export const DEFAULT_GATES: PreGate[] = [
   {
     name: "skill_md_read",
-    pattern: /skill\.md.*read/i,
+    pattern: /(read.*skill\.md|skill\.md.*read)/i,
     check: (ctx) => {
       // Check if skills_triggered contains the skill name
       const triggered = ctx.telemetry.skills_triggered ?? [];

@@ -137,6 +137,7 @@ Converts hook logs into trigger eval sets: positives (real queries that triggere
 Grades completed sessions against expectations using the agent the user already has installed — Claude Code, Codex, or OpenCode — without requiring a separate Anthropic API key. Produces `grading.json` compatible with the skill-creator eval viewer. Includes deterministic pre-gates that resolve expectations without LLM calls (<20ms), and graduated 0-1 scoring for finer-grained confidence tracking. Rich failure feedback provides structured explanations (`query`, `failure_reason`, `improvement_hint`, `invocation_type`) that feed directly into the evolution pipeline.
 
 ### Skill Evolution
+
 Runs the description improvement loop using real usage signal as ground truth. Proposes new descriptions, validates against the eval set, confirms the pass rate improves, and writes the result to disk with a full audit trail. Supports Pareto multi-candidate evolution: generates N candidates in parallel, computes a Pareto frontier across invocation type dimensions (explicit, implicit, contextual, negative), and optionally merges complementary proposals. CLI flags: `--pareto` (default true), `--candidates N` (default 3, max 5).
 
 ### Grader Skill
