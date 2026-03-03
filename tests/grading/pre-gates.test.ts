@@ -196,4 +196,16 @@ describe("runPreGates", () => {
     expect(result.resolved.length).toBe(1);
     expect(result.resolved[0].evidence).toContain("custom");
   });
+
+  test("global regex gate does not carry stale lastIndex across calls", () => {
+    const globalGate: PreGate = {
+      name: "global_test",
+      pattern: /foo/gi,
+      check: () => true,
+    };
+    // Without lastIndex reset, the second "foo" would fail because
+    // the global regex advances lastIndex past the match on first call
+    const result = runPreGates(["foo", "foo"], makeCtx(), [globalGate]);
+    expect(result.resolved.length).toBe(2);
+  });
 });

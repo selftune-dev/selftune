@@ -623,6 +623,38 @@ describe("buildGraduatedSummary", () => {
     expect(result.mean_score).toBe(0.7);
     expect(result.score_std_dev).toBe(0);
   });
+
+  it("clamps scores above 1.0 to 1.0", () => {
+    const expectations = [{ text: "a", passed: true, evidence: "ok", score: 1.5 }];
+    const result = buildGraduatedSummary(expectations);
+    expect(result.mean_score).toBe(1.0);
+  });
+
+  it("clamps scores below 0.0 to 0.0", () => {
+    const expectations = [{ text: "a", passed: false, evidence: "no", score: -0.25 }];
+    const result = buildGraduatedSummary(expectations);
+    expect(result.mean_score).toBe(0);
+  });
+
+  it("falls back to passed-based score for NaN", () => {
+    const expectations = [
+      { text: "a", passed: true, evidence: "ok", score: NaN },
+      { text: "b", passed: false, evidence: "no", score: NaN },
+    ];
+    const result = buildGraduatedSummary(expectations);
+    // NaN → fallback: passed=true→1.0, passed=false→0.0, mean=0.5
+    expect(result.mean_score).toBe(0.5);
+  });
+
+  it("falls back to passed-based score for Infinity", () => {
+    const expectations = [
+      { text: "a", passed: true, evidence: "ok", score: Infinity },
+      { text: "b", passed: false, evidence: "no", score: -Infinity },
+    ];
+    const result = buildGraduatedSummary(expectations);
+    // Infinity → fallback: passed=true→1.0, -Infinity → fallback: passed=false→0.0, mean=0.5
+    expect(result.mean_score).toBe(0.5);
+  });
 });
 
 // ---------------------------------------------------------------------------

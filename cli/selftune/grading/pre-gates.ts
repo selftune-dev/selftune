@@ -79,6 +79,9 @@ export function runPreGates(
   for (const text of expectations) {
     let matched = false;
     for (const gate of gates) {
+      if (gate.pattern.global || gate.pattern.sticky) {
+        gate.pattern.lastIndex = 0;
+      }
       if (gate.pattern.test(text)) {
         const passed = gate.check(ctx);
         resolved.push({
