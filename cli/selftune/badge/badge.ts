@@ -57,16 +57,16 @@ export function cliMain(): void {
     process.exit(1);
   }
 
-  const format: BadgeFormat =
-    values.format && VALID_FORMATS.has(values.format as BadgeFormat)
-      ? (values.format as BadgeFormat)
-      : "svg";
-
   if (values.format && !VALID_FORMATS.has(values.format as BadgeFormat)) {
     console.error(`Error: invalid format '${values.format}'. Must be one of: svg, markdown, url\n`);
     console.error(HELP);
     process.exit(1);
   }
+
+  const format: BadgeFormat =
+    values.format && VALID_FORMATS.has(values.format as BadgeFormat)
+      ? (values.format as BadgeFormat)
+      : "svg";
 
   // Read log files
   const telemetry = readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG);

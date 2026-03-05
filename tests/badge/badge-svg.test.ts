@@ -7,8 +7,6 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
-  type BadgeData,
-  type BadgeFormat,
   computeBadgeData,
   findSkillBadgeData,
 } from "../../cli/selftune/badge/badge-data.js";

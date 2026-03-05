@@ -414,7 +414,11 @@ export async function startDashboardServer(
       // ---- GET /badge/:skillName ---- Badge SVG
       if (url.pathname.startsWith("/badge/") && req.method === "GET") {
         const skillName = decodeURIComponent(url.pathname.slice("/badge/".length));
-        const format = (url.searchParams.get("format") as BadgeFormat) ?? "svg";
+        const formatParam = url.searchParams.get("format");
+        const validFormats = new Set(["svg", "markdown", "url"]);
+        const format: BadgeFormat = formatParam && validFormats.has(formatParam)
+          ? (formatParam as BadgeFormat)
+          : "svg";
 
         const statusResult = computeStatusFromLogs();
         const badgeData = findSkillBadgeData(statusResult, skillName);

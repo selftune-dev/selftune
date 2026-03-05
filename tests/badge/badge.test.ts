@@ -58,19 +58,19 @@ describe("integration: multi-skill badge pipeline", () => {
     const newBadge = findSkillBadgeData(result, "new-skill");
 
     expect(apiBadge).not.toBeNull();
-    expect(apiBadge!.color).toBe("#4c1");
-    expect(apiBadge!.message).toBe("92% \u2191");
-    expect(apiBadge!.status).toBe("HEALTHY");
+    expect(apiBadge?.color).toBe("#4c1");
+    expect(apiBadge?.message).toBe("92% \u2191");
+    expect(apiBadge?.status).toBe("HEALTHY");
 
     expect(dbBadge).not.toBeNull();
-    expect(dbBadge!.color).toBe("#e05d44");
-    expect(dbBadge!.message).toBe("45% \u2193");
-    expect(dbBadge!.status).toBe("REGRESSED");
+    expect(dbBadge?.color).toBe("#e05d44");
+    expect(dbBadge?.message).toBe("45% \u2193");
+    expect(dbBadge?.status).toBe("REGRESSED");
 
     expect(newBadge).not.toBeNull();
-    expect(newBadge!.color).toBe("#9f9f9f");
-    expect(newBadge!.message).toBe("no data");
-    expect(newBadge!.status).toBe("NO DATA");
+    expect(newBadge?.color).toBe("#9f9f9f");
+    expect(newBadge?.message).toBe("no data");
+    expect(newBadge?.status).toBe("NO DATA");
   });
 
   it("regressed skill produces red badge with down trend", () => {
@@ -169,10 +169,10 @@ describe("findSkillBadgeData", () => {
     const badge = findSkillBadgeData(result, "my-skill");
 
     expect(badge).not.toBeNull();
-    expect(badge!.label).toBe("Skill Health");
-    expect(badge!.passRate).toBe(0.88);
-    expect(badge!.color).toBe("#4c1");
-    expect(badge!.message).toBe("88% \u2191");
+    expect(badge?.label).toBe("Skill Health");
+    expect(badge?.passRate).toBe(0.88);
+    expect(badge?.color).toBe("#4c1");
+    expect(badge?.message).toBe("88% \u2191");
   });
 
   it("uses case-sensitive matching (different case returns null)", () => {

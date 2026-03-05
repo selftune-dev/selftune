@@ -666,12 +666,18 @@ async function main(): Promise<void> {
         };
       } catch (err) {
         const durationMs = Math.round(performance.now() - start);
-        const isNetworkError = err instanceof Error &&
-          (err.name === "AbortError" || err.message.includes("fetch"));
+        const isNetworkError =
+          err instanceof Error && (err.name === "AbortError" || err.message.includes("fetch"));
 
         return {
-          name, command, exitCode: 1, passed: false, durationMs,
-          stdout: "", stderr: "", fullStdout: "",
+          name,
+          command,
+          exitCode: 1,
+          passed: false,
+          durationMs,
+          stdout: "",
+          stderr: "",
+          fullStdout: "",
           error: isNetworkError
             ? `Network unreachable (skippable): ${err.message}`
             : (err instanceof Error ? err.message : String(err)),
@@ -698,7 +704,6 @@ async function main(): Promise<void> {
 
         // Badge service should always return a response (graceful degradation)
         const isSvgOrValid = res.ok || res.status === 404;
-        const hasNoData = body.includes("no data") || body.includes("no%20data");
 
         return {
           name, command, exitCode: 0, passed: isSvgOrValid, durationMs,
