@@ -37,6 +37,7 @@ const EVOLUTION_FILES = new Set([
 ]);
 const MONITORING_FILES = new Set(["watch.ts"]);
 const CONTRIBUTE_FILES = new Set(["contribute.ts", "sanitize.ts", "bundle.ts"]);
+const BADGE_FILES = new Set(["badge.ts", "badge-data.ts", "badge-svg.ts"]);
 const EVAL_FILES = new Set([
   "baseline.ts",
   "composability.ts",
@@ -115,6 +116,25 @@ const CONTRIBUTE_FORBIDDEN = [
   "grade-session",
 ];
 
+/** Badge modules must not import from hooks, ingestors, grading, evolution, monitoring, or contribute. */
+const BADGE_FORBIDDEN = [
+  "/hooks/",
+  "/ingestors/",
+  "/grading/",
+  "/evolution/",
+  "/monitoring/",
+  "/contribute/",
+  "prompt-log",
+  "session-stop",
+  "skill-eval",
+  "codex-wrapper",
+  "codex-rollout",
+  "opencode-ingest",
+  "claude-replay",
+  "grade-session",
+  "hooks-to-evals",
+];
+
 export function checkFile(filepath: string): string[] {
   const violations: string[] = [];
   const name = basename(filepath);
@@ -129,6 +149,8 @@ export function checkFile(filepath: string): string[] {
     forbidden = MONITORING_FORBIDDEN;
   } else if (CONTRIBUTE_FILES.has(name)) {
     forbidden = CONTRIBUTE_FORBIDDEN;
+  } else if (BADGE_FILES.has(name)) {
+    forbidden = BADGE_FORBIDDEN;
   } else if (EVAL_FILES.has(name)) {
     forbidden = EVAL_FORBIDDEN;
   }
@@ -176,7 +198,6 @@ if (import.meta.main) {
   for (const file of findTsFiles("cli/selftune").sort()) {
     violations.push(...checkFile(file));
   }
-
   if (violations.length > 0) {
     console.log("Architecture violations found:");
     for (const v of violations) {

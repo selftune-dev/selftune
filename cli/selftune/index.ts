@@ -54,6 +54,7 @@ Commands:
   last               Show last session details
   dashboard          Open visual data dashboard
   cron               Manage OpenClaw cron jobs (setup, list, remove)
+  badge              Generate skill health badges for READMEs
   baseline           Measure skill value vs. no-skill baseline
   composability      Analyze skill co-occurrence conflicts
   unit-test          Run or generate skill unit tests
@@ -112,7 +113,7 @@ switch (command) {
   }
   case "contribute": {
     const { cliMain } = await import("./contribute/contribute.js");
-    cliMain();
+    await cliMain();
     break;
   }
   case "evolve": {
@@ -165,6 +166,11 @@ switch (command) {
   case "cron": {
     const { cliMain } = await import("./cron/setup.js");
     await cliMain();
+    break;
+  }
+  case "badge": {
+    const { cliMain } = await import("./badge/badge.js");
+    cliMain();
     break;
   }
   case "unit-test": {

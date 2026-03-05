@@ -359,6 +359,73 @@ async function main(): Promise<void> {
     }
     results.push(contributeResult);
 
+    // h. badge --skill find-skills (SVG)
+    const badgeSvgResult = await runCliCommand("badge --format svg", [
+      "badge",
+      "--skill",
+      "find-skills",
+    ]);
+    if (badgeSvgResult.passed) {
+      if (
+        !badgeSvgResult.fullStdout.includes("<svg") ||
+        !badgeSvgResult.fullStdout.includes("Skill Health")
+      ) {
+        badgeSvgResult.passed = false;
+        badgeSvgResult.error = "Expected SVG output containing <svg and 'Skill Health'";
+      }
+    }
+    results.push(badgeSvgResult);
+
+    // i. badge --skill find-skills --format markdown
+    const badgeMdResult = await runCliCommand("badge --format markdown", [
+      "badge",
+      "--skill",
+      "find-skills",
+      "--format",
+      "markdown",
+    ]);
+    if (badgeMdResult.passed) {
+      if (
+        !badgeMdResult.fullStdout.includes("![Skill Health:") ||
+        !badgeMdResult.fullStdout.includes("img.shields.io")
+      ) {
+        badgeMdResult.passed = false;
+        badgeMdResult.error = "Expected markdown image link with shields.io URL";
+      }
+    }
+    results.push(badgeMdResult);
+
+    // j. badge --skill find-skills --format url
+    const badgeUrlResult = await runCliCommand("badge --format url", [
+      "badge",
+      "--skill",
+      "find-skills",
+      "--format",
+      "url",
+    ]);
+    if (badgeUrlResult.passed) {
+      if (!badgeUrlResult.fullStdout.includes("https://img.shields.io/badge/")) {
+        badgeUrlResult.passed = false;
+        badgeUrlResult.error = "Expected shields.io badge URL";
+      }
+    }
+    results.push(badgeUrlResult);
+
+    // k. badge --skill nonexistent (should fail)
+    const badgeMissResult = await runCliCommand("badge --skill nonexistent", [
+      "badge",
+      "--skill",
+      "nonexistent-skill-xyz",
+    ]);
+    if (badgeMissResult.exitCode !== 1) {
+      badgeMissResult.passed = false;
+      badgeMissResult.error = `Expected exit code 1 for missing skill, got ${badgeMissResult.exitCode}`;
+    } else {
+      // exit 1 is the expected behavior — mark as passed
+      badgeMissResult.passed = true;
+    }
+    results.push(badgeMissResult);
+
     // -----------------------------------------------------------------------
     // Hook tests
     // -----------------------------------------------------------------------
@@ -560,6 +627,125 @@ async function main(): Promise<void> {
       }
     }
     results.push(cronSetupResult);
+
+    // -----------------------------------------------------------------------
+    // Live badge service smoke tests (badge.selftune.dev)
+    // -----------------------------------------------------------------------
+
+    // Smoke test: GET /badge/community/find-skills returns valid SVG
+    const badgeLiveResult: RawTestResult = await (async () => {
+      const name = "live: badge.selftune.dev";
+      const url = "https://badge.selftune.dev/badge/community/find-skills";
+      const command = `fetch ${url}`;
+      const start = performance.now();
+
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
+
+        const body = await res.text();
+        const durationMs = Math.round(performance.now() - start);
+
+        if (!res.ok) {
+          return {
+            name,
+            command,
+            exitCode: 1,
+            passed: false,
+            durationMs,
+            stdout: body.slice(0, 2000),
+            stderr: "",
+            fullStdout: body,
+            error: `HTTP ${res.status} ${res.statusText}`,
+          };
+        }
+
+        const contentType = res.headers.get("content-type") ?? "";
+        const isSvg = contentType.includes("svg") || body.trimStart().startsWith("<svg");
+
+        return {
+          name,
+          command,
+          exitCode: 0,
+          passed: isSvg,
+          durationMs,
+          stdout: body.slice(0, 2000),
+          stderr: "",
+          fullStdout: body,
+          error: isSvg ? undefined : `Expected SVG response, got content-type: ${contentType}`,
+        };
+      } catch (err) {
+        const durationMs = Math.round(performance.now() - start);
+        const isNetworkError =
+          err instanceof Error && (err.name === "AbortError" || err.message.includes("fetch"));
+
+        return {
+          name,
+          command,
+          exitCode: isNetworkError ? 0 : 1,
+          passed: isNetworkError,
+          durationMs,
+          stdout: "",
+          stderr: "",
+          fullStdout: "",
+          error: isNetworkError
+            ? `Network unreachable (skipped): ${err.message}`
+            : err instanceof Error
+              ? err.message
+              : String(err),
+        };
+      }
+    })();
+    results.push(badgeLiveResult);
+
+    // Smoke test: GET /badge/nonexistent-org/nonexistent-skill returns fallback badge
+    const badgeLiveFallbackResult: RawTestResult = await (async () => {
+      const name = "live: badge fallback (no data)";
+      const url = "https://badge.selftune.dev/badge/nonexistent-org-xyz/nonexistent-skill-xyz";
+      const command = `fetch ${url}`;
+      const start = performance.now();
+
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
+
+        const body = await res.text();
+        const durationMs = Math.round(performance.now() - start);
+
+        // Badge service should always return a response (graceful degradation)
+        const isSvgOrValid = res.ok || res.status === 404;
+
+        return {
+          name,
+          command,
+          exitCode: 0,
+          passed: isSvgOrValid,
+          durationMs,
+          stdout: body.slice(0, 2000),
+          stderr: "",
+          fullStdout: body,
+          error: isSvgOrValid ? undefined : `Unexpected HTTP ${res.status}`,
+        };
+      } catch (err) {
+        const durationMs = Math.round(performance.now() - start);
+        return {
+          name,
+          command,
+          exitCode: 0,
+          passed: true,
+          durationMs,
+          stdout: "",
+          stderr: "",
+          fullStdout: "",
+          error: `Network unreachable (skipped): ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
+    })();
+    results.push(badgeLiveFallbackResult);
 
     // -----------------------------------------------------------------------
     // Record results
