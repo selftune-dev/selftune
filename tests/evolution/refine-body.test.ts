@@ -192,4 +192,34 @@ describe("refineBodyProposal", () => {
     expect(refined.skill_name).toBe("test-skill");
     expect(refined.status).toBe("pending");
   });
+
+  test("throws when LLM returns malformed JSON", async () => {
+    mock.module("../../cli/selftune/utils/llm-call.js", () => ({
+      callLlm: async () => "not valid json",
+      stripMarkdownFences,
+    }));
+
+    const { refineBodyProposal: mockedRefine } = await import(
+      "../../cli/selftune/evolution/refine-body.js"
+    );
+
+    await expect(mockedRefine(makeProposal(), makeValidation(), "claude")).rejects.toThrow();
+  });
+
+  test("throws when LLM throws an error", async () => {
+    mock.module("../../cli/selftune/utils/llm-call.js", () => ({
+      callLlm: async () => {
+        throw new Error("LLM unavailable");
+      },
+      stripMarkdownFences,
+    }));
+
+    const { refineBodyProposal: mockedRefine } = await import(
+      "../../cli/selftune/evolution/refine-body.js"
+    );
+
+    await expect(mockedRefine(makeProposal(), makeValidation(), "claude")).rejects.toThrow(
+      "LLM unavailable",
+    );
+  });
 });

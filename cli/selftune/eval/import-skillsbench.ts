@@ -19,6 +19,15 @@ import type { EvalEntry, SkillsBenchTask } from "../types.js";
 // Minimal TOML parser (handles the subset used by SkillsBench task.toml files)
 // ---------------------------------------------------------------------------
 
+/**
+ * Parse the subset of TOML used by SkillsBench task.toml files.
+ *
+ * Supports: single-line key = "value", flat string arrays ["a", "b"],
+ * bare values (numbers, booleans).
+ *
+ * Does NOT support: multi-line / triple-quoted strings, inline tables,
+ * nested arrays, or section headers ([table]).
+ */
 function parseSimpleToml(content: string): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const rawLine of content.split("\n")) {

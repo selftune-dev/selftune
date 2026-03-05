@@ -80,6 +80,26 @@ describe("analyzeComposability", () => {
     expect(report.conflict_count).toBe(1);
   });
 
+  test("no false-positive when co-skill already has high solo error rate", () => {
+    const telemetry = [
+      // pptx alone: 0 errors
+      makeSession("s1", ["pptx"], 0),
+      makeSession("s2", ["pptx"], 0),
+      // high-error-skill alone: 5 errors (high baseline)
+      makeSession("s3", ["high-error-skill"], 5),
+      makeSession("s4", ["high-error-skill"], 5),
+      // pptx + high-error-skill together: 5 errors (same as co-skill alone, not worse)
+      makeSession("s5", ["pptx", "high-error-skill"], 5),
+      makeSession("s6", ["pptx", "high-error-skill"], 5),
+    ];
+    const report = analyzeComposability("pptx", telemetry);
+    const pair = report.pairs.find((p) => p.skill_b === "high-error-skill");
+    expect(pair).toBeDefined();
+    // Errors together (5) are NOT worse than co-skill alone (5), so no conflict
+    expect(pair?.conflict_detected).toBe(false);
+    expect(report.conflict_count).toBe(0);
+  });
+
   test("handles multiple co-occurring skills with mixed conflict status", () => {
     const telemetry = [
       // pptx alone: 1 error average

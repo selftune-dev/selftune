@@ -172,7 +172,11 @@ export async function evolveBody(
     let evalSet: EvalEntry[];
     if (evalSetPath && existsSync(evalSetPath)) {
       const raw = _readFileSync(evalSetPath, "utf-8");
-      evalSet = JSON.parse(raw) as EvalEntry[];
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        throw new Error("Eval set must be a JSON array");
+      }
+      evalSet = parsed as EvalEntry[];
     } else {
       const skillRecords = readJsonl<SkillUsageRecord>(SKILL_LOG);
       const queryRecords = readJsonl<QueryLogRecord>(QUERY_LOG);

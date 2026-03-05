@@ -75,8 +75,19 @@ export function analyzeComposability(
           togetherSessions.length
         : 0;
 
-    // conflict_score = clamp((errors_together - errors_alone) / (errors_alone + 1), 0, 1)
-    const conflictScore = clamp((errorsTogether - errorsAlone) / (errorsAlone + 1), 0, 1);
+    // Baseline should consider BOTH skills alone to avoid false positives
+    const coSkillAloneSessions = sessions.filter(
+      (r) => r.skills_triggered.includes(coSkill) && !r.skills_triggered.includes(skillName),
+    );
+    const errorsCoSkillAlone =
+      coSkillAloneSessions.length > 0
+        ? coSkillAloneSessions.reduce((sum, r) => sum + (r.errors_encountered ?? 0), 0) /
+          coSkillAloneSessions.length
+        : errorsAlone;
+    const baselineAlone = Math.max(errorsAlone, errorsCoSkillAlone);
+
+    // conflict_score = clamp((errors_together - baseline) / (baseline + 1), 0, 1)
+    const conflictScore = clamp((errorsTogether - baselineAlone) / (baselineAlone + 1), 0, 1);
 
     const conflictDetected = conflictScore > 0.3;
 

@@ -466,12 +466,15 @@ export interface BodyEvolutionProposal {
   status: "pending" | "validated" | "deployed" | "rolled_back";
 }
 
+/** Closed union of gate names used in the validation pipeline. */
+export type ValidationGate = "structural" | "trigger_accuracy" | "quality";
+
 /** Result of validating a body evolution proposal. */
 export interface BodyValidationResult {
   proposal_id: string;
   gates_passed: number;
   gates_total: number;
-  gate_results: Array<{ gate: string; passed: boolean; reason: string }>;
+  gate_results: Array<{ gate: ValidationGate; passed: boolean; reason: string }>;
   improved: boolean;
   regressions: string[];
 }

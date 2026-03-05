@@ -234,7 +234,13 @@ Options:
 
 if (import.meta.main) {
   cliMain().catch((err) => {
-    console.error(`[FATAL] ${err}`);
+    console.error(
+      JSON.stringify({
+        level: "fatal",
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      }),
+    );
     process.exit(1);
   });
 }

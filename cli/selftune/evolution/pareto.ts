@@ -78,7 +78,9 @@ export function computeTokenUsageMetrics(records: SessionTelemetryRecord[]): Tok
  *
  * Compares average total tokens for sessions WITH the skill triggered
  * vs sessions WITHOUT it. Returns `clamp(baseline_avg / with_skill_avg, 0, 1)`.
- * A score > 0.5 means the skill is token-efficient (fewer tokens when active).
+ * Values near 1.0 indicate the baseline uses more tokens than sessions with the
+ * skill (i.e. the skill is efficient). Values near 0.0 indicate the skill uses
+ * more tokens than the baseline.
  *
  * Returns 0.5 (neutral) when there is insufficient data in either group.
  */

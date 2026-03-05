@@ -17,19 +17,6 @@ import type { EvalEntry } from "../../cli/selftune/types.js";
 // Mock callLlm
 // ---------------------------------------------------------------------------
 
-type CallLlmFn = (system: string, user: string, agent: string) => Promise<string>;
-
-function _makeMockCallLlm(responses: Record<string, string>): CallLlmFn {
-  return mock(async (_system: string, user: string, _agent: string): Promise<string> => {
-    // Determine if this is a baseline (empty description) or with-skill check
-    // by inspecting the prompt content
-    for (const [key, value] of Object.entries(responses)) {
-      if (user.includes(key)) return value;
-    }
-    return "NO";
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

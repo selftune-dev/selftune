@@ -250,4 +250,56 @@ describe("generateRoutingProposal", () => {
     expect(proposal.confidence).toBe(0.9);
     expect(proposal.status).toBe("pending");
   });
+
+  test("throws when LLM returns malformed JSON", async () => {
+    mock.module("../../cli/selftune/utils/llm-call.js", () => ({
+      callLlm: async () => "not valid json at all",
+      stripMarkdownFences,
+    }));
+
+    const { generateRoutingProposal: mockedGenerate } = await import(
+      "../../cli/selftune/evolution/propose-routing.js"
+    );
+
+    const patterns: FailurePattern[] = [makePattern("fp-test-0", "test-skill", ["create deck"], 1)];
+
+    await expect(
+      mockedGenerate(
+        "| Trigger | Workflow |\n| --- | --- |\n| make slides | presentation |",
+        "# Test\n\nFull content",
+        patterns,
+        ["create deck"],
+        "test-skill",
+        "/skills/test-skill",
+        "claude",
+      ),
+    ).rejects.toThrow();
+  });
+
+  test("throws when LLM throws an error", async () => {
+    mock.module("../../cli/selftune/utils/llm-call.js", () => ({
+      callLlm: async () => {
+        throw new Error("LLM unavailable");
+      },
+      stripMarkdownFences,
+    }));
+
+    const { generateRoutingProposal: mockedGenerate } = await import(
+      "../../cli/selftune/evolution/propose-routing.js"
+    );
+
+    const patterns: FailurePattern[] = [makePattern("fp-test-0", "test-skill", ["create deck"], 1)];
+
+    await expect(
+      mockedGenerate(
+        "| Trigger | Workflow |",
+        "# Test",
+        patterns,
+        ["create deck"],
+        "test-skill",
+        "/skills/test-skill",
+        "claude",
+      ),
+    ).rejects.toThrow("LLM unavailable");
+  });
 });
