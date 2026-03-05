@@ -40,6 +40,17 @@ selftune badge --skill my-skill --format url
 selftune badge --skill my-skill --output badge.svg
 ```
 
+## Badge Branding
+
+SVG badges (both `--format svg` and dashboard routes) include the selftune logo as an inline 14px icon in the label section. The logo is embedded as a base64 data URI — no external requests needed.
+
+```
+[ 🔵 Skill Health (gray) ] [ 85% ↑ (green) ]
+  ^14px logo + 3px gap
+```
+
+Markdown and URL formats use shields.io, which renders its own badge — the logo only appears in locally-generated SVGs.
+
 ## Badge Colors
 
 | Pass Rate | Color | Hex |
@@ -83,21 +94,19 @@ http://localhost:<port>/report/my-skill
 
 ## Hosted Service (Phase 3)
 
-The hosted badge service at `selftune.dev` aggregates community contributions and serves badges publicly.
+The hosted badge service at `badge.selftune.dev` aggregates community contributions and serves badges publicly.
 
 ### Endpoints
 
 | Route | Method | Description |
 |-------|--------|-------------|
 | `/badge/:skill` | GET | SVG badge from aggregated community data |
-| `/report/:skill` | GET | HTML report with contributor stats |
-| `/submit` | POST | Accept contribution bundles |
-| `/health` | GET | Service health check |
+| `/badge/:org/:skill` | GET | Organization-scoped SVG badge |
 
 ### Embedding from hosted service
 
 ```markdown
-![Skill Health: my-skill](https://selftune.dev/badge/my-skill)
+![Skill Health: my-skill](https://badge.selftune.dev/badge/my-skill)
 ```
 
 ### Contributing data

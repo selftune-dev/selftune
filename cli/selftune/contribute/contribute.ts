@@ -27,7 +27,7 @@ export async function cliMain(): Promise<void> {
       sanitize: { type: "string", default: "conservative" },
       since: { type: "string" },
       submit: { type: "boolean", default: false },
-      endpoint: { type: "string", default: "https://selftune.dev" },
+      endpoint: { type: "string", default: "https://selftune-api.fly.dev" },
       github: { type: "boolean", default: false },
     },
     strict: true,
@@ -101,7 +101,7 @@ export async function cliMain(): Promise<void> {
       const ok = submitToGitHub(json, outputPath);
       if (!ok) process.exit(1);
     } else {
-      const endpoint = values.endpoint ?? "https://selftune.dev";
+      const endpoint = values.endpoint ?? "https://selftune-api.fly.dev";
       const ok = await submitToService(json, endpoint, skillName);
       if (!ok) {
         console.log("Falling back to GitHub submission...");

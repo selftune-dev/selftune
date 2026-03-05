@@ -215,6 +215,22 @@ describe("renderBadgeSvg", () => {
 
     expect(svg).toContain("#4c1");
   });
+
+  test("SVG contains image element for logo", () => {
+    const badge = computeBadgeData(makeSkillStatus({ passRate: 0.85 }));
+    const svg = renderBadgeSvg(badge);
+
+    expect(svg).toContain("<image");
+    expect(svg).toContain('x="3" y="3"');
+    expect(svg).toContain('width="14" height="14"');
+  });
+
+  test("SVG contains base64 logo data URI", () => {
+    const badge = computeBadgeData(makeSkillStatus({ passRate: 0.85 }));
+    const svg = renderBadgeSvg(badge);
+
+    expect(svg).toContain("data:image/svg+xml;base64,");
+  });
 });
 
 // ---------------------------------------------------------------------------

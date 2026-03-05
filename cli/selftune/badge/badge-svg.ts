@@ -93,6 +93,17 @@ const CHAR_WIDTHS: Record<string, number> = {
 const DEFAULT_CHAR_WIDTH = 6.8;
 
 // ---------------------------------------------------------------------------
+// Logo constants
+// ---------------------------------------------------------------------------
+
+const LOGO_SIZE = 14;
+const LOGO_PAD = 3; // gap between logo and text
+const LOGO_EXTRA = LOGO_SIZE + LOGO_PAD; // 17px added to label section
+
+const LOGO_SVG_BASE64 =
+  "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTAiIGhlaWdodD0iMjUwIiB2aWV3Qm94PSIwIDAgMjUwIDI1MCIgZmlsbD0ibm9uZSI+CjxwYXRoIGQ9Ik0gMTkwLjE2LDMxLjQ5IEMgMTg3LjkxLDI5Ljg4IDE4NC41MSwzMi4xOSAxODUuODgsMzUuMTYgQyAxODYuMzEsMzYuMTEgMTg3LjA4LDM2LjU0IDE4Ny43MSwzNy4wMSBDIDIxOC43NSw1OS44NiAyMzcuNjMsOTIuNzEgMjM3LjYzLDEyOC44MiBDIDIzNy42MywxNzUuOTkgMjA1LjEyLDIxOC41NiAxNTMuODIsMjM0LjY5IEMgMTQ5Ljg5LDIzNS45MyAxNTAuOTEsMjQxLjcxIDE1NC45MSwyNDAuNjYgQyAyMDUuOTgsMjI2Ljk2IDI0My4wMSwxODEuOTQgMjQzLDEyOC40NSBDIDI0Mi45OSw5MC44NyAyMjMuNDcsNTYuMTggMTkwLjE2LDMxLjQ5IFoiIGZpbGw9IiNmZmYiLz4KPHBhdGggZD0iTSAxMjUuMTksMjQzLjkxIEMgMTM4LjA4LDI0My45MSAxNDcuMTgsMjM2LjQ0IDE1MS4yMSwyMjUuMDEgQyAxOTMuNzIsMjE3Ljc5IDIyNi45OCwxODQuMDIgMjI2Ljk4LDE0MC44MSBDIDIyNi45OCwxMjEuMTcgMjE5LjgyLDEwMy43OCAyMDkuOTMsODcuMDQgQyAxOTEuNDIsNTUuNDUgMTY1LjE1LDM0LjcyIDExNy43MSwyOC42NSBDIDExMi45MSwyOC4wNCAxMTMuNzcsMzQuMzUgMTE3LjE5LDM0LjgyIEMgMTYxLjY3LDM5LjMzIDE4NS44NCw1Ni43MSAyMDMuNzYsODYuNDIgQyAyMTMuODcsMTAzLjY4IDIyMC42OCwxMTkuNjEgMjIwLjY4LDE0MC44MSBDIDIyMC42OCwxNzkuOTYgMTkwLjgxLDIxMS45NSAxNDguNzEsMjE5LjE2IEMgMTQ3LjExLDIxOS40NyAxNDYuMjcsMjIwLjMyIDE0NS45MiwyMjEuOCBDIDE0Mi45NSwyMzEuMTEgMTM1LjcyLDIzOC4wMiAxMjUuMTksMjM3LjY2IEMgNjQuNDgsMjM3LjY2IDExLjY3LDE5MS42MSAxMS42NywxMjcuNTEgQyAxMS42Nyw3OS42MSA0NC44MiwzNi4zOCA5My44OSwyNy43NyBMIDk0LjExLDI3LjczIEwgOTQuMzgsMjYuNjQgQyA5Ny4wNCwxNi42MSAxMDQuNTcsMTEuODIgMTE0LjE5LDExLjgyIEMgMTM0LjEyLDEzLjM2IDE1Mi45MSwxOC4xNSAxNzAuNDgsMjYuMDggQyAxNzEuOTIsMjYuNzggMTczLjgxLDI3LjA5IDE3NC43NiwyNS41OSBDIDE3Ni4wNSwyMy43MiAxNzUuMzEsMjEuMDcgMTczLjAxLDIwLjM0IEMgMTU0Ljc4LDExLjk2IDEzNy4yMSw3LjE3IDExNC40Nyw2IEggMTEzLjUyIEMgMTAxLjkxLDYgOTMuNDYsMTIuMTYgODkuNDksMjEuNzggQyA0Mi4zNiwzMS4yNiA2LjE3LDc0Ljc2IDYuMTcsMTI4LjA4IEMgNi4xNywxOTAuMDUgNTcuOTIsMjQzLjkxIDEyNS4xOSwyNDMuOTEgWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNIDkzLjY3LDQwLjY0IEMgMTAwLjUxLDUyLjA3IDEwOS41NCw1MS4zMyAxMTQuMDUsNTIuMTcgQyAxMjguNzIsNTMuOTEgMTQxLjQ4LDU1Ljc4IDE1Ny4zOCw2Mi4xNiBDIDE2Mi43Miw2NC40NyAxNjIuMjksNTguMTkgMTU5LjE4LDU3LjAxIEMgMTQ1LjExLDUxLjMzIDEzMi40OCw0OS43OSAxMTEuMzEsNDcuNDggQyAxMDEuODMsNDYuMjkgOTUuNDUsNDEuMTggOTMuNzUsMzIuODEgQyA1NS4yMSwzOS40NiAyMi4wNiw3Mi4xNyAyMi4wNiwxMTIuNDggQyAyMi4wNiwxMzEuOTggMzAuMzYsMTQ5LjgyIDQzLjI2LDE2NC40OSBDIDQ2LjIzLDE2Ny41OSA1MC4xOSwxNjQuMTMgNDguMzIsMTYxLjAyIEMgMzYuMjEsMTQ1LjU0IDI4LjQyLDEyOS43OCAyOC40MiwxMTIuNCBDIDI4LjQyLDc5LjExIDU0LjkxLDQ4LjM2IDg5LjkxLDQwLjM2IEMgOTAuNzYsNDAuMTUgOTEuMDQsMzkuODcgOTEuNjIsNDAuMDEgQyA5Mi42Miw0MC4wMSA5My4wNCwzOS42NSA5My42Nyw0MC42NCBaIiBmaWxsPSIjZmZmIi8+CjxwYXRoIGQ9Ik0gMTUyLjcyLDgyLjc3IEMgMTI2LjYxLDgyLjc3IDExMy4wNyw5OS40NCAxMDMuMDEsMTE5LjMzIEMgMTAwLjU2LDEyMy4zNiAxMDMuNzQsMTI1LjAzIDEwNS42MSwxMjMuOTIgQyAxMDcuMTUsMTIzLjIyIDEwNy44OSwxMjEuMDUgMTA4LjczLDExOS42MSBDIDExOC4yMiwxMDIuMTYgMTMwLjMzLDg4LjU2IDE1Mi43Miw4OC41NiBDIDE4MS42Miw4OC41NiAyMDEuOTEsMTE2LjAxIDIwMS45MSwxNDcuMzEgQyAyMDEuOTEsMTc1LjEyIDE4My40NywxOTkuOTYgMTUyLjUxLDIwNS43NSBDIDE1MS44NCwyMDUuOTYgMTUxLjYzLDIwNi4wMyAxNTEuNTYsMjA1LjU0IEMgMTQ3Ljc0LDE5NS4zNyAxMzkuMzYsMTg4LjE1IDEyOC4wNywxODYuNDggQyAxMTMuMiwxODQuMjQgMTAxLjIzLDE4Mi4zNiA4My44LDE3Ni44MSBDIDc5LjMsMTc1LjQ4IDc3LjkxLDE4Mi4zNiA4Mi40MSwxODMuMDkgQyA5Ny4yMSwxODcuNDYgMTA4LjA5LDE4OS40NyAxMjYuMjUsMTkyLjY1IEMgMTM2Ljc4LDE5NC4zMSAxNDUuNDEsMjAxLjcxIDE0Ny4xMSwyMTAuOTUgQyAxNDcuNzQsMjEzLjA1IDE0OS4xMywyMTMuNDEgMTUwLjE1LDIxMy4yNiBDIDE4My43NSwyMDguNjEgMjA4LjI2LDE4MC45MyAyMDguMjYsMTQ3LjI0IEMgMjA4LjI2LDExNS4wNiAxODYuOTQsODIuNzcgMTUyLjcyLDgyLjc3IFoiIGZpbGw9IiNmZmYiLz4KPHBhdGggZD0iTSAxMjkuNzcsMTA1LjIxIEMgMTIyLjkzLDExMi4wNSAxMTguOTcsMTIyLjczIDExMy43NywxMzAuNDEgQyAxMTEuMzEsMTMzLjQ1IDExNC41NiwxMzYuNjMgMTE3LjQ2LDEzNC40NiBDIDEyMy43NSwxMjYuMjMgMTI3LjQzLDExNS42MiAxMzUuMTUsMTA4LjcxIEMgMTM4LjIyLDEwNS44MSAxMzQuNzMsMTAxLjA5IDEyOS43NywxMDUuMjEgWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNIDEzNi43OCwxMjAuMzEgQyAxMjcuNzEsMTM2LjcxIDEyMC4xMiwxNTQuOTEgOTMuNzQsMTU0LjkxIEMgNjYuMDcsMTU0LjkxIDQ3Ljc2LDEyOC41MyA0Ny43NiwxMDQuNzggQyA0Ny43Niw4NC40NyA1OC41Nyw2Ni4wOCA3Ny42Niw1Ni4yNSBDIDgyLjIzLDU0LjIxIDc5Ljg1LDQ3Ljc2IDc1LjM0LDQ5LjkzIEMgNTQuNzcsNTkuNzIgNDIuMDEsODAuMTEgNDIuMDEsMTA0LjcxIEMgNDIuMDEsMTMxLjc3IDYxLjg2LDE2MS4zMSA5My42NywxNjEuMzEgQyAxMTQuNzcsMTYxLjMxIDEyOC45MSwxNDcuMjQgMTM5Ljg2LDEyNC4wNiBDIDE0Mi43NiwxMjAuNDUgMTM5LjE1LDExNy43MyAxMzYuNzgsMTIwLjMxIFoiIGZpbGw9IiNmZmYiLz4KPHBhdGggZD0iTSAzMC43MywxNTQuNyBDIDI3Ljc2LDE1Mi45NyAyMy44NywxNTUuOTMgMjUuNDEsMTU4Ljc2IEMgNDEuNzMsMTg4LjM2IDY4Ljk0LDE5OS43OSAxMDUuNzUsMjA2LjQxIEMgMTEyLjI1LDIwNy42NiAxMjIuMDcsMjA4Ljc1IDEyMy40NiwyMDkuMDMgQyAxMjguMDcsMjA5Ljk1IDEyOC4wNywyMjAuMTggMTIxLjc4LDIyMC4xOCBDIDEwNy42NCwyMTguOTQgOTIuMDYsMjE1Ljk4IDc2LjIzLDIxMS4zMyBDIDcyLjEzLDIxMC4yNCA3MS4wNCwyMTYuNjkgNzUuMjcsMjE3LjY0IEMgOTAuNDEsMjIyLjIyIDEwMy45NSwyMjQuNzQgMTIwLjQ3LDIyNi41NCBDIDEzMy43MywyMjYuNTQgMTM2LjU2LDIwOS4wMyAxMjYuMDMsMjAzLjM4IEMgMTIzLjc1LDIwMi4xMyAxMjIuNzMsMjAyLjU2IDExMi4wNCwyMDAuNzYgQyA3OC4wOSwxOTUuMDQgNTQuMDYsMTg4Ljk4IDMyLjEyLDE1NS42NSBDIDMxLjc3LDE1NS4yMyAzMS4yOCwxNTQuOTEgMzAuNzMsMTU0LjcgWiIgZmlsbD0iI2ZmZiIvPgo8L3N2Zz4=";
+
+// ---------------------------------------------------------------------------
 // Text width estimation
 // ---------------------------------------------------------------------------
 
@@ -134,12 +145,12 @@ export function renderBadgeSvg(data: BadgeData): string {
   const labelTextWidth = measureText(labelText);
   const valueTextWidth = measureText(valueText);
 
-  // 10px padding on each side of text
-  const labelWidth = Math.round(labelTextWidth + 20);
+  // 10px padding on each side of text + logo space in label
+  const labelWidth = Math.round(labelTextWidth + 20 + LOGO_EXTRA);
   const valueWidth = Math.round(valueTextWidth + 20);
   const totalWidth = labelWidth + 1 + valueWidth; // 1px gap
 
-  const labelX = labelWidth / 2;
+  const labelTextX = (labelWidth + LOGO_EXTRA) / 2;
   const valueX = labelWidth + 1 + valueWidth / 2;
 
   const height = 20;
@@ -149,7 +160,7 @@ export function renderBadgeSvg(data: BadgeData): string {
   const escapedLabel = escapeXml(labelText);
   const escapedValue = escapeXml(valueText);
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="${height}" role="img" aria-label="${escapedLabel}: ${escapedValue}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${totalWidth}" height="${height}" role="img" aria-label="${escapedLabel}: ${escapedValue}">
   <linearGradient id="b" x2="0" y2="100%">
     <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
     <stop offset="1" stop-opacity=".1"/>
@@ -162,9 +173,10 @@ export function renderBadgeSvg(data: BadgeData): string {
     <rect x="${labelWidth + 1}" width="${valueWidth}" height="${height}" fill="${valueColor}"/>
     <rect width="${totalWidth}" height="${height}" fill="url(#b)"/>
   </g>
+  <image x="3" y="3" width="${LOGO_SIZE}" height="${LOGO_SIZE}" xlink:href="${LOGO_SVG_BASE64}"/>
   <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
-    <text x="${labelX}" y="15" fill="#010101" fill-opacity=".3">${escapedLabel}</text>
-    <text x="${labelX}" y="14">${escapedLabel}</text>
+    <text x="${labelTextX}" y="15" fill="#010101" fill-opacity=".3">${escapedLabel}</text>
+    <text x="${labelTextX}" y="14">${escapedLabel}</text>
     <text x="${valueX}" y="15" fill="#010101" fill-opacity=".3">${escapedValue}</text>
     <text x="${valueX}" y="14">${escapedValue}</text>
   </g>

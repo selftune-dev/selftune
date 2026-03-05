@@ -16,8 +16,10 @@ coverage/
 tests/sandbox/results/
 .test-data/
 
-# Strategy (private — kept locally, not in public repo)
+# Internal planning (kept locally, not in public repo)
 docs/strategy/
+docs/exec-plans/
+Plans/
 
 # Secrets
 .env.local

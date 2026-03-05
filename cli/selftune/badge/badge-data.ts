@@ -26,12 +26,21 @@ export type BadgeFormat = "svg" | "markdown" | "url";
 // Constants
 // ---------------------------------------------------------------------------
 
-const COLOR_GREEN = "#4c1";
-const COLOR_YELLOW = "#dfb317";
-const COLOR_RED = "#e05d44";
-const COLOR_GRAY = "#9f9f9f";
+export const BADGE_THRESHOLDS = {
+  /** Above this → green */
+  GREEN: 0.8,
+  /** At or above this → yellow; below → red */
+  YELLOW: 0.6,
+} as const;
 
-const TREND_ARROWS: Record<string, string> = {
+export const BADGE_COLORS = {
+  GREEN: "#4c1",
+  YELLOW: "#dfb317",
+  RED: "#e05d44",
+  GRAY: "#9f9f9f",
+} as const;
+
+export const TREND_ARROWS: Record<BadgeData["trend"], string> = {
   up: "\u2191",
   down: "\u2193",
   stable: "\u2192",
@@ -58,15 +67,15 @@ export function computeBadgeData(skill: SkillStatus): BadgeData {
   let message: string;
 
   if (passRate === null) {
-    color = COLOR_GRAY;
+    color = BADGE_COLORS.GRAY;
     message = "no data";
   } else {
-    if (passRate > 0.8) {
-      color = COLOR_GREEN;
-    } else if (passRate >= 0.6) {
-      color = COLOR_YELLOW;
+    if (passRate > BADGE_THRESHOLDS.GREEN) {
+      color = BADGE_COLORS.GREEN;
+    } else if (passRate >= BADGE_THRESHOLDS.YELLOW) {
+      color = BADGE_COLORS.YELLOW;
     } else {
-      color = COLOR_RED;
+      color = BADGE_COLORS.RED;
     }
 
     const pct = `${Math.round(passRate * 100)}%`;
