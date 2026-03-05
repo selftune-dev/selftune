@@ -276,19 +276,9 @@ export async function evolveBody(
       // Validate
       let validation: BodyValidationResult;
       if (target === "routing") {
-        validation = await _validateRoutingProposal(
-          proposal,
-          evalSet,
-          studentAgent,
-          studentModel,
-        );
+        validation = await _validateRoutingProposal(proposal, evalSet, studentAgent, studentModel);
       } else {
-        validation = await _validateBodyProposal(
-          proposal,
-          evalSet,
-          studentAgent,
-          studentModel,
-        );
+        validation = await _validateBodyProposal(proposal, evalSet, studentAgent, studentModel);
       }
       lastValidation = validation;
 
@@ -452,9 +442,7 @@ Options:
   let fewShotExamples: string[] | undefined;
   if (values["few-shot"]) {
     const paths = values["few-shot"].split(",").map((p) => p.trim());
-    fewShotExamples = paths
-      .filter((p) => existsSync(p))
-      .map((p) => readFileSync(p, "utf-8"));
+    fewShotExamples = paths.filter((p) => existsSync(p)).map((p) => readFileSync(p, "utf-8"));
   }
 
   const result = await evolveBody({

@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
-import { stripMarkdownFences } from "../../cli/selftune/utils/llm-call.js";
 import type { BodyEvolutionProposal, EvalEntry } from "../../cli/selftune/types.js";
+import { stripMarkdownFences } from "../../cli/selftune/utils/llm-call.js";
 
 // ---------------------------------------------------------------------------
 // Mock callLlm before importing the module under test
@@ -36,8 +36,10 @@ function makeBodyProposal(overrides: Partial<BodyEvolutionProposal> = {}): BodyE
     proposal_id: "evo-body-test-001",
     skill_name: "test-skill",
     skill_path: "/skills/test-skill",
-    original_body: "Original body content with ## Workflow Routing\n\n| Trigger | Workflow |\n| --- | --- |\n| test | run |",
-    proposed_body: "Improved body.\n\n## Workflow Routing\n\n| Trigger | Workflow |\n| --- | --- |\n| test | run |\n| validate | check |",
+    original_body:
+      "Original body content with ## Workflow Routing\n\n| Trigger | Workflow |\n| --- | --- |\n| test | run |",
+    proposed_body:
+      "Improved body.\n\n## Workflow Routing\n\n| Trigger | Workflow |\n| --- | --- |\n| test | run |\n| validate | check |",
     rationale: "Better coverage",
     target: "body",
     failure_patterns: ["fp-test-0"],
@@ -54,7 +56,8 @@ function makeBodyProposal(overrides: Partial<BodyEvolutionProposal> = {}): BodyE
 
 describe("validateBodyStructure", () => {
   test("valid body with Workflow Routing section passes", () => {
-    const body = "Description here.\n\n## Workflow Routing\n\n| Trigger | Workflow |\n| --- | --- |\n| test | run |";
+    const body =
+      "Description here.\n\n## Workflow Routing\n\n| Trigger | Workflow |\n| --- | --- |\n| test | run |";
     const result = validateBodyStructure(body);
     expect(result.valid).toBe(true);
   });
@@ -80,7 +83,8 @@ describe("validateBodyStructure", () => {
   });
 
   test("body with Workflow Routing and valid table passes", () => {
-    const body = "Desc.\n\n## Workflow Routing\n\n| Trigger | Workflow |\n| --- | --- |\n| create slides | presentation |\n\n## Examples\n\n- Ex 1";
+    const body =
+      "Desc.\n\n## Workflow Routing\n\n| Trigger | Workflow |\n| --- | --- |\n| create slides | presentation |\n\n## Examples\n\n- Ex 1";
     const result = validateBodyStructure(body);
     expect(result.valid).toBe(true);
   });
@@ -136,7 +140,9 @@ describe("validateBodyTriggerAccuracy", () => {
 
 describe("assessBodyQuality", () => {
   test("returns parsed score from LLM response", async () => {
-    mockCallLlm.mockImplementation(async () => JSON.stringify({ score: 0.85, reason: "Well structured" }));
+    mockCallLlm.mockImplementation(async () =>
+      JSON.stringify({ score: 0.85, reason: "Well structured" }),
+    );
 
     const result = await assessBodyQuality("Good body content", "test-skill", "claude");
     expect(result.score).toBe(0.85);
@@ -221,10 +227,7 @@ describe("validateBodyProposal", () => {
     });
 
     const proposal = makeBodyProposal();
-    const evalSet = [
-      makeEval("test query", true),
-      makeEval("negative query", false),
-    ];
+    const evalSet = [makeEval("test query", true), makeEval("negative query", false)];
 
     const result = await validateBodyProposal(proposal, evalSet, "claude");
 

@@ -1,11 +1,11 @@
 import { describe, expect, mock, test } from "bun:test";
-import type { BodyEvolutionProposal, BodyValidationResult } from "../../cli/selftune/types.js";
-import { stripMarkdownFences } from "../../cli/selftune/utils/llm-call.js";
 import {
-  buildRefinementPrompt,
   BODY_REFINER_SYSTEM,
+  buildRefinementPrompt,
   parseRefinementResponse,
 } from "../../cli/selftune/evolution/refine-body.js";
+import type { BodyEvolutionProposal, BodyValidationResult } from "../../cli/selftune/types.js";
+import { stripMarkdownFences } from "../../cli/selftune/utils/llm-call.js";
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -84,12 +84,17 @@ describe("buildRefinementPrompt", () => {
     // The structural gate passed, so its reason should NOT be in the "Failed" list
     expect(prompt).toContain("Failed Validation Gates");
     // Should have 2 failed gates listed
-    const failedLines = prompt.split("Failed Validation Gates")[1].split("\n").filter((l: string) => l.includes("- "));
+    const failedLines = prompt
+      .split("Failed Validation Gates")[1]
+      .split("\n")
+      .filter((l: string) => l.includes("- "));
     expect(failedLines.length).toBe(2);
   });
 
   test("includes regression queries when provided", () => {
-    const prompt = buildRefinementPrompt("body", makeValidation(), "test-skill", ["query that broke"]);
+    const prompt = buildRefinementPrompt("body", makeValidation(), "test-skill", [
+      "query that broke",
+    ]);
     expect(prompt).toContain("Regression Queries");
     expect(prompt).toContain("query that broke");
   });
@@ -118,8 +123,7 @@ describe("parseRefinementResponse", () => {
   });
 
   test("handles markdown-fenced JSON", () => {
-    const raw =
-      '```json\n{"refined_body":"body","changes_made":"changes","confidence":0.7}\n```';
+    const raw = '```json\n{"refined_body":"body","changes_made":"changes","confidence":0.7}\n```';
     const result = parseRefinementResponse(raw);
     expect(result.refined_body).toBe("body");
     expect(result.confidence).toBe(0.7);

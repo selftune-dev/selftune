@@ -477,7 +477,10 @@ describe("replaceSection", () => {
 
 describe("replaceBody", () => {
   test("replaces body while preserving title", () => {
-    const result = replaceBody(SAMPLE_SKILL_MD, "Completely new body content.\n\n## New Section\n\nDetails here.");
+    const result = replaceBody(
+      SAMPLE_SKILL_MD,
+      "Completely new body content.\n\n## New Section\n\nDetails here.",
+    );
     expect(result).toContain("# My Skill");
     expect(result).toContain("Completely new body content.");
     expect(result).not.toContain("original skill description");

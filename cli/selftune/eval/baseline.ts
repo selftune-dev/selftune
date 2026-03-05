@@ -84,8 +84,7 @@ export async function measureBaseline(
     const baselineRaw = await _callLlm(SYSTEM_PROMPT, baselinePrompt, agent);
     const baselineTriggered = parseTriggerResponse(baselineRaw);
     const baselinePass =
-      (entry.should_trigger && baselineTriggered) ||
-      (!entry.should_trigger && !baselineTriggered);
+      (entry.should_trigger && baselineTriggered) || (!entry.should_trigger && !baselineTriggered);
 
     if (baselinePass) baselinePassed++;
 

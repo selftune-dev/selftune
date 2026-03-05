@@ -6,6 +6,7 @@
  */
 
 import type { EvalEntry, SkillUnitTest } from "../types.js";
+
 // Note: we don't use stripMarkdownFences from llm-call.ts because it
 // assumes JSON objects (looks for `{`), but we return JSON arrays.
 
@@ -66,13 +67,7 @@ export function buildGenerationPrompt(
   skillContent: string,
   evalFailures: EvalEntry[],
 ): string {
-  const parts: string[] = [
-    `Skill name: ${skillName}`,
-    "",
-    "Skill content:",
-    skillContent,
-    "",
-  ];
+  const parts: string[] = [`Skill name: ${skillName}`, "", "Skill content:", skillContent, ""];
 
   if (evalFailures.length > 0) {
     parts.push("Eval failures (queries that failed trigger checks):");
@@ -93,7 +88,11 @@ export function buildGenerationPrompt(
           skill_name: skillName,
           query: "example query for this skill",
           assertions: [
-            { type: "contains", value: "expected output", description: "checks for expected content" },
+            {
+              type: "contains",
+              value: "expected output",
+              description: "checks for expected content",
+            },
             { type: "tool_called", value: "Write", description: "verifies Write tool was used" },
           ],
           tags: ["generated"],

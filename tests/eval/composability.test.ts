@@ -40,10 +40,7 @@ describe("analyzeComposability", () => {
   });
 
   test("returns empty pairs when skill is only used alone", () => {
-    const telemetry = [
-      makeSession("s1", ["pptx"], 0),
-      makeSession("s2", ["pptx"], 1),
-    ];
+    const telemetry = [makeSession("s1", ["pptx"], 0), makeSession("s2", ["pptx"], 1)];
     const report = analyzeComposability("pptx", telemetry);
     expect(report.pairs).toEqual([]);
     expect(report.total_sessions_analyzed).toBe(2);

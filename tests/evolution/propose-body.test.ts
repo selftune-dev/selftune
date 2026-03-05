@@ -1,11 +1,11 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
-  buildBodyGenerationPrompt,
   BODY_GENERATOR_SYSTEM,
+  buildBodyGenerationPrompt,
   parseBodyProposalResponse,
 } from "../../cli/selftune/evolution/propose-body.js";
-import { stripMarkdownFences } from "../../cli/selftune/utils/llm-call.js";
 import type { FailurePattern } from "../../cli/selftune/types.js";
+import { stripMarkdownFences } from "../../cli/selftune/utils/llm-call.js";
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -46,7 +46,8 @@ describe("BODY_GENERATOR_SYSTEM", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildBodyGenerationPrompt", () => {
-  const currentContent = "# Test\n\nA skill for testing.\n\n## Workflow Routing\n\n| Trigger | Workflow |\n| --- | --- |\n| test | run |";
+  const currentContent =
+    "# Test\n\nA skill for testing.\n\n## Workflow Routing\n\n| Trigger | Workflow |\n| --- | --- |\n| test | run |";
   const patterns: FailurePattern[] = [
     makePattern("fp-test-0", "test-skill", ["validate input", "check assertions"], 2),
   ];
@@ -77,7 +78,13 @@ describe("buildBodyGenerationPrompt", () => {
 
   test("includes few-shot examples when provided", () => {
     const fewShot = ["# Example Skill\n\nThis is an example."];
-    const prompt = buildBodyGenerationPrompt(currentContent, patterns, missedQueries, skillName, fewShot);
+    const prompt = buildBodyGenerationPrompt(
+      currentContent,
+      patterns,
+      missedQueries,
+      skillName,
+      fewShot,
+    );
     expect(prompt).toContain("Reference Examples");
     expect(prompt).toContain("Example Skill");
   });
@@ -135,8 +142,7 @@ describe("parseBodyProposalResponse", () => {
   });
 
   test("handles markdown-fenced JSON", () => {
-    const raw =
-      '```json\n{"proposed_body":"body","rationale":"reason","confidence":0.7}\n```';
+    const raw = '```json\n{"proposed_body":"body","rationale":"reason","confidence":0.7}\n```';
     const result = parseBodyProposalResponse(raw);
     expect(result.proposed_body).toBe("body");
     expect(result.confidence).toBe(0.7);

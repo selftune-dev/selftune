@@ -46,7 +46,11 @@ export function validateBodyStructure(proposedBody: string): { valid: boolean; r
     .split("\n")
     .filter((l) => l.trim().startsWith("|") && l.trim().endsWith("|"));
   if (tableLines.length < 2) {
-    return { valid: false, reason: "Workflow Routing section lacks a valid markdown table (need header + separator + rows)" };
+    return {
+      valid: false,
+      reason:
+        "Workflow Routing section lacks a valid markdown table (need header + separator + rows)",
+    };
   }
 
   return { valid: true, reason: "Structural validation passed" };

@@ -10,8 +10,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
 import { QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
-import { measureBaseline } from "../eval/baseline.js";
 import type { BaselineMeasurement } from "../eval/baseline.js";
+import { measureBaseline } from "../eval/baseline.js";
 import { buildEvalSet } from "../eval/hooks-to-evals.js";
 import { updateContextAfterEvolve } from "../memory/writer.js";
 import type {

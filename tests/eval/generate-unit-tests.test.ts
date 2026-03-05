@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
-  generateUnitTests,
   buildGenerationPrompt,
+  generateUnitTests,
 } from "../../cli/selftune/eval/generate-unit-tests.js";
-import type { SkillUnitTest, EvalEntry } from "../../cli/selftune/types.js";
+import type { EvalEntry, SkillUnitTest } from "../../cli/selftune/types.js";
 
 // ---------------------------------------------------------------------------
 // buildGenerationPrompt — prompt construction
@@ -75,7 +75,7 @@ describe("generateUnitTests", () => {
     ];
 
     const mockLlm = async (_system: string, _user: string): Promise<string> =>
-      "```json\n" + JSON.stringify(mockTests) + "\n```";
+      `\`\`\`json\n${JSON.stringify(mockTests)}\n\`\`\``;
 
     const result = await generateUnitTests("test-skill", "Skill content", [], mockLlm);
     expect(result).toHaveLength(1);

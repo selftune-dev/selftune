@@ -283,7 +283,9 @@ describe("selectFromFrontier", () => {
 // Token efficiency helpers
 // ---------------------------------------------------------------------------
 
-function makeTelemetryRecord(overrides: Partial<SessionTelemetryRecord> = {}): SessionTelemetryRecord {
+function makeTelemetryRecord(
+  overrides: Partial<SessionTelemetryRecord> = {},
+): SessionTelemetryRecord {
   return {
     timestamp: new Date().toISOString(),
     session_id: `sess-${Math.random().toString(36).slice(2, 8)}`,
@@ -344,8 +346,16 @@ describe("computeTokenEfficiencyScore", () => {
   test("returns > 0.5 when skill sessions use fewer tokens", () => {
     const telemetry = [
       // Sessions WITH the skill — fewer tokens
-      makeTelemetryRecord({ skills_triggered: ["my-skill"], input_tokens: 500, output_tokens: 200 }),
-      makeTelemetryRecord({ skills_triggered: ["my-skill"], input_tokens: 600, output_tokens: 300 }),
+      makeTelemetryRecord({
+        skills_triggered: ["my-skill"],
+        input_tokens: 500,
+        output_tokens: 200,
+      }),
+      makeTelemetryRecord({
+        skills_triggered: ["my-skill"],
+        input_tokens: 600,
+        output_tokens: 300,
+      }),
       // Sessions WITHOUT the skill — more tokens (baseline)
       makeTelemetryRecord({ skills_triggered: [], input_tokens: 1500, output_tokens: 800 }),
       makeTelemetryRecord({ skills_triggered: [], input_tokens: 1200, output_tokens: 600 }),
@@ -358,8 +368,16 @@ describe("computeTokenEfficiencyScore", () => {
   test("returns < 0.5 when skill sessions use more tokens", () => {
     const telemetry = [
       // Sessions WITH the skill — more tokens
-      makeTelemetryRecord({ skills_triggered: ["my-skill"], input_tokens: 3000, output_tokens: 1500 }),
-      makeTelemetryRecord({ skills_triggered: ["my-skill"], input_tokens: 2500, output_tokens: 1200 }),
+      makeTelemetryRecord({
+        skills_triggered: ["my-skill"],
+        input_tokens: 3000,
+        output_tokens: 1500,
+      }),
+      makeTelemetryRecord({
+        skills_triggered: ["my-skill"],
+        input_tokens: 2500,
+        output_tokens: 1200,
+      }),
       // Sessions WITHOUT — fewer tokens
       makeTelemetryRecord({ skills_triggered: [], input_tokens: 500, output_tokens: 200 }),
       makeTelemetryRecord({ skills_triggered: [], input_tokens: 600, output_tokens: 300 }),
@@ -379,7 +397,11 @@ describe("computeTokenEfficiencyScore", () => {
 
   test("returns 0.5 (neutral) when no sessions without skill", () => {
     const telemetry = [
-      makeTelemetryRecord({ skills_triggered: ["my-skill"], input_tokens: 1000, output_tokens: 500 }),
+      makeTelemetryRecord({
+        skills_triggered: ["my-skill"],
+        input_tokens: 1000,
+        output_tokens: 500,
+      }),
     ];
     const score = computeTokenEfficiencyScore("my-skill", telemetry);
     expect(score).toBe(0.5);

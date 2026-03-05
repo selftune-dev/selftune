@@ -8,7 +8,7 @@
  * Pure function -- no I/O. CLI wrapper handles reading JSONL.
  */
 
-import type { CoOccurrencePair, ComposabilityReport, SessionTelemetryRecord } from "../types.js";
+import type { ComposabilityReport, CoOccurrencePair, SessionTelemetryRecord } from "../types.js";
 
 /**
  * Clamp a number between min and max.
@@ -31,9 +31,7 @@ export function analyzeComposability(
   window?: number,
 ): ComposabilityReport {
   // Apply window: sort by timestamp descending, take last N
-  let sessions = telemetry.filter(
-    (r) => r && Array.isArray(r.skills_triggered),
-  );
+  let sessions = telemetry.filter((r) => r && Array.isArray(r.skills_triggered));
 
   if (window && window > 0) {
     sessions = sessions
@@ -42,14 +40,10 @@ export function analyzeComposability(
   }
 
   // Sessions where the target skill was triggered
-  const skillSessions = sessions.filter((r) =>
-    r.skills_triggered.includes(skillName),
-  );
+  const skillSessions = sessions.filter((r) => r.skills_triggered.includes(skillName));
 
   // Sessions where the target skill was triggered ALONE (no other skills)
-  const aloneSessions = skillSessions.filter(
-    (r) => r.skills_triggered.length === 1,
-  );
+  const aloneSessions = skillSessions.filter((r) => r.skills_triggered.length === 1);
 
   // Average errors when skill is used alone
   const errorsAlone =
@@ -70,27 +64,19 @@ export function analyzeComposability(
   const pairs: CoOccurrencePair[] = [];
   for (const coSkill of coSkills) {
     // Sessions where BOTH skills are triggered together
-    const togetherSessions = skillSessions.filter((r) =>
-      r.skills_triggered.includes(coSkill),
-    );
+    const togetherSessions = skillSessions.filter((r) => r.skills_triggered.includes(coSkill));
 
     const coOccurrenceCount = togetherSessions.length;
 
     // Average errors when both skills are used together
     const errorsTogether =
       togetherSessions.length > 0
-        ? togetherSessions.reduce(
-            (sum, r) => sum + (r.errors_encountered ?? 0),
-            0,
-          ) / togetherSessions.length
+        ? togetherSessions.reduce((sum, r) => sum + (r.errors_encountered ?? 0), 0) /
+          togetherSessions.length
         : 0;
 
     // conflict_score = clamp((errors_together - errors_alone) / (errors_alone + 1), 0, 1)
-    const conflictScore = clamp(
-      (errorsTogether - errorsAlone) / (errorsAlone + 1),
-      0,
-      1,
-    );
+    const conflictScore = clamp((errorsTogether - errorsAlone) / (errorsAlone + 1), 0, 1);
 
     const conflictDetected = conflictScore > 0.3;
 

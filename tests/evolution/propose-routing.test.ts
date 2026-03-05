@@ -1,11 +1,11 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
   buildRoutingProposalPrompt,
-  ROUTING_PROPOSER_SYSTEM,
   parseRoutingProposalResponse,
+  ROUTING_PROPOSER_SYSTEM,
 } from "../../cli/selftune/evolution/propose-routing.js";
-import { stripMarkdownFences } from "../../cli/selftune/utils/llm-call.js";
 import type { FailurePattern } from "../../cli/selftune/types.js";
+import { stripMarkdownFences } from "../../cli/selftune/utils/llm-call.js";
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -47,7 +47,7 @@ describe("ROUTING_PROPOSER_SYSTEM", () => {
 
 describe("buildRoutingProposalPrompt", () => {
   const currentRouting = "| Trigger | Workflow |\n| --- | --- |\n| make slides | presentation |";
-  const fullContent = "# Presenter\n\nA skill for slides.\n\n## Workflow Routing\n\n" + currentRouting;
+  const fullContent = `# Presenter\n\nA skill for slides.\n\n## Workflow Routing\n\n${currentRouting}`;
   const patterns: FailurePattern[] = [
     makePattern("fp-presenter-0", "presenter", ["create deck", "build pptx"], 2),
   ];
@@ -55,31 +55,61 @@ describe("buildRoutingProposalPrompt", () => {
   const skillName = "presenter";
 
   test("includes skill name in output", () => {
-    const prompt = buildRoutingProposalPrompt(currentRouting, fullContent, patterns, missedQueries, skillName);
+    const prompt = buildRoutingProposalPrompt(
+      currentRouting,
+      fullContent,
+      patterns,
+      missedQueries,
+      skillName,
+    );
     expect(prompt).toContain("presenter");
   });
 
   test("includes current routing in output", () => {
-    const prompt = buildRoutingProposalPrompt(currentRouting, fullContent, patterns, missedQueries, skillName);
+    const prompt = buildRoutingProposalPrompt(
+      currentRouting,
+      fullContent,
+      patterns,
+      missedQueries,
+      skillName,
+    );
     expect(prompt).toContain("make slides");
     expect(prompt).toContain("| Trigger | Workflow |");
   });
 
   test("includes full skill content", () => {
-    const prompt = buildRoutingProposalPrompt(currentRouting, fullContent, patterns, missedQueries, skillName);
+    const prompt = buildRoutingProposalPrompt(
+      currentRouting,
+      fullContent,
+      patterns,
+      missedQueries,
+      skillName,
+    );
     expect(prompt).toContain("# Presenter");
     expect(prompt).toContain("A skill for slides");
   });
 
   test("includes failure pattern info", () => {
-    const prompt = buildRoutingProposalPrompt(currentRouting, fullContent, patterns, missedQueries, skillName);
+    const prompt = buildRoutingProposalPrompt(
+      currentRouting,
+      fullContent,
+      patterns,
+      missedQueries,
+      skillName,
+    );
     expect(prompt).toContain("fp-presenter-0");
     expect(prompt).toContain("create deck");
     expect(prompt).toContain("build pptx");
   });
 
   test("includes missed queries", () => {
-    const prompt = buildRoutingProposalPrompt(currentRouting, fullContent, patterns, missedQueries, skillName);
+    const prompt = buildRoutingProposalPrompt(
+      currentRouting,
+      fullContent,
+      patterns,
+      missedQueries,
+      skillName,
+    );
     expect(prompt).toContain("create deck");
   });
 
@@ -114,7 +144,13 @@ describe("buildRoutingProposalPrompt", () => {
   });
 
   test("omits failure feedback when not present", () => {
-    const prompt = buildRoutingProposalPrompt(currentRouting, fullContent, patterns, missedQueries, skillName);
+    const prompt = buildRoutingProposalPrompt(
+      currentRouting,
+      fullContent,
+      patterns,
+      missedQueries,
+      skillName,
+    );
     expect(prompt).not.toContain("Structured Failure Analysis");
   });
 });
@@ -137,8 +173,7 @@ describe("parseRoutingProposalResponse", () => {
   });
 
   test("handles markdown-fenced JSON", () => {
-    const raw =
-      '```json\n{"proposed_routing":"table","rationale":"reason","confidence":0.7}\n```';
+    const raw = '```json\n{"proposed_routing":"table","rationale":"reason","confidence":0.7}\n```';
     const result = parseRoutingProposalResponse(raw);
     expect(result.proposed_routing).toBe("table");
     expect(result.confidence).toBe(0.7);
@@ -195,9 +230,7 @@ describe("generateRoutingProposal", () => {
       "../../cli/selftune/evolution/propose-routing.js"
     );
 
-    const patterns: FailurePattern[] = [
-      makePattern("fp-test-0", "test-skill", ["create deck"], 1),
-    ];
+    const patterns: FailurePattern[] = [makePattern("fp-test-0", "test-skill", ["create deck"], 1)];
 
     const proposal = await mockedGenerate(
       "| Trigger | Workflow |\n| --- | --- |\n| make slides | presentation |",

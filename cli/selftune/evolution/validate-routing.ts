@@ -18,7 +18,10 @@ import { buildTriggerCheckPrompt, parseTriggerResponse } from "../utils/trigger-
  * `| Trigger | Workflow |` columns.
  */
 export function validateRoutingStructure(routing: string): { valid: boolean; reason: string } {
-  const lines = routing.trim().split("\n").filter((l) => l.trim().length > 0);
+  const lines = routing
+    .trim()
+    .split("\n")
+    .filter((l) => l.trim().length > 0);
 
   if (lines.length < 2) {
     return { valid: false, reason: "Routing table must have at least a header and one data row" };
@@ -27,7 +30,10 @@ export function validateRoutingStructure(routing: string): { valid: boolean; rea
   // Check header row contains Trigger and Workflow columns
   const headerLine = lines[0].trim();
   if (!headerLine.startsWith("|") || !headerLine.endsWith("|")) {
-    return { valid: false, reason: "Header row must be a markdown table row starting and ending with |" };
+    return {
+      valid: false,
+      reason: "Header row must be a markdown table row starting and ending with |",
+    };
   }
 
   const headerLower = headerLine.toLowerCase();

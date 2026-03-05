@@ -14,7 +14,6 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 
@@ -22,8 +21,8 @@ import { SELFTUNE_CONFIG_DIR } from "../constants.js";
 import type { EvalEntry } from "../types.js";
 import { callLlm, detectAgent } from "../utils/llm-call.js";
 import { generateUnitTests } from "./generate-unit-tests.js";
-import { loadUnitTests, runUnitTestSuite } from "./unit-test.js";
 import type { AgentRunner } from "./unit-test.js";
+import { loadUnitTests, runUnitTestSuite } from "./unit-test.js";
 
 // ---------------------------------------------------------------------------
 // CLI

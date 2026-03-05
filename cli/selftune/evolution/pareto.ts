@@ -59,9 +59,7 @@ function clamp(value: number, min: number, max: number): number {
 /**
  * Compute token usage metrics from telemetry records.
  */
-export function computeTokenUsageMetrics(
-  records: SessionTelemetryRecord[],
-): TokenUsageMetrics {
+export function computeTokenUsageMetrics(records: SessionTelemetryRecord[]): TokenUsageMetrics {
   let input = 0;
   let output = 0;
   for (const r of records) {

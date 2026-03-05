@@ -11,8 +11,8 @@
  */
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { parseArgs } from "node:util";
 import { join } from "node:path";
+import { parseArgs } from "node:util";
 import type { EvalEntry, SkillsBenchTask } from "../types.js";
 
 // ---------------------------------------------------------------------------
@@ -92,7 +92,8 @@ export function parseSkillsBenchDir(dirPath: string): SkillsBenchTask[] {
       task_id: entry.name,
       category: (metadata.category as string) ?? "general",
       query,
-      difficulty: difficulty && ["easy", "medium", "hard"].includes(difficulty) ? difficulty : "medium",
+      difficulty:
+        difficulty && ["easy", "medium", "hard"].includes(difficulty) ? difficulty : "medium",
     };
 
     if (metadata.expected_skill) {
@@ -130,17 +131,11 @@ export function convertToEvalEntries(
     } else {
       // Fuzzy: check if targetSkill appears as substring in category, tags, or expected_skill
       const skillLower = targetSkill.toLowerCase();
-      const searchable = [
-        task.category,
-        task.expected_skill,
-        ...(task.tags ?? []),
-      ]
+      const searchable = [task.category, task.expected_skill, ...(task.tags ?? [])]
         .filter(Boolean)
         .map((s) => (s as string).toLowerCase());
 
-      matches = searchable.some(
-        (s) => s.includes(skillLower) || skillLower.includes(s),
-      );
+      matches = searchable.some((s) => s.includes(skillLower) || skillLower.includes(s));
     }
 
     if (matches) {
@@ -194,7 +189,9 @@ export function cliMain(): void {
   const entries = convertToEvalEntries(tasks, values.skill, matchStrategy);
 
   if (entries.length === 0) {
-    console.log(`[WARN] No tasks matched skill '${values.skill}' with strategy '${matchStrategy}'.`);
+    console.log(
+      `[WARN] No tasks matched skill '${values.skill}' with strategy '${matchStrategy}'.`,
+    );
     console.log("Available expected_skills:");
     const skills = [...new Set(tasks.map((t) => t.expected_skill).filter(Boolean))].sort();
     for (const s of skills) {

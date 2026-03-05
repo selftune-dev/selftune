@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
+  checkAssertion,
   loadUnitTests,
   runUnitTest,
   runUnitTestSuite,
-  checkAssertion,
 } from "../../cli/selftune/eval/unit-test.js";
-import type { SkillAssertion, SkillUnitTest, UnitTestResult } from "../../cli/selftune/types.js";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import type { SkillAssertion, SkillUnitTest } from "../../cli/selftune/types.js";
 
 // ---------------------------------------------------------------------------
 // checkAssertion — deterministic assertion logic
@@ -171,8 +171,7 @@ describe("runUnitTest", () => {
   });
 
   test("fails when an assertion does not match", async () => {
-    const mockAgent = async (_query: string): Promise<string> =>
-      "error: something went wrong";
+    const mockAgent = async (_query: string): Promise<string> => "error: something went wrong";
 
     const result = await runUnitTest(testCase, mockAgent);
     expect(result.passed).toBe(false);

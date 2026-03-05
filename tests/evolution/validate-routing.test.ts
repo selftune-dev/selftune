@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
-import { stripMarkdownFences } from "../../cli/selftune/utils/llm-call.js";
 import type { BodyEvolutionProposal, EvalEntry } from "../../cli/selftune/types.js";
+import { stripMarkdownFences } from "../../cli/selftune/utils/llm-call.js";
 
 // ---------------------------------------------------------------------------
 // Mock callLlm before importing the module under test
@@ -16,11 +16,8 @@ mock.module("../../cli/selftune/utils/llm-call.js", () => ({
 }));
 
 // Import after mocking
-const {
-  validateRoutingStructure,
-  validateRoutingTriggerAccuracy,
-  validateRoutingProposal,
-} = await import("../../cli/selftune/evolution/validate-routing.js");
+const { validateRoutingStructure, validateRoutingTriggerAccuracy, validateRoutingProposal } =
+  await import("../../cli/selftune/evolution/validate-routing.js");
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -30,13 +27,16 @@ function makeEval(query: string, shouldTrigger: boolean): EvalEntry {
   return { query, should_trigger: shouldTrigger };
 }
 
-function makeRoutingProposal(overrides: Partial<BodyEvolutionProposal> = {}): BodyEvolutionProposal {
+function makeRoutingProposal(
+  overrides: Partial<BodyEvolutionProposal> = {},
+): BodyEvolutionProposal {
   return {
     proposal_id: "evo-routing-test-001",
     skill_name: "test-skill",
     skill_path: "/skills/test-skill",
     original_body: "| Trigger | Workflow |\n| --- | --- |\n| make slides | presentation |",
-    proposed_body: "| Trigger | Workflow |\n| --- | --- |\n| make slides | presentation |\n| create deck | presentation |",
+    proposed_body:
+      "| Trigger | Workflow |\n| --- | --- |\n| make slides | presentation |\n| create deck | presentation |",
     rationale: "Added deck trigger",
     target: "routing",
     failure_patterns: ["fp-test-0"],
@@ -99,7 +99,8 @@ describe("validateRoutingStructure", () => {
   });
 
   test("multiple data rows pass", () => {
-    const table = "| Trigger | Workflow |\n| --- | --- |\n| make slides | presentation |\n| create deck | presentation |";
+    const table =
+      "| Trigger | Workflow |\n| --- | --- |\n| make slides | presentation |\n| create deck | presentation |";
     const result = validateRoutingStructure(table);
     expect(result.valid).toBe(true);
   });

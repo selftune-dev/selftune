@@ -40,7 +40,8 @@ function makeBodyProposal(overrides: Partial<BodyEvolutionProposal> = {}): BodyE
     skill_name: "test-skill",
     skill_path: "/tmp/test-skill/SKILL.md",
     original_body: "Original body content",
-    proposed_body: "Improved body.\n\n## Workflow Routing\n\n| Trigger | Workflow |\n| --- | --- |\n| test | run |",
+    proposed_body:
+      "Improved body.\n\n## Workflow Routing\n\n| Trigger | Workflow |\n| --- | --- |\n| test | run |",
     rationale: "Better coverage",
     target: "body",
     failure_patterns: ["fp-test-0"],
@@ -162,7 +163,9 @@ function makeDeps(): EvolveBodyDeps {
 
 let tmpDirs: string[] = [];
 
-function createTempSkill(skillContent = "---\nname: test\n---\n\n# Test Skill\nA skill for testing\n\n## Workflow Routing\n\n| Trigger | Workflow |\n| --- | --- |\n| test | run |"): {
+function createTempSkill(
+  skillContent = "---\nname: test\n---\n\n# Test Skill\nA skill for testing\n\n## Workflow Routing\n\n| Trigger | Workflow |\n| --- | --- |\n| test | run |",
+): {
   skillPath: string;
   skillDir: string;
 } {
@@ -186,7 +189,9 @@ afterEach(() => {
   mockGenerateBodyProposal.mockImplementation(async () => makeBodyProposal());
 
   mockGenerateRoutingProposal.mockReset();
-  mockGenerateRoutingProposal.mockImplementation(async () => makeBodyProposal({ target: "routing" }));
+  mockGenerateRoutingProposal.mockImplementation(async () =>
+    makeBodyProposal({ target: "routing" }),
+  );
 
   mockValidateBodyProposal.mockReset();
   mockValidateBodyProposal.mockImplementation(async () => makeValidationResult());
@@ -197,7 +202,9 @@ afterEach(() => {
   );
 
   mockRefineBodyProposal.mockReset();
-  mockRefineBodyProposal.mockImplementation(async () => makeBodyProposal({ proposal_id: "evo-body-refined" }));
+  mockRefineBodyProposal.mockImplementation(async () =>
+    makeBodyProposal({ proposal_id: "evo-body-refined" }),
+  );
 
   mockAppendAuditEntry.mockReset();
   mockAppendAuditEntry.mockImplementation(() => {});
