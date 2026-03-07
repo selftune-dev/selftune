@@ -6,17 +6,19 @@
  * logic and comprehensive audit tracking.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
 import { QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
 import type { BaselineMeasurement } from "../eval/baseline.js";
+import { parseFrontmatter, replaceFrontmatterDescription } from "../utils/frontmatter.js";
 import { measureBaseline } from "../eval/baseline.js";
 import { buildEvalSet } from "../eval/hooks-to-evals.js";
 import { updateContextAfterEvolve } from "../memory/writer.js";
 import type {
   EvalEntry,
   EvalPassRate,
+  EvolveResultSummary,
   EvolutionAuditEntry,
   EvolutionProposal,
   FailurePattern,
@@ -38,6 +40,7 @@ import {
 import { generateMultipleProposals, generateProposal } from "./propose-description.js";
 import type { ValidationResult } from "./validate-proposal.js";
 import { validateProposal } from "./validate-proposal.js";
+import { createEvolveTUI } from "../utils/tui.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,6 +60,10 @@ export interface EvolveOptions {
   tokenEfficiencyEnabled?: boolean;
   telemetryRecords?: SessionTelemetryRecord[];
   withBaseline?: boolean;
+  validationModel?: string;
+  cheapLoop?: boolean;
+  gateModel?: string;
+  proposalModel?: string;
 }
 
 export interface EvolveResult {
@@ -65,7 +72,11 @@ export interface EvolveResult {
   deployed: boolean;
   auditEntries: EvolutionAuditEntry[];
   reason: string;
+  skillVersion?: string;
+  llmCallCount: number;
+  elapsedMs: number;
   baselineResult?: BaselineMeasurement;
+  gateValidation?: ValidationResult;
 }
 
 /**
@@ -81,6 +92,7 @@ export interface EvolveDeps {
   ) => FailurePattern[];
   generateProposal?: typeof import("./propose-description.js").generateProposal;
   validateProposal?: typeof import("./validate-proposal.js").validateProposal;
+  gateValidateProposal?: typeof import("./validate-proposal.js").validateProposal;
   appendAuditEntry?: typeof import("./audit.js").appendAuditEntry;
   buildEvalSet?: typeof import("../eval/hooks-to-evals.js").buildEvalSet;
   updateContextAfterEvolve?: typeof import("../memory/writer.js").updateContextAfterEvolve;
@@ -117,10 +129,18 @@ export async function evolve(
   const { skillName, skillPath, evalSetPath, agent, dryRun, confidenceThreshold, maxIterations } =
     options;
 
+  // Apply cheap-loop defaults: cheap models for proposal/validation, expensive for gate
+  if (options.cheapLoop) {
+    if (!options.proposalModel) options.proposalModel = "haiku";
+    if (!options.validationModel) options.validationModel = "haiku";
+    if (!options.gateModel) options.gateModel = "sonnet";
+  }
+
   // Resolve injectable dependencies with real-import fallbacks
   const _extractFailurePatterns = _deps.extractFailurePatterns ?? extractFailurePatterns;
   const _generateProposal = _deps.generateProposal ?? generateProposal;
   const _validateProposal = _deps.validateProposal ?? validateProposal;
+  const _gateValidateProposal = _deps.gateValidateProposal ?? validateProposal;
   const _appendAuditEntry = _deps.appendAuditEntry ?? appendAuditEntry;
   const _buildEvalSet = _deps.buildEvalSet ?? buildEvalSet;
   const _updateContextAfterEvolve = _deps.updateContextAfterEvolve ?? updateContextAfterEvolve;
@@ -143,21 +163,45 @@ export async function evolve(
     }
   }
 
+  const pipelineStart = Date.now();
+  let llmCallCount = 0;
+  const tui = createEvolveTUI({ skillName, model: options.proposalModel ?? "(default)" });
+  const finishTui = () =>
+    tui.finish(`${llmCallCount} LLM calls \u00b7 ${((Date.now() - pipelineStart) / 1000).toFixed(1)}s elapsed`);
+
+  /** Stamp every return with pipeline stats so callers always get them. */
+  const withStats = (r: Omit<EvolveResult, "llmCallCount" | "elapsedMs">): EvolveResult => ({
+    ...r,
+    llmCallCount,
+    elapsedMs: Date.now() - pipelineStart,
+  });
+
+  // Hoisted so catch block can preserve partial results on error
+  let lastProposal: EvolutionProposal | null = null;
+  let lastValidation: ValidationResult | null = null;
+
   try {
     // -----------------------------------------------------------------------
     // Step 1: Read current SKILL.md
     // -----------------------------------------------------------------------
     if (!existsSync(skillPath)) {
-      return {
+      tui.fail(`SKILL.md not found at ${skillPath}`);
+      finishTui();
+      return withStats({
         proposal: null,
         validation: null,
         deployed: false,
         auditEntries,
         reason: `SKILL.md not found at ${skillPath}`,
-      };
+      });
     }
 
-    const currentDescription = readFileSync(skillPath, "utf-8");
+    const rawContent = readFileSync(skillPath, "utf-8");
+    const frontmatter = parseFrontmatter(rawContent);
+    const currentDescription = frontmatter.description || rawContent;
+    const skillVersion = frontmatter.version || undefined;
+    const versionTag = skillVersion ? `, v${skillVersion}` : "";
+    tui.done(`Loaded SKILL.md (desc: ${currentDescription.length} chars${versionTag})`);
 
     // -----------------------------------------------------------------------
     // Step 2: Load eval set
@@ -174,6 +218,10 @@ export async function evolve(
       evalSet = _buildEvalSet(skillRecords, queryRecords, skillName);
     }
 
+    const posCount = evalSet.filter((e) => e.should_trigger).length;
+    const negCount = evalSet.filter((e) => !e.should_trigger).length;
+    tui.done(`Loaded eval set (${evalSet.length} entries: ${posCount}+, ${negCount}-)`);
+
     // -----------------------------------------------------------------------
     // Step 3: Load skill usage records
     // -----------------------------------------------------------------------
@@ -189,17 +237,21 @@ export async function evolve(
       options.gradingResults,
     );
 
+    const totalMissed = failurePatterns.reduce((sum, p) => sum + p.missed_queries.length, 0);
+    tui.done(`Extracted ${failurePatterns.length} failure pattern(s) (${totalMissed} missed queries)`);
+
     // -----------------------------------------------------------------------
     // Step 5: Early exit if no patterns
     // -----------------------------------------------------------------------
     if (failurePatterns.length === 0) {
-      return {
+      finishTui();
+      return withStats({
         proposal: null,
         validation: null,
         deployed: false,
         auditEntries,
         reason: "No failure patterns found",
-      };
+      });
     }
 
     // -----------------------------------------------------------------------
@@ -210,8 +262,6 @@ export async function evolve(
     // -----------------------------------------------------------------------
     // Steps 7-12: Proposal generation and validation
     // -----------------------------------------------------------------------
-    let lastProposal: EvolutionProposal | null = null;
-    let lastValidation: ValidationResult | null = null;
 
     // -----------------------------------------------------------------------
     // Pareto multi-candidate path
@@ -241,19 +291,21 @@ export async function evolve(
         skillPath,
         agent,
         candidateCount,
+        options.proposalModel,
       );
 
       // Filter by confidence threshold
       const viableCandidates = candidates.filter((c) => c.confidence >= confidenceThreshold);
 
       if (viableCandidates.length === 0) {
-        return {
+        finishTui();
+        return withStats({
           proposal: candidates[0] ?? null,
           validation: null,
           deployed: false,
           auditEntries,
           reason: `No candidates met confidence threshold ${confidenceThreshold}`,
-        };
+        });
       }
 
       // Validate each candidate
@@ -261,7 +313,7 @@ export async function evolve(
       for (const proposal of viableCandidates) {
         recordAudit(proposal.proposal_id, "created", `Pareto candidate for ${skillName}`);
 
-        const validation = await _validateProposal(proposal, evalSet, agent);
+        const validation = await _validateProposal(proposal, evalSet, agent, options.validationModel);
         recordAudit(
           proposal.proposal_id,
           "validated",
@@ -284,13 +336,14 @@ export async function evolve(
       }
 
       if (paretoCandidates.length === 0) {
-        return {
+        finishTui();
+        return withStats({
           proposal: viableCandidates[0],
           validation: null,
           deployed: false,
           auditEntries,
           reason: "No Pareto candidates improved validation",
-        };
+        });
       }
 
       // Compute Pareto frontier
@@ -311,6 +364,7 @@ export async function evolve(
           ? [...missedQueries, `[Previous attempt failed: ${feedbackReason}]`]
           : missedQueries;
 
+        tui.step(`Generating proposal (iteration ${iteration + 1}/${maxIterations})...`);
         const proposal = await _generateProposal(
           currentDescription,
           failurePatterns,
@@ -318,9 +372,12 @@ export async function evolve(
           skillName,
           skillPath,
           agent,
+          options.proposalModel,
         );
+        llmCallCount++;
 
         lastProposal = proposal;
+        tui.done(`Proposal generated (conf: ${proposal.confidence.toFixed(2)})`);
 
         // Step 8: Audit "created"
         recordAudit(
@@ -340,21 +397,26 @@ export async function evolve(
 
           // If this is the last iteration, return early with rejection
           if (iteration === maxIterations - 1) {
-            return {
+            finishTui();
+            return withStats({
               proposal: lastProposal,
               validation: null,
               deployed: false,
               auditEntries,
               reason: `Confidence ${proposal.confidence} below threshold ${confidenceThreshold}`,
-            };
+            });
           }
 
           continue;
         }
 
         // Step 10: Validate against eval set
-        const validation = await _validateProposal(proposal, evalSet, agent);
+        const batchCount = Math.ceil(evalSet.length / 10);
+        tui.step(`Validating ${evalSet.length} entries (${batchCount} batches, 3x majority-vote)...`);
+        const validation = await _validateProposal(proposal, evalSet, agent, options.validationModel);
         lastValidation = validation;
+        llmCallCount += batchCount * 2 * 3; // 3x for majority-vote runs
+        tui.done(`Validation: ${(validation.before_pass_rate * 100).toFixed(1)}% \u2192 ${(validation.after_pass_rate * 100).toFixed(1)}% (improved: ${validation.improved})`);
 
         // Step 11: Audit "validated"
         const evalSnapshot: EvalPassRate = {
@@ -381,13 +443,14 @@ export async function evolve(
 
           // If this is the last iteration, return with rejection
           if (iteration === maxIterations - 1) {
-            return {
+            finishTui();
+            return withStats({
               proposal: lastProposal,
               validation: lastValidation,
               deployed: false,
               auditEntries,
               reason: `Validation failed after ${maxIterations} iterations: net_change=${validation.net_change.toFixed(3)}`,
-            };
+            });
           }
 
           continue;
@@ -402,13 +465,14 @@ export async function evolve(
     // Step 13: Dry run check
     // -----------------------------------------------------------------------
     if (dryRun) {
-      return {
+      finishTui();
+      return withStats({
         proposal: lastProposal,
         validation: lastValidation,
         deployed: false,
         auditEntries,
         reason: "Dry run - proposal validated but not deployed",
-      };
+      });
     }
 
     // -----------------------------------------------------------------------
@@ -416,12 +480,15 @@ export async function evolve(
     // -----------------------------------------------------------------------
     let baselineResult: BaselineMeasurement | undefined;
     if (options.withBaseline && lastProposal) {
+      tui.step("Measuring baseline...");
       baselineResult = await _measureBaseline({
         evalSet,
         skillDescription: currentDescription,
         skillName,
         agent,
+        modelFlag: options.validationModel,
       });
+      tui.done(`Baseline: lift=${baselineResult.lift.toFixed(3)}, adds_value=${baselineResult.adds_value}`);
 
       recordAudit(
         lastProposal.proposal_id,
@@ -430,33 +497,74 @@ export async function evolve(
       );
 
       if (!baselineResult.adds_value) {
-        return {
+        finishTui();
+        return withStats({
           proposal: lastProposal,
           validation: lastValidation,
           deployed: false,
           auditEntries,
           reason: `Baseline gate failed: lift=${baselineResult.lift.toFixed(3)} below 0.05 threshold`,
           baselineResult,
-        };
+        });
       }
     }
 
     // -----------------------------------------------------------------------
-    // Step 14: Deploy (actual deploy wired in TASK-14)
+    // Step 13c: Gate validation (--cheap-loop / --gate-model)
     // -----------------------------------------------------------------------
-    if (lastProposal) {
+    let gateValidation: ValidationResult | undefined;
+    if (options.gateModel && lastProposal && lastValidation?.improved) {
+      tui.step(`Gate validation (${options.gateModel})...`);
+      gateValidation = await _gateValidateProposal(lastProposal, evalSet, agent, options.gateModel);
+      tui.done(`Gate (${options.gateModel}): improved=${gateValidation.improved}, net_change=${gateValidation.net_change.toFixed(3)}`);
+
+      recordAudit(
+        lastProposal.proposal_id,
+        "validated",
+        `Gate validation (${options.gateModel}): improved=${gateValidation.improved}, net_change=${gateValidation.net_change.toFixed(3)}`,
+      );
+
+      if (!gateValidation.improved) {
+        finishTui();
+        return withStats({
+          proposal: lastProposal,
+          validation: lastValidation,
+          deployed: false,
+          auditEntries,
+          reason: `Gate validation failed (${options.gateModel}): net_change=${gateValidation.net_change.toFixed(3)}`,
+          gateValidation,
+          ...(baselineResult ? { baselineResult } : {}),
+        });
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 14: Deploy — write updated description to SKILL.md
+    // -----------------------------------------------------------------------
+    if (lastProposal && lastValidation?.improved) {
+      // Create backup before modifying
+      const backupPath = `${skillPath}.bak`;
+      copyFileSync(skillPath, backupPath);
+      tui.done(`Backup created at ${backupPath}`);
+
+      // Replace the frontmatter description
+      const updatedContent = replaceFrontmatterDescription(
+        rawContent,
+        lastProposal.proposed_description,
+      );
+      writeFileSync(skillPath, updatedContent, "utf-8");
+      tui.done(`Deployed updated description to ${skillPath}`);
+
       recordAudit(
         lastProposal.proposal_id,
         "deployed",
         `Deployed proposal for ${skillName}`,
-        lastValidation
-          ? {
-              total: evalSet.length,
-              passed: Math.round(lastValidation.after_pass_rate * evalSet.length),
-              failed: evalSet.length - Math.round(lastValidation.after_pass_rate * evalSet.length),
-              pass_rate: lastValidation.after_pass_rate,
-            }
-          : undefined,
+        {
+          total: evalSet.length,
+          passed: Math.round(lastValidation.after_pass_rate * evalSet.length),
+          failed: evalSet.length - Math.round(lastValidation.after_pass_rate * evalSet.length),
+          pass_rate: lastValidation.after_pass_rate,
+        },
       );
     }
 
@@ -464,7 +572,7 @@ export async function evolve(
     // Step 15: Update evolution memory
     // -----------------------------------------------------------------------
     const wasDeployed = lastProposal !== null && lastValidation !== null && lastValidation.improved;
-    const evolveResult: EvolveResult = {
+    const evolveResult: EvolveResult = withStats({
       proposal: lastProposal,
       validation: lastValidation,
       deployed: wasDeployed,
@@ -472,8 +580,10 @@ export async function evolve(
       reason: wasDeployed
         ? "Evolution deployed successfully"
         : "Evolution not deployed: proposal or validation missing",
+      ...(skillVersion ? { skillVersion } : {}),
       ...(baselineResult ? { baselineResult } : {}),
-    };
+      ...(gateValidation ? { gateValidation } : {}),
+    });
 
     if (lastProposal) {
       try {
@@ -486,17 +596,19 @@ export async function evolve(
     // -----------------------------------------------------------------------
     // Step 16: Return complete result
     // -----------------------------------------------------------------------
+    finishTui();
     return evolveResult;
   } catch (error) {
-    // Robust error handling: catch any unexpected errors and return gracefully
+    tui.destroy();
+    // Robust error handling: preserve partial results so callers can inspect progress
     const errorMessage = error instanceof Error ? error.message : String(error);
-    return {
-      proposal: null,
-      validation: null,
+    return withStats({
+      proposal: lastProposal,
+      validation: lastValidation,
       deployed: false,
       auditEntries,
       reason: `Error during evolution: ${errorMessage}`,
-    };
+    });
   }
 }
 
@@ -518,6 +630,11 @@ export async function cliMain(): Promise<void> {
       candidates: { type: "string", default: "3" },
       "token-efficiency": { type: "boolean", default: false },
       "with-baseline": { type: "boolean", default: false },
+      "validation-model": { type: "string", default: "haiku" },
+      "cheap-loop": { type: "boolean", default: false },
+      "gate-model": { type: "string" },
+      "proposal-model": { type: "string" },
+      verbose: { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
     strict: true,
@@ -541,6 +658,11 @@ Options:
   --candidates        Number of candidates to generate (default: 3, max: 5)
   --token-efficiency  Enable 5D Pareto with token efficiency scoring
   --with-baseline     Gate deployment on baseline lift > 0.05
+  --validation-model  Model for trigger-check validation calls (default: haiku)
+  --cheap-loop        Use cheap models for loop, expensive model for final gate
+  --gate-model        Model for final gate validation (default: sonnet when --cheap-loop)
+  --proposal-model    Model for proposal generation LLM calls
+  --verbose           Output full EvolveResult JSON (default: compact summary)
   --help              Show this help message`);
     process.exit(0);
   }
@@ -595,9 +717,35 @@ Options:
     tokenEfficiencyEnabled,
     telemetryRecords,
     withBaseline: values["with-baseline"] ?? false,
+    validationModel: values["validation-model"],
+    cheapLoop: values["cheap-loop"] ?? false,
+    gateModel: values["gate-model"],
+    proposalModel: values["proposal-model"],
   });
 
-  console.log(JSON.stringify(result, null, 2));
+  if (values.verbose) {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    const summary: EvolveResultSummary = {
+      skill: values.skill,
+      deployed: result.deployed,
+      reason: result.reason,
+      before: result.validation?.before_pass_rate ?? 0,
+      after: result.validation?.after_pass_rate ?? 0,
+      net_change: result.validation?.net_change ?? 0,
+      improved: result.validation?.improved ?? false,
+      regressions: result.validation?.regressions.length ?? 0,
+      new_passes: result.validation?.new_passes.length ?? 0,
+      confidence: result.proposal?.confidence ?? 0,
+      llm_calls: result.llmCallCount,
+      elapsed_s: +(result.elapsedMs / 1000).toFixed(1),
+      proposal_id: result.proposal?.proposal_id ?? "",
+      rationale: result.proposal?.rationale ?? "",
+      ...(result.skillVersion ? { version: result.skillVersion } : {}),
+      dashboard_url: `http://localhost:3141/report/${encodeURIComponent(values.skill)}`,
+    };
+    console.log(JSON.stringify(summary, null, 2));
+  }
   process.exit(result.deployed ? 0 : 1);
 }
 
