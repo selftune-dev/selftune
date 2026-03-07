@@ -69,10 +69,7 @@ Generate exactly ${maxPositives} positive queries (should_trigger: true) and ${m
 // Response parsing
 // ---------------------------------------------------------------------------
 
-export function parseSyntheticResponse(
-  raw: string,
-  skillName: string,
-): EvalEntry[] {
+export function parseSyntheticResponse(raw: string, skillName: string): EvalEntry[] {
   let text = raw.trim();
 
   // Strip markdown fences manually for array-first JSON
@@ -96,9 +93,7 @@ export function parseSyntheticResponse(
     if (retryIdx >= 0) {
       text = cleaned.slice(retryIdx);
     } else {
-      throw new Error(
-        `Failed to parse synthetic eval response as JSON: ${text.slice(0, 200)}`,
-      );
+      throw new Error(`Failed to parse synthetic eval response as JSON: ${text.slice(0, 200)}`);
     }
   } else {
     text = text.slice(bracketIdx);
@@ -116,9 +111,7 @@ export function parseSyntheticResponse(
   try {
     entries = JSON.parse(jsonText);
   } catch {
-    throw new Error(
-      `Failed to parse synthetic eval response as JSON: ${jsonText.slice(0, 200)}`,
-    );
+    throw new Error(`Failed to parse synthetic eval response as JSON: ${jsonText.slice(0, 200)}`);
   }
 
   if (!Array.isArray(entries)) {

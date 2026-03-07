@@ -166,7 +166,7 @@ For `--list-skills` or `--stats` requests, skip pre-flight entirely (read-only).
 
 Present these options:
 
-```
+```text
 selftune evals — Pre-Flight Configuration
 
 1. Generation Mode
@@ -187,7 +187,7 @@ selftune evals — Pre-Flight Configuration
 
 After the user responds, show a confirmation summary:
 
-```
+```text
 Configuration Summary:
   Mode:          log-based
   Max entries:   50

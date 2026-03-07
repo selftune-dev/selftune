@@ -19,7 +19,7 @@ selftune evolve --skill <name> --skill-path <path> [options]
 | `--eval-set <path>` | Pre-built eval set JSON | Auto-generated from logs |
 | `--agent <name>` | Agent CLI to use (claude, codex, opencode) | Auto-detected |
 | `--dry-run` | Propose and validate without deploying | Off |
-| `--confidence <n>` | Minimum confidence threshold (0-1) | 0.7 |
+| `--confidence <n>` | Minimum confidence threshold (0-1) | 0.6 |
 | `--max-iterations <n>` | Maximum retry iterations | 3 |
 | `--validation-model <model>` | Model for trigger-check validation LLM calls | `haiku` |
 | `--cheap-loop` | Use cheap models for loop, expensive for final gate | Off |

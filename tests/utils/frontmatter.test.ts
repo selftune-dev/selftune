@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { parseFrontmatter, replaceFrontmatterDescription } from "../../cli/selftune/utils/frontmatter.js";
+import {
+  parseFrontmatter,
+  replaceFrontmatterDescription,
+} from "../../cli/selftune/utils/frontmatter.js";
 
 describe("parseFrontmatter", () => {
   test("single-line description", () => {
@@ -122,9 +125,7 @@ description: |
 # pipe-test`;
 
     const result = parseFrontmatter(content);
-    expect(result.description).toBe(
-      "Line one of the description. Line two of the description.",
-    );
+    expect(result.description).toBe("Line one of the description. Line two of the description.");
   });
 
   test("real-world selftune SKILL.md frontmatter", () => {
@@ -200,7 +201,8 @@ metadata:
   });
 
   test("uses folded scalar for long descriptions", () => {
-    const longDesc = "When the user wants to audit SEO issues including technical SEO, on-page optimization, core web vitals, crawl errors, indexing problems, and ranking drops.";
+    const longDesc =
+      "When the user wants to audit SEO issues including technical SEO, on-page optimization, core web vitals, crawl errors, indexing problems, and ranking drops.";
     const content = `---
 name: seo-audit
 description: Short

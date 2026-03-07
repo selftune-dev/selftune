@@ -25,8 +25,8 @@ import type {
   SessionTelemetryRecord,
   SkillUsageRecord,
 } from "../types.js";
-import { detectAgent } from "../utils/llm-call.js";
 import { readJsonl } from "../utils/jsonl.js";
+import { detectAgent } from "../utils/llm-call.js";
 import { seededShuffle } from "../utils/seeded-random.js";
 import { generateSyntheticEvals } from "./synthetic-evals.js";
 
@@ -403,16 +403,11 @@ export async function cliMain(): Promise<void> {
     const effectiveMax = Number.isNaN(maxPerSide) || maxPerSide <= 0 ? 50 : maxPerSide;
 
     console.log(`Generating synthetic evals for skill '${values.skill}'...`);
-    const evalSet = await generateSyntheticEvals(
-      values["skill-path"],
-      values.skill,
-      agent,
-      {
-        maxPositives: effectiveMax,
-        maxNegatives: effectiveMax,
-        modelFlag: values.model,
-      },
-    );
+    const evalSet = await generateSyntheticEvals(values["skill-path"], values.skill, agent, {
+      maxPositives: effectiveMax,
+      maxNegatives: effectiveMax,
+      modelFlag: values.model,
+    });
 
     const outputPath = values.output ?? `${values.skill}_trigger_eval.json`;
     writeFileSync(outputPath, JSON.stringify(evalSet, null, 2), "utf-8");

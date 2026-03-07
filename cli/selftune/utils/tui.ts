@@ -26,10 +26,7 @@ function createNoopTUI(): EvolveTUI {
   return { step() {}, done() {}, fail() {}, finish() {}, destroy() {} };
 }
 
-export function createEvolveTUI(opts: {
-  skillName: string;
-  model: string;
-}): EvolveTUI {
+export function createEvolveTUI(opts: { skillName: string; model: string }): EvolveTUI {
   const noColor = !!process.env.NO_COLOR;
   const isTTY = !!process.stderr.isTTY;
 

@@ -282,9 +282,19 @@ export async function evolveBody(
       const validationModelFlag = options.validationModel ?? studentModel;
       let validation: BodyValidationResult;
       if (target === "routing") {
-        validation = await _validateRoutingProposal(proposal, evalSet, studentAgent, validationModelFlag);
+        validation = await _validateRoutingProposal(
+          proposal,
+          evalSet,
+          studentAgent,
+          validationModelFlag,
+        );
       } else {
-        validation = await _validateBodyProposal(proposal, evalSet, studentAgent, validationModelFlag);
+        validation = await _validateBodyProposal(
+          proposal,
+          evalSet,
+          studentAgent,
+          validationModelFlag,
+        );
       }
       lastValidation = validation;
 

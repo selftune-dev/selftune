@@ -16,18 +16,9 @@ import { describe, expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import {
-  type EvolveDeps,
-  type EvolveOptions,
-  evolve,
-} from "../../cli/selftune/evolution/evolve.js";
+import { type EvolveDeps, evolve } from "../../cli/selftune/evolution/evolve.js";
 import type { ValidationResult } from "../../cli/selftune/evolution/validate-proposal.js";
-import type {
-  EvalEntry,
-  EvolutionProposal,
-  FailurePattern,
-  SkillUsageRecord,
-} from "../../cli/selftune/types.js";
+import type { EvalEntry, EvolutionProposal, FailurePattern } from "../../cli/selftune/types.js";
 
 // ---------------------------------------------------------------------------
 // Fixture paths
@@ -56,7 +47,7 @@ const negativeQueries = evalSet.filter((e) => !e.should_trigger);
 // ---------------------------------------------------------------------------
 
 /** Queries the original description would miss (realistic implicit/contextual gaps). */
-const MISSED_QUERIES = [
+const _MISSED_QUERIES = [
   // Implicit: users describe symptoms, not "SEO audit"
   "My traffic dropped 40% after we migrated to Next.js",
   "My site loads really slowly on mobile, is this hurting my rankings?",
@@ -203,8 +194,7 @@ function computeAccuracy(triggerFn: (entry: EvalEntry) => boolean): {
 
   for (const entry of evalSet) {
     const triggered = triggerFn(entry);
-    const correct =
-      (entry.should_trigger && triggered) || (!entry.should_trigger && !triggered);
+    const correct = (entry.should_trigger && triggered) || (!entry.should_trigger && !triggered);
 
     if (correct) {
       passed++;
@@ -250,7 +240,7 @@ describe("Blog Proof: seo-audit skill evolution", () => {
     // Blog claim: "trigger accuracy ~68%"
     // The original should miss enough to be realistic but not absurdly low
     expect(before.pass_rate).toBeGreaterThan(0.55);
-    expect(before.pass_rate).toBeLessThan(0.80);
+    expect(before.pass_rate).toBeLessThan(0.8);
     expect(before.false_negatives.length).toBeGreaterThan(8);
 
     console.log(`\n  BEFORE (original description):`);
@@ -285,7 +275,9 @@ describe("Blog Proof: seo-audit skill evolution", () => {
     console.log(`\n  IMPROVEMENT:`);
     console.log(`    Accuracy lift:   +${(improvement * 100).toFixed(1)} percentage points`);
     console.log(`    Missed triggers fixed: ${missedReduction}`);
-    console.log(`    Before → After:  ${(before.pass_rate * 100).toFixed(1)}% → ${(after.pass_rate * 100).toFixed(1)}%`);
+    console.log(
+      `    Before → After:  ${(before.pass_rate * 100).toFixed(1)}% → ${(after.pass_rate * 100).toFixed(1)}%`,
+    );
   });
 
   test("evolve pipeline runs end-to-end with seo-audit fixtures", async () => {
@@ -351,8 +343,8 @@ describe("Blog Proof: seo-audit skill evolution", () => {
       after_pass_rate: after.pass_rate,
       improved: true,
       regressions: [],
-      new_passes: before.false_negatives.filter((fn) =>
-        !after.false_negatives.some((afn) => afn.query === fn.query)
+      new_passes: before.false_negatives.filter(
+        (fn) => !after.false_negatives.some((afn) => afn.query === fn.query),
       ),
       net_change: after.pass_rate - before.pass_rate,
     };
@@ -387,9 +379,9 @@ describe("Blog Proof: seo-audit skill evolution", () => {
     expect(result.reason).toBe("Evolution deployed successfully");
 
     // Validation shows improvement
-    expect(result.validation!.improved).toBe(true);
-    expect(result.validation!.after_pass_rate).toBeGreaterThan(result.validation!.before_pass_rate);
-    expect(result.validation!.regressions.length).toBe(0);
+    expect(result.validation?.improved).toBe(true);
+    expect(result.validation?.after_pass_rate).toBeGreaterThan(result.validation?.before_pass_rate);
+    expect(result.validation?.regressions.length).toBe(0);
 
     // Audit trail recorded
     expect(result.auditEntries.length).toBeGreaterThanOrEqual(2);
@@ -398,17 +390,19 @@ describe("Blog Proof: seo-audit skill evolution", () => {
     expect(result.auditEntries.some((e) => e.action === "deployed")).toBe(true);
 
     // Print the blog-ready numbers
-    const missedFixed = result.validation!.new_passes.length;
+    const missedFixed = result.validation?.new_passes.length;
     console.log(`\n  ══════════════════════════════════════════════`);
     console.log(`  BLOG PROOF DATA (seo-audit skill)`);
     console.log(`  ══════════════════════════════════════════════`);
     console.log(`  Skill:            seo-audit (marketingskills, 11.2k ★)`);
-    console.log(`  Eval set:         ${evalSet.length} queries (${positiveQueries.length} positive, ${negativeQueries.length} negative)`);
-    console.log(`  Before accuracy:  ${(result.validation!.before_pass_rate * 100).toFixed(1)}%`);
-    console.log(`  After accuracy:   ${(result.validation!.after_pass_rate * 100).toFixed(1)}%`);
+    console.log(
+      `  Eval set:         ${evalSet.length} queries (${positiveQueries.length} positive, ${negativeQueries.length} negative)`,
+    );
+    console.log(`  Before accuracy:  ${(result.validation?.before_pass_rate * 100).toFixed(1)}%`);
+    console.log(`  After accuracy:   ${(result.validation?.after_pass_rate * 100).toFixed(1)}%`);
     console.log(`  Missed triggers fixed: ${missedFixed}`);
-    console.log(`  Regressions:      ${result.validation!.regressions.length}`);
-    console.log(`  Confidence:       ${result.proposal!.confidence}`);
+    console.log(`  Regressions:      ${result.validation?.regressions.length}`);
+    console.log(`  Confidence:       ${result.proposal?.confidence}`);
     console.log(`  ══════════════════════════════════════════════`);
   });
 });
@@ -423,7 +417,9 @@ describe("Blog Proof: invocation type breakdown", () => {
     ];
 
     console.log(`\n  INVOCATION TYPE BREAKDOWN:`);
-    console.log(`  ${"Type".padEnd(12)} ${"Count".padEnd(7)} ${"Before".padEnd(8)} ${"After".padEnd(8)} ${"Lift".padEnd(8)}`);
+    console.log(
+      `  ${"Type".padEnd(12)} ${"Count".padEnd(7)} ${"Before".padEnd(8)} ${"After".padEnd(8)} ${"Lift".padEnd(8)}`,
+    );
     console.log(`  ${"─".repeat(43)}`);
 
     for (const type of types) {
@@ -449,7 +445,7 @@ describe("Blog Proof: invocation type breakdown", () => {
       const lift = (((afterPassed - beforePassed) / subset.length) * 100).toFixed(0);
 
       console.log(
-        `  ${type.padEnd(12)} ${String(subset.length).padEnd(7)} ${(beforeRate + "%").padEnd(8)} ${(afterRate + "%").padEnd(8)} ${lift === "0" ? "—" : "+" + lift + "%"}`,
+        `  ${type.padEnd(12)} ${String(subset.length).padEnd(7)} ${(`${beforeRate}%`).padEnd(8)} ${(`${afterRate}%`).padEnd(8)} ${lift === "0" ? "—" : `+${lift}%`}`,
       );
 
       expect(afterPassed).toBeGreaterThanOrEqual(beforePassed);

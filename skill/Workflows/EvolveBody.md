@@ -25,6 +25,7 @@ selftune evolve-body --skill <name> --skill-path <path> --target <target> [optio
 | `--dry-run` | Propose and validate without deploying | Off |
 | `--max-iterations <n>` | Maximum refinement iterations | 3 |
 | `--task-description <text>` | Context for the evolution goal | None |
+| `--validation-model <model>` | Model for trigger-check validation calls (overrides `--student-model` for validation) | None |
 | `--few-shot <paths>` | Comma-separated paths to example SKILL.md files | None |
 
 ## Evolution Targets

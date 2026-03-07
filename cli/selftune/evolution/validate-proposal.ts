@@ -118,8 +118,13 @@ export async function validateProposalSequential(
     regressions.length < total * 0.05 &&
     (netChange >= 0.1 || newPasses.length >= 2);
 
-  // Compute per-invocation-type scores
-  const byInvocationType: Record<string, { passed: number; total: number }> = {};
+  // Compute per-invocation-type scores (initialize all required keys)
+  const byInvocationType: Record<string, { passed: number; total: number }> = {
+    explicit: { passed: 0, total: 0 },
+    implicit: { passed: 0, total: 0 },
+    contextual: { passed: 0, total: 0 },
+    negative: { passed: 0, total: 0 },
+  };
   for (const r of perEntryResults) {
     const type = r.entry.invocation_type ?? "implicit";
     if (!byInvocationType[type]) byInvocationType[type] = { passed: 0, total: 0 };
@@ -127,13 +132,36 @@ export async function validateProposalSequential(
     if (r.after_pass) byInvocationType[type].passed++;
   }
 
-  const invocationScores: Record<string, { passed: number; total: number; pass_rate: number }> = {};
-  for (const [type, counts] of Object.entries(byInvocationType)) {
-    invocationScores[type] = {
-      ...counts,
-      pass_rate: counts.total > 0 ? counts.passed / counts.total : 0,
-    };
-  }
+  const invocationScores: InvocationTypeScores = {
+    explicit: {
+      ...byInvocationType.explicit,
+      pass_rate:
+        byInvocationType.explicit.total > 0
+          ? byInvocationType.explicit.passed / byInvocationType.explicit.total
+          : 0,
+    },
+    implicit: {
+      ...byInvocationType.implicit,
+      pass_rate:
+        byInvocationType.implicit.total > 0
+          ? byInvocationType.implicit.passed / byInvocationType.implicit.total
+          : 0,
+    },
+    contextual: {
+      ...byInvocationType.contextual,
+      pass_rate:
+        byInvocationType.contextual.total > 0
+          ? byInvocationType.contextual.passed / byInvocationType.contextual.total
+          : 0,
+    },
+    negative: {
+      ...byInvocationType.negative,
+      pass_rate:
+        byInvocationType.negative.total > 0
+          ? byInvocationType.negative.passed / byInvocationType.negative.total
+          : 0,
+    },
+  };
 
   return {
     proposal_id: proposal.proposal_id,
@@ -143,7 +171,7 @@ export async function validateProposalSequential(
     regressions,
     new_passes: newPasses,
     net_change: netChange,
-    by_invocation_type: invocationScores as unknown as InvocationTypeScores,
+    by_invocation_type: invocationScores,
     per_entry_results: perEntryResults,
   };
 }
@@ -204,7 +232,6 @@ export async function validateProposalBatched(
   let afterPassed = 0;
 
   const batches = chunk(evalSet, TRIGGER_CHECK_BATCH_SIZE);
-  let processedEntries = 0;
 
   for (const batch of batches) {
     const queries = batch.map((e) => e.query);
@@ -227,8 +254,6 @@ export async function validateProposalBatched(
       beforeRuns.push(parseBatchTriggerResponse(allRaw[r * 2], queries.length));
       afterRuns.push(parseBatchTriggerResponse(allRaw[r * 2 + 1], queries.length));
     }
-
-    processedEntries += batch.length;
 
     for (let i = 0; i < batch.length; i++) {
       const entry = batch[i];
@@ -260,8 +285,13 @@ export async function validateProposalBatched(
     regressions.length < total * 0.05 &&
     (netChange >= 0.1 || newPasses.length >= 2);
 
-  // Compute per-invocation-type scores
-  const byInvocationType: Record<string, { passed: number; total: number }> = {};
+  // Compute per-invocation-type scores (initialize all required keys)
+  const byInvocationType: Record<string, { passed: number; total: number }> = {
+    explicit: { passed: 0, total: 0 },
+    implicit: { passed: 0, total: 0 },
+    contextual: { passed: 0, total: 0 },
+    negative: { passed: 0, total: 0 },
+  };
   for (const r of perEntryResults) {
     const type = r.entry.invocation_type ?? "implicit";
     if (!byInvocationType[type]) byInvocationType[type] = { passed: 0, total: 0 };
@@ -269,13 +299,36 @@ export async function validateProposalBatched(
     if (r.after_pass) byInvocationType[type].passed++;
   }
 
-  const invocationScores: Record<string, { passed: number; total: number; pass_rate: number }> = {};
-  for (const [type, counts] of Object.entries(byInvocationType)) {
-    invocationScores[type] = {
-      ...counts,
-      pass_rate: counts.total > 0 ? counts.passed / counts.total : 0,
-    };
-  }
+  const invocationScores: InvocationTypeScores = {
+    explicit: {
+      ...byInvocationType.explicit,
+      pass_rate:
+        byInvocationType.explicit.total > 0
+          ? byInvocationType.explicit.passed / byInvocationType.explicit.total
+          : 0,
+    },
+    implicit: {
+      ...byInvocationType.implicit,
+      pass_rate:
+        byInvocationType.implicit.total > 0
+          ? byInvocationType.implicit.passed / byInvocationType.implicit.total
+          : 0,
+    },
+    contextual: {
+      ...byInvocationType.contextual,
+      pass_rate:
+        byInvocationType.contextual.total > 0
+          ? byInvocationType.contextual.passed / byInvocationType.contextual.total
+          : 0,
+    },
+    negative: {
+      ...byInvocationType.negative,
+      pass_rate:
+        byInvocationType.negative.total > 0
+          ? byInvocationType.negative.passed / byInvocationType.negative.total
+          : 0,
+    },
+  };
 
   return {
     proposal_id: proposal.proposal_id,
@@ -285,7 +338,7 @@ export async function validateProposalBatched(
     regressions,
     new_passes: newPasses,
     net_change: netChange,
-    by_invocation_type: invocationScores as unknown as InvocationTypeScores,
+    by_invocation_type: invocationScores,
     per_entry_results: perEntryResults,
   };
 }

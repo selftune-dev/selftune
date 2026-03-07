@@ -288,10 +288,10 @@ describe("assembleBundle", () => {
 
     // "unrelated query" is in queryRecords but not triggered by any skill
     expect(bundle.unmatched_queries).toBeDefined();
-    expect(bundle.unmatched_queries!.length).toBeGreaterThan(0);
-    expect(bundle.unmatched_queries!.map((q) => q.query)).toContain("unrelated query");
+    expect(bundle.unmatched_queries?.length).toBeGreaterThan(0);
+    expect(bundle.unmatched_queries?.map((q) => q.query)).toContain("unrelated query");
     // Triggered queries should NOT be in unmatched
-    expect(bundle.unmatched_queries!.map((q) => q.query)).not.toContain("run selftune eval");
+    expect(bundle.unmatched_queries?.map((q) => q.query)).not.toContain("run selftune eval");
   });
 
   test("populates pending_proposals for proposals without terminal actions", () => {
@@ -345,9 +345,9 @@ describe("assembleBundle", () => {
     });
 
     expect(bundle.pending_proposals).toBeDefined();
-    expect(bundle.pending_proposals!.length).toBe(1);
-    expect(bundle.pending_proposals![0].proposal_id).toBe("p1");
-    expect(bundle.pending_proposals![0].action).toBe("validated");
+    expect(bundle.pending_proposals?.length).toBe(1);
+    expect(bundle.pending_proposals?.[0].proposal_id).toBe("p1");
+    expect(bundle.pending_proposals?.[0].action).toBe("validated");
   });
 
   test("schema_version is 1.2 when new fields are populated", () => {

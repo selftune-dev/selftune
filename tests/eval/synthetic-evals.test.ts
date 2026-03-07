@@ -100,9 +100,7 @@ describe("parseSyntheticResponse", () => {
   });
 
   test("throws on completely invalid JSON", () => {
-    expect(() => parseSyntheticResponse("not json at all", "pptx")).toThrow(
-      /Failed to parse/,
-    );
+    expect(() => parseSyntheticResponse("not json at all", "pptx")).toThrow(/Failed to parse/);
   });
 
   test("returns empty array when response is JSON object wrapping an empty array", () => {

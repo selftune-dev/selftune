@@ -235,8 +235,8 @@ describe("sanitizeBundle", () => {
     };
     const result = sanitizeBundle(bundleWithUnmatched, "conservative");
     expect(result.unmatched_queries).toBeDefined();
-    expect(result.unmatched_queries![0].query).toBe("open [PATH]");
-    expect(result.unmatched_queries![0].timestamp).toBe("2025-01-01T00:00:00Z");
+    expect(result.unmatched_queries?.[0].query).toBe("open [PATH]");
+    expect(result.unmatched_queries?.[0].timestamp).toBe("2025-01-01T00:00:00Z");
   });
 
   test("sanitizes pending_proposals details", () => {
@@ -253,8 +253,8 @@ describe("sanitizeBundle", () => {
     };
     const result = sanitizeBundle(bundleWithPending, "conservative");
     expect(result.pending_proposals).toBeDefined();
-    expect(result.pending_proposals![0].details).toBe("Proposal for [PATH]");
-    expect(result.pending_proposals![0].proposal_id).toBe("p1");
+    expect(result.pending_proposals?.[0].details).toBe("Proposal for [PATH]");
+    expect(result.pending_proposals?.[0].proposal_id).toBe("p1");
   });
 
   test("omits unmatched_queries when not present", () => {

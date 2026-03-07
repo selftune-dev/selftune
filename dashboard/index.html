@@ -702,7 +702,7 @@
   </div>
 
   <!-- ===== SKILL HEALTH GRID ===== -->
-  <input id="skillSearchInput" placeholder="Filter skills..." class="search-filter" style="margin-bottom:0.5rem;display:none;">
+  <input id="skillSearchInput" placeholder="Filter skills..." class="search-filter" aria-label="Filter skills by name" style="margin-bottom:0.5rem;display:none;">
   <div class="section" id="skillHealthSection" style="display:none;">
     <div class="section-header">
       <span>Skill Health Grid</span>
@@ -1177,6 +1177,16 @@ function updateSkillHealthGrid() {
     row.addEventListener('click', handler);
     row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); } });
   });
+
+  // Reapply search filter after grid rebuild
+  const searchInput = document.getElementById('skillSearchInput');
+  if (searchInput && searchInput.value) {
+    const query = searchInput.value.toLowerCase();
+    grid.querySelectorAll('.skill-health-row').forEach(row => {
+      const name = (row.dataset.skill || '').toLowerCase();
+      row.style.display = name.includes(query) ? '' : 'none';
+    });
+  }
 }
 
 // ========================================================================
@@ -1618,7 +1628,14 @@ function updateDrillInvocationBreakdown(skillName) {
 // ========================================================================
 function filterByPeriod(records, days) {
   if (!days || days === 0) return records;
-  const cutoff = new Date();
+  // Anchor cutoff to latest timestamp in dataset, not viewer's clock,
+  // so archived/historical datasets filter correctly.
+  const latest = records.reduce((max, r) => {
+    const t = new Date(r.timestamp).getTime();
+    return t > max ? t : max;
+  }, 0);
+  if (!latest) return records;
+  const cutoff = new Date(latest);
   cutoff.setDate(cutoff.getDate() - days);
   return records.filter(r => new Date(r.timestamp) >= cutoff);
 }

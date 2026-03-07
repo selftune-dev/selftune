@@ -55,7 +55,10 @@ export function parseFrontmatter(content: string): SkillFrontmatter {
   }
 
   const yamlLines = lines.slice(1, endIdx);
-  const body = lines.slice(endIdx + 1).join("\n").replace(/^\n+/, "");
+  const body = lines
+    .slice(endIdx + 1)
+    .join("\n")
+    .replace(/^\n+/, "");
 
   let name = "";
   let description = "";
@@ -178,7 +181,7 @@ export function replaceFrontmatterDescription(content: string, newDescription: s
       }
 
       // Write new description — use folded scalar if it's long or has special chars
-      const needsFolded = newDescription.length > 120 || /[:#"'\[\]{}|>]/.test(newDescription);
+      const needsFolded = newDescription.length > 120 || /[:#"'[\]{}|>]/.test(newDescription);
       if (needsFolded) {
         newYamlLines.push("description: >");
         // Wrap at ~78 chars with 2-space indent

@@ -92,13 +92,23 @@ const mockGenerateProposal = mock(
 );
 
 const mockValidateProposal = mock(
-  async (_proposal: EvolutionProposal, _evalSet: EvalEntry[], _agent: string, _modelFlag?: string) => {
+  async (
+    _proposal: EvolutionProposal,
+    _evalSet: EvalEntry[],
+    _agent: string,
+    _modelFlag?: string,
+  ) => {
     return makeValidationResult();
   },
 );
 
 const mockGateValidateProposal = mock(
-  async (_proposal: EvolutionProposal, _evalSet: EvalEntry[], _agent: string, _modelFlag?: string) => {
+  async (
+    _proposal: EvolutionProposal,
+    _evalSet: EvalEntry[],
+    _agent: string,
+    _modelFlag?: string,
+  ) => {
     return makeValidationResult();
   },
 );
@@ -388,7 +398,12 @@ describe("evolve orchestrator", () => {
   test("validationModel is passed to validateProposal", async () => {
     let capturedModelFlag: string | undefined;
     mockValidateProposal.mockImplementation(
-      async (_proposal: EvolutionProposal, _evalSet: EvalEntry[], _agent: string, modelFlag?: string) => {
+      async (
+        _proposal: EvolutionProposal,
+        _evalSet: EvalEntry[],
+        _agent: string,
+        modelFlag?: string,
+      ) => {
         capturedModelFlag = modelFlag;
         return makeValidationResult();
       },
@@ -406,14 +421,27 @@ describe("evolve orchestrator", () => {
     let capturedValidationModel: string | undefined;
 
     mockGenerateProposal.mockImplementation(
-      async (_desc: string, _p: FailurePattern[], _m: string[], _sn: string, _sp: string, _a: string, modelFlag?: string) => {
+      async (
+        _desc: string,
+        _p: FailurePattern[],
+        _m: string[],
+        _sn: string,
+        _sp: string,
+        _a: string,
+        modelFlag?: string,
+      ) => {
         capturedProposalModel = modelFlag;
         return makeProposal();
       },
     );
 
     mockValidateProposal.mockImplementation(
-      async (_proposal: EvolutionProposal, _evalSet: EvalEntry[], _agent: string, modelFlag?: string) => {
+      async (
+        _proposal: EvolutionProposal,
+        _evalSet: EvalEntry[],
+        _agent: string,
+        modelFlag?: string,
+      ) => {
         capturedValidationModel = modelFlag;
         return makeValidationResult();
       },
@@ -432,7 +460,12 @@ describe("evolve orchestrator", () => {
     let gateModelUsed: string | undefined;
 
     mockGateValidateProposal.mockImplementation(
-      async (_proposal: EvolutionProposal, _evalSet: EvalEntry[], _agent: string, modelFlag?: string) => {
+      async (
+        _proposal: EvolutionProposal,
+        _evalSet: EvalEntry[],
+        _agent: string,
+        modelFlag?: string,
+      ) => {
         gateCalled = true;
         gateModelUsed = modelFlag;
         return makeValidationResult({ improved: true });
@@ -451,8 +484,8 @@ describe("evolve orchestrator", () => {
 
   // 13. Gate validation failure prevents deploy
   test("gate validation failure prevents deploy", async () => {
-    mockGateValidateProposal.mockImplementation(
-      async () => makeValidationResult({ improved: false, net_change: -0.05 }),
+    mockGateValidateProposal.mockImplementation(async () =>
+      makeValidationResult({ improved: false, net_change: -0.05 }),
     );
 
     const opts = makeOptions({ gateModel: "sonnet" });

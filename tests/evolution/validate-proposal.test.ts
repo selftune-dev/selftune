@@ -5,10 +5,12 @@ import type { EvalEntry, EvolutionProposal } from "../../cli/selftune/types.js";
 // Mock callLlm before importing the module under test
 // ---------------------------------------------------------------------------
 
-const mockCallLlm = mock(async (_sys: string, _user: string, _agent: string, _modelFlag?: string) => {
-  // Default: deterministic responses based on content in the user prompt
-  return "NO";
-});
+const mockCallLlm = mock(
+  async (_sys: string, _user: string, _agent: string, _modelFlag?: string) => {
+    // Default: deterministic responses based on content in the user prompt
+    return "NO";
+  },
+);
 
 mock.module("../../cli/selftune/utils/llm-call.js", () => ({
   callLlm: mockCallLlm,
@@ -313,12 +315,10 @@ describe("validateProposal", () => {
 
   test("passes agent parameter through to callLlm", async () => {
     let capturedAgent: string | undefined;
-    mockCallLlm.mockImplementation(
-      async (_sys: string, user: string, agent: string) => {
-        capturedAgent = agent;
-        return batchAllResponse(user, "NO");
-      },
-    );
+    mockCallLlm.mockImplementation(async (_sys: string, user: string, agent: string) => {
+      capturedAgent = agent;
+      return batchAllResponse(user, "NO");
+    });
 
     const proposal = makeProposal();
     const evalSet: EvalEntry[] = [makeEval("test", true)];
@@ -330,10 +330,12 @@ describe("validateProposal", () => {
 
   test("passes modelFlag parameter through to callLlm", async () => {
     let capturedModelFlag: string | undefined;
-    mockCallLlm.mockImplementation(async (_sys: string, user: string, _agent: string, modelFlag?: string) => {
-      capturedModelFlag = modelFlag;
-      return batchAllResponse(user, "NO");
-    });
+    mockCallLlm.mockImplementation(
+      async (_sys: string, user: string, _agent: string, modelFlag?: string) => {
+        capturedModelFlag = modelFlag;
+        return batchAllResponse(user, "NO");
+      },
+    );
 
     const proposal = makeProposal();
     const evalSet: EvalEntry[] = [makeEval("test", true)];
@@ -345,10 +347,12 @@ describe("validateProposal", () => {
 
   test("modelFlag defaults to undefined when not provided", async () => {
     let capturedModelFlag: string | undefined = "should-be-overwritten";
-    mockCallLlm.mockImplementation(async (_sys: string, user: string, _agent: string, modelFlag?: string) => {
-      capturedModelFlag = modelFlag;
-      return batchAllResponse(user, "NO");
-    });
+    mockCallLlm.mockImplementation(
+      async (_sys: string, user: string, _agent: string, modelFlag?: string) => {
+        capturedModelFlag = modelFlag;
+        return batchAllResponse(user, "NO");
+      },
+    );
 
     const proposal = makeProposal();
     const evalSet: EvalEntry[] = [makeEval("test", true)];

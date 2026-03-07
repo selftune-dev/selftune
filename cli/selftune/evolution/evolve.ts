@@ -11,16 +11,15 @@ import { parseArgs } from "node:util";
 
 import { QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
 import type { BaselineMeasurement } from "../eval/baseline.js";
-import { parseFrontmatter, replaceFrontmatterDescription } from "../utils/frontmatter.js";
 import { measureBaseline } from "../eval/baseline.js";
 import { buildEvalSet } from "../eval/hooks-to-evals.js";
 import { updateContextAfterEvolve } from "../memory/writer.js";
 import type {
   EvalEntry,
   EvalPassRate,
-  EvolveResultSummary,
   EvolutionAuditEntry,
   EvolutionProposal,
+  EvolveResultSummary,
   FailurePattern,
   GradingResult,
   ParetoCandidate,
@@ -28,7 +27,9 @@ import type {
   SessionTelemetryRecord,
   SkillUsageRecord,
 } from "../types.js";
+import { parseFrontmatter, replaceFrontmatterDescription } from "../utils/frontmatter.js";
 import { readJsonl } from "../utils/jsonl.js";
+import { createEvolveTUI } from "../utils/tui.js";
 import { appendAuditEntry } from "./audit.js";
 import { extractFailurePatterns } from "./extract-patterns.js";
 import {
@@ -39,8 +40,11 @@ import {
 } from "./pareto.js";
 import { generateMultipleProposals, generateProposal } from "./propose-description.js";
 import type { ValidationResult } from "./validate-proposal.js";
-import { validateProposal } from "./validate-proposal.js";
-import { createEvolveTUI } from "../utils/tui.js";
+import {
+  TRIGGER_CHECK_BATCH_SIZE,
+  VALIDATION_RUNS,
+  validateProposal,
+} from "./validate-proposal.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -167,7 +171,9 @@ export async function evolve(
   let llmCallCount = 0;
   const tui = createEvolveTUI({ skillName, model: options.proposalModel ?? "(default)" });
   const finishTui = () =>
-    tui.finish(`${llmCallCount} LLM calls \u00b7 ${((Date.now() - pipelineStart) / 1000).toFixed(1)}s elapsed`);
+    tui.finish(
+      `${llmCallCount} LLM calls \u00b7 ${((Date.now() - pipelineStart) / 1000).toFixed(1)}s elapsed`,
+    );
 
   /** Stamp every return with pipeline stats so callers always get them. */
   const withStats = (r: Omit<EvolveResult, "llmCallCount" | "elapsedMs">): EvolveResult => ({
@@ -238,7 +244,9 @@ export async function evolve(
     );
 
     const totalMissed = failurePatterns.reduce((sum, p) => sum + p.missed_queries.length, 0);
-    tui.done(`Extracted ${failurePatterns.length} failure pattern(s) (${totalMissed} missed queries)`);
+    tui.done(
+      `Extracted ${failurePatterns.length} failure pattern(s) (${totalMissed} missed queries)`,
+    );
 
     // -----------------------------------------------------------------------
     // Step 5: Early exit if no patterns
@@ -313,7 +321,12 @@ export async function evolve(
       for (const proposal of viableCandidates) {
         recordAudit(proposal.proposal_id, "created", `Pareto candidate for ${skillName}`);
 
-        const validation = await _validateProposal(proposal, evalSet, agent, options.validationModel);
+        const validation = await _validateProposal(
+          proposal,
+          evalSet,
+          agent,
+          options.validationModel,
+        );
         recordAudit(
           proposal.proposal_id,
           "validated",
@@ -411,12 +424,21 @@ export async function evolve(
         }
 
         // Step 10: Validate against eval set
-        const batchCount = Math.ceil(evalSet.length / 10);
-        tui.step(`Validating ${evalSet.length} entries (${batchCount} batches, 3x majority-vote)...`);
-        const validation = await _validateProposal(proposal, evalSet, agent, options.validationModel);
+        const batchCount = Math.ceil(evalSet.length / TRIGGER_CHECK_BATCH_SIZE);
+        tui.step(
+          `Validating ${evalSet.length} entries (${batchCount} batches, ${VALIDATION_RUNS}x majority-vote)...`,
+        );
+        const validation = await _validateProposal(
+          proposal,
+          evalSet,
+          agent,
+          options.validationModel,
+        );
         lastValidation = validation;
-        llmCallCount += batchCount * 2 * 3; // 3x for majority-vote runs
-        tui.done(`Validation: ${(validation.before_pass_rate * 100).toFixed(1)}% \u2192 ${(validation.after_pass_rate * 100).toFixed(1)}% (improved: ${validation.improved})`);
+        llmCallCount += batchCount * 2 * VALIDATION_RUNS;
+        tui.done(
+          `Validation: ${(validation.before_pass_rate * 100).toFixed(1)}% \u2192 ${(validation.after_pass_rate * 100).toFixed(1)}% (improved: ${validation.improved})`,
+        );
 
         // Step 11: Audit "validated"
         const evalSnapshot: EvalPassRate = {
@@ -488,7 +510,9 @@ export async function evolve(
         agent,
         modelFlag: options.validationModel,
       });
-      tui.done(`Baseline: lift=${baselineResult.lift.toFixed(3)}, adds_value=${baselineResult.adds_value}`);
+      tui.done(
+        `Baseline: lift=${baselineResult.lift.toFixed(3)}, adds_value=${baselineResult.adds_value}`,
+      );
 
       recordAudit(
         lastProposal.proposal_id,
@@ -516,7 +540,9 @@ export async function evolve(
     if (options.gateModel && lastProposal && lastValidation?.improved) {
       tui.step(`Gate validation (${options.gateModel})...`);
       gateValidation = await _gateValidateProposal(lastProposal, evalSet, agent, options.gateModel);
-      tui.done(`Gate (${options.gateModel}): improved=${gateValidation.improved}, net_change=${gateValidation.net_change.toFixed(3)}`);
+      tui.done(
+        `Gate (${options.gateModel}): improved=${gateValidation.improved}, net_change=${gateValidation.net_change.toFixed(3)}`,
+      );
 
       recordAudit(
         lastProposal.proposal_id,
@@ -555,17 +581,12 @@ export async function evolve(
       writeFileSync(skillPath, updatedContent, "utf-8");
       tui.done(`Deployed updated description to ${skillPath}`);
 
-      recordAudit(
-        lastProposal.proposal_id,
-        "deployed",
-        `Deployed proposal for ${skillName}`,
-        {
-          total: evalSet.length,
-          passed: Math.round(lastValidation.after_pass_rate * evalSet.length),
-          failed: evalSet.length - Math.round(lastValidation.after_pass_rate * evalSet.length),
-          pass_rate: lastValidation.after_pass_rate,
-        },
-      );
+      recordAudit(lastProposal.proposal_id, "deployed", `Deployed proposal for ${skillName}`, {
+        total: evalSet.length,
+        passed: Math.round(lastValidation.after_pass_rate * evalSet.length),
+        failed: evalSet.length - Math.round(lastValidation.after_pass_rate * evalSet.length),
+        pass_rate: lastValidation.after_pass_rate,
+      });
     }
 
     // -----------------------------------------------------------------------

@@ -8,7 +8,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import { computeBadgeData, findSkillBadgeData } from "../../cli/selftune/badge/badge-data.js";
 import { formatBadgeOutput, renderBadgeSvg } from "../../cli/selftune/badge/badge-svg.js";
-import type { SkillStatus } from "../../cli/selftune/status.js";
 import { makeSkillStatus, makeStatusResult, resetFixtureCounter } from "./fixtures.js";
 
 beforeEach(() => {
