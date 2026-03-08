@@ -1,6 +1,7 @@
 {
   "_readme": "Merge the 'hooks' block below into your ~/.claude/settings.json",
   "_readme2": "Replace /PATH/TO/ with the actual directory where you saved the scripts",
+  "_readme3": "This is the comprehensive template. Simpler templates are in templates/",
 
   "hooks": {
     "UserPromptSubmit": [
@@ -9,6 +10,28 @@
           {
             "type": "command",
             "command": "bun run /PATH/TO/cli/selftune/hooks/prompt-log.ts",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/auto-activate.ts",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/skill-change-guard.ts",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/evolution-guard.ts",
             "timeout": 5
           }
         ]

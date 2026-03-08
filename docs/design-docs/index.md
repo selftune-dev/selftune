@@ -1,4 +1,4 @@
-<!-- Verified: 2026-03-01 -->
+<!-- Verified: 2026-03-03 -->
 
 # Design Documents Index
 
@@ -7,9 +7,14 @@ Registry of all design documents with verification status.
 | Document | Status | Last Verified | Owner |
 |----------|--------|---------------|-------|
 | core-beliefs.md | Current | 2026-02-28 | Team |
-| evolution-pipeline.md | Current | 2026-02-28 | Team |
+| evolution-pipeline.md | Current | 2026-03-04 | Team |
 | monitoring-pipeline.md | Current | 2026-03-01 | Team |
 | ../exec-plans/active/agent-first-skill-restructure.md | Current | 2026-02-28 | Team |
+| sandbox-test-harness.md | Current | 2026-03-01 | Team |
+| sandbox-architecture.md | Current | 2026-03-02 | Team |
+| sandbox-claude-code.md | Current | 2026-03-02 | Team |
+| badge-service.md | Current | 2026-03-02 | Team |
+| ../integration-guide.md | Current | 2026-03-01 | Team |
 
 ## Verification Schedule
 

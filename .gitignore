@@ -13,3 +13,14 @@ Thumbs.db
 
 # Test artifacts
 coverage/
+tests/sandbox/results/
+.test-data/
+
+# Internal business strategy (kept locally, not in public repo)
+docs/strategy/
+Plans/
+MEMORY/
+
+# Secrets
+.env.local
+.env

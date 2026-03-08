@@ -13,7 +13,12 @@ import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
 const HOOK_FILES = new Set(["prompt-log.ts", "session-stop.ts", "skill-eval.ts"]);
-const INGESTOR_FILES = new Set(["codex-wrapper.ts", "codex-rollout.ts", "opencode-ingest.ts"]);
+const INGESTOR_FILES = new Set([
+  "codex-wrapper.ts",
+  "codex-rollout.ts",
+  "opencode-ingest.ts",
+  "claude-replay.ts",
+]);
 const EVOLUTION_FILES = new Set([
   "extract-patterns.ts",
   "propose-description.ts",
@@ -23,14 +28,33 @@ const EVOLUTION_FILES = new Set([
   "deploy-proposal.ts",
   "rollback.ts",
   "stopping-criteria.ts",
+  "propose-routing.ts",
+  "propose-body.ts",
+  "validate-body.ts",
+  "validate-routing.ts",
+  "refine-body.ts",
+  "evolve-body.ts",
 ]);
 const MONITORING_FILES = new Set(["watch.ts"]);
+const CONTRIBUTE_FILES = new Set(["contribute.ts", "sanitize.ts", "bundle.ts"]);
+const BADGE_FILES = new Set(["badge.ts", "badge-data.ts", "badge-svg.ts"]);
+const EVAL_FILES = new Set([
+  "baseline.ts",
+  "composability.ts",
+  "unit-test.ts",
+  "import-skillsbench.ts",
+]);
 
 /** Original forbidden imports for hooks/ingestors (grading & eval). */
 const FORBIDDEN_IMPORTS = ["grade-session", "hooks-to-evals", "/grading/", "/eval/"];
 
-/** Hooks and ingestors also must not reach into evolution or monitoring. */
-const HOOK_INGESTOR_FORBIDDEN = [...FORBIDDEN_IMPORTS, "/evolution/", "/monitoring/"];
+/** Hooks and ingestors also must not reach into evolution, monitoring, or contribute. */
+const HOOK_INGESTOR_FORBIDDEN = [
+  ...FORBIDDEN_IMPORTS,
+  "/evolution/",
+  "/monitoring/",
+  "/contribute/",
+];
 
 /** Evolution modules must not import from hooks or ingestors (by path or by name). */
 const EVOLUTION_FORBIDDEN = [
@@ -42,6 +66,7 @@ const EVOLUTION_FORBIDDEN = [
   "codex-wrapper",
   "codex-rollout",
   "opencode-ingest",
+  "claude-replay",
 ];
 
 /** Monitoring modules must not import from hooks or ingestors (by path or by name). */
@@ -54,6 +79,60 @@ const MONITORING_FORBIDDEN = [
   "codex-wrapper",
   "codex-rollout",
   "opencode-ingest",
+  "claude-replay",
+];
+
+/** Eval modules must not import from hooks/ingestors/grading/evolution/monitoring. */
+const EVAL_FORBIDDEN = [
+  "/hooks/",
+  "/ingestors/",
+  "/grading/",
+  "/evolution/",
+  "/monitoring/",
+  "prompt-log",
+  "session-stop",
+  "skill-eval",
+  "codex-wrapper",
+  "codex-rollout",
+  "opencode-ingest",
+  "claude-replay",
+  "grade-session",
+];
+
+/** Contribute modules must not import from hooks/ingestors/grading/evolution/monitoring. */
+const CONTRIBUTE_FORBIDDEN = [
+  "/hooks/",
+  "/ingestors/",
+  "/grading/",
+  "/evolution/",
+  "/monitoring/",
+  "prompt-log",
+  "session-stop",
+  "skill-eval",
+  "codex-wrapper",
+  "codex-rollout",
+  "opencode-ingest",
+  "claude-replay",
+  "grade-session",
+];
+
+/** Badge modules must not import from hooks, ingestors, grading, evolution, monitoring, or contribute. */
+const BADGE_FORBIDDEN = [
+  "/hooks/",
+  "/ingestors/",
+  "/grading/",
+  "/evolution/",
+  "/monitoring/",
+  "/contribute/",
+  "prompt-log",
+  "session-stop",
+  "skill-eval",
+  "codex-wrapper",
+  "codex-rollout",
+  "opencode-ingest",
+  "claude-replay",
+  "grade-session",
+  "hooks-to-evals",
 ];
 
 export function checkFile(filepath: string): string[] {
@@ -68,6 +147,12 @@ export function checkFile(filepath: string): string[] {
     forbidden = EVOLUTION_FORBIDDEN;
   } else if (MONITORING_FILES.has(name)) {
     forbidden = MONITORING_FORBIDDEN;
+  } else if (CONTRIBUTE_FILES.has(name)) {
+    forbidden = CONTRIBUTE_FORBIDDEN;
+  } else if (BADGE_FILES.has(name)) {
+    forbidden = BADGE_FORBIDDEN;
+  } else if (EVAL_FILES.has(name)) {
+    forbidden = EVAL_FORBIDDEN;
   }
 
   if (!forbidden) return violations;
@@ -113,7 +198,6 @@ if (import.meta.main) {
   for (const file of findTsFiles("cli/selftune").sort()) {
     violations.push(...checkFile(file));
   }
-
   if (violations.length > 0) {
     console.log("Architecture violations found:");
     for (const v of violations) {

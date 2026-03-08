@@ -274,7 +274,10 @@
     }
     .pass-rate-fill.healthy { background: var(--green); }
     .pass-rate-fill.drifting { background: var(--amber); }
+    .pass-rate-fill.warning { background: var(--amber); }
     .pass-rate-fill.regressed { background: var(--red); }
+    .pass-rate-fill.critical { background: var(--red); }
+    .pass-rate-fill.unknown { background: #ccc; }
     .pass-rate-label {
       font-family: 'Poppins', sans-serif;
       font-size: 0.75rem;
@@ -413,6 +416,216 @@
       border-color: var(--accent);
       color: var(--accent);
     }
+
+    /* ---- Live indicator ---- */
+    .live-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      font-family: var(--mono);
+      font-size: 0.6875rem;
+      color: var(--green);
+    }
+    .live-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* ---- Action buttons ---- */
+    .action-btn {
+      font-family: 'Poppins', sans-serif;
+      font-size: 0.6875rem;
+      font-weight: 500;
+      padding: 0.3rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .action-btn:hover:not(:disabled) {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .action-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .action-btn.loading {
+      position: relative;
+      color: transparent;
+    }
+    .action-btn.loading::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      font-size: 0.625rem;
+    }
+    .action-btn-group {
+      display: flex;
+      gap: 0.375rem;
+      flex-wrap: wrap;
+    }
+    .action-result {
+      font-family: var(--mono);
+      font-size: 0.6875rem;
+      padding: 0.5rem 0.75rem;
+      margin-top: 0.375rem;
+      border-radius: var(--radius);
+      max-height: 120px;
+      overflow-y: auto;
+      display: none;
+    }
+    .action-result.visible { display: block; }
+    .action-result.success { background: var(--green-bg); color: var(--green); }
+    .action-result.error { background: var(--red-bg); color: var(--red); }
+
+    /* ---- Evolution timeline ---- */
+    .evo-timeline {
+      position: relative;
+      padding-left: 1.5rem;
+    }
+    .evo-timeline::before {
+      content: '';
+      position: absolute;
+      left: 0.375rem;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--border);
+    }
+    .evo-timeline-item {
+      position: relative;
+      padding: 0.625rem 0;
+      padding-left: 0.75rem;
+      border-bottom: none;
+    }
+    .evo-timeline-item::before {
+      content: '';
+      position: absolute;
+      left: -1.125rem;
+      top: 1rem;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border);
+      border: 2px solid var(--surface);
+    }
+    .evo-timeline-item.action-evolved::before { background: var(--green); }
+    .evo-timeline-item.action-rolled-back::before { background: var(--red); }
+    .evo-timeline-item.action-watched::before { background: var(--blue); }
+    .evo-timeline-meta {
+      font-family: var(--mono);
+      font-size: 0.6875rem;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+    }
+    .evo-timeline-body {
+      font-size: 0.8125rem;
+      color: var(--text);
+    }
+    .evo-timeline-rationale {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-top: 0.125rem;
+    }
+
+    /* ---- Search/Filter ---- */
+    .search-filter {
+      font-family: var(--mono);
+      font-size: 0.8125rem;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+      width: 100%;
+      max-width: 320px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .search-filter:focus {
+      border-color: var(--accent);
+    }
+    .search-filter::placeholder {
+      color: var(--text-muted);
+    }
+
+    /* ---- Time Period Selector ---- */
+    .time-period-selector {
+      display: inline-flex;
+      gap: 0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .time-period-selector .period-btn {
+      font-family: 'Poppins', sans-serif;
+      font-size: 0.6875rem;
+      font-weight: 500;
+      padding: 0.3rem 0.75rem;
+      border: none;
+      background: var(--surface);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+      border-right: 1px solid var(--border);
+    }
+    .time-period-selector .period-btn:last-child {
+      border-right: none;
+    }
+    .time-period-selector .period-btn:hover {
+      background: var(--bg);
+      color: var(--accent);
+    }
+    .time-period-selector .period-btn.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    /* ---- Eval Feed ---- */
+    .eval-feed {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8125rem;
+    }
+    .eval-feed th, .eval-feed td {
+      padding: 0.5rem 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .eval-feed th {
+      font-family: 'Poppins', sans-serif;
+      font-weight: 500;
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      background: var(--bg);
+      position: sticky;
+      top: 0;
+    }
+    .eval-feed tr:hover { background: var(--bg); }
+    .eval-feed td.mono { font-family: var(--mono); font-size: 0.75rem; }
+
+    /* ---- 4-state badge colors ---- */
+    .badge-warning { background: var(--amber-bg); color: var(--amber); }
+    .badge-critical { background: var(--red-bg); color: var(--red); }
+    .badge-healthy { background: var(--green-bg); color: var(--green); }
+    .badge-unknown { background: #f0f0ee; color: #999; }
   </style>
 </head>
 <body>
@@ -420,6 +633,15 @@
 <!-- ===== Header ===== -->
 <div class="header">
   <div class="header-left">
+    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 250 250" fill="none" style="flex-shrink:0" aria-hidden="true">
+      <path d="M 190.16,31.49 C 187.91,29.88 184.51,32.19 185.88,35.16 C 186.31,36.11 187.08,36.54 187.71,37.01 C 218.75,59.86 237.63,92.71 237.63,128.82 C 237.63,175.99 205.12,218.56 153.82,234.69 C 149.89,235.93 150.91,241.71 154.91,240.66 C 205.98,226.96 243.01,181.94 243,128.45 C 242.99,90.87 223.47,56.18 190.16,31.49 Z" fill="currentColor"/>
+      <path d="M 125.19,243.91 C 138.08,243.91 147.18,236.44 151.21,225.01 C 193.72,217.79 226.98,184.02 226.98,140.81 C 226.98,121.17 219.82,103.78 209.93,87.04 C 191.42,55.45 165.15,34.72 117.71,28.65 C 112.91,28.04 113.77,34.35 117.19,34.82 C 161.67,39.33 185.84,56.71 203.76,86.42 C 213.87,103.68 220.68,119.61 220.68,140.81 C 220.68,179.96 190.81,211.95 148.71,219.16 C 147.11,219.47 146.27,220.32 145.92,221.8 C 142.95,231.11 135.72,238.02 125.19,237.66 C 64.48,237.66 11.67,191.61 11.67,127.51 C 11.67,79.61 44.82,36.38 93.89,27.77 L 94.11,27.73 L 94.38,26.64 C 97.04,16.61 104.57,11.82 114.19,11.82 C 134.12,13.36 152.91,18.15 170.48,26.08 C 171.92,26.78 173.81,27.09 174.76,25.59 C 176.05,23.72 175.31,21.07 173.01,20.34 C 154.78,11.96 137.21,7.17 114.47,6 H 113.52 C 101.91,6 93.46,12.16 89.49,21.78 C 42.36,31.26 6.17,74.76 6.17,128.08 C 6.17,190.05 57.92,243.91 125.19,243.91 Z" fill="currentColor"/>
+      <path d="M 93.67,40.64 C 100.51,52.07 109.54,51.33 114.05,52.17 C 128.72,53.91 141.48,55.78 157.38,62.16 C 162.72,64.47 162.29,58.19 159.18,57.01 C 145.11,51.33 132.48,49.79 111.31,47.48 C 101.83,46.29 95.45,41.18 93.75,32.81 C 55.21,39.46 22.06,72.17 22.06,112.48 C 22.06,131.98 30.36,149.82 43.26,164.49 C 46.23,167.59 50.19,164.13 48.32,161.02 C 36.21,145.54 28.42,129.78 28.42,112.4 C 28.42,79.11 54.91,48.36 89.91,40.36 C 90.76,40.15 91.04,39.87 91.62,40.01 C 92.62,40.01 93.04,39.65 93.67,40.64 Z" fill="currentColor"/>
+      <path d="M 152.72,82.77 C 126.61,82.77 113.07,99.44 103.01,119.33 C 100.56,123.36 103.74,125.03 105.61,123.92 C 107.15,123.22 107.89,121.05 108.73,119.61 C 118.22,102.16 130.33,88.56 152.72,88.56 C 181.62,88.56 201.91,116.01 201.91,147.31 C 201.91,175.12 183.47,199.96 152.51,205.75 C 151.84,205.96 151.63,206.03 151.56,205.54 C 147.74,195.37 139.36,188.15 128.07,186.48 C 113.2,184.24 101.23,182.36 83.8,176.81 C 79.3,175.48 77.91,182.36 82.41,183.09 C 97.21,187.46 108.09,189.47 126.25,192.65 C 136.78,194.31 145.41,201.71 147.11,210.95 C 147.74,213.05 149.13,213.41 150.15,213.26 C 183.75,208.61 208.26,180.93 208.26,147.24 C 208.26,115.06 186.94,82.77 152.72,82.77 Z" fill="currentColor"/>
+      <path d="M 129.77,105.21 C 122.93,112.05 118.97,122.73 113.77,130.41 C 111.31,133.45 114.56,136.63 117.46,134.46 C 123.75,126.23 127.43,115.62 135.15,108.71 C 138.22,105.81 134.73,101.09 129.77,105.21 Z" fill="currentColor"/>
+      <path d="M 136.78,120.31 C 127.71,136.71 120.12,154.91 93.74,154.91 C 66.07,154.91 47.76,128.53 47.76,104.78 C 47.76,84.47 58.57,66.08 77.66,56.25 C 82.23,54.21 79.85,47.76 75.34,49.93 C 54.77,59.72 42.01,80.11 42.01,104.71 C 42.01,131.77 61.86,161.31 93.67,161.31 C 114.77,161.31 128.91,147.24 139.86,124.06 C 142.76,120.45 139.15,117.73 136.78,120.31 Z" fill="currentColor"/>
+      <path d="M 30.73,154.7 C 27.76,152.97 23.87,155.93 25.41,158.76 C 41.73,188.36 68.94,199.79 105.75,206.41 C 112.25,207.66 122.07,208.75 123.46,209.03 C 128.07,209.95 128.07,220.18 121.78,220.18 C 107.64,218.94 92.06,215.98 76.23,211.33 C 72.13,210.24 71.04,216.69 75.27,217.64 C 90.41,222.22 103.95,224.74 120.47,226.54 C 133.73,226.54 136.56,209.03 126.03,203.38 C 123.75,202.13 122.73,202.56 112.04,200.76 C 78.09,195.04 54.06,188.98 32.12,155.65 C 31.77,155.23 31.28,154.91 30.73,154.7 Z" fill="currentColor"/>
+    </svg>
     <h1>self<span>tune</span></h1>
     <span class="version">v0.1.4</span>
   </div>
@@ -480,6 +702,7 @@
   </div>
 
   <!-- ===== SKILL HEALTH GRID ===== -->
+  <input id="skillSearchInput" placeholder="Filter skills..." class="search-filter" aria-label="Filter skills by name" style="margin-bottom:0.5rem;display:none;">
   <div class="section" id="skillHealthSection" style="display:none;">
     <div class="section-header">
       <span>Skill Health Grid</span>
@@ -505,7 +728,15 @@
     </div>
     <div class="drill-down-content">
       <div class="drill-down-section">
-        <h4 style="font-family:'Poppins',sans-serif;font-size:0.75rem;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);margin-bottom:0.75rem;">Pass Rate Over Time</h4>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+          <h4 style="font-family:'Poppins',sans-serif;font-size:0.75rem;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);">Pass Rate Over Time</h4>
+          <div class="time-period-selector" id="timePeriodSelector">
+            <button class="period-btn" data-days="7">7d</button>
+            <button class="period-btn" data-days="30">30d</button>
+            <button class="period-btn" data-days="90">90d</button>
+            <button class="period-btn active" data-days="0">All</button>
+          </div>
+        </div>
         <div class="chart-container"><canvas id="chartDrillPassRate"></canvas></div>
       </div>
       <div class="drill-down-section">
@@ -532,6 +763,19 @@
           </table>
         </div>
       </div>
+      <div class="drill-down-section">
+        <h4 style="font-family:'Poppins',sans-serif;font-size:0.75rem;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);margin-bottom:0.75rem;">Evaluation Feed</h4>
+        <div class="table-scroll" style="max-height:260px;">
+          <table class="eval-feed" id="drillEvalFeed">
+            <thead><tr><th>Time</th><th>Query</th><th>Triggered</th><th>Type</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="drill-down-section">
+        <h4 style="font-family:'Poppins',sans-serif;font-size:0.75rem;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);margin-bottom:0.75rem;">Invocation Breakdown</h4>
+        <div class="chart-container"><canvas id="chartInvocationBreakdown"></canvas></div>
+      </div>
     </div>
   </div>
 
@@ -556,6 +800,27 @@
     </div>
   </div>
 
+  <!-- ===== SKILL ACTIONS (live mode only) ===== -->
+  <div class="section" id="actionsSection" style="display:none;">
+    <div class="section-header">
+      <span>Skill Actions</span>
+      <span class="live-indicator" id="liveIndicator"><span class="live-dot"></span> LIVE</span>
+    </div>
+    <div class="section-body" id="actionsBody">
+      <div class="empty-state">Select a skill from the health grid to see actions</div>
+    </div>
+  </div>
+
+  <!-- ===== EVOLUTION TIMELINE (live mode only) ===== -->
+  <div class="section" id="evoTimelineSection" style="display:none;">
+    <div class="section-header">Evolution Timeline</div>
+    <div class="section-body">
+      <div class="evo-timeline" id="evoTimeline">
+        <div class="empty-state">No evolution decisions recorded</div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -572,6 +837,7 @@ const state = {
 
 const charts = {};
 let selectedSkill = null;
+let selectedPeriodDays = 0; // 0 = All
 
 // ========================================================================
 // File identification
@@ -755,16 +1021,18 @@ function groupByDay(records) {
 }
 
 function getSkillStatus(passRate, regressionDetected) {
-  if (regressionDetected || passRate < 0.5) return 'regressed';
-  if (passRate < 0.7) return 'drifting';
+  if (passRate === null || passRate === undefined) return 'unknown';
+  if (regressionDetected || passRate < 0.4) return 'critical';
+  if (passRate < 0.7) return 'warning';
   return 'healthy';
 }
 
 function getStatusBadge(status) {
   const map = {
-    healthy: '<span class="badge badge-green">Healthy</span>',
-    drifting: '<span class="badge badge-amber">Drifting</span>',
-    regressed: '<span class="badge badge-red">Regressed</span>',
+    healthy: '<span class="badge badge-healthy">Healthy</span>',
+    warning: '<span class="badge badge-warning">Warning</span>',
+    critical: '<span class="badge badge-critical">Critical</span>',
+    unknown: '<span class="badge badge-unknown">Unknown</span>',
   };
   return map[status] || '';
 }
@@ -785,6 +1053,7 @@ function refreshAll() {
     dropZone.style.display = 'none';
     document.getElementById('healthSummary').style.display = 'block';
     document.getElementById('skillHealthSection').style.display = 'block';
+    document.getElementById('skillSearchInput').style.display = 'block';
   }
 
   updateHeader();
@@ -826,7 +1095,7 @@ function updateHealthSummary() {
     document.getElementById('kpi-avg-pass-rate').textContent = (avgPR * 100).toFixed(0) + '%';
     const status = getSkillStatus(avgPR, false);
     document.getElementById('kpi-pass-rate-sub').textContent =
-      status === 'healthy' ? 'system healthy' : status === 'drifting' ? 'needs monitoring' : 'action required';
+      status === 'healthy' ? 'system healthy' : status === 'warning' ? 'needs monitoring' : status === 'critical' ? 'action required' : 'no data';
   }
 
   document.getElementById('kpi-regressions').textContent = regressions.length;
@@ -908,6 +1177,16 @@ function updateSkillHealthGrid() {
     row.addEventListener('click', handler);
     row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); } });
   });
+
+  // Reapply search filter after grid rebuild
+  const searchInput = document.getElementById('skillSearchInput');
+  if (searchInput && searchInput.value) {
+    const query = searchInput.value.toLowerCase();
+    grid.querySelectorAll('.skill-health-row').forEach(row => {
+      const name = (row.dataset.skill || '').toLowerCase();
+      row.style.display = name.includes(query) ? '' : 'none';
+    });
+  }
 }
 
 // ========================================================================
@@ -924,6 +1203,8 @@ function openDrillDown(skillName) {
   updateDrillMissedQueries(skillName);
   updateDrillEvolution(skillName);
   updateDrillSessions(skillName);
+  updateDrillEvalFeed(skillName);
+  updateDrillInvocationBreakdown(skillName);
 }
 
 document.getElementById('drillDownClose').addEventListener('click', () => {
@@ -934,7 +1215,8 @@ document.getElementById('drillDownClose').addEventListener('click', () => {
 
 function updateDrillPassRateChart(skillName) {
   // Group skill records by day and compute daily pass rate
-  const records = state.skills.filter(r => r.skill_name === skillName);
+  const allRecords = state.skills.filter(r => r.skill_name === skillName);
+  const records = filterByPeriod(allRecords, selectedPeriodDays);
   const byDay = {};
   for (const r of records) {
     const day = toDayKey(r.timestamp);
@@ -1108,11 +1390,290 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
 });
 
 // ========================================================================
+// Live mode: SSE client + action buttons + evolution timeline
+// ========================================================================
+let sseSource = null;
+
+function isLiveMode() {
+  return window.__SELFTUNE_LIVE__ === true;
+}
+
+function startSSE() {
+  if (!isLiveMode()) return;
+  if (sseSource) { sseSource.close(); sseSource = null; }
+
+  sseSource = new EventSource('/api/events');
+  sseSource.addEventListener('data', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.telemetry) state.telemetry = data.telemetry;
+      if (data.skills) state.skills = data.skills;
+      if (data.queries) state.queries = data.queries;
+      if (data.evolution) state.evolution = data.evolution;
+      if (data.decisions) state.decisions = data.decisions;
+      if (data.computed) {
+        state.computed = data.computed;
+      } else {
+        state.computed = computeClientSide();
+      }
+      refreshAll();
+      updateEvolutionTimeline();
+    } catch (err) { console.warn('[selftune] SSE parse error:', err); }
+  });
+  sseSource.onerror = () => {
+    // Reconnect after 3 seconds on error
+    setTimeout(() => { if (isLiveMode()) startSSE(); }, 3000);
+  };
+}
+
+// Decisions state (populated from server in live mode)
+if (!state.decisions) state.decisions = [];
+
+function updateEvolutionTimeline() {
+  if (!isLiveMode()) return;
+  const decisions = state.decisions || [];
+  const section = document.getElementById('evoTimelineSection');
+  if (!section) return;
+
+  section.style.display = 'block';
+  const container = document.getElementById('evoTimeline');
+  if (!decisions.length) {
+    container.innerHTML = '<div class="empty-state">No evolution decisions recorded</div>';
+    return;
+  }
+
+  // Show most recent first
+  const sorted = [...decisions].reverse();
+  container.innerHTML = sorted.slice(0, 50).map(d => {
+    const actionClass = 'action-' + escapeHtml(d.action || '');
+    return `<div class="evo-timeline-item ${actionClass}">
+      <div class="evo-timeline-meta">${escapeHtml(formatTimestamp(d.timestamp))} &middot; ${escapeHtml(d.skillName)}</div>
+      <div class="evo-timeline-body">
+        <span class="badge ${d.action === 'evolved' ? 'badge-green' : d.action === 'rolled-back' ? 'badge-red' : 'badge-blue'}">${escapeHtml(d.action)}</span>
+        <span style="margin-left:0.375rem;">${escapeHtml(d.actionType)}</span>
+      </div>
+      <div class="evo-timeline-rationale">${escapeHtml(truncate(d.rationale, 100))}</div>
+    </div>`;
+  }).join('');
+}
+
+function showActionButtons(skillName) {
+  if (!isLiveMode()) return;
+  const section = document.getElementById('actionsSection');
+  const body = document.getElementById('actionsBody');
+  if (!section || !body) return;
+
+  section.style.display = 'block';
+
+  // Find skill path from skill records
+  const skillRecord = state.skills.find(r => r.skill_name === skillName);
+  const skillPath = skillRecord ? skillRecord.skill_path : '';
+  const safeSkill = escapeHtml(skillName);
+  const safeSkillPath = escapeHtml(skillPath);
+
+  body.innerHTML = `
+    <div style="margin-bottom:0.5rem;font-family:'Poppins',sans-serif;font-size:0.8125rem;font-weight:600;">${safeSkill}</div>
+    <div class="action-btn-group">
+      <button class="action-btn" id="btn-watch" data-skill="${safeSkill}" data-path="${safeSkillPath}">Watch</button>
+      <button class="action-btn" id="btn-evolve" data-skill="${safeSkill}" data-path="${safeSkillPath}">Evolve</button>
+      <button class="action-btn" id="btn-rollback" data-skill="${safeSkill}" data-path="${safeSkillPath}">Rollback</button>
+    </div>
+    <div class="action-result" id="action-result"></div>
+  `;
+
+  // Bind action handlers
+  document.getElementById('btn-watch').addEventListener('click', () => runSkillAction('watch', skillName, skillPath));
+  document.getElementById('btn-evolve').addEventListener('click', () => runSkillAction('evolve', skillName, skillPath));
+  document.getElementById('btn-rollback').addEventListener('click', () => runSkillAction('rollback', skillName, skillPath));
+}
+
+async function runSkillAction(action, skill, skillPath) {
+  const btn = document.getElementById('btn-' + action);
+  const resultEl = document.getElementById('action-result');
+  if (!btn || !resultEl) return;
+
+  // Set loading state
+  btn.classList.add('loading');
+  btn.disabled = true;
+  btn.textContent = '...';
+  resultEl.className = 'action-result';
+  resultEl.style.display = 'none';
+
+  try {
+    const payload = { skill, skillPath };
+    if (action === 'rollback') {
+      // For rollback, find the latest pending proposal
+      const pending = (state.computed && state.computed.pendingProposals) || [];
+      const needle = skill.toLowerCase();
+      const match = pending.find(p => (p.details || '').toLowerCase().includes(needle));
+      if (match) payload.proposalId = match.proposal_id;
+    }
+
+    const res = await fetch('/api/actions/' + action, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+
+    resultEl.style.display = 'block';
+    if (data.success) {
+      resultEl.className = 'action-result visible success';
+      resultEl.textContent = data.output || 'Action completed successfully';
+    } else {
+      resultEl.className = 'action-result visible error';
+      resultEl.textContent = data.error || data.output || 'Action failed';
+    }
+  } catch (err) {
+    resultEl.style.display = 'block';
+    resultEl.className = 'action-result visible error';
+    resultEl.textContent = 'Network error: ' + (err.message || err);
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    btn.textContent = action.charAt(0).toUpperCase() + action.slice(1);
+  }
+}
+
+// ========================================================================
+// Search filter
+// ========================================================================
+document.getElementById('skillSearchInput').addEventListener('input', function() {
+  const query = this.value.toLowerCase();
+  document.querySelectorAll('.skill-health-row').forEach(row => {
+    const name = (row.dataset.skill || '').toLowerCase();
+    row.style.display = name.includes(query) ? '' : 'none';
+  });
+});
+
+// ========================================================================
+// Evaluation Feed
+// ========================================================================
+function updateDrillEvalFeed(skillName) {
+  const records = state.skills.filter(r => r.skill_name === skillName);
+  const sorted = [...records].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const tbody = document.querySelector('#drillEvalFeed tbody');
+  tbody.innerHTML = sorted.slice(0, 50).map(r => {
+    const triggeredBadge = r.triggered
+      ? '<span class="badge badge-healthy">Yes</span>'
+      : '<span class="badge badge-critical">No</span>';
+    const sourceType = escapeHtml(r.source || r.type || 'implicit');
+    return `<tr>
+      <td class="mono">${escapeHtml(formatTimestamp(r.timestamp))}</td>
+      <td>${escapeHtml(truncate(r.query, 50))}</td>
+      <td>${triggeredBadge}</td>
+      <td class="mono">${sourceType}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="4" class="empty-state">No evaluations</td></tr>';
+}
+
+// ========================================================================
+// Invocation Breakdown
+// ========================================================================
+function updateDrillInvocationBreakdown(skillName) {
+  const computed = state.computed;
+  const snapshot = computed && computed.snapshots ? computed.snapshots[skillName] : null;
+  const byType = (snapshot && snapshot.by_invocation_type) || {};
+
+  // If no invocation type data, compute from skill records
+  let labels, values;
+  if (Object.keys(byType).length > 0) {
+    labels = Object.keys(byType);
+    values = Object.values(byType);
+  } else {
+    // Fallback: count source/type fields from skill records
+    const records = state.skills.filter(r => r.skill_name === skillName);
+    const counts = {};
+    for (const r of records) {
+      const t = r.source || r.type || 'implicit';
+      counts[t] = (counts[t] || 0) + 1;
+    }
+    labels = Object.keys(counts);
+    values = Object.values(counts);
+  }
+
+  if (charts.invocationBreakdown) charts.invocationBreakdown.destroy();
+
+  if (!labels.length) return;
+
+  charts.invocationBreakdown = new Chart(document.getElementById('chartInvocationBreakdown'), {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: CHART_COLORS.slice(0, labels.length),
+        borderWidth: 1,
+        borderColor: '#fff',
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: {
+            font: { family: "'Poppins', sans-serif", size: 11 },
+            padding: 12,
+          }
+        }
+      }
+    }
+  });
+}
+
+// ========================================================================
+// Time period filtering
+// ========================================================================
+function filterByPeriod(records, days) {
+  if (!days || days === 0) return records;
+  // Anchor cutoff to latest timestamp in dataset, not viewer's clock,
+  // so archived/historical datasets filter correctly.
+  const latest = records.reduce((max, r) => {
+    const t = new Date(r.timestamp).getTime();
+    return t > max ? t : max;
+  }, 0);
+  if (!latest) return records;
+  const cutoff = new Date(latest);
+  cutoff.setDate(cutoff.getDate() - days);
+  return records.filter(r => new Date(r.timestamp) >= cutoff);
+}
+
+document.getElementById('timePeriodSelector').addEventListener('click', function(e) {
+  const btn = e.target.closest('.period-btn');
+  if (!btn) return;
+  this.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  selectedPeriodDays = parseInt(btn.dataset.days, 10);
+  if (selectedSkill) {
+    updateDrillPassRateChart(selectedSkill);
+  }
+});
+
+// Hook into drill-down to show action buttons in live mode
+const origOpenDrillDown = typeof openDrillDown === 'function' ? openDrillDown : null;
+openDrillDown = function(skillName) {
+  if (origOpenDrillDown) origOpenDrillDown(skillName);
+  showActionButtons(skillName);
+};
+
+function initLiveMode() {
+  if (!isLiveMode()) return;
+  // Show live sections
+  document.getElementById('actionsSection').style.display = 'block';
+
+  startSSE();
+  updateEvolutionTimeline();
+}
+
+// ========================================================================
 // Init: try loading embedded data
 // ========================================================================
 if (loadEmbeddedData()) {
   refreshAll();
 }
+initLiveMode();
 </script>
 
 </body>

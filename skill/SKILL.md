@@ -1,11 +1,17 @@
 ---
 name: selftune
 description: >
-  Skill observability and continuous improvement. Use when the user wants to:
+  Self-improving skills toolkit. Use when the user wants to:
   grade a session, generate evals, check undertriggering, evolve a skill
-  description, rollback an evolution, monitor post-deploy performance, check
-  skill health status, view last session insight, open the dashboard, run
-  health checks, or ingest sessions from Codex/OpenCode.
+  description or full body, evolve routing tables, rollback an evolution,
+  monitor post-deploy performance, check skill health status, view last
+  session insight, open the dashboard, serve the live dashboard, run health
+  checks, manage activation rules, ingest sessions from Codex/OpenCode/OpenClaw,
+  replay Claude Code transcripts, contribute anonymized data to the community,
+  set up autonomous cron jobs, manage evolution memory, configure auto-activation
+  suggestions, diagnose underperforming skills, analyze cross-skill patterns,
+  review evolution proposals, measure baseline lift, run skill unit tests,
+  analyze skill composability, or import SkillsBench evaluation corpora.
 ---
 
 # selftune
@@ -40,10 +46,22 @@ selftune watch    --skill <name> --skill-path <path> [--auto-rollback]
 selftune status
 selftune last
 selftune doctor
-selftune dashboard [--export] [--out FILE]
+selftune dashboard [--export] [--out FILE] [--serve]
 selftune ingest-codex
 selftune ingest-opencode
+selftune ingest-openclaw [--agents-dir PATH] [--since DATE] [--dry-run] [--force] [--verbose]
 selftune wrap-codex -- <codex args>
+selftune replay     [--since DATE] [--dry-run] [--force] [--verbose]
+selftune contribute [--skill NAME] [--preview] [--sanitize LEVEL] [--submit]
+selftune cron setup [--dry-run] [--tz <timezone>]
+selftune cron list
+selftune cron remove [--dry-run]
+selftune dashboard --serve [--port <port>]
+selftune evolve-body --skill <name> --skill-path <path> --target <routing_table|full_body> [--dry-run]
+selftune baseline   --skill <name> --skill-path <path> [--eval-set <path>] [--agent <name>]
+selftune unit-test  --skill <name> --tests <path> [--run-agent] [--generate]
+selftune composability --skill <name> [--window N] [--telemetry-log <path>]
+selftune import-skillsbench --dir <path> --skill <name> --output <path> [--match-strategy exact|fuzzy]
 ```
 
 ## Workflow Routing
@@ -56,11 +74,59 @@ selftune wrap-codex -- <codex args>
 | rollback, undo, restore, revert evolution | Rollback | Workflows/Rollback.md |
 | watch, monitor, regression, post-deploy, performing | Watch | Workflows/Watch.md |
 | doctor, health, hooks, broken, diagnose | Doctor | Workflows/Doctor.md |
-| ingest, import, codex logs, opencode, wrap codex | Ingest | Workflows/Ingest.md |
+| ingest, import, codex logs, opencode, openclaw, wrap codex | Ingest | Workflows/Ingest.md |
+| replay, backfill, claude transcripts, historical sessions | Replay | Workflows/Replay.md |
+| contribute, share, community, export data, anonymized | Contribute | Workflows/Contribute.md |
 | init, setup, bootstrap, first time | Initialize | Workflows/Initialize.md |
+| cron, schedule, autonomous, automate evolution | Cron | Workflows/Cron.md |
+| auto-activate, suggestions, activation rules, nag, why suggest | AutoActivation | Workflows/AutoActivation.md |
+| dashboard, visual, open dashboard, skill grid, serve dashboard, live dashboard | Dashboard | Workflows/Dashboard.md |
+| evolution memory, context memory, session continuity, what happened last | EvolutionMemory | Workflows/EvolutionMemory.md |
+| evolve body, evolve routing, full body evolution, rewrite skill, teacher student | EvolveBody | Workflows/EvolveBody.md |
+| baseline, baseline lift, adds value, skill value, no-skill comparison | Baseline | Workflows/Baseline.md |
+| unit test, skill test, test skill, generate tests, run tests, assertions | UnitTest | Workflows/UnitTest.md |
+| composability, co-occurrence, skill conflicts, skills together, conflict score | Composability | Workflows/Composability.md |
+| import skillsbench, skillsbench, external evals, benchmark tasks, import corpus | ImportSkillsBench | Workflows/ImportSkillsBench.md |
 | status, health summary, skill health, pass rates, how are skills | Status | *(direct command — no workflow file)* |
 | last, last session, recent session, what happened | Last | *(direct command — no workflow file)* |
-| dashboard, visual, open dashboard, skill grid | Dashboard | *(direct command — no workflow file)* |
+
+## Interactive Configuration
+
+Before running mutating workflows (evolve, evolve-body, evals, baseline), present
+a pre-flight configuration prompt to the user. This gives them control over
+execution mode, model selection, and key parameters.
+
+### Pre-Flight Pattern
+
+Each mutating workflow has a **Pre-Flight Configuration** step. Follow this pattern:
+
+1. Present a summary of what the command will do
+2. Show numbered options with `(recommended)` markers for suggested defaults
+3. Ask the user to pick options or say "use defaults" / "go with defaults"
+4. Show a confirmation summary of selected options before executing
+
+### Model Tier Reference
+
+When presenting model choices, use this table:
+
+| Tier | Model | Speed | Cost | Quality | Best for |
+|------|-------|-------|------|---------|----------|
+| Fast | `haiku` | ~2s/call | $ | Good | Iteration loops, bulk validation |
+| Balanced | `sonnet` | ~5s/call | $$ | Great | Single-pass proposals, gate checks |
+| Best | `opus` | ~10s/call | $$$ | Excellent | High-stakes final validation |
+
+### Quick Path
+
+If the user says "use defaults", "just do it", or similar — skip the pre-flight
+and run with recommended defaults. The pre-flight is for users who want control,
+not a mandatory gate.
+
+### Workflows That Skip Pre-Flight
+
+These read-only or simple workflows run immediately without prompting:
+`status`, `last`, `doctor`, `dashboard`, `watch`, `rollback`, `grade`,
+`ingest-*`, `replay`, `contribute`, `cron`, `composability`, `unit-test`,
+`import-skillsbench`.
 
 ## The Feedback Loop
 
@@ -94,7 +160,30 @@ Observe --> Detect --> Diagnose --> Propose --> Validate --> Deploy --> Watch
 | `Workflows/Rollback.md` | Undo an evolution, restore previous description |
 | `Workflows/Watch.md` | Post-deploy regression monitoring |
 | `Workflows/Doctor.md` | Health checks on logs, hooks, schema |
-| `Workflows/Ingest.md` | Import sessions from Codex and OpenCode |
+| `Workflows/Ingest.md` | Import sessions from Codex, OpenCode, and OpenClaw |
+| `Workflows/Replay.md` | Backfill logs from Claude Code transcripts |
+| `Workflows/Contribute.md` | Export anonymized data for community contribution |
+| `Workflows/Cron.md` | Manage OpenClaw cron jobs for autonomous evolution |
+| `Workflows/AutoActivation.md` | Auto-activation hook behavior and rules |
+| `Workflows/Dashboard.md` | Dashboard modes: static, export, live server |
+| `Workflows/EvolutionMemory.md` | Evolution memory system for session continuity |
+| `Workflows/EvolveBody.md` | Full body and routing table evolution |
+| `Workflows/Baseline.md` | No-skill baseline comparison and lift measurement |
+| `Workflows/UnitTest.md` | Skill-level unit test runner and generator |
+| `Workflows/Composability.md` | Multi-skill co-occurrence conflict analysis |
+| `Workflows/ImportSkillsBench.md` | SkillsBench task corpus importer |
+
+## Specialized Agents
+
+selftune provides focused agents for deeper analysis. These live in
+`.claude/agents/` and can be spawned as subagents for specialized tasks.
+
+| Trigger keywords | Agent | Purpose |
+|------------------|-------|---------|
+| diagnose, root cause, why failing, skill failure, debug performance | diagnosis-analyst | Deep-dive analysis of underperforming skills |
+| patterns, conflicts, cross-skill, overlap, trigger conflicts, optimize skills | pattern-analyst | Cross-skill pattern analysis and conflict detection |
+| review evolution, check proposal, safe to deploy, approve evolution | evolution-reviewer | Safety gate review of pending evolution proposals |
+| set up selftune, integrate, configure project, install selftune | integration-guide | Guided interactive setup for specific project types |
 
 ## Examples
 
@@ -110,7 +199,34 @@ Observe --> Detect --> Diagnose --> Propose --> Validate --> Deploy --> Watch
 - "How are my skills performing?"
 - "What happened in my last session?"
 - "Open the selftune dashboard"
+- "Serve the dashboard at http://localhost:3141"
 - "Show skill health status"
+- "Replay my Claude Code transcripts"
+- "Backfill logs from historical sessions"
+- "Contribute my selftune data to the community"
+- "Share anonymized skill data"
+- "Set up cron jobs for autonomous evolution"
+- "Schedule selftune to run automatically"
+- "Ingest my OpenClaw sessions"
+- "Why is selftune suggesting things?"
+- "Customize activation rules"
+- "Start the live dashboard"
+- "Serve the dashboard on port 8080"
+- "What happened in the last evolution?"
+- "Read the evolution memory"
+- "Why is this skill underperforming?"
+- "Are there conflicts between my skills?"
+- "Review this evolution before deploying"
+- "Set up selftune for my project"
+- "Evolve the full body of the Research skill"
+- "Rewrite the routing table for pptx"
+- "Does this skill add value over no-skill baseline?"
+- "Measure baseline lift for the Research skill"
+- "Generate unit tests for the pptx skill"
+- "Run skill unit tests"
+- "Which skills conflict with each other?"
+- "Analyze composability for the Research skill"
+- "Import SkillsBench tasks for my skill"
 
 ## Negative Examples
 

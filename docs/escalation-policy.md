@@ -1,4 +1,4 @@
-<!-- Verified: 2026-03-01 -->
+<!-- Verified: 2026-03-03 -->
 
 # Escalation Policy
 
@@ -26,6 +26,9 @@ Clear criteria for when agents proceed autonomously vs. when to involve a human.
 - Modifying auto-rollback behavior in `watch.ts` (unintended reverts)
 - Changing the config schema in `~/.selftune/config.json` (breaks all skill workflows)
 - Modifying agent detection logic in `init.ts` (wrong detection = wrong commands)
+- Changes to auto-activation hook code or threshold logic
+- Changes to evolution-guard blocking conditions
+- Changes to memory writer schema or file format
 
 ### Review Before Merge (Medium Risk)
 
@@ -34,17 +37,26 @@ Clear criteria for when agents proceed autonomously vs. when to involve a human.
 - Changing grading thresholds in `grade-session.ts`
 - Adding new platform ingestors
 - Updating ARCHITECTURE.md domain map
-- Changing proposal generation prompts in `propose-description.ts`
+- Changing proposal generation prompts in `propose-description.ts` (including multi-candidate prompt variations)
 - Modifying validation thresholds or regression tolerance in `validate-proposal.ts`
+- Changing pre-gate patterns or check logic in `pre-gates.ts`
+- Modifying Pareto dominance logic, frontier computation, or merge prompts in `pareto.ts`
+- Changing graduated scoring defaults or `buildGraduatedSummary` computation in `grade-session.ts`
 - Changing confidence thresholds or stopping criteria in `stopping-criteria.ts`
 - Modifying deploy logic in `deploy-proposal.ts` (SKILL.md writes, PR creation)
 - Changing regression detection thresholds in `watch.ts`
+- Modifying sanitization patterns or redaction rules in `sanitize.ts` (data privacy risk)
+- Changing the `ContributionBundle` schema in `types.ts` (breaks bundle consumers)
+- Modifying GitHub submission logic in `contribute.ts` (public-facing action)
 - Adding new workflow files to `skill/Workflows/`
 - Modifying the SKILL.md routing table (affects which workflow agents load)
 - Changing `computeStatus` logic in `status.ts` (affects skill health reporting)
 - Changing `computeLastInsight` logic in `last.ts` (affects session insight accuracy)
 - Modifying dashboard data schema in `dashboard.ts` (breaks `dashboard/index.html` rendering)
 - Changing the `dashboard/index.html` embedded data contract (must match `dashboard.ts` output)
+- Modifying activation rules configuration
+- Changing agent assignment logic
+- Updating dashboard server endpoints or action handlers
 
 ### Agent-Autonomous (Low Risk)
 
@@ -53,8 +65,12 @@ Clear criteria for when agents proceed autonomously vs. when to involve a human.
 - Documentation updates (non-architectural)
 - Code style improvements
 - Adding new eval queries to existing eval sets
+- Adjusting contribute bundle assembly logic (non-schema changes)
 - Updating evolution audit entry details text
 - Adjusting monitoring window size defaults
+- Updating agent markdown content
+- Adjusting activation threshold values in configuration files
+- Adding new entries to decisions.md
 
 ## Schema Change Protocol
 
