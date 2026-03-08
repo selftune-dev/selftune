@@ -112,8 +112,8 @@ describe("dashboard-server", () => {
           const { done, value } = await reader.read();
           if (done) break;
           accumulated += decoder.decode(value, { stream: true });
-          // Once we have at least one complete event, break
-          if (accumulated.includes("event: data\n")) break;
+          // Wait for a complete SSE event (double newline terminates an event)
+          if (accumulated.includes("\n\n")) break;
         }
       } catch {
         // abort expected
@@ -124,7 +124,7 @@ describe("dashboard-server", () => {
 
       expect(accumulated).toContain("event: data");
       // The data line should be parseable JSON
-      const dataMatch = accumulated.match(/data: (.+)\n/);
+      const dataMatch = accumulated.match(/data: (.+)/);
       expect(dataMatch).not.toBeNull();
       if (dataMatch) {
         const parsed = JSON.parse(dataMatch[1]);
