@@ -112,12 +112,14 @@ function createAuditEntry(
   action: EvolutionAuditEntry["action"],
   details: string,
   evalSnapshot?: EvalPassRate,
+  skillName?: string,
 ): EvolutionAuditEntry {
   return {
     timestamp: new Date().toISOString(),
     proposal_id: proposalId,
     action,
     details,
+    ...(skillName ? { skill_name: skillName } : {}),
     ...(evalSnapshot ? { eval_snapshot: evalSnapshot } : {}),
   };
 }
@@ -158,7 +160,7 @@ export async function evolve(
     details: string,
     evalSnapshot?: EvalPassRate,
   ): void {
-    const entry = createAuditEntry(proposalId, action, details, evalSnapshot);
+    const entry = createAuditEntry(proposalId, action, details, evalSnapshot, skillName);
     auditEntries.push(entry);
     try {
       _appendAuditEntry(entry);

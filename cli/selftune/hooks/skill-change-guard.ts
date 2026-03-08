@@ -12,7 +12,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
-import { sessionStatePath } from "../constants.js";
+import { SESSION_STATE_DIR } from "../constants.js";
 import type { PreToolUsePayload } from "../types.js";
 
 // ---------------------------------------------------------------------------
@@ -98,7 +98,8 @@ if (import.meta.main) {
   try {
     const payload: PreToolUsePayload = JSON.parse(await Bun.stdin.text());
     const sessionId = payload.session_id ?? "unknown";
-    const statePath = sessionStatePath(sessionId);
+    const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const statePath = `${SESSION_STATE_DIR}/guard-state-${safe}.json`;
 
     const suggestion = processPreToolUse(payload, statePath);
     if (suggestion) {
