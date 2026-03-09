@@ -13,7 +13,8 @@
  */
 
 import { describe, expect, mock, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { type EvolveDeps, evolve } from "../../cli/selftune/evolution/evolve.js";
@@ -283,127 +284,137 @@ describe("Blog Proof: seo-audit skill evolution", () => {
   test("evolve pipeline runs end-to-end with seo-audit fixtures", async () => {
     const before = computeAccuracy(simulateOriginalTrigger);
     const after = computeAccuracy(simulateImprovedTrigger);
+    const tempDir = mkdtempSync(join(tmpdir(), "selftune-blog-proof-"));
+    const tempSkillPath = join(tempDir, "SKILL.md");
+    copyFileSync(SKILL_PATH, tempSkillPath);
 
-    // Build realistic failure patterns from the actual missed queries
-    const failurePatterns: FailurePattern[] = [
-      {
-        pattern_id: "fp-seo-audit-0",
-        skill_name: "seo-audit",
-        invocation_type: "implicit",
-        missed_queries: before.false_negatives
-          .filter((e) => e.invocation_type === "implicit")
-          .map((e) => e.query),
-        frequency: before.false_negatives.filter((e) => e.invocation_type === "implicit").length,
-        sample_sessions: [],
-        extracted_at: new Date().toISOString(),
-      },
-      {
-        pattern_id: "fp-seo-audit-1",
-        skill_name: "seo-audit",
-        invocation_type: "contextual",
-        missed_queries: before.false_negatives
-          .filter((e) => e.invocation_type === "contextual")
-          .map((e) => e.query),
-        frequency: before.false_negatives.filter((e) => e.invocation_type === "contextual").length,
-        sample_sessions: [],
-        extracted_at: new Date().toISOString(),
-      },
-    ].filter((p) => p.frequency > 0);
-
-    const proposal: EvolutionProposal = {
-      proposal_id: "evo-seo-audit-blog-proof",
-      skill_name: "seo-audit",
-      skill_path: SKILL_PATH,
-      original_description: skillContent,
-      proposed_description: `${skillContent}\n\n<!-- selftune: expanded trigger coverage for symptom-based queries, migration diagnostics, and standalone technical signals -->`,
-      rationale: `Detected ${before.false_negatives.length} missed triggers across implicit and contextual invocations. Users describe symptoms (traffic drops, slow loads, indexing problems) without using "SEO audit" keywords. Expanded description to cover symptom-based queries, migration diagnostics, and standalone technical signals.`,
-      failure_patterns: failurePatterns.map((p) => p.pattern_id),
-      eval_results: {
-        before: {
-          total: before.total,
-          passed: before.passed,
-          failed: before.total - before.passed,
-          pass_rate: before.pass_rate,
+    try {
+      // Build realistic failure patterns from the actual missed queries
+      const failurePatterns: FailurePattern[] = [
+        {
+          pattern_id: "fp-seo-audit-0",
+          skill_name: "seo-audit",
+          invocation_type: "implicit",
+          missed_queries: before.false_negatives
+            .filter((e) => e.invocation_type === "implicit")
+            .map((e) => e.query),
+          frequency: before.false_negatives.filter((e) => e.invocation_type === "implicit").length,
+          sample_sessions: [],
+          extracted_at: new Date().toISOString(),
         },
-        after: {
-          total: after.total,
-          passed: after.passed,
-          failed: after.total - after.passed,
-          pass_rate: after.pass_rate,
+        {
+          pattern_id: "fp-seo-audit-1",
+          skill_name: "seo-audit",
+          invocation_type: "contextual",
+          missed_queries: before.false_negatives
+            .filter((e) => e.invocation_type === "contextual")
+            .map((e) => e.query),
+          frequency: before.false_negatives.filter((e) => e.invocation_type === "contextual")
+            .length,
+          sample_sessions: [],
+          extracted_at: new Date().toISOString(),
         },
-      },
-      confidence: 0.85,
-      created_at: new Date().toISOString(),
-      status: "pending",
-    };
+      ].filter((p) => p.frequency > 0);
 
-    const validationResult: ValidationResult = {
-      proposal_id: proposal.proposal_id,
-      before_pass_rate: before.pass_rate,
-      after_pass_rate: after.pass_rate,
-      improved: true,
-      regressions: [],
-      new_passes: before.false_negatives.filter(
-        (fn) => !after.false_negatives.some((afn) => afn.query === fn.query),
-      ),
-      net_change: after.pass_rate - before.pass_rate,
-    };
+      const proposal: EvolutionProposal = {
+        proposal_id: "evo-seo-audit-blog-proof",
+        skill_name: "seo-audit",
+        skill_path: tempSkillPath,
+        original_description: skillContent,
+        proposed_description: `${skillContent}\n\n<!-- selftune: expanded trigger coverage for symptom-based queries, migration diagnostics, and standalone technical signals -->`,
+        rationale: `Detected ${before.false_negatives.length} missed triggers across implicit and contextual invocations. Users describe symptoms (traffic drops, slow loads, indexing problems) without using "SEO audit" keywords. Expanded description to cover symptom-based queries, migration diagnostics, and standalone technical signals.`,
+        failure_patterns: failurePatterns.map((p) => p.pattern_id),
+        eval_results: {
+          before: {
+            total: before.total,
+            passed: before.passed,
+            failed: before.total - before.passed,
+            pass_rate: before.pass_rate,
+          },
+          after: {
+            total: after.total,
+            passed: after.passed,
+            failed: after.total - after.passed,
+            pass_rate: after.pass_rate,
+          },
+        },
+        confidence: 0.85,
+        created_at: new Date().toISOString(),
+        status: "pending",
+      };
 
-    // Injectable deps — deterministic, no LLM calls
-    const deps: EvolveDeps = {
-      extractFailurePatterns: mock(() => failurePatterns),
-      generateProposal: mock(async () => proposal),
-      validateProposal: mock(async () => validationResult),
-      appendAuditEntry: mock(() => {}),
-      buildEvalSet: mock(() => evalSet),
-      updateContextAfterEvolve: mock(() => {}),
-    };
+      const validationResult: ValidationResult = {
+        proposal_id: proposal.proposal_id,
+        before_pass_rate: before.pass_rate,
+        after_pass_rate: after.pass_rate,
+        improved: true,
+        regressions: [],
+        new_passes: before.false_negatives.filter(
+          (fn) => !after.false_negatives.some((afn) => afn.query === fn.query),
+        ),
+        net_change: after.pass_rate - before.pass_rate,
+      };
 
-    const result = await evolve(
-      {
-        skillName: "seo-audit",
-        skillPath: SKILL_PATH,
-        evalSetPath: EVAL_SET_PATH,
-        agent: "claude",
-        dryRun: false,
-        confidenceThreshold: 0.6,
-        maxIterations: 3,
-      },
-      deps,
-    );
+      // Injectable deps — deterministic, no LLM calls
+      const deps: EvolveDeps = {
+        extractFailurePatterns: mock(() => failurePatterns),
+        generateProposal: mock(async () => proposal),
+        validateProposal: mock(async () => validationResult),
+        appendAuditEntry: mock(() => {}),
+        buildEvalSet: mock(() => evalSet),
+        updateContextAfterEvolve: mock(() => {}),
+      };
 
-    // Pipeline completed successfully
-    expect(result.deployed).toBe(true);
-    expect(result.proposal).not.toBeNull();
-    expect(result.validation).not.toBeNull();
-    expect(result.reason).toBe("Evolution deployed successfully");
+      const result = await evolve(
+        {
+          skillName: "seo-audit",
+          skillPath: tempSkillPath,
+          evalSetPath: EVAL_SET_PATH,
+          agent: "claude",
+          dryRun: false,
+          confidenceThreshold: 0.6,
+          maxIterations: 3,
+        },
+        deps,
+      );
 
-    // Validation shows improvement
-    expect(result.validation?.improved).toBe(true);
-    expect(result.validation?.after_pass_rate).toBeGreaterThan(result.validation?.before_pass_rate);
-    expect(result.validation?.regressions.length).toBe(0);
+      // Pipeline completed successfully
+      expect(result.deployed).toBe(true);
+      expect(result.proposal).not.toBeNull();
+      expect(result.validation).not.toBeNull();
+      expect(result.reason).toBe("Evolution deployed successfully");
 
-    // Audit trail recorded
-    expect(result.auditEntries.length).toBeGreaterThanOrEqual(2);
-    expect(result.auditEntries.some((e) => e.action === "created")).toBe(true);
-    expect(result.auditEntries.some((e) => e.action === "validated")).toBe(true);
-    expect(result.auditEntries.some((e) => e.action === "deployed")).toBe(true);
+      // Validation shows improvement
+      expect(result.validation?.improved).toBe(true);
+      expect(result.validation?.after_pass_rate).toBeGreaterThan(
+        result.validation?.before_pass_rate,
+      );
+      expect(result.validation?.regressions.length).toBe(0);
 
-    // Print the blog-ready numbers
-    const missedFixed = result.validation?.new_passes.length;
-    console.log(`\n  ══════════════════════════════════════════════`);
-    console.log(`  BLOG PROOF DATA (seo-audit skill)`);
-    console.log(`  ══════════════════════════════════════════════`);
-    console.log(`  Skill:            seo-audit (marketingskills, 11.2k ★)`);
-    console.log(
-      `  Eval set:         ${evalSet.length} queries (${positiveQueries.length} positive, ${negativeQueries.length} negative)`,
-    );
-    console.log(`  Before accuracy:  ${(result.validation?.before_pass_rate * 100).toFixed(1)}%`);
-    console.log(`  After accuracy:   ${(result.validation?.after_pass_rate * 100).toFixed(1)}%`);
-    console.log(`  Missed triggers fixed: ${missedFixed}`);
-    console.log(`  Regressions:      ${result.validation?.regressions.length}`);
-    console.log(`  Confidence:       ${result.proposal?.confidence}`);
-    console.log(`  ══════════════════════════════════════════════`);
+      // Audit trail recorded
+      expect(result.auditEntries.length).toBeGreaterThanOrEqual(2);
+      expect(result.auditEntries.some((e) => e.action === "created")).toBe(true);
+      expect(result.auditEntries.some((e) => e.action === "validated")).toBe(true);
+      expect(result.auditEntries.some((e) => e.action === "deployed")).toBe(true);
+
+      // Print the blog-ready numbers
+      const missedFixed = result.validation?.new_passes.length;
+      console.log(`\n  ══════════════════════════════════════════════`);
+      console.log(`  BLOG PROOF DATA (seo-audit skill)`);
+      console.log(`  ══════════════════════════════════════════════`);
+      console.log(`  Skill:            seo-audit (marketingskills, 11.2k ★)`);
+      console.log(
+        `  Eval set:         ${evalSet.length} queries (${positiveQueries.length} positive, ${negativeQueries.length} negative)`,
+      );
+      console.log(`  Before accuracy:  ${(result.validation?.before_pass_rate * 100).toFixed(1)}%`);
+      console.log(`  After accuracy:   ${(result.validation?.after_pass_rate * 100).toFixed(1)}%`);
+      console.log(`  Missed triggers fixed: ${missedFixed}`);
+      console.log(`  Regressions:      ${result.validation?.regressions.length}`);
+      console.log(`  Confidence:       ${result.proposal?.confidence}`);
+      console.log(`  ══════════════════════════════════════════════`);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
 

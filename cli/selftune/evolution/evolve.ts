@@ -101,6 +101,7 @@ export interface EvolveDeps {
   buildEvalSet?: typeof import("../eval/hooks-to-evals.js").buildEvalSet;
   updateContextAfterEvolve?: typeof import("../memory/writer.js").updateContextAfterEvolve;
   measureBaseline?: typeof import("../eval/baseline.js").measureBaseline;
+  readSkillUsageLog?: () => SkillUsageRecord[];
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +152,8 @@ export async function evolve(
   const _buildEvalSet = _deps.buildEvalSet ?? buildEvalSet;
   const _updateContextAfterEvolve = _deps.updateContextAfterEvolve ?? updateContextAfterEvolve;
   const _measureBaseline = _deps.measureBaseline ?? measureBaseline;
+  const _readSkillUsageLog =
+    _deps.readSkillUsageLog ?? (() => readJsonl<SkillUsageRecord>(SKILL_LOG));
 
   const auditEntries: EvolutionAuditEntry[] = [];
 
@@ -217,8 +220,32 @@ export async function evolve(
     let evalSet: EvalEntry[];
 
     if (evalSetPath && existsSync(evalSetPath)) {
-      const raw = readFileSync(evalSetPath, "utf-8");
-      evalSet = JSON.parse(raw) as EvalEntry[];
+      try {
+        const raw = readFileSync(evalSetPath, "utf-8");
+        evalSet = JSON.parse(raw) as EvalEntry[];
+      } catch (parseErr) {
+        const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+        tui.fail(`Failed to load eval set from ${evalSetPath}: ${msg}`);
+        finishTui();
+        return withStats({
+          proposal: null,
+          validation: null,
+          deployed: false,
+          auditEntries,
+          reason: `Failed to load eval set: ${msg}`,
+        });
+      }
+      if (!Array.isArray(evalSet)) {
+        tui.fail(`Eval set at ${evalSetPath} is not an array`);
+        finishTui();
+        return withStats({
+          proposal: null,
+          validation: null,
+          deployed: false,
+          auditEntries,
+          reason: `Eval set at ${evalSetPath} is not a JSON array`,
+        });
+      }
     } else {
       // Build from logs
       const skillRecords = readJsonl<SkillUsageRecord>(SKILL_LOG);
@@ -233,7 +260,7 @@ export async function evolve(
     // -----------------------------------------------------------------------
     // Step 3: Load skill usage records
     // -----------------------------------------------------------------------
-    const skillUsage = readJsonl<SkillUsageRecord>(SKILL_LOG);
+    const skillUsage = _readSkillUsageLog();
 
     // -----------------------------------------------------------------------
     // Step 4: Extract failure patterns
@@ -251,17 +278,38 @@ export async function evolve(
     );
 
     // -----------------------------------------------------------------------
-    // Step 5: Early exit if no patterns
+    // Step 5: Cold-start bootstrap or early exit if no patterns
     // -----------------------------------------------------------------------
     if (failurePatterns.length === 0) {
-      finishTui();
-      return withStats({
-        proposal: null,
-        validation: null,
-        deployed: false,
-        auditEntries,
-        reason: "No failure patterns found",
-      });
+      // Cold-start: if the eval set has positive entries that the skill should
+      // match but there are zero skill usage records, treat the positive eval
+      // entries themselves as "missed queries" — they ARE the failure signal.
+      const positiveEvals = evalSet.filter((e) => e.should_trigger);
+      const hasSkillUsageHistory = skillUsage.some((record) => record.skill_name === skillName);
+      if (positiveEvals.length > 0 && !hasSkillUsageHistory) {
+        const coldStartPattern: FailurePattern = {
+          pattern_id: `fp-${skillName}-coldstart`,
+          skill_name: skillName,
+          invocation_type: "implicit",
+          missed_queries: positiveEvals.map((e) => e.query),
+          frequency: positiveEvals.length,
+          sample_sessions: [],
+          extracted_at: new Date().toISOString(),
+        };
+        failurePatterns.push(coldStartPattern);
+        tui.done(
+          `Cold-start bootstrap: ${positiveEvals.length} positive eval entries used as missed queries`,
+        );
+      } else {
+        finishTui();
+        return withStats({
+          proposal: null,
+          validation: null,
+          deployed: false,
+          auditEntries,
+          reason: "No failure patterns found",
+        });
+      }
     }
 
     // -----------------------------------------------------------------------
