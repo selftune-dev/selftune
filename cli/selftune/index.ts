@@ -185,14 +185,17 @@ switch (command) {
   }
   case "composability": {
     const { parseArgs } = await import("node:util");
+    const { existsSync } = await import("node:fs");
     const { readJsonl } = await import("./utils/jsonl.js");
-    const { TELEMETRY_LOG } = await import("./constants.js");
+    const { TELEMETRY_LOG, SKILL_LOG } = await import("./constants.js");
     const { analyzeComposability } = await import("./eval/composability.js");
     const { values } = parseArgs({
       options: {
         skill: { type: "string" },
         window: { type: "string" },
         "telemetry-log": { type: "string" },
+        "min-occurrences": { type: "string" },
+        json: { type: "boolean" },
       },
       strict: true,
     });
@@ -203,8 +206,95 @@ switch (command) {
     const logPath = values["telemetry-log"] ?? TELEMETRY_LOG;
     const telemetry = readJsonl(logPath);
     const windowSize = values.window ? Number.parseInt(values.window, 10) : undefined;
-    const report = analyzeComposability(values.skill, telemetry, windowSize);
-    console.log(JSON.stringify(report, null, 2));
+    const minOccurrences = values["min-occurrences"]
+      ? Number.parseInt(values["min-occurrences"], 10)
+      : undefined;
+
+    // Use v2 if skill usage log exists and has data
+    const usageLogExists = existsSync(SKILL_LOG);
+    const usageRecords = usageLogExists ? readJsonl(SKILL_LOG) : [];
+
+    if (usageRecords.length > 0) {
+      const { analyzeComposabilityV2 } = await import("./eval/composability-v2.js");
+      const report = analyzeComposabilityV2(
+        values.skill,
+        telemetry as import("./types.js").SessionTelemetryRecord[],
+        usageRecords as import("./types.js").SkillUsageRecord[],
+        { window: windowSize, minOccurrences },
+      );
+
+      // JSON output: non-TTY or --json flag
+      if (values.json || !process.stdout.isTTY) {
+        console.log(JSON.stringify(report, null, 2));
+        break;
+      }
+
+      // Human-readable formatted output
+      const windowLabel = windowSize ? `${windowSize}` : "all";
+      console.log(`Composability Report: ${values.skill}`);
+      console.log(
+        `Analyzed: ${report.total_sessions_analyzed} sessions | Window: ${windowLabel}`,
+      );
+
+      // Co-occurring Skills
+      if (report.pairs.length > 0) {
+        console.log("\nCo-occurring Skills:");
+        for (const p of report.pairs) {
+          const sign = p.synergy_score >= 0 ? "+" : "";
+          const synergy = `${sign}${p.synergy_score.toFixed(2)}`;
+          let icon = "";
+          if (p.workflow_candidate) icon = "  \u2713 workflow candidate";
+          else if (p.conflict_detected) icon = "  \u26A0 conflict";
+          console.log(
+            `  ${p.skill_a} + ${p.skill_b}     (${p.co_occurrence_count} sessions)  synergy: ${synergy}${icon}`,
+          );
+        }
+      }
+
+      // Detected Sequences
+      if (report.sequences.length > 0) {
+        console.log("\nDetected Sequences:");
+        for (let i = 0; i < report.sequences.length; i++) {
+          const seq = report.sequences[i];
+          const chain = seq.skills.join(" \u2192 ");
+          const consistency = Math.round(seq.sequence_consistency * 100);
+          console.log(
+            `  ${i + 1}. ${chain}  (${seq.occurrence_count}x, ${consistency}% consistent)`,
+          );
+        }
+      }
+
+      // Workflow Candidates
+      if (report.workflow_candidates.length > 0) {
+        console.log("\nWorkflow Candidates:");
+        for (const wf of report.workflow_candidates) {
+          const pct = Math.round(wf.synergy_score * 100);
+          const suggestedName = `${wf.skill_a}-${wf.skill_b}`;
+          console.log(
+            `  \u2022 "${wf.skill_a} + ${wf.skill_b}" \u2014 used together ${wf.co_occurrence_count} times with ${pct}% fewer errors`,
+          );
+          console.log(
+            `    \u2192 Run \`selftune workflows save "${suggestedName}"\` to codify`,
+          );
+        }
+      }
+
+      // Conflicts
+      const conflicts = report.pairs.filter((p) => p.conflict_detected);
+      if (conflicts.length > 0) {
+        console.log("\nConflicts:");
+        for (const c of conflicts) {
+          const pct = Math.round(Math.abs(c.synergy_score) * 100);
+          console.log(
+            `  \u2022 "${c.skill_a} + ${c.skill_b}" \u2014 ${pct}% more errors together (${c.co_occurrence_count} sessions)`,
+          );
+        }
+      }
+    } else {
+      // Fallback to v1
+      const report = analyzeComposability(values.skill, telemetry, windowSize);
+      console.log(JSON.stringify(report, null, 2));
+    }
     break;
   }
   default:

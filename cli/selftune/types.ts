@@ -625,3 +625,32 @@ export interface SkillsBenchTask {
   difficulty: "easy" | "medium" | "hard";
   tags?: string[];
 }
+
+// ---------------------------------------------------------------------------
+// Composability V2 types (synergy + sequence detection)
+// ---------------------------------------------------------------------------
+
+/** Extended pair with synergy detection */
+export interface CoOccurrencePairV2 extends CoOccurrencePair {
+  synergy_score: number;
+  avg_errors_together: number;
+  avg_errors_alone: number;
+  workflow_candidate: boolean;
+}
+
+/** Ordered skill sequence detected from timestamps */
+export interface SkillSequence {
+  skills: string[];
+  occurrence_count: number;
+  synergy_score: number;
+  representative_query: string;
+  sequence_consistency: number;
+}
+
+/** Extended report with synergy and sequence detection */
+export interface ComposabilityReportV2 extends ComposabilityReport {
+  pairs: CoOccurrencePairV2[];
+  sequences: SkillSequence[];
+  workflow_candidates: CoOccurrencePairV2[];
+  synergy_count: number;
+}
