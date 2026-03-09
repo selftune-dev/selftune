@@ -124,7 +124,7 @@ export function determineLlmMode(agentCli: string | null): {
 // Hook detection (Claude Code only)
 // ---------------------------------------------------------------------------
 
-const REQUIRED_HOOK_KEYS = ["prompt-submit", "post-tool-use", "session-stop"] as const;
+const REQUIRED_HOOK_KEYS = ["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"] as const;
 
 /**
  * Check if the selftune hooks are configured in Claude Code settings.
@@ -142,9 +142,17 @@ export function checkClaudeCodeHooks(settingsPath: string): boolean {
       const entries = hooks[key];
       if (!Array.isArray(entries) || entries.length === 0) return false;
       // Check that at least one entry references selftune
+      // Supports both flat format (entry.command) and nested format (entry.hooks[].command)
       const hasSelftune = entries.some(
-        (e: { command?: string }) =>
-          typeof e.command === "string" && e.command.includes("selftune"),
+        (entry: { hooks?: Array<{ command?: string }>; command?: string }) => {
+          if (typeof entry.command === "string" && entry.command.includes("selftune")) return true;
+          if (Array.isArray(entry.hooks)) {
+            return entry.hooks.some(
+              (h) => typeof h.command === "string" && h.command.includes("selftune"),
+            );
+          }
+          return false;
+        },
       );
       if (!hasSelftune) return false;
     }

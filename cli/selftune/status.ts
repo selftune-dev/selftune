@@ -29,7 +29,7 @@ export interface SkillStatus {
   passRate: number | null;
   trend: "up" | "down" | "stable" | "unknown";
   missedQueries: number;
-  status: "HEALTHY" | "WARNING" | "CRITICAL" | "UNKNOWN";
+  status: "HEALTHY" | "WARNING" | "CRITICAL" | "UNGRADED" | "UNKNOWN";
   snapshot: MonitoringSnapshot | null;
 }
 
@@ -86,13 +86,20 @@ export function computeStatus(
       baselinePassRate,
     );
 
-    // Determine if there's any meaningful data
-    const totalQueries = queryRecords.length;
-    const hasData = triggeredRecords.length > 0 || totalQueries > 0;
+    // Determine if there's any meaningful skill-specific data.
+    // A skill has data only if it has triggered records (skill-specific, not global queries).
+    const hasData = triggeredRecords.length > 0;
 
-    // Compute pass rate (null if no data)
+    // Check if we have graded sessions: skill records where grading has occurred.
+    // A skill is "graded" if it has been triggered AND there are query records
+    // scoped to the same sessions as the triggered records.
+    const triggeredSessionIds = new Set(triggeredRecords.map((r) => r.session_id));
+    const skillScopedQueries = queryRecords.filter((q) => triggeredSessionIds.has(q.session_id));
+    const hasGradedData = triggeredRecords.length > 0 && skillScopedQueries.length > 0;
+
+    // Compute pass rate (null if no graded data for this skill)
     let passRate: number | null = null;
-    if (hasData && totalQueries > 0) {
+    if (hasGradedData) {
       passRate = snapshot.pass_rate;
     }
 
@@ -102,10 +109,13 @@ export function computeStatus(
     // Count missed queries for this skill (queries where skill was checked but not triggered)
     const missedQueries = skillSpecificRecords.filter((r) => !r.triggered).length;
 
-    // Determine status (4-state)
-    let status: "HEALTHY" | "WARNING" | "CRITICAL" | "UNKNOWN";
-    if (!hasData || passRate === null) {
+    // Determine status (5-state)
+    let status: "HEALTHY" | "WARNING" | "CRITICAL" | "UNGRADED" | "UNKNOWN";
+    if (!hasData) {
       status = "UNKNOWN";
+    } else if (!hasGradedData || passRate === null) {
+      // Skill has been triggered but not graded — distinct from UNKNOWN (no data at all)
+      status = "UNGRADED";
     } else if (snapshot.regression_detected || passRate < 0.4) {
       status = "CRITICAL";
     } else if (passRate < 0.7) {
