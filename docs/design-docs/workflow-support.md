@@ -185,6 +185,7 @@ Options:
 ```
 
 Output:
+
 ```text
 Discovered Workflows (from 450 sessions):
 
@@ -279,6 +280,7 @@ All workflow analysis is:
 **Scenario:** Daniel uses copywriting + blog publishing together 12 times over two weeks.
 
 **What selftune discovers:**
+
 ```text
 selftune workflows
 
@@ -295,6 +297,7 @@ selftune workflows
 ```
 
 **What Daniel does:**
+
 ```bash
 selftune workflows save "Blog Publishing"
 # Saves: Copywriting → MarketingAutomation → SelfTuneBlog

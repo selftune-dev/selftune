@@ -448,6 +448,29 @@ describe("discoverWorkflows", () => {
     expect(report.workflows[0].synergy_score).toBeLessThanOrEqual(1);
   });
 
+  it("uses neutral synergy when no solo baselines exist", () => {
+    const telemetry = [
+      makeSession("s1", ["SkillA", "SkillB"], 1, "2025-01-01T00:00:00Z"),
+      makeSession("s2", ["SkillA", "SkillB"], 1, "2025-01-02T00:00:00Z"),
+      makeSession("s3", ["SkillA", "SkillB"], 1, "2025-01-03T00:00:00Z"),
+    ];
+
+    const usage = [
+      makeUsage({ session_id: "s1", skill_name: "SkillA", timestamp: "2025-01-01T00:00:00Z" }),
+      makeUsage({ session_id: "s1", skill_name: "SkillB", timestamp: "2025-01-01T00:01:00Z" }),
+      makeUsage({ session_id: "s2", skill_name: "SkillA", timestamp: "2025-01-02T00:00:00Z" }),
+      makeUsage({ session_id: "s2", skill_name: "SkillB", timestamp: "2025-01-02T00:01:00Z" }),
+      makeUsage({ session_id: "s3", skill_name: "SkillA", timestamp: "2025-01-03T00:00:00Z" }),
+      makeUsage({ session_id: "s3", skill_name: "SkillB", timestamp: "2025-01-03T00:01:00Z" }),
+    ];
+
+    const report = discoverWorkflows(telemetry, usage);
+
+    expect(report.workflows).toHaveLength(1);
+    expect(report.workflows[0].avg_errors_individual).toBe(0);
+    expect(report.workflows[0].synergy_score).toBe(0);
+  });
+
   // -------------------------------------------------------------------------
   // 13. Consecutive same-skill deduplication
   // -------------------------------------------------------------------------

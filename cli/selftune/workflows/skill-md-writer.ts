@@ -79,7 +79,7 @@ export function parseWorkflowsSection(content: string): CodifiedWorkflow[] {
     if (trimmed.startsWith("- **Source:**")) {
       const sourceStr = trimmed.slice("- **Source:**".length).trim();
       const discoveredMatch = sourceStr.match(
-        /^Discovered from (\d+) sessions? \(synergy: ([\d.]+)\)$/,
+        /^Discovered from (\d+) sessions? \(synergy: (-?\d+(?:\.\d+)?)\)$/,
       );
       if (discoveredMatch) {
         current.source = "discovered";

@@ -147,9 +147,9 @@ export function discoverWorkflows(
     }
   }
 
-  function getSkillSoloErrorRate(skillName: string): number {
+  function getSkillSoloErrorRate(skillName: string): number | undefined {
     const entry = skillSoloErrors.get(skillName);
-    if (!entry || entry.count === 0) return 0;
+    if (!entry || entry.count === 0) return undefined;
     return entry.totalErrors / entry.count;
   }
 
@@ -173,15 +173,21 @@ export function discoverWorkflows(
           matchingSessions.length
         : 0;
 
+    const soloRates = data.skills
+      .map((s) => getSkillSoloErrorRate(s))
+      .filter((rate): rate is number => rate !== undefined);
+
     // avg_errors_individual = max of each skill's solo error rate
-    const avgErrorsIndividual = Math.max(...data.skills.map((s) => getSkillSoloErrorRate(s)), 0);
+    // Note: This differs from composability-v2.ts which uses a single-skill anchor.
+    // For multi-skill discovery, we conservatively anchor to the worst solo performer.
+    const avgErrorsIndividual = soloRates.length > 0 ? Math.max(...soloRates) : 0;
 
     // synergy_score = clamp((individual - together) / (individual + 1), -1, 1)
-    const synergyScore = clamp(
-      (avgErrorsIndividual - avgErrors) / (avgErrorsIndividual + 1),
-      -1,
-      1,
-    );
+    // If no solo baseline exists yet, keep the workflow neutral instead of treating missing data as zero.
+    const synergyScore =
+      soloRates.length > 0
+        ? clamp((avgErrorsIndividual - avgErrors) / (avgErrorsIndividual + 1), -1, 1)
+        : 0;
 
     // sequence_consistency = this_order_count / all_orderings_of_same_set
     const setKey = JSON.stringify([...data.skills].sort());

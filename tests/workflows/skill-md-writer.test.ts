@@ -102,6 +102,19 @@ describe("parseWorkflowsSection", () => {
     expect(workflows[1].discovered_from).toBeUndefined();
   });
 
+  test("parses discovered workflows with negative synergy", () => {
+    const negativeSynergy = `## Workflows
+
+### Incident Review
+- **Skills:** Debugging \u2192 Postmortem
+- **Source:** Discovered from 4 sessions (synergy: -0.45)
+`;
+    const workflows = parseWorkflowsSection(negativeSynergy);
+    expect(workflows).toHaveLength(1);
+    expect(workflows[0].source).toBe("discovered");
+    expect(workflows[0].discovered_from?.synergy_score).toBe(-0.45);
+  });
+
   test("malformed content handled gracefully", () => {
     const malformed = `## Workflows
 

@@ -88,6 +88,33 @@ describe("analyzeComposabilityV2", () => {
     expect(pair.avg_errors_alone).toBe(5);
   });
 
+  it("uses true solo sessions for the co-skill baseline", () => {
+    const telemetry = [
+      makeSession("s1", ["SkillA"], 5),
+      makeSession("s2", ["SkillA"], 5),
+      makeSession("s3", ["SkillB", "SkillC"], 9),
+      makeSession("s4", ["SkillA", "SkillB"], 1),
+      makeSession("s5", ["SkillA", "SkillB"], 1),
+      makeSession("s6", ["SkillA", "SkillB"], 1),
+    ];
+
+    const usage = [
+      makeUsage({ session_id: "s4", skill_name: "SkillA", timestamp: "2025-01-04T00:00:00Z" }),
+      makeUsage({ session_id: "s4", skill_name: "SkillB", timestamp: "2025-01-04T00:01:00Z" }),
+      makeUsage({ session_id: "s5", skill_name: "SkillA", timestamp: "2025-01-05T00:00:00Z" }),
+      makeUsage({ session_id: "s5", skill_name: "SkillB", timestamp: "2025-01-05T00:01:00Z" }),
+      makeUsage({ session_id: "s6", skill_name: "SkillA", timestamp: "2025-01-06T00:00:00Z" }),
+      makeUsage({ session_id: "s6", skill_name: "SkillB", timestamp: "2025-01-06T00:01:00Z" }),
+    ];
+
+    const report = analyzeComposabilityV2("SkillA", telemetry, usage);
+
+    const pair = report.pairs.find((p) => p.skill_b === "SkillB");
+    assertDefined(pair);
+    expect(pair.avg_errors_alone).toBe(5);
+    expect(pair.synergy_score).toBeGreaterThan(0);
+  });
+
   // -------------------------------------------------------------------------
   // 2. Conflict preserved
   // -------------------------------------------------------------------------
@@ -583,6 +610,44 @@ describe("analyzeComposabilityV2", () => {
     assertDefined(seq);
     expect(typeof seq.representative_query).toBe("string");
     expect(seq.representative_query.length).toBeGreaterThan(0);
+  });
+
+  it("uses the most frequent initiating query as representative_query", () => {
+    const telemetry = [
+      makeSession("s1", ["SkillA", "SkillB"], 0),
+      makeSession("s2", ["SkillA", "SkillB"], 0),
+      makeSession("s3", ["SkillA", "SkillB"], 0),
+    ];
+
+    const usage = [
+      makeUsage({
+        session_id: "s1",
+        skill_name: "SkillA",
+        timestamp: "2025-01-01T00:00:00Z",
+        query: "publish blog",
+      }),
+      makeUsage({ session_id: "s1", skill_name: "SkillB", timestamp: "2025-01-01T00:01:00Z" }),
+      makeUsage({
+        session_id: "s2",
+        skill_name: "SkillA",
+        timestamp: "2025-01-02T00:00:00Z",
+        query: "publish blog",
+      }),
+      makeUsage({ session_id: "s2", skill_name: "SkillB", timestamp: "2025-01-02T00:01:00Z" }),
+      makeUsage({
+        session_id: "s3",
+        skill_name: "SkillA",
+        timestamp: "2025-01-03T00:00:00Z",
+        query: "draft content",
+      }),
+      makeUsage({ session_id: "s3", skill_name: "SkillB", timestamp: "2025-01-03T00:01:00Z" }),
+    ];
+
+    const report = analyzeComposabilityV2("SkillA", telemetry, usage, { minOccurrences: 3 });
+
+    const seq = report.sequences.find((s) => s.skills[0] === "SkillA" && s.skills[1] === "SkillB");
+    assertDefined(seq);
+    expect(seq.representative_query).toBe("publish blog");
   });
 
   // -------------------------------------------------------------------------

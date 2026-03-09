@@ -208,9 +208,17 @@ switch (command) {
     const logPath = values["telemetry-log"] ?? TELEMETRY_LOG;
     const telemetry = readJsonl<import("./types.js").SessionTelemetryRecord>(logPath);
     const windowSize = values.window ? Number.parseInt(values.window, 10) : undefined;
+    if (windowSize !== undefined && (Number.isNaN(windowSize) || windowSize < 0)) {
+      console.error("[ERROR] --window must be a non-negative integer.");
+      process.exit(1);
+    }
     const minOccurrences = values["min-occurrences"]
       ? Number.parseInt(values["min-occurrences"], 10)
       : undefined;
+    if (minOccurrences !== undefined && (Number.isNaN(minOccurrences) || minOccurrences < 0)) {
+      console.error("[ERROR] --min-occurrences must be a non-negative integer.");
+      process.exit(1);
+    }
 
     // Use v2 if skill usage log exists and has data
     const usageLogExists = existsSync(SKILL_LOG);

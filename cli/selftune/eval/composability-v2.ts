@@ -91,7 +91,7 @@ export function analyzeComposabilityV2(
 
     // Baseline: consider BOTH skills' solo error rates, take the max
     const coSkillAloneSessions = sessions.filter(
-      (r) => r.skills_triggered.includes(coSkill) && !r.skills_triggered.includes(skillName),
+      (r) => r.skills_triggered.length === 1 && r.skills_triggered.includes(coSkill),
     );
     const errorsCoSkillAlone =
       coSkillAloneSessions.length > 0
@@ -176,14 +176,22 @@ export function analyzeComposabilityV2(
   }
 
   // Count frequency of each unique sequence (by JSON key)
-  const sequenceCounts = new Map<string, { count: number; query: string; skills: string[] }>();
+  const sequenceCounts = new Map<
+    string,
+    { count: number; queryCounts: Map<string, number>; skills: string[] }
+  >();
   for (const seq of sessionSequences) {
     const key = JSON.stringify(seq.skills);
     const existing = sequenceCounts.get(key);
     if (existing) {
       existing.count++;
+      existing.queryCounts.set(seq.firstQuery, (existing.queryCounts.get(seq.firstQuery) ?? 0) + 1);
     } else {
-      sequenceCounts.set(key, { count: 1, query: seq.firstQuery, skills: seq.skills });
+      sequenceCounts.set(key, {
+        count: 1,
+        queryCounts: new Map([[seq.firstQuery, 1]]),
+        skills: seq.skills,
+      });
     }
   }
 
@@ -225,11 +233,20 @@ export function analyzeComposabilityV2(
     const totalOrderings = skillSetCounts.get(setKey) ?? data.count;
     const sequenceConsistency = totalOrderings > 0 ? data.count / totalOrderings : 1;
 
+    let representativeQuery = "";
+    let highestFrequency = -1;
+    for (const [query, frequency] of data.queryCounts) {
+      if (frequency > highestFrequency) {
+        representativeQuery = query;
+        highestFrequency = frequency;
+      }
+    }
+
     sequences.push({
       skills: data.skills,
       occurrence_count: data.count,
       synergy_score: seqSynergyScore,
-      representative_query: data.query,
+      representative_query: representativeQuery,
       sequence_consistency: sequenceConsistency,
     });
   }

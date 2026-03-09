@@ -128,6 +128,7 @@ Near zero             → no interaction effect
 Note: this is the **inverse** of `conflict_score`. A high conflict_score (bad) maps to a negative synergy_score. A high synergy_score (good) means fewer errors together than apart.
 
 The existing `conflict_detected` field remains for backwards compatibility:
+
 ```typescript
 conflict_detected = synergy_score < -0.3  // same threshold, just inverted
 ```
@@ -150,6 +151,7 @@ Algorithm:
 ```
 
 Example output:
+
 ```json
 {
   "sequences": [
