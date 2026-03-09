@@ -206,7 +206,7 @@ switch (command) {
       process.exit(1);
     }
     const logPath = values["telemetry-log"] ?? TELEMETRY_LOG;
-    const telemetry = readJsonl(logPath);
+    const telemetry = readJsonl<import("./types.js").SessionTelemetryRecord>(logPath);
     const windowSize = values.window ? Number.parseInt(values.window, 10) : undefined;
     const minOccurrences = values["min-occurrences"]
       ? Number.parseInt(values["min-occurrences"], 10)
@@ -214,16 +214,16 @@ switch (command) {
 
     // Use v2 if skill usage log exists and has data
     const usageLogExists = existsSync(SKILL_LOG);
-    const usageRecords = usageLogExists ? readJsonl(SKILL_LOG) : [];
+    const usageRecords = usageLogExists
+      ? readJsonl<import("./types.js").SkillUsageRecord>(SKILL_LOG)
+      : [];
 
     if (usageRecords.length > 0) {
       const { analyzeComposabilityV2 } = await import("./eval/composability-v2.js");
-      const report = analyzeComposabilityV2(
-        values.skill,
-        telemetry as import("./types.js").SessionTelemetryRecord[],
-        usageRecords as import("./types.js").SkillUsageRecord[],
-        { window: windowSize, minOccurrences },
-      );
+      const report = analyzeComposabilityV2(values.skill, telemetry, usageRecords, {
+        window: windowSize,
+        minOccurrences,
+      });
 
       // JSON output: non-TTY or --json flag
       if (values.json || !process.stdout.isTTY) {
@@ -234,9 +234,7 @@ switch (command) {
       // Human-readable formatted output
       const windowLabel = windowSize ? `${windowSize}` : "all";
       console.log(`Composability Report: ${values.skill}`);
-      console.log(
-        `Analyzed: ${report.total_sessions_analyzed} sessions | Window: ${windowLabel}`,
-      );
+      console.log(`Analyzed: ${report.total_sessions_analyzed} sessions | Window: ${windowLabel}`);
 
       // Co-occurring Skills
       if (report.pairs.length > 0) {
@@ -271,13 +269,11 @@ switch (command) {
         console.log("\nWorkflow Candidates:");
         for (const wf of report.workflow_candidates) {
           const pct = Math.round(wf.synergy_score * 100);
-          const suggestedName = `${wf.skill_a}-${wf.skill_b}`;
+          const workflowId = `${wf.skill_a}→${wf.skill_b}`;
           console.log(
             `  \u2022 "${wf.skill_a} + ${wf.skill_b}" \u2014 used together ${wf.co_occurrence_count} times with ${pct}% fewer errors`,
           );
-          console.log(
-            `    \u2192 Run \`selftune workflows save "${suggestedName}"\` to codify`,
-          );
+          console.log(`    \u2192 Run \`selftune workflows save "${workflowId}"\` to codify`);
         }
       }
 

@@ -1,6 +1,6 @@
-import { describe, it, expect } from "bun:test";
-import { formatWorkflows } from "../../cli/selftune/workflows/workflows.js";
+import { describe, expect, it } from "bun:test";
 import type { DiscoveredWorkflow, WorkflowDiscoveryReport } from "../../cli/selftune/types.js";
+import { formatWorkflows } from "../../cli/selftune/workflows/workflows.js";
 
 // ---------------------------------------------------------------------------
 // Helper to build minimal DiscoveredWorkflow fixtures
@@ -18,14 +18,12 @@ function makeWorkflow(overrides: Partial<DiscoveredWorkflow> = {}): DiscoveredWo
     completion_rate: 0.75,
     first_seen: "2025-01-01T00:00:00Z",
     last_seen: "2025-06-01T00:00:00Z",
+    session_ids: ["s1", "s2", "s3"],
     ...overrides,
   };
 }
 
-function makeReport(
-  workflows: DiscoveredWorkflow[],
-  totalSessions = 100,
-): WorkflowDiscoveryReport {
+function makeReport(workflows: DiscoveredWorkflow[], totalSessions = 100): WorkflowDiscoveryReport {
   return {
     workflows,
     total_sessions_analyzed: totalSessions,

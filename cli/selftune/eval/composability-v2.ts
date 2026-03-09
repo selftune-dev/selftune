@@ -17,13 +17,7 @@ import type {
   SkillSequence,
   SkillUsageRecord,
 } from "../types.js";
-
-/**
- * Clamp a number between min and max.
- */
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
+import { clamp } from "../utils/math.js";
 
 /**
  * Extended composability analysis with synergy detection and sequence extraction.
@@ -107,11 +101,7 @@ export function analyzeComposabilityV2(
     const avgErrorsAlone = Math.max(errorsAlone, errorsCoSkillAlone);
 
     // synergy_score = clamp((avg_errors_alone - avg_errors_together) / (avg_errors_alone + 1), -1, 1)
-    const synergyScore = clamp(
-      (avgErrorsAlone - avgErrorsTogether) / (avgErrorsAlone + 1),
-      -1,
-      1,
-    );
+    const synergyScore = clamp((avgErrorsAlone - avgErrorsTogether) / (avgErrorsAlone + 1), -1, 1);
 
     const conflictDetected = synergyScore < -0.3;
     const workflowCandidate = synergyScore > 0.3 && coOccurrenceCount >= minOccurrences;
@@ -228,11 +218,7 @@ export function analyzeComposabilityV2(
           matchingSessions.length
         : 0;
 
-    const seqSynergyScore = clamp(
-      (errorsAlone - seqErrorsTogether) / (errorsAlone + 1),
-      -1,
-      1,
-    );
+    const seqSynergyScore = clamp((errorsAlone - seqErrorsTogether) / (errorsAlone + 1), -1, 1);
 
     // Consistency: count of this exact order / count of all orderings of same skill set
     const setKey = JSON.stringify([...data.skills].sort());

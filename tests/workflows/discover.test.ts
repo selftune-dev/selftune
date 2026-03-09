@@ -1,6 +1,6 @@
-import { describe, it, expect } from "bun:test";
-import { discoverWorkflows } from "../../cli/selftune/workflows/discover.js";
+import { describe, expect, it } from "bun:test";
 import type { SessionTelemetryRecord, SkillUsageRecord } from "../../cli/selftune/types.js";
+import { discoverWorkflows } from "../../cli/selftune/workflows/discover.js";
 
 // ---------------------------------------------------------------------------
 // Helper to build minimal SessionTelemetryRecord fixtures
@@ -46,6 +46,13 @@ function makeUsage(overrides: Partial<SkillUsageRecord>): SkillUsageRecord {
 // discoverWorkflows
 // ---------------------------------------------------------------------------
 describe("discoverWorkflows", () => {
+  function assertDefined<T>(
+    value: T | undefined | null,
+    msg = "Expected value to be defined",
+  ): asserts value is T {
+    if (value == null) throw new Error(msg);
+  }
+
   // -------------------------------------------------------------------------
   // 1. Empty data returns empty workflows
   // -------------------------------------------------------------------------
@@ -68,11 +75,26 @@ describe("discoverWorkflows", () => {
     ];
 
     const usage = [
-      makeUsage({ session_id: "s1", skill_name: "SkillA", timestamp: "2025-01-01T00:00:00Z", query: "build feature" }),
+      makeUsage({
+        session_id: "s1",
+        skill_name: "SkillA",
+        timestamp: "2025-01-01T00:00:00Z",
+        query: "build feature",
+      }),
       makeUsage({ session_id: "s1", skill_name: "SkillB", timestamp: "2025-01-01T00:01:00Z" }),
-      makeUsage({ session_id: "s2", skill_name: "SkillA", timestamp: "2025-01-02T00:00:00Z", query: "build feature" }),
+      makeUsage({
+        session_id: "s2",
+        skill_name: "SkillA",
+        timestamp: "2025-01-02T00:00:00Z",
+        query: "build feature",
+      }),
       makeUsage({ session_id: "s2", skill_name: "SkillB", timestamp: "2025-01-02T00:01:00Z" }),
-      makeUsage({ session_id: "s3", skill_name: "SkillA", timestamp: "2025-01-03T00:00:00Z", query: "build feature" }),
+      makeUsage({
+        session_id: "s3",
+        skill_name: "SkillA",
+        timestamp: "2025-01-03T00:00:00Z",
+        query: "build feature",
+      }),
       makeUsage({ session_id: "s3", skill_name: "SkillB", timestamp: "2025-01-03T00:01:00Z" }),
     ];
 
@@ -259,16 +281,16 @@ describe("discoverWorkflows", () => {
       (w) => w.skills[0] === "SkillB" && w.skills[1] === "SkillA",
     );
 
-    expect(seqAB).toBeDefined();
-    expect(seqBA).toBeDefined();
+    assertDefined(seqAB);
+    assertDefined(seqBA);
 
     // A->B appears 3 out of 4 times = 0.75 consistency
-    expect(seqAB!.occurrence_count).toBe(3);
-    expect(seqAB!.sequence_consistency).toBe(0.75);
+    expect(seqAB.occurrence_count).toBe(3);
+    expect(seqAB.sequence_consistency).toBe(0.75);
 
     // B->A appears 1 out of 4 times = 0.25 consistency
-    expect(seqBA!.occurrence_count).toBe(1);
-    expect(seqBA!.sequence_consistency).toBe(0.25);
+    expect(seqBA.occurrence_count).toBe(1);
+    expect(seqBA.sequence_consistency).toBe(0.25);
   });
 
   // -------------------------------------------------------------------------

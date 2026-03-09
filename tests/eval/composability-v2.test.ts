@@ -1,4 +1,4 @@
-import { describe, it, expect } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { analyzeComposabilityV2 } from "../../cli/selftune/eval/composability-v2.js";
 import type { SessionTelemetryRecord, SkillUsageRecord } from "../../cli/selftune/types.js";
 
@@ -46,6 +46,13 @@ function makeUsage(overrides: Partial<SkillUsageRecord>): SkillUsageRecord {
 // analyzeComposabilityV2
 // ---------------------------------------------------------------------------
 describe("analyzeComposabilityV2", () => {
+  function assertDefined<T>(
+    value: T | undefined | null,
+    msg = "Expected value to be defined",
+  ): asserts value is T {
+    if (value == null) throw new Error(msg);
+  }
+
   // -------------------------------------------------------------------------
   // 1. Synergy detection
   // -------------------------------------------------------------------------
@@ -73,12 +80,12 @@ describe("analyzeComposabilityV2", () => {
     const report = analyzeComposabilityV2("SkillA", telemetry, usage);
 
     const pair = report.pairs.find((p) => p.skill_b === "SkillB");
-    expect(pair).toBeDefined();
-    expect(pair!.synergy_score).toBeGreaterThan(0);
+    assertDefined(pair);
+    expect(pair.synergy_score).toBeGreaterThan(0);
     // synergy = (avg_errors_alone - avg_errors_together) / (avg_errors_alone + 1)
     // = (5 - 1) / (5 + 1) = 4/6 ≈ 0.667
-    expect(pair!.avg_errors_together).toBe(1);
-    expect(pair!.avg_errors_alone).toBe(5);
+    expect(pair.avg_errors_together).toBe(1);
+    expect(pair.avg_errors_alone).toBe(5);
   });
 
   // -------------------------------------------------------------------------
@@ -98,19 +105,31 @@ describe("analyzeComposabilityV2", () => {
 
     const usage = [
       makeUsage({ session_id: "s4", skill_name: "SkillA", timestamp: "2025-01-04T00:00:00Z" }),
-      makeUsage({ session_id: "s4", skill_name: "ConflictSkill", timestamp: "2025-01-04T00:01:00Z" }),
+      makeUsage({
+        session_id: "s4",
+        skill_name: "ConflictSkill",
+        timestamp: "2025-01-04T00:01:00Z",
+      }),
       makeUsage({ session_id: "s5", skill_name: "SkillA", timestamp: "2025-01-05T00:00:00Z" }),
-      makeUsage({ session_id: "s5", skill_name: "ConflictSkill", timestamp: "2025-01-05T00:01:00Z" }),
+      makeUsage({
+        session_id: "s5",
+        skill_name: "ConflictSkill",
+        timestamp: "2025-01-05T00:01:00Z",
+      }),
       makeUsage({ session_id: "s6", skill_name: "SkillA", timestamp: "2025-01-06T00:00:00Z" }),
-      makeUsage({ session_id: "s6", skill_name: "ConflictSkill", timestamp: "2025-01-06T00:01:00Z" }),
+      makeUsage({
+        session_id: "s6",
+        skill_name: "ConflictSkill",
+        timestamp: "2025-01-06T00:01:00Z",
+      }),
     ];
 
     const report = analyzeComposabilityV2("SkillA", telemetry, usage);
 
     const pair = report.pairs.find((p) => p.skill_b === "ConflictSkill");
-    expect(pair).toBeDefined();
-    expect(pair!.synergy_score).toBeLessThan(0);
-    expect(pair!.conflict_detected).toBe(true);
+    assertDefined(pair);
+    expect(pair.synergy_score).toBeLessThan(0);
+    expect(pair.conflict_detected).toBe(true);
   });
 
   // -------------------------------------------------------------------------
@@ -141,11 +160,15 @@ describe("analyzeComposabilityV2", () => {
     const report = analyzeComposabilityV2("SkillA", telemetry, usage);
 
     const seq = report.sequences.find(
-      (s) => s.skills.length === 3 && s.skills[0] === "SkillA" && s.skills[1] === "SkillB" && s.skills[2] === "SkillC",
+      (s) =>
+        s.skills.length === 3 &&
+        s.skills[0] === "SkillA" &&
+        s.skills[1] === "SkillB" &&
+        s.skills[2] === "SkillC",
     );
-    expect(seq).toBeDefined();
-    expect(seq!.skills).toEqual(["SkillA", "SkillB", "SkillC"]);
-    expect(seq!.occurrence_count).toBe(3);
+    assertDefined(seq);
+    expect(seq.skills).toEqual(["SkillA", "SkillB", "SkillC"]);
+    expect(seq.occurrence_count).toBe(3);
   });
 
   // -------------------------------------------------------------------------
@@ -174,14 +197,14 @@ describe("analyzeComposabilityV2", () => {
     const report = analyzeComposabilityV2("SkillA", telemetry, usage, { minOccurrences: 3 });
 
     const pair = report.pairs.find((p) => p.skill_b === "SkillB");
-    expect(pair).toBeDefined();
-    expect(pair!.synergy_score).toBeGreaterThan(0.3);
-    expect(pair!.workflow_candidate).toBe(true);
+    assertDefined(pair);
+    expect(pair.synergy_score).toBeGreaterThan(0.3);
+    expect(pair.workflow_candidate).toBe(true);
 
     // Also verify it appears in report.workflow_candidates
     const candidate = report.workflow_candidates.find((p) => p.skill_b === "SkillB");
-    expect(candidate).toBeDefined();
-    expect(candidate!.workflow_candidate).toBe(true);
+    assertDefined(candidate);
+    expect(candidate.workflow_candidate).toBe(true);
   });
 
   // -------------------------------------------------------------------------
@@ -207,10 +230,10 @@ describe("analyzeComposabilityV2", () => {
     const report = analyzeComposabilityV2("SkillA", telemetry, usage, { minOccurrences: 3 });
 
     const pair = report.pairs.find((p) => p.skill_b === "SkillB");
-    expect(pair).toBeDefined();
+    assertDefined(pair);
     // Synergy is still high, but below minOccurrences threshold
-    expect(pair!.synergy_score).toBeGreaterThan(0.3);
-    expect(pair!.workflow_candidate).toBe(false);
+    expect(pair.synergy_score).toBeGreaterThan(0.3);
+    expect(pair.workflow_candidate).toBe(false);
     expect(report.workflow_candidates).toEqual([]);
   });
 
@@ -251,16 +274,16 @@ describe("analyzeComposabilityV2", () => {
       (s) => s.skills.length === 2 && s.skills[0] === "SkillB" && s.skills[1] === "SkillA",
     );
 
-    expect(seqAB).toBeDefined();
-    expect(seqBA).toBeDefined();
+    assertDefined(seqAB);
+    assertDefined(seqBA);
 
     // A->B appears 3 out of 4 times = 0.75 consistency
-    expect(seqAB!.occurrence_count).toBe(3);
-    expect(seqAB!.sequence_consistency).toBe(0.75);
+    expect(seqAB.occurrence_count).toBe(3);
+    expect(seqAB.sequence_consistency).toBe(0.75);
 
     // B->A appears 1 out of 4 times = 0.25 consistency
-    expect(seqBA!.occurrence_count).toBe(1);
-    expect(seqBA!.sequence_consistency).toBe(0.25);
+    expect(seqBA.occurrence_count).toBe(1);
+    expect(seqBA.sequence_consistency).toBe(0.25);
   });
 
   // -------------------------------------------------------------------------
@@ -332,9 +355,7 @@ describe("analyzeComposabilityV2", () => {
   // 9. Single session sequence filtered by default minOccurrences
   // -------------------------------------------------------------------------
   it("filters out sequences with fewer occurrences than minOccurrences", () => {
-    const telemetry = [
-      makeSession("s1", ["SkillA", "SkillB"], 0),
-    ];
+    const telemetry = [makeSession("s1", ["SkillA", "SkillB"], 0)];
 
     const usage = [
       makeUsage({ session_id: "s1", skill_name: "SkillA", timestamp: "2025-01-01T00:00:00Z" }),
@@ -411,11 +432,23 @@ describe("analyzeComposabilityV2", () => {
       makeUsage({ session_id: "s8", skill_name: "SkillA", timestamp: "2025-01-08T00:00:00Z" }),
       makeUsage({ session_id: "s8", skill_name: "BadSkill", timestamp: "2025-01-08T00:01:00Z" }),
       makeUsage({ session_id: "s9", skill_name: "SkillA", timestamp: "2025-01-09T00:00:00Z" }),
-      makeUsage({ session_id: "s9", skill_name: "NeutralSkill", timestamp: "2025-01-09T00:01:00Z" }),
+      makeUsage({
+        session_id: "s9",
+        skill_name: "NeutralSkill",
+        timestamp: "2025-01-09T00:01:00Z",
+      }),
       makeUsage({ session_id: "s10", skill_name: "SkillA", timestamp: "2025-01-10T00:00:00Z" }),
-      makeUsage({ session_id: "s10", skill_name: "NeutralSkill", timestamp: "2025-01-10T00:01:00Z" }),
+      makeUsage({
+        session_id: "s10",
+        skill_name: "NeutralSkill",
+        timestamp: "2025-01-10T00:01:00Z",
+      }),
       makeUsage({ session_id: "s11", skill_name: "SkillA", timestamp: "2025-01-11T00:00:00Z" }),
-      makeUsage({ session_id: "s11", skill_name: "NeutralSkill", timestamp: "2025-01-11T00:01:00Z" }),
+      makeUsage({
+        session_id: "s11",
+        skill_name: "NeutralSkill",
+        timestamp: "2025-01-11T00:01:00Z",
+      }),
     ];
 
     const report = analyzeComposabilityV2("SkillA", telemetry, usage);
@@ -424,13 +457,13 @@ describe("analyzeComposabilityV2", () => {
     const goodPair = report.pairs.find((p) => p.skill_b === "GoodSkill");
     const badPair = report.pairs.find((p) => p.skill_b === "BadSkill");
 
-    expect(goodPair!.synergy_score).toBeGreaterThan(0);
-    expect(badPair!.synergy_score).toBeLessThan(0);
+    assertDefined(goodPair);
+    assertDefined(badPair);
+    expect(goodPair.synergy_score).toBeGreaterThan(0);
+    expect(badPair.synergy_score).toBeLessThan(0);
 
     // synergy_count should count pairs with positive synergy_score
-    expect(report.synergy_count).toBe(
-      report.pairs.filter((p) => p.synergy_score > 0).length,
-    );
+    expect(report.synergy_count).toBe(report.pairs.filter((p) => p.synergy_score > 0).length);
   });
 
   // -------------------------------------------------------------------------
@@ -506,22 +539,50 @@ describe("analyzeComposabilityV2", () => {
     ];
 
     const usage = [
-      makeUsage({ session_id: "s1", skill_name: "SkillA", timestamp: "2025-01-01T00:00:00Z", query: "write a blog post" }),
-      makeUsage({ session_id: "s1", skill_name: "SkillB", timestamp: "2025-01-01T00:01:00Z", query: "publish it" }),
-      makeUsage({ session_id: "s2", skill_name: "SkillA", timestamp: "2025-01-02T00:00:00Z", query: "write a blog post" }),
-      makeUsage({ session_id: "s2", skill_name: "SkillB", timestamp: "2025-01-02T00:01:00Z", query: "publish it" }),
-      makeUsage({ session_id: "s3", skill_name: "SkillA", timestamp: "2025-01-03T00:00:00Z", query: "draft content" }),
-      makeUsage({ session_id: "s3", skill_name: "SkillB", timestamp: "2025-01-03T00:01:00Z", query: "publish it" }),
+      makeUsage({
+        session_id: "s1",
+        skill_name: "SkillA",
+        timestamp: "2025-01-01T00:00:00Z",
+        query: "write a blog post",
+      }),
+      makeUsage({
+        session_id: "s1",
+        skill_name: "SkillB",
+        timestamp: "2025-01-01T00:01:00Z",
+        query: "publish it",
+      }),
+      makeUsage({
+        session_id: "s2",
+        skill_name: "SkillA",
+        timestamp: "2025-01-02T00:00:00Z",
+        query: "write a blog post",
+      }),
+      makeUsage({
+        session_id: "s2",
+        skill_name: "SkillB",
+        timestamp: "2025-01-02T00:01:00Z",
+        query: "publish it",
+      }),
+      makeUsage({
+        session_id: "s3",
+        skill_name: "SkillA",
+        timestamp: "2025-01-03T00:00:00Z",
+        query: "draft content",
+      }),
+      makeUsage({
+        session_id: "s3",
+        skill_name: "SkillB",
+        timestamp: "2025-01-03T00:01:00Z",
+        query: "publish it",
+      }),
     ];
 
     const report = analyzeComposabilityV2("SkillA", telemetry, usage, { minOccurrences: 3 });
 
-    const seq = report.sequences.find(
-      (s) => s.skills[0] === "SkillA" && s.skills[1] === "SkillB",
-    );
-    expect(seq).toBeDefined();
-    expect(typeof seq!.representative_query).toBe("string");
-    expect(seq!.representative_query.length).toBeGreaterThan(0);
+    const seq = report.sequences.find((s) => s.skills[0] === "SkillA" && s.skills[1] === "SkillB");
+    assertDefined(seq);
+    expect(typeof seq.representative_query).toBe("string");
+    expect(seq.representative_query.length).toBeGreaterThan(0);
   });
 
   // -------------------------------------------------------------------------
@@ -539,19 +600,31 @@ describe("analyzeComposabilityV2", () => {
 
     const usage = [
       makeUsage({ session_id: "s2", skill_name: "SkillA", timestamp: "2025-01-02T00:00:00Z" }),
-      makeUsage({ session_id: "s2", skill_name: "ExtremeSkill", timestamp: "2025-01-02T00:01:00Z" }),
+      makeUsage({
+        session_id: "s2",
+        skill_name: "ExtremeSkill",
+        timestamp: "2025-01-02T00:01:00Z",
+      }),
       makeUsage({ session_id: "s3", skill_name: "SkillA", timestamp: "2025-01-03T00:00:00Z" }),
-      makeUsage({ session_id: "s3", skill_name: "ExtremeSkill", timestamp: "2025-01-03T00:01:00Z" }),
+      makeUsage({
+        session_id: "s3",
+        skill_name: "ExtremeSkill",
+        timestamp: "2025-01-03T00:01:00Z",
+      }),
       makeUsage({ session_id: "s4", skill_name: "SkillA", timestamp: "2025-01-04T00:00:00Z" }),
-      makeUsage({ session_id: "s4", skill_name: "ExtremeSkill", timestamp: "2025-01-04T00:01:00Z" }),
+      makeUsage({
+        session_id: "s4",
+        skill_name: "ExtremeSkill",
+        timestamp: "2025-01-04T00:01:00Z",
+      }),
     ];
 
     const report = analyzeComposabilityV2("SkillA", telemetry, usage);
 
     const pair = report.pairs.find((p) => p.skill_b === "ExtremeSkill");
-    expect(pair).toBeDefined();
-    expect(pair!.synergy_score).toBeGreaterThanOrEqual(-1);
-    expect(pair!.synergy_score).toBeLessThanOrEqual(1);
+    assertDefined(pair);
+    expect(pair.synergy_score).toBeGreaterThanOrEqual(-1);
+    expect(pair.synergy_score).toBeLessThanOrEqual(1);
   });
 
   // -------------------------------------------------------------------------

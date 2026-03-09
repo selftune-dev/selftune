@@ -37,7 +37,7 @@ Key enabler: `SkillUsageRecord` already captures per-invocation `timestamp` + `s
 
 A **workflow** is a frequently co-occurring ordered skill sequence with measurable session quality. Workflows are discovered from telemetry, not authored upfront.
 
-```
+```text
 Discovery Pipeline:
   skill_usage_log.jsonl
     → group by session_id
@@ -50,7 +50,7 @@ Discovery Pipeline:
 
 ### Workflow Lifecycle
 
-```
+```text
 Phase 1: DETECT    — Find recurring skill sequences in telemetry
 Phase 2: SCORE     — Measure workflow-level quality metrics
 Phase 3: SUGGEST   — Surface discovered workflows to the user
@@ -151,7 +151,7 @@ This helps agents make better routing decisions without hard dependencies.
 
 No new log files needed. Workflow analysis is computed from existing `skill_usage_log.jsonl` records:
 
-```
+```text
 skill_usage_log.jsonl (existing):
   { timestamp, session_id, skill_name, skill_path, query, triggered }
 
@@ -185,7 +185,7 @@ Options:
 ```
 
 Output:
-```
+```text
 Discovered Workflows (from 450 sessions):
 
   1. Copywriting → MarketingAutomation → SelfTuneBlog
@@ -279,7 +279,7 @@ All workflow analysis is:
 **Scenario:** Daniel uses copywriting + blog publishing together 12 times over two weeks.
 
 **What selftune discovers:**
-```
+```text
 selftune workflows
 
   1. Copywriting → SelfTuneBlog

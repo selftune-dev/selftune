@@ -14,13 +14,7 @@ import type {
   SkillUsageRecord,
   WorkflowDiscoveryReport,
 } from "../types.js";
-
-/**
- * Clamp a number between min and max.
- */
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
+import { clamp } from "../utils/math.js";
 
 /**
  * Discover multi-skill workflows from telemetry and usage data.
@@ -161,7 +155,7 @@ export function discoverWorkflows(
 
   // 7. Build workflows, filtered by minOccurrences
   const workflows: DiscoveredWorkflow[] = [];
-  for (const [key, data] of sequenceCounts) {
+  for (const data of sequenceCounts.values()) {
     if (data.count < minOccurrences) continue;
 
     // workflow_id = skills.join("->")
@@ -180,10 +174,7 @@ export function discoverWorkflows(
         : 0;
 
     // avg_errors_individual = max of each skill's solo error rate
-    const avgErrorsIndividual = Math.max(
-      ...data.skills.map((s) => getSkillSoloErrorRate(s)),
-      0,
-    );
+    const avgErrorsIndividual = Math.max(...data.skills.map((s) => getSkillSoloErrorRate(s)), 0);
 
     // synergy_score = clamp((individual - together) / (individual + 1), -1, 1)
     const synergyScore = clamp(
@@ -234,13 +225,15 @@ export function discoverWorkflows(
       completion_rate: completionRate,
       first_seen: firstSeen,
       last_seen: lastSeen,
+      session_ids: data.sessionIds,
     });
   }
 
   // 8. If --skill provided, filter to workflows containing that skill
   let filtered = workflows;
   if (options?.skill) {
-    filtered = workflows.filter((w) => w.skills.includes(options.skill!));
+    const skillFilter = options.skill;
+    filtered = workflows.filter((w) => w.skills.includes(skillFilter));
   }
 
   // 9. Sort by occurrence_count descending

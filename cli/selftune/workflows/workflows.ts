@@ -77,7 +77,15 @@ export async function cliMain(): Promise<void> {
   const minOccurrences = values["min-occurrences"]
     ? Number.parseInt(values["min-occurrences"], 10)
     : undefined;
+  if (minOccurrences !== undefined && (Number.isNaN(minOccurrences) || minOccurrences < 0)) {
+    console.error("[ERROR] --min-occurrences must be a non-negative integer.");
+    process.exit(1);
+  }
   const window = values.window ? Number.parseInt(values.window, 10) : undefined;
+  if (window !== undefined && (Number.isNaN(window) || window < 0)) {
+    console.error("[ERROR] --window must be a non-negative integer.");
+    process.exit(1);
+  }
 
   // Read telemetry and skill usage logs
   const telemetry = readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG);
@@ -109,27 +117,38 @@ export async function cliMain(): Promise<void> {
 
     if (!workflow) {
       console.error(`[ERROR] No workflow found matching "${nameArg}".`);
-      console.error(
-        "Run 'selftune workflows' to see discovered workflows and their indices.",
-      );
+      console.error("Run 'selftune workflows' to see discovered workflows and their indices.");
       process.exit(1);
     }
 
     // Determine SKILL.md path
     let skillPath = values["skill-path"];
     if (!skillPath) {
-      // Use the first skill's skill_path from usage records
+      // Filter usage records to only sessions that contributed to this workflow
+      const sessionSet = new Set(workflow.session_ids);
       const firstSkill = workflow.skills[0];
-      const usageRecord = usage.find((u) => u.skill_name === firstSkill);
-      if (usageRecord) {
-        skillPath = usageRecord.skill_path;
+      const matchingRecords = usage.filter(
+        (u) => u.skill_name === firstSkill && sessionSet.has(u.session_id),
+      );
+
+      // Collect unique skill_paths from matching records
+      const uniquePaths = [...new Set(matchingRecords.map((r) => r.skill_path))];
+
+      if (uniquePaths.length === 1) {
+        skillPath = uniquePaths[0];
+      } else if (uniquePaths.length > 1) {
+        // Ambiguous: multiple SKILL.md paths found across contributing sessions
+        console.error(`[ERROR] Multiple SKILL.md paths found for "${firstSkill}":`);
+        for (const p of uniquePaths) {
+          console.error(`  - ${p}`);
+        }
+        console.error("Use --skill-path to specify which one to update.");
+        process.exit(1);
       }
     }
 
     if (!skillPath || !existsSync(skillPath)) {
-      console.error(
-        `[ERROR] Could not determine SKILL.md path. Use --skill-path to specify.`,
-      );
+      console.error(`[ERROR] Could not determine SKILL.md path. Use --skill-path to specify.`);
       process.exit(1);
     }
 

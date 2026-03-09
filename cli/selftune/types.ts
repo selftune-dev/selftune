@@ -671,6 +671,7 @@ export interface DiscoveredWorkflow {
   completion_rate: number;       // % sessions where all skills fired
   first_seen: string;
   last_seen: string;
+  session_ids: string[];          // sessions that contributed to this workflow
 }
 
 export interface CodifiedWorkflow {

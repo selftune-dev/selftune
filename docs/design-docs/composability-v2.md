@@ -114,7 +114,7 @@ export function analyzeComposabilityV2(
 
 The existing `conflict_score` only captures negative interactions. The new `synergy_score` captures both directions:
 
-```
+```text
 synergy_score = clamp(
   (avg_errors_alone - avg_errors_together) / (avg_errors_alone + 1),
   -1, 1
@@ -136,7 +136,7 @@ conflict_detected = synergy_score < -0.3  // same threshold, just inverted
 
 Uses `skill_usage_log.jsonl` which has per-invocation timestamps:
 
-```
+```text
 Algorithm:
 1. Filter usage records for sessions containing the target skill
 2. Group by session_id
@@ -175,7 +175,7 @@ Example output:
 
 A pair or sequence is flagged as a `workflow_candidate` when:
 
-```
+```text
 workflow_candidate = synergy_score > 0.3 AND occurrence_count >= minOccurrences
 ```
 

@@ -7,6 +7,9 @@
 
 import type { CodifiedWorkflow } from "../types.js";
 
+type WorkflowBuilder = Pick<CodifiedWorkflow, "name" | "skills" | "source"> &
+  Partial<Pick<CodifiedWorkflow, "description" | "discovered_from">>;
+
 // ---------------------------------------------------------------------------
 // Parser
 // ---------------------------------------------------------------------------
@@ -41,7 +44,7 @@ export function parseWorkflowsSection(content: string): CodifiedWorkflow[] {
 
   // Parse each ### subsection within the workflows section
   const sectionLines = lines.slice(sectionStart, sectionEnd);
-  let current: { name: string; skills: string[]; description?: string; source: "discovered" | "authored"; discovered_from?: { workflow_id: string; occurrence_count: number; synergy_score: number } } | null = null;
+  let current: WorkflowBuilder | null = null;
 
   for (const line of sectionLines) {
     const trimmed = line.trim();
@@ -61,7 +64,10 @@ export function parseWorkflowsSection(content: string): CodifiedWorkflow[] {
 
     if (trimmed.startsWith("- **Skills:**")) {
       const skillsStr = trimmed.slice("- **Skills:**".length).trim();
-      current.skills = skillsStr.split(" \u2192 ").map((s) => s.trim()).filter(Boolean);
+      current.skills = skillsStr
+        .split(" \u2192 ")
+        .map((s) => s.trim())
+        .filter(Boolean);
       continue;
     }
 
@@ -85,7 +91,6 @@ export function parseWorkflowsSection(content: string): CodifiedWorkflow[] {
       } else {
         current.source = "authored";
       }
-      continue;
     }
   }
 
@@ -113,7 +118,7 @@ function formatWorkflowSubsection(workflow: CodifiedWorkflow): string {
   if (workflow.source === "discovered" && workflow.discovered_from) {
     const { occurrence_count, synergy_score } = workflow.discovered_from;
     lines.push(
-      `- **Source:** Discovered from ${occurrence_count} sessions (synergy: ${synergy_score})`,
+      `- **Source:** Discovered from ${occurrence_count} sessions (synergy: ${synergy_score.toFixed(2)})`,
     );
   } else {
     lines.push(`- **Source:** authored`);
