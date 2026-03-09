@@ -61,7 +61,7 @@ export async function quickstart(): Promise<void> {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`      Init failed: ${msg}`);
-      console.log("      You can run \`selftune init\` manually to troubleshoot.");
+      console.log("      You can run `selftune init` manually to troubleshoot.");
     }
   }
 
@@ -95,7 +95,7 @@ export async function quickstart(): Promise<void> {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`      Replay failed: ${msg}`);
-      console.log("      You can run \`selftune replay\` manually to troubleshoot.");
+      console.log("      You can run `selftune replay` manually to troubleshoot.");
     }
   }
 
@@ -120,7 +120,7 @@ export async function quickstart(): Promise<void> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`Status failed: ${msg}`);
-    console.log("Run \`selftune status\` manually to troubleshoot.");
+    console.log("Run `selftune status` manually to troubleshoot.");
   }
 }
 
@@ -140,16 +140,17 @@ function suggestSkillsToEvolve(
   const scored: Array<{ name: string; score: number; reason: string }> = skills.map((s) => {
     let score = 0;
     let reason: string;
+    const passRateLabel = s.passRate !== null ? `${Math.round(s.passRate * 100)}%` : "unknown";
 
     if (s.status === "UNGRADED" || s.status === "UNKNOWN") {
       score = 100; // Highest priority: needs grading
-      reason = "needs grading — run `selftune grade --skill " + s.name + "`";
+      reason = `needs grading — run \`selftune grade --skill ${s.name}\``;
     } else if (s.status === "CRITICAL") {
       score = 90;
-      reason = `pass rate ${s.passRate !== null ? Math.round(s.passRate * 100) + "%" : "unknown"} — needs evolution`;
+      reason = `pass rate ${passRateLabel} — needs evolution`;
     } else if (s.status === "WARNING") {
       score = 70;
-      reason = `pass rate ${s.passRate !== null ? Math.round(s.passRate * 100) + "%" : "unknown"} — could improve`;
+      reason = `pass rate ${passRateLabel} — could improve`;
     } else {
       score = 10;
       reason = "healthy";

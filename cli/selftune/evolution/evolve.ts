@@ -724,7 +724,11 @@ Options:
   // -------------------------------------------------------------------------
   // Pre-flight validation: catch common misconfigurations before evolve()
   // -------------------------------------------------------------------------
-  const skillPath = values["skill-path"]!;
+  const skillPath = values["skill-path"];
+  if (!skillPath) {
+    console.error("[ERROR] --skill-path is required.");
+    process.exit(1);
+  }
   if (!existsSync(skillPath)) {
     console.error(`[ERROR] SKILL.md not found at: ${skillPath}`);
     console.error("  Verify the --skill-path argument points to an existing SKILL.md file.");
