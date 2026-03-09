@@ -23,6 +23,7 @@
  *   selftune cron [options]           — Manage OpenClaw cron jobs (setup, list, remove)
  *   selftune baseline [options]      — Measure skill value vs. no-skill baseline
  *   selftune composability [options]  — Analyze skill co-occurrence conflicts
+ *   selftune workflows [options]    — Discover multi-skill workflow patterns
  *   selftune unit-test [options]     — Run or generate skill unit tests
  *   selftune import-skillsbench [options] — Import SkillsBench task corpus as eval entries
  */
@@ -57,6 +58,7 @@ Commands:
   badge              Generate skill health badges for READMEs
   baseline           Measure skill value vs. no-skill baseline
   composability      Analyze skill co-occurrence conflicts
+  workflows          Discover and manage multi-skill workflows
   unit-test          Run or generate skill unit tests
   import-skillsbench Import SkillsBench task corpus as eval entries
 
@@ -295,6 +297,11 @@ switch (command) {
       const report = analyzeComposability(values.skill, telemetry, windowSize);
       console.log(JSON.stringify(report, null, 2));
     }
+    break;
+  }
+  case "workflows": {
+    const { cliMain } = await import("./workflows/workflows.js");
+    await cliMain();
     break;
   }
   default:
