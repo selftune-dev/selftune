@@ -10,14 +10,22 @@
  *   selftune init [--agent <type>] [--cli-path <path>] [--force]
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-import { SELFTUNE_CONFIG_DIR, SELFTUNE_CONFIG_PATH } from "./constants.js";
+import { CLAUDE_CODE_HOOK_KEYS, SELFTUNE_CONFIG_DIR, SELFTUNE_CONFIG_PATH } from "./constants.js";
 import type { SelftuneConfig } from "./types.js";
+import { hookKeyHasSelftuneEntry } from "./utils/hooks.js";
 import { detectAgent } from "./utils/llm-call.js";
 
 // ---------------------------------------------------------------------------
@@ -124,8 +132,6 @@ export function determineLlmMode(agentCli: string | null): {
 // Hook detection (Claude Code only)
 // ---------------------------------------------------------------------------
 
-const REQUIRED_HOOK_KEYS = ["prompt-submit", "post-tool-use", "session-stop"] as const;
-
 /**
  * Check if the selftune hooks are configured in Claude Code settings.
  */
@@ -138,21 +144,57 @@ export function checkClaudeCodeHooks(settingsPath: string): boolean {
     const hooks = settings?.hooks;
     if (!hooks || typeof hooks !== "object") return false;
 
-    for (const key of REQUIRED_HOOK_KEYS) {
-      const entries = hooks[key];
-      if (!Array.isArray(entries) || entries.length === 0) return false;
-      // Check that at least one entry references selftune
-      const hasSelftune = entries.some(
-        (e: { command?: string }) =>
-          typeof e.command === "string" && e.command.includes("selftune"),
-      );
-      if (!hasSelftune) return false;
+    for (const key of CLAUDE_CODE_HOOK_KEYS) {
+      if (!hookKeyHasSelftuneEntry(hooks, key)) {
+        return false;
+      }
     }
 
     return true;
   } catch {
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Agent file installation
+// ---------------------------------------------------------------------------
+
+/** Bundled agent files directory (ships with the npm package). */
+const BUNDLED_AGENTS_DIR = resolve(dirname(import.meta.path), "..", "..", ".claude", "agents");
+
+/**
+ * Copy bundled agent markdown files to ~/.claude/agents/.
+ * Returns a list of file names that were copied (skips files that already exist
+ * unless `force` is true).
+ */
+export function installAgentFiles(options?: { homeDir?: string; force?: boolean }): string[] {
+  const home = options?.homeDir ?? homedir();
+  const force = options?.force ?? false;
+  const targetDir = join(home, ".claude", "agents");
+
+  if (!existsSync(BUNDLED_AGENTS_DIR)) return [];
+
+  let sourceFiles: string[];
+  try {
+    sourceFiles = readdirSync(BUNDLED_AGENTS_DIR).filter((f) => f.endsWith(".md"));
+  } catch {
+    return [];
+  }
+
+  if (sourceFiles.length === 0) return [];
+
+  mkdirSync(targetDir, { recursive: true });
+
+  const copied: string[] = [];
+  for (const file of sourceFiles) {
+    const dest = join(targetDir, file);
+    if (!force && existsSync(dest)) continue;
+    copyFileSync(join(BUNDLED_AGENTS_DIR, file), dest);
+    copied.push(file);
+  }
+
+  return copied;
 }
 
 // ---------------------------------------------------------------------------
@@ -345,6 +387,12 @@ export function runInit(opts: InitOptions): SelftuneConfig {
   // Write config
   mkdirSync(configDir, { recursive: true });
   writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+
+  // Install agent files to ~/.claude/agents/
+  const copiedAgents = installAgentFiles({ homeDir: home, force });
+  if (copiedAgents.length > 0) {
+    console.error(`[INFO] Installed agent files: ${copiedAgents.join(", ")}`);
+  }
 
   return config;
 }

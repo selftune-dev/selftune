@@ -62,13 +62,17 @@ describe("skill-eval hook", () => {
     expect(readJsonl(logPath)).toEqual([]);
   });
 
-  test("extracts skill name correctly and writes record", () => {
-    // Create a transcript so getLastUserMessage can find the query
+  test("extracts skill name correctly and writes record with triggered=true when Skill tool was invoked", () => {
+    // Create a transcript with a Skill tool invocation so triggered is true
     const transcriptPath = join(tmpDir, "transcript.jsonl");
-    writeFileSync(
-      transcriptPath,
-      `${JSON.stringify({ role: "user", content: "Create a presentation" })}\n`,
-    );
+    const lines = [
+      JSON.stringify({ role: "user", content: "Create a presentation" }),
+      JSON.stringify({
+        role: "assistant",
+        content: [{ type: "tool_use", name: "Skill", input: { skill: "pptx" } }],
+      }),
+    ];
+    writeFileSync(transcriptPath, `${lines.join("\n")}\n`);
 
     const payload: PostToolUsePayload = {
       tool_name: "Read",
@@ -86,6 +90,26 @@ describe("skill-eval hook", () => {
     const records = readJsonl<SkillUsageRecord>(logPath);
     expect(records).toHaveLength(1);
     expect(records[0].skill_name).toBe("pptx");
+  });
+
+  test("marks triggered=false when SKILL.md is read without Skill tool invocation (browsing)", () => {
+    const transcriptPath = join(tmpDir, "transcript-browse.jsonl");
+    writeFileSync(
+      transcriptPath,
+      `${JSON.stringify({ role: "user", content: "Let me look at what skills are available" })}\n`,
+    );
+
+    const payload: PostToolUsePayload = {
+      tool_name: "Read",
+      tool_input: { file_path: "/mnt/skills/public/pptx/SKILL.md" },
+      session_id: "sess-3b",
+      transcript_path: transcriptPath,
+    };
+
+    const result = processToolUse(payload, logPath);
+    expect(result).not.toBeNull();
+    expect(result?.skill_name).toBe("pptx");
+    expect(result?.triggered).toBe(false);
   });
 
   test("finds user query from transcript", () => {
@@ -127,10 +151,14 @@ describe("skill-eval hook", () => {
 
   test("writes correct usage record format", () => {
     const transcriptPath = join(tmpDir, "transcript3.jsonl");
-    writeFileSync(
-      transcriptPath,
-      `${JSON.stringify({ role: "user", content: "Generate slides" })}\n`,
-    );
+    const lines = [
+      JSON.stringify({ role: "user", content: "Generate slides" }),
+      JSON.stringify({
+        role: "assistant",
+        content: [{ type: "tool_use", name: "Skill", input: { skill: "pptx" } }],
+      }),
+    ];
+    writeFileSync(transcriptPath, `${lines.join("\n")}\n`);
 
     const payload: PostToolUsePayload = {
       tool_name: "Read",

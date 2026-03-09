@@ -5,20 +5,21 @@
  * Rubric-based grader for Claude Code skill sessions.
  * Migrated from grade_session.py.
  *
- * Grades via installed agent CLI (claude/codex/opencode).
+ * Grades via an installed agent CLI selected from AGENT_CANDIDATES.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { parseArgs } from "node:util";
 
-import { TELEMETRY_LOG } from "../constants.js";
+import { AGENT_CANDIDATES, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
 import type {
   ExecutionMetrics,
   GraderOutput,
   GradingExpectation,
   GradingResult,
   SessionTelemetryRecord,
+  SkillUsageRecord,
 } from "../types.js";
 import { readJsonl } from "../utils/jsonl.js";
 import {
@@ -99,6 +100,11 @@ export function latestSessionForSkill(
   telemetry: SessionTelemetryRecord[],
   skillName: string,
 ): SessionTelemetryRecord | null {
+  // First pass: prefer sessions with actual Skill tool invocations (skills_invoked)
+  for (let i = telemetry.length - 1; i >= 0; i--) {
+    if (telemetry[i].skills_invoked?.includes(skillName)) return telemetry[i];
+  }
+  // Fallback: sessions where SKILL.md was read (skills_triggered)
   for (let i = telemetry.length - 1; i >= 0; i--) {
     if (telemetry[i].skills_triggered?.includes(skillName)) return telemetry[i];
   }
@@ -155,6 +161,107 @@ export function loadExpectationsFromEvalsJson(evalsJsonPath: string, evalId: num
     }
   }
   throw new Error(`Eval ID ${evalId} not found in ${evalsJsonPath}`);
+}
+
+// ---------------------------------------------------------------------------
+// Auto-derive expectations from SKILL.md
+// ---------------------------------------------------------------------------
+
+export interface DerivedExpectations {
+  expectations: string[];
+  derived: boolean;
+  source: string;
+}
+
+const GENERIC_EXPECTATIONS: string[] = [
+  "The skill was triggered during the session",
+  "The task was completed successfully without critical errors",
+  "No unhandled errors were encountered",
+];
+
+/**
+ * Derive grading expectations from a skill's SKILL.md file.
+ *
+ * Resolution order for SKILL.md path:
+ * 1. Explicit `skillPath` argument
+ * 2. Lookup from skill_usage_log.jsonl records
+ * 3. Falls back to generic expectations if not found
+ */
+export function deriveExpectationsFromSkill(
+  skillName: string,
+  skillPath?: string,
+): DerivedExpectations {
+  // Resolve the SKILL.md path
+  let resolvedPath = skillPath;
+
+  if (!resolvedPath) {
+    // Try to find from skill_usage_log
+    try {
+      const usageRecords = readJsonl<SkillUsageRecord>(SKILL_LOG);
+      for (let i = usageRecords.length - 1; i >= 0; i--) {
+        if (usageRecords[i].skill_name === skillName && usageRecords[i].skill_path) {
+          resolvedPath = usageRecords[i].skill_path;
+          break;
+        }
+      }
+    } catch {
+      // skill_usage_log not available
+    }
+  }
+
+  if (!resolvedPath || !existsSync(resolvedPath)) {
+    return {
+      expectations: GENERIC_EXPECTATIONS,
+      derived: false,
+      source: resolvedPath ? `SKILL.md not found at ${resolvedPath}` : "no SKILL.md path found",
+    };
+  }
+
+  // Read and parse SKILL.md
+  let content: string;
+  try {
+    content = readFileSync(resolvedPath, "utf-8");
+  } catch {
+    return {
+      expectations: GENERIC_EXPECTATIONS,
+      derived: false,
+      source: `failed to read ${resolvedPath}`,
+    };
+  }
+
+  const expectations: string[] = [`The "${skillName}" skill was triggered during the session`];
+
+  // Extract description from first paragraph after title
+  const descMatch = content.match(/^#\s+.+\n+([^\n#][^\n]*)/m);
+  if (descMatch) {
+    const desc = descMatch[1].trim();
+    if (desc.length > 10) {
+      expectations.push(`The skill fulfilled its purpose: ${desc.slice(0, 120)}`);
+    }
+  }
+
+  // Extract "When to Use" section content
+  const whenMatch = content.match(/##\s*When\s+to\s+Use\b[^\n]*\n([\s\S]*?)(?=\n##\s|\n---|$)/i);
+  if (whenMatch) {
+    const lines = whenMatch[1]
+      .split("\n")
+      .map((l) => l.replace(/^[-*]\s*/, "").trim())
+      .filter((l) => l.length > 5);
+    if (lines.length > 0) {
+      expectations.push(`The session context matched a "When to Use" trigger for ${skillName}`);
+    }
+  }
+
+  // Add standard quality expectations
+  expectations.push("The task was completed successfully without critical errors");
+  expectations.push("No unhandled errors were encountered");
+
+  // Cap at 5 expectations
+  return {
+    expectations: expectations.slice(0, 5),
+    derived: true,
+    source: resolvedPath,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +378,126 @@ export async function gradeViaAgent(prompt: string, agent: string): Promise<Grad
 }
 
 // ---------------------------------------------------------------------------
+// Shared grading flow
+// ---------------------------------------------------------------------------
+
+function normalizeExpectations(expectations: GradingExpectation[]): GradingExpectation[] {
+  return expectations.map((e) => ({
+    ...e,
+    score: e.score ?? (e.passed ? 1.0 : 0.0),
+    source: e.source ?? ("llm" as const),
+  }));
+}
+
+function assembleResultFromExpectations(
+  expectations: GradingExpectation[],
+  telemetry: SessionTelemetryRecord,
+  sessionId: string,
+  skillName: string,
+  transcriptPath: string,
+): GradingResult {
+  const passedCount = expectations.filter((e) => e.passed).length;
+  const totalCount = expectations.length;
+  const graduated = buildGraduatedSummary(expectations);
+
+  return {
+    session_id: sessionId ?? "unknown",
+    skill_name: skillName ?? "unknown",
+    transcript_path: transcriptPath ?? "",
+    graded_at: new Date().toISOString(),
+    expectations,
+    summary: {
+      passed: passedCount,
+      failed: totalCount - passedCount,
+      total: totalCount,
+      pass_rate: totalCount > 0 ? passedCount / totalCount : 0,
+      mean_score: graduated.mean_score,
+      score_std_dev: graduated.score_std_dev,
+    },
+    execution_metrics: buildExecutionMetrics(telemetry ?? ({} as SessionTelemetryRecord)),
+    claims: [],
+    eval_feedback: { suggestions: [], overall: "" },
+  };
+}
+
+export interface GradeSessionParams {
+  expectations: string[];
+  telemetry: SessionTelemetryRecord;
+  sessionId: string;
+  skillName: string;
+  transcriptExcerpt: string;
+  transcriptPath: string;
+  agent: string;
+  gradeViaAgentFn?: (prompt: string, agent: string) => Promise<GraderOutput>;
+}
+
+export async function gradeSession({
+  expectations,
+  telemetry,
+  sessionId,
+  skillName,
+  transcriptExcerpt,
+  transcriptPath,
+  agent,
+  gradeViaAgentFn = gradeViaAgent,
+}: GradeSessionParams): Promise<GradingResult> {
+  const preGateCtx: PreGateContext = {
+    telemetry,
+    skillName,
+    transcriptExcerpt,
+  };
+  const preGateResult = runPreGates(expectations, preGateCtx);
+
+  let allExpectations: GradingExpectation[];
+
+  if (preGateResult.remaining.length === 0) {
+    console.error(
+      `[INFO] All ${expectations.length} expectations resolved by pre-gates, skipping LLM`,
+    );
+    allExpectations = preGateResult.resolved;
+  } else {
+    console.error(
+      `[INFO] Pre-gates resolved ${preGateResult.resolved.length}/${expectations.length} expectations`,
+    );
+    const prompt = buildGradingPrompt(
+      preGateResult.remaining,
+      telemetry,
+      transcriptExcerpt,
+      skillName,
+    );
+    console.error(
+      `Grading ${preGateResult.remaining.length} expectations for skill '${skillName}'...`,
+    );
+
+    let graderOutput: GraderOutput;
+    try {
+      graderOutput = await gradeViaAgentFn(prompt, agent);
+    } catch (err) {
+      throw new Error(`Grading failed: ${err instanceof Error ? err.message : String(err)}`, {
+        cause: err,
+      });
+    }
+
+    const llmExpectations = normalizeExpectations(graderOutput.expectations ?? []);
+    if (llmExpectations.length !== preGateResult.remaining.length) {
+      throw new Error(
+        `Grader returned ${llmExpectations.length} expectations for ${preGateResult.remaining.length} unresolved expectations`,
+      );
+    }
+
+    allExpectations = [...preGateResult.resolved, ...llmExpectations];
+  }
+
+  return assembleResultFromExpectations(
+    allExpectations,
+    telemetry,
+    sessionId,
+    skillName,
+    transcriptPath,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Result assembly
 // ---------------------------------------------------------------------------
 
@@ -281,28 +508,15 @@ export function assembleResult(
   skillName: string,
   transcriptPath: string,
 ): GradingResult {
-  // Default missing scores on expectations
-  const expectations = (graderOutput?.expectations ?? []).map((e) => ({
-    ...e,
-    score: e.score ?? (e.passed ? 1.0 : 0.0),
-    source: e.source ?? ("llm" as const),
-  }));
-
-  const baseSummary = graderOutput?.summary ?? { passed: 0, failed: 0, total: 0, pass_rate: 0 };
-  const graduated = buildGraduatedSummary(expectations);
-
+  const result = assembleResultFromExpectations(
+    normalizeExpectations(graderOutput?.expectations ?? []),
+    telemetry,
+    sessionId,
+    skillName,
+    transcriptPath,
+  );
   return {
-    session_id: sessionId ?? "unknown",
-    skill_name: skillName ?? "unknown",
-    transcript_path: transcriptPath ?? "",
-    graded_at: new Date().toISOString(),
-    expectations,
-    summary: {
-      ...baseSummary,
-      mean_score: graduated.mean_score,
-      score_std_dev: graduated.score_std_dev,
-    },
-    execution_metrics: buildExecutionMetrics(telemetry ?? ({} as SessionTelemetryRecord)),
+    ...result,
     claims: graderOutput?.claims ?? [],
     eval_feedback: graderOutput?.eval_feedback ?? { suggestions: [], overall: "" },
     failure_feedback: graderOutput?.failure_feedback,
@@ -348,6 +562,7 @@ export async function cliMain(): Promise<void> {
   const { values } = parseArgs({
     options: {
       skill: { type: "string" },
+      "skill-path": { type: "string" },
       expectations: { type: "string", multiple: true },
       "evals-json": { type: "string" },
       "eval-id": { type: "string" },
@@ -357,9 +572,32 @@ export async function cliMain(): Promise<void> {
       output: { type: "string", default: "grading.json" },
       agent: { type: "string" },
       "show-transcript": { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
     },
     strict: true,
   });
+
+  if (values.help) {
+    console.log(`selftune grade — Grade a skill session
+
+Usage:
+  selftune grade --skill <name> [options]
+
+Options:
+  --skill             Skill name (required)
+  --skill-path        Path to SKILL.md (for auto-deriving expectations)
+  --expectations      Expectation strings (repeatable)
+  --evals-json        Path to evals JSON file
+  --eval-id           Eval ID within evals JSON
+  --session-id        Grade a specific session by ID
+  --transcript        Path to transcript file
+  --telemetry-log     Path to telemetry log (default: ~/.claude/session_telemetry_log.jsonl)
+  --output            Output path for grading JSON (default: grading.json)
+  --agent             Agent CLI to use (${AGENT_CANDIDATES.join(", ")})
+  --show-transcript   Print transcript excerpt before grading
+  -h, --help          Show this help message`);
+    process.exit(0);
+  }
 
   const skill = values.skill;
   if (!skill) {
@@ -369,7 +607,7 @@ export async function cliMain(): Promise<void> {
 
   // --- Determine agent ---
   let agent: string | null = null;
-  const validAgents = ["claude", "codex", "opencode"];
+  const validAgents = [...AGENT_CANDIDATES];
   if (values.agent) {
     if (!validAgents.includes(values.agent)) {
       console.error(
@@ -384,8 +622,8 @@ export async function cliMain(): Promise<void> {
 
   if (!agent) {
     console.error(
-      "[ERROR] No agent CLI (claude/codex/opencode) found in PATH.\n" +
-        "Install Claude Code, Codex, or OpenCode.",
+      `[ERROR] No supported agent CLI (${AGENT_CANDIDATES.join("/")}) found in PATH.\n` +
+        "Install one of the supported agent CLIs.",
     );
     process.exit(1);
   }
@@ -404,8 +642,18 @@ export async function cliMain(): Promise<void> {
   } else if (values.expectations?.length) {
     expectations = values.expectations;
   } else {
-    console.error("[ERROR] Provide --expectations or --evals-json + --eval-id");
-    process.exit(1);
+    // Auto-derive expectations from SKILL.md
+    const derived = deriveExpectationsFromSkill(skill, values["skill-path"]);
+    expectations = derived.expectations;
+    if (derived.derived) {
+      console.error(
+        `[INFO] Auto-derived ${derived.expectations.length} expectations from ${derived.source}`,
+      );
+    } else {
+      console.error(
+        `[WARN] No --expectations or --evals-json provided. Using generic expectations (${derived.source})`,
+      );
+    }
   }
 
   // --- Resolve session ---
@@ -448,72 +696,21 @@ export async function cliMain(): Promise<void> {
     console.log("==========================\n");
   }
 
-  // --- Run pre-gates first ---
-  const preGateCtx: PreGateContext = {
-    telemetry,
-    skillName: skill,
-    transcriptExcerpt,
-  };
-  const preGateResult = runPreGates(expectations, preGateCtx);
-
-  let allExpectations: GradingExpectation[];
-
-  if (preGateResult.remaining.length === 0) {
-    // All expectations resolved by pre-gates — skip LLM entirely
-    console.error(
-      `[INFO] All ${expectations.length} expectations resolved by pre-gates, skipping LLM`,
-    );
-    allExpectations = preGateResult.resolved;
-  } else {
-    // Build prompt and grade remaining via LLM
-    console.error(
-      `[INFO] Pre-gates resolved ${preGateResult.resolved.length}/${expectations.length} expectations`,
-    );
-    const prompt = buildGradingPrompt(preGateResult.remaining, telemetry, transcriptExcerpt, skill);
-    console.error(`Grading ${preGateResult.remaining.length} expectations for skill '${skill}'...`);
-
-    let graderOutput: GraderOutput;
-    try {
-      graderOutput = await gradeViaAgent(prompt, agent);
-    } catch (e) {
-      console.error(`[ERROR] Grading failed: ${e}`);
-      process.exit(1);
-    }
-
-    // Default scores on LLM results
-    const llmExpectations = (graderOutput.expectations ?? []).map((e) => ({
-      ...e,
-      score: e.score ?? (e.passed ? 1.0 : 0.0),
-      source: e.source ?? ("llm" as const),
-    }));
-
-    // Merge pre-gate + LLM results
-    allExpectations = [...preGateResult.resolved, ...llmExpectations];
+  let result: GradingResult;
+  try {
+    result = await gradeSession({
+      expectations,
+      telemetry,
+      sessionId,
+      skillName: skill,
+      transcriptExcerpt,
+      transcriptPath,
+      agent,
+    });
+  } catch (err) {
+    console.error(`[ERROR] ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
   }
-
-  // Compute graduated summary
-  const graduated = buildGraduatedSummary(allExpectations);
-  const passedCount = allExpectations.filter((e) => e.passed).length;
-  const totalCount = allExpectations.length;
-
-  const result: GradingResult = {
-    session_id: sessionId,
-    skill_name: skill,
-    transcript_path: transcriptPath,
-    graded_at: new Date().toISOString(),
-    expectations: allExpectations,
-    summary: {
-      passed: passedCount,
-      failed: totalCount - passedCount,
-      total: totalCount,
-      pass_rate: totalCount > 0 ? passedCount / totalCount : 0,
-      mean_score: graduated.mean_score,
-      score_std_dev: graduated.score_std_dev,
-    },
-    execution_metrics: buildExecutionMetrics(telemetry),
-    claims: [],
-    eval_feedback: { suggestions: [], overall: "" },
-  };
 
   const outputPath = values.output ?? "grading.json";
   const outputDir = dirname(outputPath);
