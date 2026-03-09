@@ -187,7 +187,7 @@ describe("computeStatus", () => {
     expect(result.skills[0].passRate).toBeLessThan(0.7);
   });
 
-  test("unknown status when no data", () => {
+  test("unknown status when no triggered records", () => {
     const telemetry = [makeTelemetry({ skills_triggered: ["empty-skill"] })];
     const skillRecords = [
       makeSkillRecord({ skill_name: "empty-skill", triggered: false, query: "unused" }),
@@ -200,6 +200,38 @@ describe("computeStatus", () => {
     const skill = result.skills.find((s) => s.name === "empty-skill");
     expect(skill).toBeDefined();
     expect(skill?.status).toBe("UNKNOWN");
+  });
+
+  test("ungraded status when skill is triggered but no queries in same session", () => {
+    const sid = "sess-1";
+    const otherSid = "sess-other";
+    const telemetry = [makeTelemetry({ session_id: sid, skills_triggered: ["my-skill"] })];
+    const skillRecords = [
+      makeSkillRecord({ session_id: sid, skill_name: "my-skill", triggered: true }),
+    ];
+    // Queries exist but in a different session — skill has not been graded
+    const queryRecords = Array.from({ length: 10 }, () => makeQuery({ session_id: otherSid }));
+
+    const result = computeStatus(telemetry, skillRecords, queryRecords, [], makeDoctorResult());
+
+    expect(result.skills.length).toBe(1);
+    expect(result.skills[0].status).toBe("UNGRADED");
+    expect(result.skills[0].passRate).toBeNull();
+  });
+
+  test("ungraded status when skill is triggered but no query records exist", () => {
+    const sid = "sess-1";
+    const telemetry = [makeTelemetry({ session_id: sid, skills_triggered: ["my-skill"] })];
+    const skillRecords = [
+      makeSkillRecord({ session_id: sid, skill_name: "my-skill", triggered: true }),
+    ];
+    const queryRecords: QueryLogRecord[] = [];
+
+    const result = computeStatus(telemetry, skillRecords, queryRecords, [], makeDoctorResult());
+
+    expect(result.skills.length).toBe(1);
+    expect(result.skills[0].status).toBe("UNGRADED");
+    expect(result.skills[0].passRate).toBeNull();
   });
 
   test("empty logs produce empty skills list", () => {

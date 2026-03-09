@@ -8,17 +8,18 @@
  * Grades via installed agent CLI (claude/codex/opencode).
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 
-import { TELEMETRY_LOG } from "../constants.js";
+import { SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
 import type {
   ExecutionMetrics,
   GraderOutput,
   GradingExpectation,
   GradingResult,
   SessionTelemetryRecord,
+  SkillUsageRecord,
 } from "../types.js";
 import { readJsonl } from "../utils/jsonl.js";
 import {
@@ -99,6 +100,12 @@ export function latestSessionForSkill(
   telemetry: SessionTelemetryRecord[],
   skillName: string,
 ): SessionTelemetryRecord | null {
+  // Prefer sessions where the skill was actually invoked (Skill tool call)
+  // over sessions where SKILL.md was merely read (which may be browsing).
+  for (let i = telemetry.length - 1; i >= 0; i--) {
+    if (telemetry[i].skills_invoked?.includes(skillName)) return telemetry[i];
+  }
+  // Fall back to skills_triggered for backward compatibility
   for (let i = telemetry.length - 1; i >= 0; i--) {
     if (telemetry[i].skills_triggered?.includes(skillName)) return telemetry[i];
   }
@@ -155,6 +162,136 @@ export function loadExpectationsFromEvalsJson(evalsJsonPath: string, evalId: num
     }
   }
   throw new Error(`Eval ID ${evalId} not found in ${evalsJsonPath}`);
+}
+
+// ---------------------------------------------------------------------------
+// Auto-derive expectations from SKILL.md
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the filesystem path to a skill's SKILL.md.
+ *
+ * Search order:
+ *   1. Explicit `skillPath` argument (--skill-path)
+ *   2. Most recent `skill_path` from the skill usage log
+ *   3. Common conventional locations (.claude/skills/<name>, .agents/skills/<name>, skill/)
+ */
+export function resolveSkillPath(skillName: string, explicitPath?: string): string | null {
+  if (explicitPath) {
+    if (existsSync(explicitPath)) return explicitPath;
+    return null;
+  }
+
+  // Try skill usage log for a recorded path
+  try {
+    const skillRecords = readJsonl<SkillUsageRecord>(SKILL_LOG);
+    for (let i = skillRecords.length - 1; i >= 0; i--) {
+      const rec = skillRecords[i];
+      if (rec.skill_name === skillName && rec.skill_path) {
+        // skill_path may be a synthetic marker like "(codex:name)" — skip those
+        if (!rec.skill_path.startsWith("(") && existsSync(rec.skill_path)) {
+          return rec.skill_path;
+        }
+      }
+    }
+  } catch {
+    // skill log may not exist yet
+  }
+
+  // Try conventional locations relative to cwd
+  const cwd = process.cwd();
+  const candidates = [
+    join(cwd, ".claude", "skills", skillName, "SKILL.md"),
+    join(cwd, ".agents", "skills", skillName, "SKILL.md"),
+    join(cwd, "skill", "SKILL.md"),
+    join(cwd, "skills", skillName, "SKILL.md"),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+
+  return null;
+}
+
+/**
+ * Generic fallback expectations used when no SKILL.md is found.
+ */
+export const GENERIC_EXPECTATIONS: string[] = [
+  "The skill was triggered during the session",
+  "The task was completed successfully without fatal errors",
+  "No unhandled errors were encountered",
+];
+
+/**
+ * Derive grading expectations from a SKILL.md file.
+ *
+ * Parses the file to extract key behaviors from the description,
+ * "When to Use" triggers, and examples. Falls back to generic expectations
+ * if the file cannot be found or parsed.
+ */
+export function deriveExpectationsFromSkill(
+  skillName: string,
+  skillPath?: string,
+): { expectations: string[]; derived: boolean; source: string } {
+  const resolvedPath = resolveSkillPath(skillName, skillPath);
+  if (!resolvedPath) {
+    return {
+      expectations: [...GENERIC_EXPECTATIONS],
+      derived: false,
+      source: "generic (SKILL.md not found)",
+    };
+  }
+
+  try {
+    const content = readFileSync(resolvedPath, "utf-8");
+    const expectations: string[] = [];
+
+    // Always include: skill was triggered
+    expectations.push(`The '${skillName}' skill was triggered during the session`);
+
+    // Extract description from frontmatter
+    const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
+    if (fmMatch) {
+      const descMatch = fmMatch[1].match(/description:\s*(.+)/);
+      if (descMatch) {
+        const desc = descMatch[1].trim();
+        expectations.push(`The session addressed the skill's purpose: ${desc}`);
+      }
+    }
+
+    // Extract "When to Use" triggers
+    const whenMatch = content.match(/##\s*When to Use\s*\n([\s\S]*?)(?=\n##|\n---|\Z)/);
+    if (whenMatch) {
+      const triggers = whenMatch[1]
+        .split("\n")
+        .map((l) => l.replace(/^[-*]\s*/, "").trim())
+        .filter((l) => l.length > 5);
+      if (triggers.length > 0) {
+        // Pick up to 2 trigger-based expectations
+        for (const trigger of triggers.slice(0, 2)) {
+          expectations.push(`Session context aligns with trigger: "${trigger}"`);
+        }
+      }
+    }
+
+    // Always include: completed without fatal errors
+    expectations.push("The task was completed successfully without fatal errors");
+
+    // Cap at 5 expectations
+    const capped = expectations.slice(0, 5);
+
+    return {
+      expectations: capped,
+      derived: true,
+      source: resolvedPath,
+    };
+  } catch {
+    return {
+      expectations: [...GENERIC_EXPECTATIONS],
+      derived: false,
+      source: `generic (failed to read ${resolvedPath})`,
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -352,6 +489,7 @@ export async function cliMain(): Promise<void> {
       "evals-json": { type: "string" },
       "eval-id": { type: "string" },
       "session-id": { type: "string" },
+      "skill-path": { type: "string" },
       transcript: { type: "string" },
       "telemetry-log": { type: "string", default: TELEMETRY_LOG },
       output: { type: "string", default: "grading.json" },
@@ -404,8 +542,14 @@ export async function cliMain(): Promise<void> {
   } else if (values.expectations?.length) {
     expectations = values.expectations;
   } else {
-    console.error("[ERROR] Provide --expectations or --evals-json + --eval-id");
-    process.exit(1);
+    // Auto-derive expectations from SKILL.md
+    const derived = deriveExpectationsFromSkill(skill, values["skill-path"]);
+    expectations = derived.expectations;
+    if (derived.derived) {
+      console.error(`[INFO] Auto-derived ${expectations.length} expectations from ${derived.source}`);
+    } else {
+      console.error(`[WARN] Using generic expectations (${derived.source})`);
+    }
   }
 
   // --- Resolve session ---

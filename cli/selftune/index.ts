@@ -25,6 +25,8 @@
  *   selftune composability [options]  — Analyze skill co-occurrence conflicts
  *   selftune unit-test [options]     — Run or generate skill unit tests
  *   selftune import-skillsbench [options] — Import SkillsBench task corpus as eval entries
+ *   selftune hook <name>               — Run a hook by name (portable hook dispatch)
+ *   selftune auto-grade [options]       — Auto-find session, derive expectations, and grade
  */
 
 const command = process.argv[2];
@@ -59,6 +61,9 @@ Commands:
   composability      Analyze skill co-occurrence conflicts
   unit-test          Run or generate skill unit tests
   import-skillsbench Import SkillsBench task corpus as eval entries
+  hook <name>        Run a hook by name (prompt-log, session-stop, etc.)
+  auto-grade         Auto-find session, derive expectations, and grade
+  quickstart         Guided onboarding (init + replay + status)
 
 Run 'selftune <command> --help' for command-specific options.`);
   process.exit(0);
@@ -180,6 +185,34 @@ switch (command) {
   }
   case "import-skillsbench": {
     const { cliMain } = await import("./eval/import-skillsbench.js");
+    cliMain();
+    break;
+  }
+  case "hook": {
+    const hookName = process.argv[2];
+    const HOOK_MAP: Record<string, string> = {
+      "prompt-log": "./hooks/prompt-log.js",
+      "session-stop": "./hooks/session-stop.js",
+      "skill-eval": "./hooks/skill-eval.js",
+      "auto-activate": "./hooks/auto-activate.js",
+      "skill-change-guard": "./hooks/skill-change-guard.js",
+      "evolution-guard": "./hooks/evolution-guard.js",
+    };
+    if (!hookName || !HOOK_MAP[hookName]) {
+      const available = Object.keys(HOOK_MAP).join(", ");
+      console.error(`Unknown hook: ${hookName ?? "(none)"}\nAvailable hooks: ${available}`);
+      process.exit(1);
+    }
+    await import(HOOK_MAP[hookName]);
+    break;
+  }
+  case "auto-grade": {
+    const { cliMain } = await import("./grading/auto-grade.js");
+    await cliMain();
+    break;
+  }
+  case "quickstart": {
+    const { cliMain } = await import("./quickstart.js");
     cliMain();
     break;
   }

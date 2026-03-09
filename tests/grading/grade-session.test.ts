@@ -17,12 +17,15 @@ import {
   buildExecutionMetrics,
   buildGradingPrompt,
   buildGraduatedSummary,
+  deriveExpectationsFromSkill,
   detectAgent,
   findSession,
+  GENERIC_EXPECTATIONS,
   GRADER_SYSTEM,
   latestSessionForSkill,
   loadExpectationsFromEvalsJson,
   MAX_TRANSCRIPT_LENGTH,
+  resolveSkillPath,
   stripMarkdownFences,
 } from "../../cli/selftune/grading/grade-session.js";
 
@@ -377,6 +380,38 @@ describe("latestSessionForSkill", () => {
 
   it("returns null when no sessions match", () => {
     expect(latestSessionForSkill(records, "nonexistent")).toBeNull();
+  });
+
+  it("prefers skills_invoked over skills_triggered", () => {
+    const mixed = [
+      makeTelemetryRecord({
+        session_id: "sess-triggered",
+        skills_triggered: ["pptx"],
+        skills_invoked: [],
+        timestamp: "2025-01-04T00:00:00Z",
+      }),
+      makeTelemetryRecord({
+        session_id: "sess-invoked",
+        skills_triggered: [],
+        skills_invoked: ["pptx"],
+        timestamp: "2025-01-03T00:00:00Z",
+      }),
+    ];
+    // Should prefer the invoked session even though triggered is newer
+    const found = latestSessionForSkill(mixed, "pptx");
+    expect(found?.session_id).toBe("sess-invoked");
+  });
+
+  it("falls back to skills_triggered when skills_invoked is absent", () => {
+    const legacy = [
+      makeTelemetryRecord({
+        session_id: "sess-old",
+        skills_triggered: ["pptx"],
+        timestamp: "2025-01-01T00:00:00Z",
+      }),
+    ];
+    const found = latestSessionForSkill(legacy, "pptx");
+    expect(found?.session_id).toBe("sess-old");
   });
 });
 
@@ -738,5 +773,118 @@ describe("assembleResult with failure_feedback", () => {
       "/tmp/t.jsonl",
     );
     expect(result.failure_feedback).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveSkillPath
+// ---------------------------------------------------------------------------
+
+describe("resolveSkillPath", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "resolve-skill-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns explicit path when it exists", () => {
+    const skillPath = join(tmpDir, "SKILL.md");
+    writeFileSync(skillPath, "# test");
+    expect(resolveSkillPath("test", skillPath)).toBe(skillPath);
+  });
+
+  it("returns null when explicit path does not exist", () => {
+    expect(resolveSkillPath("test", "/nonexistent/SKILL.md")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deriveExpectationsFromSkill
+// ---------------------------------------------------------------------------
+
+describe("deriveExpectationsFromSkill", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "derive-exp-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns generic expectations when SKILL.md not found via explicit bad path", () => {
+    const result = deriveExpectationsFromSkill("nonexistent-skill-xyz", "/nonexistent/SKILL.md");
+    expect(result.derived).toBe(false);
+    expect(result.expectations).toEqual(GENERIC_EXPECTATIONS);
+    expect(result.source).toContain("generic");
+  });
+
+  it("derives expectations from a valid SKILL.md", () => {
+    const skillPath = join(tmpDir, "SKILL.md");
+    writeFileSync(
+      skillPath,
+      `---
+name: test-skill
+description: Helps users write unit tests for their code
+---
+
+# test-skill
+
+Provides guidance on writing unit tests.
+
+## When to Use
+
+- User asks for help writing tests
+- User wants to add test coverage to a module
+- User needs to debug a failing test
+
+## Examples
+
+- "Write tests for my auth module"
+`,
+    );
+    const result = deriveExpectationsFromSkill("test-skill", skillPath);
+    expect(result.derived).toBe(true);
+    expect(result.source).toBe(skillPath);
+    expect(result.expectations.length).toBeGreaterThanOrEqual(3);
+    expect(result.expectations.length).toBeLessThanOrEqual(5);
+    // Should include skill trigger expectation
+    expect(result.expectations[0]).toContain("test-skill");
+    // Should include description-based expectation
+    expect(result.expectations.some((e: string) => e.includes("unit tests"))).toBe(true);
+    // Should include at least one trigger-based expectation
+    expect(result.expectations.some((e: string) => e.includes("trigger"))).toBe(true);
+    // Should include the "no fatal errors" expectation
+    expect(result.expectations.some((e: string) => e.includes("fatal errors"))).toBe(true);
+  });
+
+  it("caps expectations at 5", () => {
+    const skillPath = join(tmpDir, "SKILL.md");
+    writeFileSync(
+      skillPath,
+      `---
+name: verbose-skill
+description: Does many things
+---
+
+# verbose-skill
+
+## When to Use
+
+- Trigger one for doing something
+- Trigger two for doing another thing
+- Trigger three for yet another thing
+- Trigger four for more things
+- Trigger five for even more things
+- Trigger six for the last thing
+`,
+    );
+    const result = deriveExpectationsFromSkill("verbose-skill", skillPath);
+    expect(result.expectations.length).toBeLessThanOrEqual(5);
   });
 });
