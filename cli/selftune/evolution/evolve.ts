@@ -101,6 +101,7 @@ export interface EvolveDeps {
   buildEvalSet?: typeof import("../eval/hooks-to-evals.js").buildEvalSet;
   updateContextAfterEvolve?: typeof import("../memory/writer.js").updateContextAfterEvolve;
   measureBaseline?: typeof import("../eval/baseline.js").measureBaseline;
+  readSkillUsageLog?: () => SkillUsageRecord[];
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +152,8 @@ export async function evolve(
   const _buildEvalSet = _deps.buildEvalSet ?? buildEvalSet;
   const _updateContextAfterEvolve = _deps.updateContextAfterEvolve ?? updateContextAfterEvolve;
   const _measureBaseline = _deps.measureBaseline ?? measureBaseline;
+  const _readSkillUsageLog =
+    _deps.readSkillUsageLog ?? (() => readJsonl<SkillUsageRecord>(SKILL_LOG));
 
   const auditEntries: EvolutionAuditEntry[] = [];
 
@@ -221,8 +224,7 @@ export async function evolve(
         const raw = readFileSync(evalSetPath, "utf-8");
         evalSet = JSON.parse(raw) as EvalEntry[];
       } catch (parseErr) {
-        const msg =
-          parseErr instanceof Error ? parseErr.message : String(parseErr);
+        const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
         tui.fail(`Failed to load eval set from ${evalSetPath}: ${msg}`);
         finishTui();
         return withStats({
@@ -258,7 +260,7 @@ export async function evolve(
     // -----------------------------------------------------------------------
     // Step 3: Load skill usage records
     // -----------------------------------------------------------------------
-    const skillUsage = readJsonl<SkillUsageRecord>(SKILL_LOG);
+    const skillUsage = _readSkillUsageLog();
 
     // -----------------------------------------------------------------------
     // Step 4: Extract failure patterns
@@ -283,7 +285,8 @@ export async function evolve(
       // match but there are zero skill usage records, treat the positive eval
       // entries themselves as "missed queries" — they ARE the failure signal.
       const positiveEvals = evalSet.filter((e) => e.should_trigger);
-      if (positiveEvals.length > 0) {
+      const hasSkillUsageHistory = skillUsage.some((record) => record.skill_name === skillName);
+      if (positiveEvals.length > 0 && !hasSkillUsageHistory) {
         const coldStartPattern: FailurePattern = {
           pattern_id: `fp-${skillName}-coldstart`,
           skill_name: skillName,

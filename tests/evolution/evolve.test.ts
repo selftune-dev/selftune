@@ -136,6 +136,7 @@ function makeDeps(): EvolveDeps {
     gateValidateProposal: mockGateValidateProposal,
     appendAuditEntry: mockAppendAuditEntry,
     buildEvalSet: mockBuildEvalSet,
+    readSkillUsageLog: () => [],
   };
 }
 
@@ -253,9 +254,7 @@ describe("evolve orchestrator", () => {
   test("no failure patterns returns early with clear reason", async () => {
     mockExtractFailurePatterns.mockImplementation(() => []);
     // Use an eval set with only negatives so cold-start bootstrap doesn't apply
-    mockBuildEvalSet.mockImplementation(() => [
-      { query: "unrelated", should_trigger: false },
-    ]);
+    mockBuildEvalSet.mockImplementation(() => [{ query: "unrelated", should_trigger: false }]);
 
     const opts = makeOptions();
     const result = await evolve(opts, makeDeps());
@@ -269,8 +268,8 @@ describe("evolve orchestrator", () => {
     expect(mockGenerateProposal.mock.calls.length).toBe(0);
   });
 
-  // 2b. Cold-start bootstrap: no failure patterns but positive evals -> continues to proposal
-  test("cold-start bootstrap uses positive evals as missed queries", async () => {
+  // 2b. Cold-start bootstrap: no failure patterns + no usage history + positive evals -> proposal
+  test("cold-start bootstrap uses positive evals as missed queries only for unused skills", async () => {
     mockExtractFailurePatterns.mockImplementation(() => []);
 
     const opts = makeOptions({ dryRun: true });
@@ -281,6 +280,32 @@ describe("evolve orchestrator", () => {
     expect(result.validation).not.toBeNull();
     expect(result.deployed).toBe(false);
     expect(result.reason.toLowerCase()).toContain("dry");
+  });
+
+  test("does not cold-start bootstrap when the skill already has usage history", async () => {
+    mockExtractFailurePatterns.mockImplementation(() => []);
+
+    const opts = makeOptions();
+    const result = await evolve(opts, {
+      ...makeDeps(),
+      readSkillUsageLog: () => [
+        {
+          timestamp: new Date().toISOString(),
+          session_id: "sess-existing",
+          skill_name: "test-skill",
+          skill_path: opts.skillPath,
+          query: "test query",
+          triggered: true,
+          source: "test",
+        },
+      ],
+    });
+
+    expect(result.proposal).toBeNull();
+    expect(result.validation).toBeNull();
+    expect(result.deployed).toBe(false);
+    expect(result.reason).toBe("No failure patterns found");
+    expect(mockGenerateProposal.mock.calls.length).toBe(0);
   });
 
   // 3. Low confidence -> rejected with reason
