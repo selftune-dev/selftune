@@ -135,7 +135,10 @@ describe("checkConfigHealth", () => {
         },
       );
 
-      expect(proc.exitCode).toBe(0);
+      if (proc.exitCode !== 0) {
+        const stderr = new TextDecoder().decode(proc.stderr);
+        throw new Error(`Subprocess failed (exit ${proc.exitCode}): ${stderr}`);
+      }
       const output = new TextDecoder().decode(proc.stdout).trim();
       const checks = JSON.parse(output) as Array<{ status: string; message: string }>;
       expect(checks).toHaveLength(1);

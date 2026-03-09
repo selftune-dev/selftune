@@ -37,7 +37,7 @@ Analyzed: 150 sessions | Window: all
 
 Co-occurring Skills:
   Copywriting + SelfTuneBlog     (42 sessions)  synergy: +0.72  ✓ workflow candidate
-  Copywriting + MarketingAuto    (38 sessions)  synergy: +0.55  ✓ workflow candidate
+  Copywriting + MarketingAutomation  (38 sessions)  synergy: +0.55  ✓ workflow candidate
   Copywriting + Research         (15 sessions)  synergy: +0.21
   Copywriting + BuggySkill       ( 3 sessions)  synergy: -0.45  ⚠ conflict
 
@@ -46,11 +46,11 @@ Detected Sequences:
   2. Copywriting → SelfTuneBlog                        ( 8x, 100% consistent)
 
 Workflow Candidates:
-  • "Copywriting + SelfTuneBlog" — used together 42 times with 72% fewer errors
+  • "Copywriting + SelfTuneBlog" — used together 42 times with synergy +0.72
     → Run `selftune workflows save "Copywriting→SelfTuneBlog"` to codify
 
 Conflicts:
-  • "Copywriting + BuggySkill" — 45% more errors together (3 sessions)
+  • "Copywriting + BuggySkill" — synergy -0.45 (3 sessions)
 ```
 
 ## How It Works

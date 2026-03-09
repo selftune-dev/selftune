@@ -8,7 +8,8 @@ user needs project-type-specific setup guidance after `selftune init`.
 Use when the workspace has one primary `SKILL.md`.
 
 - Merge `assets/single-skill-settings.json` into `~/.claude/settings.json`
-- Keep `settings_snippet.json` nearby as the minimal hook reference
+- Keep the bundled `./settings_snippet.json` from the skill root nearby as the
+  minimal hook reference
 - Verify with `selftune doctor`
 
 ## Multi-Skill Project
