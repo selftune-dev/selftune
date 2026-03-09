@@ -660,18 +660,18 @@ export interface ComposabilityReportV2 extends ComposabilityReport {
 // ---------------------------------------------------------------------------
 
 export interface DiscoveredWorkflow {
-  workflow_id: string;           // deterministic hash: skills.join("→")
-  skills: string[];              // ordered skill sequence
+  workflow_id: string; // deterministic hash: skills.join("→")
+  skills: string[]; // ordered skill sequence
   occurrence_count: number;
   avg_errors: number;
   avg_errors_individual: number;
-  synergy_score: number;         // clamp((individual - together) / (individual + 1), -1, 1)
+  synergy_score: number; // clamp((individual - together) / (individual + 1), -1, 1)
   representative_query: string;
-  sequence_consistency: number;  // [0,1]
-  completion_rate: number;       // % sessions where all skills fired
+  sequence_consistency: number; // [0,1]
+  completion_rate: number; // % sessions where all skills fired
   first_seen: string;
   last_seen: string;
-  session_ids: string[];          // sessions that contributed to this workflow
+  session_ids: string[]; // sessions that contributed to this workflow
 }
 
 export interface CodifiedWorkflow {

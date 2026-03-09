@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import type { CodifiedWorkflow } from "../../cli/selftune/types.js";
 import {
-  parseWorkflowsSection,
   appendWorkflow,
+  parseWorkflowsSection,
   removeWorkflow,
 } from "../../cli/selftune/workflows/skill-md-writer.js";
-import type { CodifiedWorkflow } from "../../cli/selftune/types.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -83,14 +83,8 @@ describe("parseWorkflowsSection", () => {
     expect(workflows).toHaveLength(2);
 
     expect(workflows[0].name).toBe("Blog Publishing");
-    expect(workflows[0].skills).toEqual([
-      "Copywriting",
-      "MarketingAutomation",
-      "SelfTuneBlog",
-    ]);
-    expect(workflows[0].description).toBe(
-      "User asks to write and publish a blog post",
-    );
+    expect(workflows[0].skills).toEqual(["Copywriting", "MarketingAutomation", "SelfTuneBlog"]);
+    expect(workflows[0].description).toBe("User asks to write and publish a blog post");
     expect(workflows[0].source).toBe("discovered");
     expect(workflows[0].discovered_from?.occurrence_count).toBe(12);
     expect(workflows[0].discovered_from?.synergy_score).toBe(0.72);
@@ -192,9 +186,7 @@ describe("appendWorkflow", () => {
 
   test("format verification - discovered source format", () => {
     const result = appendWorkflow(SKILL_MD_WITHOUT_WORKFLOWS, DISCOVERED_WORKFLOW);
-    expect(result).toContain(
-      "- **Source:** Discovered from 12 sessions (synergy: 0.72)",
-    );
+    expect(result).toContain("- **Source:** Discovered from 12 sessions (synergy: 0.72)");
   });
 
   test("format verification - authored source format", () => {
@@ -209,9 +201,7 @@ describe("appendWorkflow", () => {
     expect(result).toContain(
       "- **Skills:** Copywriting \u2192 MarketingAutomation \u2192 SelfTuneBlog",
     );
-    expect(result).toContain(
-      "- **Trigger:** User asks to write and publish a blog post",
-    );
+    expect(result).toContain("- **Trigger:** User asks to write and publish a blog post");
   });
 
   test("workflow without description omits trigger line", () => {
