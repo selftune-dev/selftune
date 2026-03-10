@@ -181,8 +181,7 @@ export async function evolveBody(
 
     const currentContent = _readFileSync(skillPath, "utf-8");
     const parsed = parseSkillSections(currentContent);
-    const createdAuditDetails = (message: string): string =>
-      `original_description:${currentContent}\n${message}`;
+    const createdAuditDetails = (): string => `original_description:${currentContent}`;
     const skillUsage = readEffectiveSkillUsageRecords();
 
     // Step 2: Load eval set
@@ -266,13 +265,7 @@ export async function evolveBody(
 
       lastProposal = proposal;
 
-      recordAudit(
-        proposal.proposal_id,
-        "created",
-        createdAuditDetails(
-          `${target} proposal created for ${skillName} (iteration ${iteration + 1})`,
-        ),
-      );
+      recordAudit(proposal.proposal_id, "created", createdAuditDetails());
       recordEvidence({
         timestamp: new Date().toISOString(),
         proposal_id: proposal.proposal_id,

@@ -357,7 +357,10 @@ describe("evolveBody orchestrator", () => {
   });
 
   test("audit entries collected throughout flow", async () => {
-    const opts = makeOptions();
+    const originalContent =
+      "---\nname: test\n---\n\n# Test Skill\nA skill for testing\n\n## Workflow Routing\n\n| Trigger | Workflow |\n| --- | --- |\n| test | run |";
+    const { skillPath } = createTempSkill(originalContent);
+    const opts = makeOptions({ skillPath });
     const result = await evolveBody(opts, makeDeps());
 
     expect(result.auditEntries.length).toBeGreaterThanOrEqual(3);
@@ -366,7 +369,7 @@ describe("evolveBody orchestrator", () => {
     expect(actions).toContain("validated");
     expect(actions).toContain("deployed");
     const createdAudit = result.auditEntries.find((entry) => entry.action === "created");
-    expect(createdAudit?.details.startsWith("original_description:")).toBe(true);
+    expect(createdAudit?.details).toBe(`original_description:${originalContent}`);
   });
 
   test("routing target uses routing proposal and validation", async () => {

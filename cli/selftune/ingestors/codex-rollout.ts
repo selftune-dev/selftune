@@ -202,11 +202,15 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
     | undefined;
   let observedSessionId: string | undefined;
   let observedCwd: string | undefined;
+  let hasActionablePrompt = false;
   const rememberPromptCandidate = (value: unknown): void => {
     const message = typeof value === "string" ? value.trim() : "";
     if (!message) return;
     if (isActionableQueryText(message)) {
-      prompt = message;
+      if (!hasActionablePrompt) {
+        prompt = message;
+        hasActionablePrompt = true;
+      }
       return;
     }
     if (!prompt) {

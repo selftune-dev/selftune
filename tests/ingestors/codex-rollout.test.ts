@@ -152,6 +152,28 @@ describe("parseRolloutFile", () => {
     expect(result?.last_user_query).toBe("build the project");
   });
 
+  test("keeps the first actionable prompt in multi-turn rollouts", () => {
+    const codexHome = join(tmpDir, "codex");
+    const content = [
+      '{"type":"event_msg","payload":{"type":"user_message","message":"Continue from where you left off."}}',
+      '{"type":"event_msg","payload":{"type":"user_message","message":"build the project"}}',
+      '{"type":"event_msg","payload":{"type":"user_message","message":"also add deployment checks"}}',
+    ].join("\n");
+
+    const path = createRolloutFile(
+      codexHome,
+      "2026",
+      "01",
+      "01",
+      "rollout-first-actionable.jsonl",
+      content,
+    );
+    const result = parseRolloutFile(path, new Set());
+
+    expect(result?.query).toBe("build the project");
+    expect(result?.last_user_query).toBe("build the project");
+  });
+
   test("detects skill names in completed items", () => {
     const codexHome = join(tmpDir, "codex");
     const content = [
