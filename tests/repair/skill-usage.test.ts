@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SkillUsageRecord } from "../../cli/selftune/types.js";
 import { rebuildSkillUsageFromTranscripts } from "../../cli/selftune/repair/skill-usage.js";
+import type { SkillUsageRecord } from "../../cli/selftune/types.js";
 
 let tempDir: string;
 

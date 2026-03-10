@@ -16,11 +16,11 @@ import { CANONICAL_LOG, SKILL_LOG } from "../constants.js";
 import {
   appendCanonicalRecord,
   buildCanonicalSkillInvocation,
+  type CanonicalBaseInput,
   deriveInvocationMode,
   derivePromptId,
   deriveSkillInvocationId,
   getLatestPromptIdentity,
-  type CanonicalBaseInput,
 } from "../normalization.js";
 import type { PostToolUsePayload, SkillUsageRecord } from "../types.js";
 import { appendJsonl } from "../utils/jsonl.js";

@@ -59,7 +59,8 @@ function buildSkillPathLookup(records: SkillUsageRecord[]): Map<string, string> 
     if (!skillName || !skillPath.endsWith("SKILL.md") || skillPath.startsWith("(")) continue;
 
     if (!counts.has(skillName)) counts.set(skillName, new Map());
-    const skillCounts = counts.get(skillName)!;
+    const skillCounts = counts.get(skillName);
+    if (!skillCounts) continue;
     skillCounts.set(skillPath, (skillCounts.get(skillPath) ?? 0) + 1);
   }
 
@@ -155,8 +156,7 @@ function extractSessionSkillUsage(
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
 
-      const skillPath =
-        skillPathLookup.get(skillName.toLowerCase()) ?? `(repaired:${skillName})`;
+      const skillPath = skillPathLookup.get(skillName.toLowerCase()) ?? `(repaired:${skillName})`;
 
       repaired.push({
         timestamp: timestamp || lastUserMessage.timestamp || fallbackTimestamp,
@@ -230,7 +230,10 @@ Options:
     }
   }
 
-  const transcriptPaths = findTranscriptFiles(values["projects-dir"] ?? CLAUDE_CODE_PROJECTS_DIR, since);
+  const transcriptPaths = findTranscriptFiles(
+    values["projects-dir"] ?? CLAUDE_CODE_PROJECTS_DIR,
+    since,
+  );
   const rawSkillRecords = readJsonl<SkillUsageRecord>(values["skill-log"] ?? SKILL_LOG);
   const queryRecords = readJsonl<QueryLogRecord>(QUERY_LOG);
   const { repairedRecords, repairedSessionIds } = rebuildSkillUsageFromTranscripts(
@@ -238,11 +241,15 @@ Options:
     rawSkillRecords,
   );
 
-  const matchedQueries = new Set(repairedRecords.map((record) => record.query.toLowerCase().trim()));
+  const matchedQueries = new Set(
+    repairedRecords.map((record) => record.query.toLowerCase().trim()),
+  );
   const totalReinsQueries = queryRecords.filter(
     (record) => typeof record.query === "string" && /\breins\b/i.test(record.query),
   ).length;
-  const totalReinsMatches = repairedRecords.filter((record) => /\breins\b/i.test(record.query)).length;
+  const totalReinsMatches = repairedRecords.filter((record) =>
+    /\breins\b/i.test(record.query),
+  ).length;
 
   console.log(
     JSON.stringify(

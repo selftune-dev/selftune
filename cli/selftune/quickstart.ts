@@ -24,11 +24,7 @@ import { runInit } from "./init.js";
 import { doctor } from "./observability.js";
 import type { SkillStatus } from "./status.js";
 import { computeStatus, formatStatus } from "./status.js";
-import type {
-  EvolutionAuditEntry,
-  QueryLogRecord,
-  SessionTelemetryRecord,
-} from "./types.js";
+import type { EvolutionAuditEntry, QueryLogRecord, SessionTelemetryRecord } from "./types.js";
 import { loadMarker, readJsonl, saveMarker } from "./utils/jsonl.js";
 import { readEffectiveSkillUsageRecords } from "./utils/skill-log.js";
 

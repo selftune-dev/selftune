@@ -32,10 +32,10 @@ import {
   buildCanonicalPrompt,
   buildCanonicalSession,
   buildCanonicalSkillInvocation,
+  type CanonicalBaseInput,
   deriveInvocationMode,
   derivePromptId,
   deriveSkillInvocationId,
-  type CanonicalBaseInput,
 } from "../normalization.js";
 import type { CanonicalRecord, QueryLogRecord, SkillUsageRecord } from "../types.js";
 import { appendJsonl, loadMarker, saveMarker } from "../utils/jsonl.js";
@@ -502,7 +502,7 @@ export function writeSession(
 /** Build canonical records from a parsed OpenCode session. */
 export function buildCanonicalRecordsFromOpenCode(session: ParsedSession): CanonicalRecord[] {
   const records: CanonicalRecord[] = [];
-  const sourceKind = session.is_metadata_only ? "replayed" as const : "replayed" as const;
+  const sourceKind = session.is_metadata_only ? ("replayed" as const) : ("replayed" as const);
   const baseInput: CanonicalBaseInput = {
     platform: "opencode",
     capture_mode: "batch_ingest",

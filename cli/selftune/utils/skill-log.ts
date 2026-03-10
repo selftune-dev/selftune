@@ -1,10 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import {
-  REPAIRED_SKILL_LOG,
-  REPAIRED_SKILL_SESSIONS_MARKER,
-  SKILL_LOG,
-} from "../constants.js";
+import { REPAIRED_SKILL_LOG, REPAIRED_SKILL_SESSIONS_MARKER, SKILL_LOG } from "../constants.js";
 import type { SkillUsageRecord } from "../types.js";
 import { loadMarker, readJsonl, saveMarker } from "./jsonl.js";
 import { filterActionableSkillUsageRecords } from "./query-filter.js";
@@ -41,7 +37,9 @@ export function readEffectiveSkillUsageRecords(
   }
 
   const repairedSessionIds = loadMarker(repairedSessionsPath);
-  const rawRecords = filterActionableSkillUsageRecords(readJsonl<SkillUsageRecord>(rawSkillLogPath));
+  const rawRecords = filterActionableSkillUsageRecords(
+    readJsonl<SkillUsageRecord>(rawSkillLogPath),
+  );
   const unrepairedRawRecords =
     repairedSessionIds.size === 0
       ? rawRecords

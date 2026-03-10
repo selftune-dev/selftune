@@ -20,7 +20,10 @@ import type {
   SkillUsageRecord,
 } from "../types.js";
 import { readJsonl } from "../utils/jsonl.js";
-import { filterActionableQueryRecords, filterActionableSkillUsageRecords } from "../utils/query-filter.js";
+import {
+  filterActionableQueryRecords,
+  filterActionableSkillUsageRecords,
+} from "../utils/query-filter.js";
 import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
 
 // ---------------------------------------------------------------------------
@@ -126,7 +129,10 @@ export function computeMonitoringSnapshot(
     negative: { passed: 0, total: 0 },
   };
   for (const record of filteredSkillRecords) {
-    const invType = classifyInvocation(typeof record.query === "string" ? record.query : "", skillName);
+    const invType = classifyInvocation(
+      typeof record.query === "string" ? record.query : "",
+      skillName,
+    );
     byInvocationType[invType].total++;
     if (record.triggered) {
       byInvocationType[invType].passed++;

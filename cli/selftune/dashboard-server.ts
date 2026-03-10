@@ -17,11 +17,7 @@ import type { BadgeData } from "./badge/badge-data.js";
 import { findSkillBadgeData } from "./badge/badge-data.js";
 import type { BadgeFormat } from "./badge/badge-svg.js";
 import { formatBadgeOutput, renderBadgeSvg } from "./badge/badge-svg.js";
-import {
-  EVOLUTION_AUDIT_LOG,
-  QUERY_LOG,
-  TELEMETRY_LOG,
-} from "./constants.js";
+import { EVOLUTION_AUDIT_LOG, QUERY_LOG, TELEMETRY_LOG } from "./constants.js";
 import { getLastDeployedProposal } from "./evolution/audit.js";
 import { readEvidenceTrail } from "./evolution/evidence.js";
 import { readDecisions } from "./memory/writer.js";
@@ -38,7 +34,10 @@ import type {
 } from "./types.js";
 import { escapeJsonForHtmlScript } from "./utils/html.js";
 import { readJsonl } from "./utils/jsonl.js";
-import { filterActionableQueryRecords, filterActionableSkillUsageRecords } from "./utils/query-filter.js";
+import {
+  filterActionableQueryRecords,
+  filterActionableSkillUsageRecords,
+} from "./utils/query-filter.js";
 import { readEffectiveSkillUsageRecords } from "./utils/skill-log.js";
 
 export interface DashboardServerOptions {
@@ -193,7 +192,8 @@ function mergeEvidenceEntries(entries: EvolutionEvidenceEntry[]): MergedEvidence
       });
     }
 
-    const current = merged.get(entry.proposal_id)!;
+    const current = merged.get(entry.proposal_id);
+    if (!current) continue;
     current.stages.push({
       stage: entry.stage,
       timestamp: entry.timestamp,
@@ -219,7 +219,9 @@ function buildReportHTML(
   evidenceEntries: EvolutionEvidenceEntry[],
 ): string {
   const mergedEvidence = mergeEvidenceEntries(evidenceEntries);
-  const latestValidation = mergedEvidence.find((entry) => entry.validation?.per_entry_results?.length);
+  const latestValidation = mergedEvidence.find(
+    (entry) => entry.validation?.per_entry_results?.length,
+  );
   const passRateDisplay =
     skill.passRate !== null ? `${Math.round(skill.passRate * 100)}%` : "No data";
   const trendArrows: Record<string, string> = {
@@ -342,7 +344,10 @@ function buildReportHTML(
                 <div class="muted" style="margin-top:6px;">${escapeHtml(
                   entry.stages
                     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-                    .map((stage) => `${stage.stage} ${new Date(stage.timestamp).toLocaleString("en-US")}`)
+                    .map(
+                      (stage) =>
+                        `${stage.stage} ${new Date(stage.timestamp).toLocaleString("en-US")}`,
+                    )
                     .join(" · "),
                 )}</div>
                 <div style="margin-top:10px;">

@@ -14,7 +14,6 @@ import { TELEMETRY_LOG } from "../constants.js";
 import type {
   CodifiedWorkflow,
   SessionTelemetryRecord,
-  SkillUsageRecord,
   WorkflowDiscoveryReport,
 } from "../types.js";
 import { readJsonl } from "../utils/jsonl.js";

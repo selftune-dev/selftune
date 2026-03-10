@@ -17,7 +17,9 @@ import {
 
 function exitWithUsage(message?: string): never {
   if (message) console.error(`[ERROR] ${message}`);
-  console.error(`Usage: selftune export-canonical [--out FILE] [--platform NAME] [--record-kind KIND] [--pretty] [--log FILE]`);
+  console.error(
+    `Usage: selftune export-canonical [--out FILE] [--platform NAME] [--record-kind KIND] [--pretty] [--log FILE]`,
+  );
   process.exit(1);
 }
 

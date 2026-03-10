@@ -338,7 +338,9 @@ describe("writeSession", () => {
 
     const canonicalLines = readFileSync(canonicalLog, "utf-8").trim().split("\n");
     const canonicalRecords = canonicalLines.map((line: string) => JSON.parse(line));
-    expect(canonicalRecords.filter((record: Record<string, unknown>) => record.record_kind === "prompt")).toHaveLength(2);
+    expect(
+      canonicalRecords.filter((record: Record<string, unknown>) => record.record_kind === "prompt"),
+    ).toHaveLength(2);
     const canonicalInvocation = canonicalRecords.find(
       (record: Record<string, unknown>) => record.record_kind === "skill_invocation",
     );

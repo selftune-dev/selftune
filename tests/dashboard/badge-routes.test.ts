@@ -83,7 +83,9 @@ describe("badge routes", () => {
       }
 
       const skillName = data.skills[0].skill_name ?? data.skills[0].name;
-      const res = await fetch(`http://localhost:${server.port}/report/${encodeURIComponent(skillName)}`);
+      const res = await fetch(
+        `http://localhost:${server.port}/report/${encodeURIComponent(skillName)}`,
+      );
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain("Description Versions");

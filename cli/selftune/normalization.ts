@@ -20,13 +20,13 @@ import {
   CANONICAL_SCHEMA_VERSION,
   type CanonicalCaptureMode,
   type CanonicalCompletionStatus,
-  type CanonicalRecord,
   type CanonicalExecutionFactRecord,
   type CanonicalInvocationMode,
   type CanonicalPlatform,
   type CanonicalPromptKind,
   type CanonicalPromptRecord,
   type CanonicalRawSourceRef,
+  type CanonicalRecord,
   type CanonicalRecordBase,
   type CanonicalSessionRecord,
   type CanonicalSkillInvocationRecord,
@@ -308,7 +308,8 @@ export function buildCanonicalSession(input: BuildSessionInput): CanonicalSessio
   // Copy optional fields only when present
   if (input.started_at !== undefined) record.started_at = input.started_at;
   if (input.ended_at !== undefined) record.ended_at = input.ended_at;
-  if (input.external_session_id !== undefined) record.external_session_id = input.external_session_id;
+  if (input.external_session_id !== undefined)
+    record.external_session_id = input.external_session_id;
   if (input.parent_session_id !== undefined) record.parent_session_id = input.parent_session_id;
   if (input.agent_id !== undefined) record.agent_id = input.agent_id;
   if (input.agent_type !== undefined) record.agent_type = input.agent_type;

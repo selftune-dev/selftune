@@ -204,7 +204,14 @@ describe("parseRolloutFile", () => {
       '{"type":"event_msg","payload":{"type":"usage","token_count":{"input_tokens":500,"output_tokens":250}}}',
     ].join("\n");
 
-    const path = createRolloutFile(codexHome, "2026", "03", "10", "rollout-observed.jsonl", content);
+    const path = createRolloutFile(
+      codexHome,
+      "2026",
+      "03",
+      "10",
+      "rollout-observed.jsonl",
+      content,
+    );
     const result = parseRolloutFile(path, new Set());
 
     expect(result).not.toBeNull();

@@ -27,10 +27,10 @@ import {
   buildCanonicalPrompt,
   buildCanonicalSession,
   buildCanonicalSkillInvocation,
+  type CanonicalBaseInput,
   deriveInvocationMode,
   derivePromptId,
   deriveSkillInvocationId,
-  type CanonicalBaseInput,
 } from "../normalization.js";
 import type {
   CanonicalRecord,

@@ -167,7 +167,9 @@ describe("session-stop hook", () => {
     );
 
     const canonicalRecords = readJsonl<CanonicalRecord>(canonicalLogPath);
-    const executionFact = canonicalRecords.find((record) => record.record_kind === "execution_fact");
+    const executionFact = canonicalRecords.find(
+      (record) => record.record_kind === "execution_fact",
+    );
     expect(executionFact?.prompt_id).toBe("sess-link:p1");
   });
 });

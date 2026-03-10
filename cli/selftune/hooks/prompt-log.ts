@@ -12,9 +12,9 @@ import { CANONICAL_LOG, QUERY_LOG, SKIP_PREFIXES } from "../constants.js";
 import {
   appendCanonicalRecord,
   buildCanonicalPrompt,
+  type CanonicalBaseInput,
   classifyIsActionable,
   reservePromptIdentity,
-  type CanonicalBaseInput,
 } from "../normalization.js";
 import type { PromptSubmitPayload, QueryLogRecord } from "../types.js";
 import { appendJsonl } from "../utils/jsonl.js";

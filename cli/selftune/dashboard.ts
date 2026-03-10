@@ -12,19 +12,17 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { EVOLUTION_AUDIT_LOG, QUERY_LOG, TELEMETRY_LOG } from "./constants.js";
+import { EVOLUTION_AUDIT_LOG, QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "./constants.js";
 import { getLastDeployedProposal, readAuditTrail } from "./evolution/audit.js";
 import { readEvidenceTrail } from "./evolution/evidence.js";
 import { computeMonitoringSnapshot } from "./monitoring/watch.js";
-import type {
-  EvolutionAuditEntry,
-  QueryLogRecord,
-  SessionTelemetryRecord,
-  SkillUsageRecord,
-} from "./types.js";
+import type { EvolutionAuditEntry, QueryLogRecord, SessionTelemetryRecord } from "./types.js";
 import { escapeJsonForHtmlScript } from "./utils/html.js";
 import { readJsonl } from "./utils/jsonl.js";
-import { filterActionableQueryRecords, filterActionableSkillUsageRecords } from "./utils/query-filter.js";
+import {
+  filterActionableQueryRecords,
+  filterActionableSkillUsageRecords,
+} from "./utils/query-filter.js";
 import { readEffectiveSkillUsageRecords } from "./utils/skill-log.js";
 
 function findViewerHTML(): string {
@@ -50,7 +48,8 @@ function buildEmbeddedHTML(): string {
   const evolution = readJsonl<EvolutionAuditEntry>(EVOLUTION_AUDIT_LOG);
   const evidence = readEvidenceTrail();
 
-  const totalRecords = telemetry.length + skills.length + actionableQueries.length + evolution.length;
+  const totalRecords =
+    telemetry.length + skills.length + actionableQueries.length + evolution.length;
 
   if (totalRecords === 0) {
     console.error("No log data found. Run some sessions first.");

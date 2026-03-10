@@ -26,8 +26,8 @@ import type {
 import { readJsonl } from "../utils/jsonl.js";
 import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
 import { appendAuditEntry } from "./audit.js";
-import { appendEvidenceEntry } from "./evidence.js";
 import { parseSkillSections, replaceBody, replaceSection } from "./deploy-proposal.js";
+import { appendEvidenceEntry } from "./evidence.js";
 import { extractFailurePatterns } from "./extract-patterns.js";
 import { generateBodyProposal } from "./propose-body.js";
 import { generateRoutingProposal } from "./propose-routing.js";

@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import type { QueryLogRecord, SkillUsageRecord } from "../../cli/selftune/types.js";
 import {
   filterActionableQueryRecords,
   filterActionableSkillUsageRecords,
   isActionableQueryText,
   isActionableSkillUsageRecord,
 } from "../../cli/selftune/utils/query-filter.js";
-import type { QueryLogRecord, SkillUsageRecord } from "../../cli/selftune/types.js";
 
 describe("isActionableQueryText", () => {
   test("accepts normal user queries", () => {
@@ -17,7 +17,7 @@ describe("isActionableQueryText", () => {
     expect(isActionableQueryText("<local-command-stdout> tool output")).toBe(false);
     expect(isActionableQueryText("<command-name>/context</command-name>")).toBe(false);
     expect(isActionableQueryText("<task-notification>\n<task-id>123</task-id>")).toBe(false);
-    expect(isActionableQueryText("<teammate-message teammate_id=\"x\">done</teammate-message>")).toBe(
+    expect(isActionableQueryText('<teammate-message teammate_id="x">done</teammate-message>')).toBe(
       false,
     );
     expect(isActionableQueryText("CONTEXT:\nAssistant: recap")).toBe(false);

@@ -7,7 +7,7 @@
  *  - cliMain()        (reads logs, runs doctor, prints output)
  */
 
-import { EVOLUTION_AUDIT_LOG, QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "./constants.js";
+import { EVOLUTION_AUDIT_LOG, QUERY_LOG, TELEMETRY_LOG } from "./constants.js";
 import { computeMonitoringSnapshot, MIN_MONITORING_SKILL_CHECKS } from "./monitoring/watch.js";
 import { doctor } from "./observability.js";
 import type {
@@ -19,7 +19,10 @@ import type {
   SkillUsageRecord,
 } from "./types.js";
 import { readJsonl } from "./utils/jsonl.js";
-import { filterActionableQueryRecords, filterActionableSkillUsageRecords } from "./utils/query-filter.js";
+import {
+  filterActionableQueryRecords,
+  filterActionableSkillUsageRecords,
+} from "./utils/query-filter.js";
 import { readEffectiveSkillUsageRecords } from "./utils/skill-log.js";
 
 // ---------------------------------------------------------------------------

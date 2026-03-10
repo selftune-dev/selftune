@@ -11,12 +11,7 @@ import { parseArgs } from "node:util";
 import { EVOLUTION_AUDIT_LOG, QUERY_LOG, TELEMETRY_LOG } from "../constants.js";
 import { doctor } from "../observability.js";
 import { computeStatus } from "../status.js";
-import type {
-  EvolutionAuditEntry,
-  QueryLogRecord,
-  SessionTelemetryRecord,
-  SkillUsageRecord,
-} from "../types.js";
+import type { EvolutionAuditEntry, QueryLogRecord, SessionTelemetryRecord } from "../types.js";
 import { readJsonl } from "../utils/jsonl.js";
 import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
 import type { BadgeFormat } from "./badge-data.js";

@@ -2,10 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  appendEvidenceEntry,
-  readEvidenceTrail,
-} from "../../cli/selftune/evolution/evidence.js";
+import { appendEvidenceEntry, readEvidenceTrail } from "../../cli/selftune/evolution/evidence.js";
 import type { EvolutionEvidenceEntry } from "../../cli/selftune/types.js";
 
 let tempDir = "";

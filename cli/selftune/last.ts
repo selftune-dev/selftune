@@ -7,7 +7,10 @@
 import { QUERY_LOG, TELEMETRY_LOG } from "./constants.js";
 import type { QueryLogRecord, SessionTelemetryRecord, SkillUsageRecord } from "./types.js";
 import { readJsonl } from "./utils/jsonl.js";
-import { filterActionableQueryRecords, filterActionableSkillUsageRecords } from "./utils/query-filter.js";
+import {
+  filterActionableQueryRecords,
+  filterActionableSkillUsageRecords,
+} from "./utils/query-filter.js";
 import { readEffectiveSkillUsageRecords } from "./utils/skill-log.js";
 
 // ---------------------------------------------------------------------------

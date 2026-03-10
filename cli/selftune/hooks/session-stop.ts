@@ -12,8 +12,8 @@ import {
   appendCanonicalRecords,
   buildCanonicalExecutionFact,
   buildCanonicalSession,
-  getLatestPromptIdentity,
   type CanonicalBaseInput,
+  getLatestPromptIdentity,
 } from "../normalization.js";
 import type { SessionTelemetryRecord, StopPayload } from "../types.js";
 import { appendJsonl } from "../utils/jsonl.js";

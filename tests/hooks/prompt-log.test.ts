@@ -34,7 +34,12 @@ describe("prompt-log hook", () => {
   });
 
   test("skips whitespace-only prompts", () => {
-    const result = processPrompt({ user_prompt: "   " }, logPath, canonicalLogPath, promptStatePath);
+    const result = processPrompt(
+      { user_prompt: "   " },
+      logPath,
+      canonicalLogPath,
+      promptStatePath,
+    );
     expect(result).toBeNull();
     expect(readJsonl(logPath)).toEqual([]);
   });
@@ -43,7 +48,12 @@ describe("prompt-log hook", () => {
     const result = processPrompt({ user_prompt: "hi" }, logPath, canonicalLogPath, promptStatePath);
     expect(result).toBeNull();
 
-    const result2 = processPrompt({ user_prompt: "ok?" }, logPath, canonicalLogPath, promptStatePath);
+    const result2 = processPrompt(
+      { user_prompt: "ok?" },
+      logPath,
+      canonicalLogPath,
+      promptStatePath,
+    );
     expect(result2).toBeNull();
 
     expect(readJsonl(logPath)).toEqual([]);

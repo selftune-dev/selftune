@@ -1,11 +1,11 @@
 import { existsSync, writeFileSync } from "node:fs";
-import { CANONICAL_LOG } from "../constants.js";
 import {
   type CanonicalPlatform,
   type CanonicalRecord,
   type CanonicalRecordKind,
   isCanonicalRecord,
 } from "../../../packages/telemetry-contract/src/index.js";
+import { CANONICAL_LOG } from "../constants.js";
 import { readJsonl } from "./jsonl.js";
 
 export interface CanonicalRecordFilter {
@@ -29,12 +29,11 @@ export function filterCanonicalRecords(
   });
 }
 
-export function serializeCanonicalRecords(
-  records: CanonicalRecord[],
-  pretty = false,
-): string {
+export function serializeCanonicalRecords(records: CanonicalRecord[], pretty = false): string {
   if (pretty) return `${JSON.stringify(records, null, 2)}\n`;
-  return records.map((record) => JSON.stringify(record)).join("\n") + (records.length > 0 ? "\n" : "");
+  return (
+    records.map((record) => JSON.stringify(record)).join("\n") + (records.length > 0 ? "\n" : "")
+  );
 }
 
 export function writeCanonicalExport(

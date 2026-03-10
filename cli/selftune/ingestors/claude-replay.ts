@@ -38,10 +38,10 @@ import {
   buildCanonicalPrompt,
   buildCanonicalSession,
   buildCanonicalSkillInvocation,
+  type CanonicalBaseInput,
   deriveInvocationMode,
   derivePromptId,
   deriveSkillInvocationId,
-  type CanonicalBaseInput,
 } from "../normalization.js";
 import type {
   CanonicalRecord,
@@ -302,7 +302,9 @@ export function buildCanonicalRecordsFromReplay(session: ParsedSession): Canonic
   const latestPromptIndex =
     session.user_queries.length > 0 ? session.user_queries.length - 1 : undefined;
   const latestPromptId =
-    latestPromptIndex !== undefined ? derivePromptId(session.session_id, latestPromptIndex) : undefined;
+    latestPromptIndex !== undefined
+      ? derivePromptId(session.session_id, latestPromptIndex)
+      : undefined;
   const baseInput: CanonicalBaseInput = {
     platform: "claude_code",
     capture_mode: "replay",

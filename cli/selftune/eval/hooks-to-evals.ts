@@ -27,7 +27,10 @@ import type {
 } from "../types.js";
 import { readJsonl } from "../utils/jsonl.js";
 import { detectAgent } from "../utils/llm-call.js";
-import { filterActionableQueryRecords, filterActionableSkillUsageRecords } from "../utils/query-filter.js";
+import {
+  filterActionableQueryRecords,
+  filterActionableSkillUsageRecords,
+} from "../utils/query-filter.js";
 import { seededShuffle } from "../utils/seeded-random.js";
 import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
 import { generateSyntheticEvals } from "./synthetic-evals.js";
@@ -210,7 +213,9 @@ export function listSkills(
     counts.set(name, (counts.get(name) ?? 0) + 1);
   }
 
-  console.log(`Skill triggers in skill_usage_log (${actionableSkillRecords.length} actionable records):`);
+  console.log(
+    `Skill triggers in skill_usage_log (${actionableSkillRecords.length} actionable records):`,
+  );
   if (counts.size > 0) {
     const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
     for (const [name, count] of sorted) {

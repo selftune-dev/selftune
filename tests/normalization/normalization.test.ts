@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
-  getLatestPromptIdentity,
   buildCanonicalExecutionFact,
   buildCanonicalPrompt,
   buildCanonicalSession,
@@ -10,14 +12,12 @@ import {
   deriveInvocationMode,
   derivePromptId,
   deriveSkillInvocationId,
+  getLatestPromptIdentity,
   hashPrompt,
   NORMALIZER_VERSION,
   reservePromptIdentity,
 } from "../../cli/selftune/normalization.js";
 import { CANONICAL_SCHEMA_VERSION } from "../../cli/selftune/types.js";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 describe("classifyPromptKind", () => {
   test("classifies user prompts", () => {

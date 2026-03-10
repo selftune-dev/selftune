@@ -33,12 +33,7 @@ export const CANONICAL_PROMPT_KINDS = [
 ] as const;
 export type CanonicalPromptKind = (typeof CANONICAL_PROMPT_KINDS)[number];
 
-export const CANONICAL_INVOCATION_MODES = [
-  "explicit",
-  "implicit",
-  "inferred",
-  "repaired",
-] as const;
+export const CANONICAL_INVOCATION_MODES = ["explicit", "implicit", "inferred", "repaired"] as const;
 export type CanonicalInvocationMode = (typeof CANONICAL_INVOCATION_MODES)[number];
 
 export const CANONICAL_COMPLETION_STATUSES = [

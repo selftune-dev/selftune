@@ -19,15 +19,14 @@ import type {
   GradingExpectation,
   GradingResult,
   SessionTelemetryRecord,
-  SkillUsageRecord,
 } from "../types.js";
 import { readJsonl } from "../utils/jsonl.js";
-import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
 import {
   detectAgent as _detectAgent,
   stripMarkdownFences as _stripMarkdownFences,
   callViaAgent,
 } from "../utils/llm-call.js";
+import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
 import { readExcerpt } from "../utils/transcript.js";
 import { type PreGateContext, runPreGates } from "./pre-gates.js";
 

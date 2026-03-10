@@ -57,19 +57,6 @@ export interface SessionTelemetryRecord {
   rollout_path?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Canonical normalization types (local + cloud projection layer)
-// ---------------------------------------------------------------------------
-export {
-  CANONICAL_CAPTURE_MODES,
-  CANONICAL_COMPLETION_STATUSES,
-  CANONICAL_INVOCATION_MODES,
-  CANONICAL_PLATFORMS,
-  CANONICAL_PROMPT_KINDS,
-  CANONICAL_RECORD_KINDS,
-  CANONICAL_SCHEMA_VERSION,
-  CANONICAL_SOURCE_SESSION_KINDS,
-} from "../../packages/telemetry-contract/src/index.js";
 export type {
   CanonicalCaptureMode,
   CanonicalCompletionStatus,
@@ -87,6 +74,19 @@ export type {
   CanonicalSessionRecord,
   CanonicalSkillInvocationRecord,
   CanonicalSourceSessionKind,
+} from "../../packages/telemetry-contract/src/index.js";
+// ---------------------------------------------------------------------------
+// Canonical normalization types (local + cloud projection layer)
+// ---------------------------------------------------------------------------
+export {
+  CANONICAL_CAPTURE_MODES,
+  CANONICAL_COMPLETION_STATUSES,
+  CANONICAL_INVOCATION_MODES,
+  CANONICAL_PLATFORMS,
+  CANONICAL_PROMPT_KINDS,
+  CANONICAL_RECORD_KINDS,
+  CANONICAL_SCHEMA_VERSION,
+  CANONICAL_SOURCE_SESSION_KINDS,
 } from "../../packages/telemetry-contract/src/index.js";
 
 // ---------------------------------------------------------------------------

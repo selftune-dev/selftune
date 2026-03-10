@@ -39,10 +39,10 @@ import {
   buildCanonicalPrompt,
   buildCanonicalSession,
   buildCanonicalSkillInvocation,
+  type CanonicalBaseInput,
   deriveInvocationMode,
   derivePromptId,
   deriveSkillInvocationId,
-  type CanonicalBaseInput,
 } from "../normalization.js";
 import type { CanonicalRecord, QueryLogRecord, SkillUsageRecord } from "../types.js";
 import { appendJsonl, loadMarker, saveMarker } from "../utils/jsonl.js";

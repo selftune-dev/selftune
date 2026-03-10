@@ -16,7 +16,7 @@ describe("canonical-log utils", () => {
     const logPath = join(dir, "canonical.jsonl");
     writeFileSync(
       logPath,
-      [
+      `${[
         JSON.stringify({
           record_kind: "session",
           schema_version: CANONICAL_SCHEMA_VERSION,
@@ -29,7 +29,7 @@ describe("canonical-log utils", () => {
           raw_source_ref: { path: "/tmp/rollout.jsonl" },
         }),
         JSON.stringify({ nope: true }),
-      ].join("\n") + "\n",
+      ].join("\n")}\n`,
       "utf-8",
     );
 
