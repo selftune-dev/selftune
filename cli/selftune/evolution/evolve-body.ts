@@ -84,6 +84,7 @@ export interface EvolveBodyDeps {
   appendAuditEntry?: typeof import("./audit.js").appendAuditEntry;
   appendEvidenceEntry?: typeof import("./evidence.js").appendEvidenceEntry;
   buildEvalSet?: typeof import("../eval/hooks-to-evals.js").buildEvalSet;
+  readEffectiveSkillUsageRecords?: typeof import("../utils/skill-log.js").readEffectiveSkillUsageRecords;
   readFileSync?: typeof readFileSync;
   writeFileSync?: (path: string, data: string, encoding: string) => void;
 }
@@ -140,6 +141,8 @@ export async function evolveBody(
   const _appendAuditEntry = _deps.appendAuditEntry ?? appendAuditEntry;
   const _appendEvidenceEntry = _deps.appendEvidenceEntry ?? appendEvidenceEntry;
   const _buildEvalSet = _deps.buildEvalSet ?? buildEvalSet;
+  const _readEffectiveSkillUsageRecords =
+    _deps.readEffectiveSkillUsageRecords ?? readEffectiveSkillUsageRecords;
   const _readFileSync = _deps.readFileSync ?? readFileSync;
   const _writeFileSync = _deps.writeFileSync ?? (await import("node:fs")).writeFileSync;
 
@@ -181,6 +184,8 @@ export async function evolveBody(
 
     const currentContent = _readFileSync(skillPath, "utf-8");
     const parsed = parseSkillSections(currentContent);
+    const createdAuditDetails = (): string => `original_description:${currentContent}`;
+    const skillUsage = _readEffectiveSkillUsageRecords();
 
     // Step 2: Load eval set
     let evalSet: EvalEntry[];
@@ -192,13 +197,11 @@ export async function evolveBody(
       }
       evalSet = parsed as EvalEntry[];
     } else {
-      const skillRecords = readEffectiveSkillUsageRecords();
       const queryRecords = readJsonl<QueryLogRecord>(QUERY_LOG);
-      evalSet = _buildEvalSet(skillRecords, queryRecords, skillName);
+      evalSet = _buildEvalSet(skillUsage, queryRecords, skillName);
     }
 
     // Step 3: Load skill usage and extract failure patterns
-    const skillUsage = readEffectiveSkillUsageRecords();
     const failurePatterns = _extractFailurePatterns(
       evalSet,
       skillUsage,
@@ -265,11 +268,7 @@ export async function evolveBody(
 
       lastProposal = proposal;
 
-      recordAudit(
-        proposal.proposal_id,
-        "created",
-        `${target} proposal created for ${skillName} (iteration ${iteration + 1})`,
-      );
+      recordAudit(proposal.proposal_id, "created", createdAuditDetails());
       recordEvidence({
         timestamp: new Date().toISOString(),
         proposal_id: proposal.proposal_id,

@@ -44,6 +44,7 @@ import type {
   SkillUsageRecord,
 } from "../types.js";
 import { appendJsonl, loadMarker, saveMarker } from "../utils/jsonl.js";
+import { isActionableQueryText } from "../utils/query-filter.js";
 
 const MARKER_FILE = join(homedir(), ".claude", "codex_ingested_rollouts.json");
 
@@ -159,6 +160,10 @@ export interface ParsedRollout {
   };
 }
 
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
 /**
  * Parse a Codex rollout JSONL file.
  * Returns parsed data or null if the file is empty/unparseable.
@@ -180,6 +185,7 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
 
   const threadId = basename(path, ".jsonl").replace("rollout-", "");
   let prompt = "";
+  let lastUserQuery = "";
   const toolCalls: Record<string, number> = {};
   const bashCommands: string[] = [];
   const skillsTriggered: string[] = [];
@@ -201,6 +207,22 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
     | undefined;
   let observedSessionId: string | undefined;
   let observedCwd: string | undefined;
+  let hasActionablePrompt = false;
+  const rememberPromptCandidate = (value: unknown): void => {
+    const message = typeof value === "string" ? value.trim() : "";
+    if (!message) return;
+    lastUserQuery = message;
+    if (isActionableQueryText(message)) {
+      if (!hasActionablePrompt) {
+        prompt = message;
+        hasActionablePrompt = true;
+      }
+      return;
+    }
+    if (!prompt) {
+      prompt = message;
+    }
+  };
 
   for (const line of lines) {
     let event: Record<string, unknown>;
@@ -215,17 +237,22 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
     // --- Observed local rollout format (session_meta, event_msg, turn_context, response_item) ---
     if (etype === "session_meta") {
       const payload = (event.payload as Record<string, unknown>) ?? {};
-      observedSessionId = (payload.id as string) ?? undefined;
-      observedCwd = (payload.cwd as string) ?? undefined;
-      const modelProvider = (payload.model_provider as string) ?? undefined;
-      const model = (payload.model as string) ?? undefined;
-      const originator = (payload.originator as string) ?? undefined;
-      observedMeta = { model_provider: modelProvider, model, originator };
+      const observedId = optionalString(payload.id);
+      const observedWorkspace = optionalString(payload.cwd);
+      const modelProvider = optionalString(payload.model_provider);
+      const model = optionalString(payload.model);
+      const originator = optionalString(payload.originator);
+      if (observedId) observedSessionId = observedId;
+      if (observedWorkspace) observedCwd = observedWorkspace;
+      if (!observedMeta) observedMeta = {};
+      if (modelProvider) observedMeta.model_provider = modelProvider;
+      if (model) observedMeta.model = model;
+      if (originator) observedMeta.originator = originator;
     } else if (etype === "turn_context") {
       const payload = (event.payload as Record<string, unknown>) ?? {};
-      const approvalPolicy = (payload.approval_policy as string) ?? undefined;
-      const sandboxPolicy = (payload.sandbox_policy as string) ?? undefined;
-      const model = (payload.model as string) ?? undefined;
+      const approvalPolicy = optionalString(payload.approval_policy);
+      const sandboxPolicy = optionalString(payload.sandbox_policy);
+      const model = optionalString(payload.model);
       const gitPayload = payload.git as Record<string, unknown> | undefined;
       if (!observedMeta) observedMeta = {};
       if (approvalPolicy) observedMeta.approval_policy = approvalPolicy;
@@ -233,9 +260,9 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
       if (model) observedMeta.model = model;
       if (gitPayload) {
         observedMeta.git = {
-          branch: (gitPayload.branch as string) ?? undefined,
-          remote: (gitPayload.remote as string) ?? undefined,
-          commit: (gitPayload.commit as string) ?? (gitPayload.sha as string) ?? undefined,
+          branch: optionalString(gitPayload.branch),
+          remote: optionalString(gitPayload.remote),
+          commit: optionalString(gitPayload.commit) ?? optionalString(gitPayload.sha),
         };
       }
       turns += 1;
@@ -243,8 +270,7 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
       const payload = (event.payload as Record<string, unknown>) ?? {};
       const msgType = (payload.type as string) ?? "";
       if (msgType === "user_message") {
-        const message = (payload.message as string) ?? "";
-        if (message && !prompt) prompt = message;
+        rememberPromptCandidate(payload.message);
       }
       // Token usage in event_msg payloads
       const tokenCount = payload.token_count as Record<string, number> | undefined;
@@ -281,9 +307,7 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
       const usage = (event.usage as Record<string, number>) ?? {};
       inputTokens += usage.input_tokens ?? 0;
       outputTokens += usage.output_tokens ?? 0;
-      if (!prompt) {
-        prompt = (event.user_message as string) ?? "";
-      }
+      rememberPromptCandidate(event.user_message);
     } else if (etype === "turn.failed") {
       errors += 1;
     } else if (etype === "item.completed" || etype === "item.started" || etype === "item.updated") {
@@ -325,9 +349,7 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
     }
 
     // Some rollout formats embed the original prompt
-    if (!prompt && (event.prompt as string)) {
-      prompt = event.prompt as string;
-    }
+    rememberPromptCandidate(event.prompt);
   }
 
   // Infer file date from path structure: .../YYYY/MM/DD/rollout-*.jsonl
@@ -366,7 +388,7 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
     transcript_chars: lines.reduce((sum, l) => sum + l.length, 0),
     cwd: observedCwd ?? "",
     transcript_path: path,
-    last_user_query: prompt,
+    last_user_query: lastUserQuery || prompt,
     observed_meta: observedMeta,
   };
 }
