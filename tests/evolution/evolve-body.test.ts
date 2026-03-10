@@ -139,6 +139,8 @@ const mockBuildEvalSet = mock(
   },
 );
 
+const mockReadEffectiveSkillUsageRecords = mock((): SkillUsageRecord[] => []);
+
 const mockWriteFileSync = mock((_path: string, _data: string, _encoding: string) => {});
 
 // ---------------------------------------------------------------------------
@@ -156,6 +158,7 @@ function makeDeps(): EvolveBodyDeps {
     appendAuditEntry: mockAppendAuditEntry,
     appendEvidenceEntry: mockAppendEvidenceEntry,
     buildEvalSet: mockBuildEvalSet,
+    readEffectiveSkillUsageRecords: mockReadEffectiveSkillUsageRecords,
     writeFileSync: mockWriteFileSync,
   };
 }
@@ -220,6 +223,9 @@ afterEach(() => {
     { query: "test query", should_trigger: true },
     { query: "unrelated", should_trigger: false },
   ]);
+
+  mockReadEffectiveSkillUsageRecords.mockReset();
+  mockReadEffectiveSkillUsageRecords.mockImplementation(() => []);
 
   mockWriteFileSync.mockReset();
   mockWriteFileSync.mockImplementation(() => {});
@@ -370,6 +376,26 @@ describe("evolveBody orchestrator", () => {
     expect(actions).toContain("deployed");
     const createdAudit = result.auditEntries.find((entry) => entry.action === "created");
     expect(createdAudit?.details).toBe(`original_description:${originalContent}`);
+  });
+
+  test("uses injected skill usage reader", async () => {
+    const skillUsage: SkillUsageRecord[] = [
+      {
+        timestamp: "2026-03-10T00:00:00.000Z",
+        session_id: "sess-1",
+        skill_name: "test-skill",
+        skill_path: "/tmp/test-skill/SKILL.md",
+        query: "build the project",
+        triggered: true,
+      },
+    ];
+    mockReadEffectiveSkillUsageRecords.mockImplementation(() => skillUsage);
+
+    await evolveBody(makeOptions(), makeDeps());
+
+    expect(mockReadEffectiveSkillUsageRecords.mock.calls.length).toBe(1);
+    expect(mockBuildEvalSet.mock.calls[0]?.[0]).toEqual(skillUsage);
+    expect(mockExtractFailurePatterns.mock.calls[0]?.[1]).toEqual(skillUsage);
   });
 
   test("routing target uses routing proposal and validation", async () => {

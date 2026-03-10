@@ -160,6 +160,10 @@ export interface ParsedRollout {
   };
 }
 
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
 /**
  * Parse a Codex rollout JSONL file.
  * Returns parsed data or null if the file is empty/unparseable.
@@ -181,6 +185,7 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
 
   const threadId = basename(path, ".jsonl").replace("rollout-", "");
   let prompt = "";
+  let lastUserQuery = "";
   const toolCalls: Record<string, number> = {};
   const bashCommands: string[] = [];
   const skillsTriggered: string[] = [];
@@ -206,6 +211,7 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
   const rememberPromptCandidate = (value: unknown): void => {
     const message = typeof value === "string" ? value.trim() : "";
     if (!message) return;
+    lastUserQuery = message;
     if (isActionableQueryText(message)) {
       if (!hasActionablePrompt) {
         prompt = message;
@@ -231,11 +237,11 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
     // --- Observed local rollout format (session_meta, event_msg, turn_context, response_item) ---
     if (etype === "session_meta") {
       const payload = (event.payload as Record<string, unknown>) ?? {};
-      const observedId = (payload.id as string) ?? undefined;
-      const observedWorkspace = (payload.cwd as string) ?? undefined;
-      const modelProvider = (payload.model_provider as string) ?? undefined;
-      const model = (payload.model as string) ?? undefined;
-      const originator = (payload.originator as string) ?? undefined;
+      const observedId = optionalString(payload.id);
+      const observedWorkspace = optionalString(payload.cwd);
+      const modelProvider = optionalString(payload.model_provider);
+      const model = optionalString(payload.model);
+      const originator = optionalString(payload.originator);
       if (observedId) observedSessionId = observedId;
       if (observedWorkspace) observedCwd = observedWorkspace;
       if (!observedMeta) observedMeta = {};
@@ -244,9 +250,9 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
       if (originator) observedMeta.originator = originator;
     } else if (etype === "turn_context") {
       const payload = (event.payload as Record<string, unknown>) ?? {};
-      const approvalPolicy = (payload.approval_policy as string) ?? undefined;
-      const sandboxPolicy = (payload.sandbox_policy as string) ?? undefined;
-      const model = (payload.model as string) ?? undefined;
+      const approvalPolicy = optionalString(payload.approval_policy);
+      const sandboxPolicy = optionalString(payload.sandbox_policy);
+      const model = optionalString(payload.model);
       const gitPayload = payload.git as Record<string, unknown> | undefined;
       if (!observedMeta) observedMeta = {};
       if (approvalPolicy) observedMeta.approval_policy = approvalPolicy;
@@ -254,9 +260,9 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
       if (model) observedMeta.model = model;
       if (gitPayload) {
         observedMeta.git = {
-          branch: (gitPayload.branch as string) ?? undefined,
-          remote: (gitPayload.remote as string) ?? undefined,
-          commit: (gitPayload.commit as string) ?? (gitPayload.sha as string) ?? undefined,
+          branch: optionalString(gitPayload.branch),
+          remote: optionalString(gitPayload.remote),
+          commit: optionalString(gitPayload.commit) ?? optionalString(gitPayload.sha),
         };
       }
       turns += 1;
@@ -382,7 +388,7 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
     transcript_chars: lines.reduce((sum, l) => sum + l.length, 0),
     cwd: observedCwd ?? "",
     transcript_path: path,
-    last_user_query: prompt,
+    last_user_query: lastUserQuery || prompt,
     observed_meta: observedMeta,
   };
 }

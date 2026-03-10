@@ -171,7 +171,7 @@ describe("parseRolloutFile", () => {
     const result = parseRolloutFile(path, new Set());
 
     expect(result?.query).toBe("build the project");
-    expect(result?.last_user_query).toBe("build the project");
+    expect(result?.last_user_query).toBe("also add deployment checks");
   });
 
   test("detects skill names in completed items", () => {
@@ -255,6 +255,38 @@ describe("parseRolloutFile", () => {
     expect(result?.observed_meta?.sandbox_policy).toBe("container");
     expect(result?.observed_meta?.git?.branch).toBe("main");
     expect(result?.observed_meta?.git?.commit).toBe("abc123");
+  });
+
+  test("ignores non-string observed metadata payload fields", () => {
+    const codexHome = join(tmpDir, "codex");
+    const content = [
+      '{"type":"session_meta","payload":{"id":123,"cwd":{"path":"/project"},"model_provider":["openai"],"model":false,"originator":42}}',
+      '{"type":"turn_context","payload":{"approval_policy":7,"sandbox_policy":{"mode":"container"},"model":["gpt-4o"],"git":{"branch":99,"remote":true,"commit":["abc123"]}}}',
+      '{"type":"event_msg","payload":{"type":"user_message","message":"Build the project"}}',
+    ].join("\n");
+
+    const path = createRolloutFile(
+      codexHome,
+      "2026",
+      "03",
+      "10",
+      "rollout-observed-invalid-meta.jsonl",
+      content,
+    );
+    const result = parseRolloutFile(path, new Set());
+
+    expect(result?.session_id).toBe("observed-invalid-meta");
+    expect(result?.cwd).toBe("");
+    expect(result?.query).toBe("Build the project");
+    expect(result?.last_user_query).toBe("Build the project");
+    expect(result?.observed_meta?.model_provider).toBeUndefined();
+    expect(result?.observed_meta?.model).toBeUndefined();
+    expect(result?.observed_meta?.originator).toBeUndefined();
+    expect(result?.observed_meta?.approval_policy).toBeUndefined();
+    expect(result?.observed_meta?.sandbox_policy).toBeUndefined();
+    expect(result?.observed_meta?.git?.branch).toBeUndefined();
+    expect(result?.observed_meta?.git?.remote).toBeUndefined();
+    expect(result?.observed_meta?.git?.commit).toBeUndefined();
   });
 });
 
