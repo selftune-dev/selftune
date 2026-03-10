@@ -418,6 +418,24 @@ describe("computeMonitoringSnapshot", () => {
     expect(snapshot.skill_checks).toBe(2);
     expect(snapshot.regression_detected).toBe(false);
   });
+
+  test("flags zero-trigger regression when enough actionable queries exist", () => {
+    const queryRecords: QueryLogRecord[] = Array.from({ length: 5 }, (_, index) =>
+      makeQueryLogRecord({ session_id: `sess-zero-${index}` }),
+    );
+    const telemetry: SessionTelemetryRecord[] = Array.from({ length: 5 }, (_, index) =>
+      makeTelemetryRecord({
+        session_id: `sess-zero-${index}`,
+        skills_triggered: [],
+      }),
+    );
+
+    const snapshot = computeMonitoringSnapshot("my-skill", telemetry, [], queryRecords, 20, 0.8);
+
+    expect(snapshot.pass_rate).toBe(0);
+    expect(snapshot.skill_checks).toBe(0);
+    expect(snapshot.regression_detected).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

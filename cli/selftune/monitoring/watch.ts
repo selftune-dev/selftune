@@ -111,6 +111,9 @@ export function computeMonitoringSnapshot(
   const filteredSkillRecords = hasSessionOverlap
     ? skillNameFiltered.filter((r) => windowedSessionIds.has(r.session_id))
     : skillNameFiltered;
+  const filteredQueryRecords = hasSessionOverlap
+    ? actionableQueryRecords.filter((r) => windowedSessionIds.has(r.session_id))
+    : actionableQueryRecords;
 
   // 4. Compute pass rate from explicit skill checks, not from all queries.
   const triggeredCount = filteredSkillRecords.filter((r) => r.triggered).length;
@@ -145,8 +148,10 @@ export function computeMonitoringSnapshot(
   const adjustedThreshold =
     Math.round((baselinePassRate - regressionThreshold) * precision) / precision;
   const roundedPassRate = Math.round(passRate * precision) / precision;
-  const regressionDetected =
-    totalSkillChecks >= MIN_MONITORING_SKILL_CHECKS && roundedPassRate < adjustedThreshold;
+  const hasEnoughSignalForRegression =
+    totalSkillChecks >= MIN_MONITORING_SKILL_CHECKS ||
+    (totalSkillChecks === 0 && filteredQueryRecords.length >= MIN_MONITORING_SKILL_CHECKS);
+  const regressionDetected = hasEnoughSignalForRegression && roundedPassRate < adjustedThreshold;
 
   return {
     timestamp: new Date().toISOString(),

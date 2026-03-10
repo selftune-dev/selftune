@@ -493,6 +493,44 @@ describe("integration: watch() reads JSONL logs and computes result", () => {
     expect((rollbackCalledWith as Record<string, unknown>).skillName).toBe("doc-gen");
     expect(result.recommendation.toLowerCase()).toContain("rolled back");
   });
+
+  test("watch detects zero-trigger regressions from actionable queries", async () => {
+    const sessionIds = Array.from({ length: 5 }, (_, i) => `sess-zero-watch-${i}`);
+
+    const telemetry = sessionIds.map((sid) => makeTelemetryRecord({ session_id: sid }));
+    const queryRecords = sessionIds.map((sid) => makeQueryLogRecord({ session_id: sid }));
+    const auditEntries: EvolutionAuditEntry[] = [
+      {
+        timestamp: "2026-02-28T10:00:00Z",
+        proposal_id: "evo-doc-gen-003",
+        action: "deployed",
+        details: "Deployed doc-gen proposal",
+        eval_snapshot: { total: 20, passed: 16, failed: 4, pass_rate: 0.8 },
+      },
+    ];
+
+    const telemetryPath = writeJsonl(telemetry, "zero-trigger-telemetry.jsonl");
+    const skillLogPath = writeJsonl([], "zero-trigger-skill.jsonl");
+    const queryLogPath = writeJsonl(queryRecords, "zero-trigger-queries.jsonl");
+    const auditLogPath = writeJsonl(auditEntries, "zero-trigger-audit.jsonl");
+
+    const result: WatchResult = await watch({
+      skillName: "doc-gen",
+      skillPath: "/tmp/skills/doc-gen/SKILL.md",
+      windowSessions: 20,
+      regressionThreshold: 0.1,
+      autoRollback: false,
+      _telemetryLogPath: telemetryPath,
+      _skillLogPath: skillLogPath,
+      _queryLogPath: queryLogPath,
+      _auditLogPath: auditLogPath,
+    } as unknown as WatchOptions);
+
+    expect(result.snapshot.skill_checks).toBe(0);
+    expect(result.snapshot.pass_rate).toBe(0);
+    expect(result.snapshot.regression_detected).toBe(true);
+    expect(result.alert).not.toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
