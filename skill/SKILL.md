@@ -64,6 +64,7 @@ selftune unit-test  --skill <name> --tests <path> [--run-agent] [--generate]
 selftune composability --skill <name> [--window N] [--telemetry-log <path>]
 selftune workflows [--skill <name>] [--min-occurrences N] [--window N] [save <workflow-id|index>]
 selftune import-skillsbench --dir <path> --skill <name> --output <path> [--match-strategy exact|fuzzy]
+selftune export-canonical [--out FILE] [--pretty] [--platform <name>] [--record-kind <kind>]
 ```
 
 ## Workflow Routing

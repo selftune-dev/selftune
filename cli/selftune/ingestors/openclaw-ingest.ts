@@ -26,13 +26,25 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { parseArgs } from "node:util";
 import {
+  CANONICAL_LOG,
   OPENCLAW_AGENTS_DIR,
   OPENCLAW_INGEST_MARKER,
   QUERY_LOG,
   SKILL_LOG,
   TELEMETRY_LOG,
 } from "../constants.js";
-import type { QueryLogRecord, SkillUsageRecord } from "../types.js";
+import {
+  appendCanonicalRecords,
+  buildCanonicalExecutionFact,
+  buildCanonicalPrompt,
+  buildCanonicalSession,
+  buildCanonicalSkillInvocation,
+  deriveInvocationMode,
+  derivePromptId,
+  deriveSkillInvocationId,
+  type CanonicalBaseInput,
+} from "../normalization.js";
+import type { CanonicalRecord, QueryLogRecord, SkillUsageRecord } from "../types.js";
 import { appendJsonl, loadMarker, saveMarker } from "../utils/jsonl.js";
 
 export interface SessionFile {
@@ -57,6 +69,10 @@ export interface ParsedSession {
   assistant_turns: number;
   errors_encountered: number;
   transcript_chars: number;
+  /** Reserved transport fields from OpenClaw docs (may be absent in fixture-only captures). */
+  session_key?: string;
+  channel?: string;
+  agent_id?: string;
 }
 
 /**
@@ -167,6 +183,10 @@ export function parseOpenClawSession(filePath: string, skillNames: Set<string>):
   const sessionId = (header.id as string) ?? "";
   const timestamp = (header.timestamp as string) ?? "";
   const cwd = (header.cwd as string) ?? "";
+  // Reserve transport fields from docs (may be absent in fixture-only captures)
+  const sessionKey = (header.sessionKey as string) ?? (header.session_key as string) ?? undefined;
+  const channel = (header.channel as string) ?? undefined;
+  const agentIdFromHeader = (header.agentId as string) ?? (header.agent_id as string) ?? undefined;
 
   const toolCalls: Record<string, number> = {};
   const bashCommands: string[] = [];
@@ -263,6 +283,9 @@ export function parseOpenClawSession(filePath: string, skillNames: Set<string>):
     assistant_turns: assistantTurns,
     errors_encountered: errors,
     transcript_chars: content.length,
+    session_key: sessionKey,
+    channel,
+    agent_id: agentIdFromHeader,
   };
 }
 
@@ -326,6 +349,7 @@ export function writeSession(
   queryLogPath: string = QUERY_LOG,
   telemetryLogPath: string = TELEMETRY_LOG,
   skillLogPath: string = SKILL_LOG,
+  canonicalLogPath: string = CANONICAL_LOG,
 ): void {
   const { query: prompt, session_id: sessionId, skills_triggered: skills } = session;
 
@@ -362,6 +386,83 @@ export function writeSession(
     };
     appendJsonl(skillLogPath, skillRecord, "skill_usage");
   }
+
+  // --- Canonical normalization records (additive) ---
+  const canonicalRecords = buildCanonicalRecordsFromOpenClaw(session);
+  appendCanonicalRecords(canonicalRecords, canonicalLogPath);
+}
+
+/** Build canonical records from a parsed OpenClaw session. */
+export function buildCanonicalRecordsFromOpenClaw(session: ParsedSession): CanonicalRecord[] {
+  const records: CanonicalRecord[] = [];
+  const baseInput: CanonicalBaseInput = {
+    platform: "openclaw",
+    capture_mode: "batch_ingest",
+    source_session_kind: "replayed",
+    session_id: session.session_id,
+    raw_source_ref: {
+      path: session.transcript_path,
+      event_type: "openclaw",
+    },
+  };
+
+  records.push(
+    buildCanonicalSession({
+      ...baseInput,
+      started_at: session.timestamp,
+      workspace_path: session.cwd || undefined,
+      session_key: session.session_key,
+      channel: session.channel,
+      agent_id: session.agent_id,
+    }),
+  );
+
+  if (session.query && session.query.length >= 4) {
+    records.push(
+      buildCanonicalPrompt({
+        ...baseInput,
+        prompt_id: derivePromptId(session.session_id, 0),
+        occurred_at: session.timestamp,
+        prompt_text: session.query,
+        prompt_index: 0,
+      }),
+    );
+  }
+
+  for (let i = 0; i < session.skills_triggered.length; i++) {
+    const skillName = session.skills_triggered[i];
+    const { invocation_mode, confidence } = deriveInvocationMode({
+      has_skill_md_read: true,
+    });
+    records.push(
+      buildCanonicalSkillInvocation({
+        ...baseInput,
+        skill_invocation_id: deriveSkillInvocationId(session.session_id, skillName, i),
+        occurred_at: session.timestamp,
+        matched_prompt_id: derivePromptId(session.session_id, 0),
+        skill_name: skillName,
+        skill_path: `(openclaw:${skillName})`,
+        invocation_mode,
+        triggered: true,
+        confidence,
+      }),
+    );
+  }
+
+  records.push(
+    buildCanonicalExecutionFact({
+      ...baseInput,
+      occurred_at: session.timestamp,
+      prompt_id: session.query ? derivePromptId(session.session_id, 0) : undefined,
+      tool_calls_json: session.tool_calls,
+      total_tool_calls: session.total_tool_calls,
+      bash_commands_redacted: session.bash_commands,
+      assistant_turns: session.assistant_turns,
+      errors_encountered: session.errors_encountered,
+    }),
+  );
+
+  return records;
 }
 
 // --- CLI main ---

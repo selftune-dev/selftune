@@ -6,6 +6,23 @@
 **Created:** 2026-03-10
 **Goal:** Introduce a canonical multi-agent telemetry model that supports local append-only logs, repaired overlays, and a cloud Neon projection without duplicating platform-specific logic across Claude Code, Codex, OpenClaw, and OpenCode.
 
+## Implementation Status (2026-03-10)
+
+Implemented in this repo:
+
+- raw legacy logs remain separate from the canonical event stream
+- canonical events now write to `~/.claude/canonical_telemetry_log.jsonl`
+- live Claude hooks now emit canonical `prompt`, `skill_invocation`, and `execution_fact` records with deterministic prompt IDs
+- replay and batch ingestors now write canonical records to the dedicated canonical log instead of polluting legacy logs
+- the canonical schema has been extracted into the internal package `packages/telemetry-contract/`
+- `selftune export-canonical` can export canonical records for downstream cloud ingestion
+
+Still pending:
+
+- move downstream local analytics fully onto canonical readers/projections
+- make the cloud repo consume the extracted contract instead of re-declaring canonical types
+- expand stronger source-native IDs and richer lifecycle coverage where the platform supports it
+
 ---
 
 ## Problem Statement

@@ -25,8 +25,19 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { parseArgs } from "node:util";
-import { QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
-import type { QueryLogRecord, SkillUsageRecord } from "../types.js";
+import { CANONICAL_LOG, QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
+import {
+  appendCanonicalRecords,
+  buildCanonicalExecutionFact,
+  buildCanonicalPrompt,
+  buildCanonicalSession,
+  buildCanonicalSkillInvocation,
+  deriveInvocationMode,
+  derivePromptId,
+  deriveSkillInvocationId,
+  type CanonicalBaseInput,
+} from "../normalization.js";
+import type { CanonicalRecord, QueryLogRecord, SkillUsageRecord } from "../types.js";
 import { appendJsonl, loadMarker, saveMarker } from "../utils/jsonl.js";
 
 const XDG_DATA_HOME = process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share");
@@ -82,6 +93,8 @@ export interface ParsedSession {
   assistant_turns: number;
   errors_encountered: number;
   transcript_chars: number;
+  /** True when local session JSON is metadata-only (no embedded messages). */
+  is_metadata_only?: boolean;
 }
 
 /** Return a human-readable schema summary for --show-schema. */
@@ -349,6 +362,9 @@ export function readSessionsFromJsonFiles(
     const timestamp = new Date(created * 1000).toISOString();
     const messages = (data.messages as Array<Record<string, unknown>>) ?? [];
 
+    // Detect metadata-only session files (no message bodies)
+    const isMetadataOnly = messages.length === 0;
+
     let firstUserQuery = "";
     const toolCalls: Record<string, number> = {};
     const bashCommands: string[] = [];
@@ -426,6 +442,7 @@ export function readSessionsFromJsonFiles(
       assistant_turns: turns,
       errors_encountered: errors,
       transcript_chars: statSync(filePath).size,
+      is_metadata_only: isMetadataOnly,
     });
   }
 
@@ -439,6 +456,7 @@ export function writeSession(
   queryLogPath: string = QUERY_LOG,
   telemetryLogPath: string = TELEMETRY_LOG,
   skillLogPath: string = SKILL_LOG,
+  canonicalLogPath: string = CANONICAL_LOG,
 ): void {
   const { query: prompt, session_id: sessionId, skills_triggered: skills } = session;
 
@@ -475,6 +493,85 @@ export function writeSession(
     };
     appendJsonl(skillLogPath, skillRecord, "skill_usage");
   }
+
+  // --- Canonical normalization records (additive) ---
+  const canonicalRecords = buildCanonicalRecordsFromOpenCode(session);
+  appendCanonicalRecords(canonicalRecords, canonicalLogPath);
+}
+
+/** Build canonical records from a parsed OpenCode session. */
+export function buildCanonicalRecordsFromOpenCode(session: ParsedSession): CanonicalRecord[] {
+  const records: CanonicalRecord[] = [];
+  const sourceKind = session.is_metadata_only ? "replayed" as const : "replayed" as const;
+  const baseInput: CanonicalBaseInput = {
+    platform: "opencode",
+    capture_mode: "batch_ingest",
+    source_session_kind: sourceKind,
+    session_id: session.session_id,
+    raw_source_ref: {
+      path: session.transcript_path,
+      event_type: session.source,
+      metadata: session.is_metadata_only ? { metadata_only: true } : undefined,
+    },
+  };
+
+  records.push(
+    buildCanonicalSession({
+      ...baseInput,
+      started_at: session.timestamp,
+      workspace_path: session.cwd || undefined,
+    }),
+  );
+
+  if (session.query && session.query.length >= 4 && !session.is_metadata_only) {
+    records.push(
+      buildCanonicalPrompt({
+        ...baseInput,
+        prompt_id: derivePromptId(session.session_id, 0),
+        occurred_at: session.timestamp,
+        prompt_text: session.query,
+        prompt_index: 0,
+      }),
+    );
+  }
+
+  for (let i = 0; i < session.skills_triggered.length; i++) {
+    const skillName = session.skills_triggered[i];
+    const hasSkillMdRead = true; // OpenCode detects via SKILL.md reads
+    const { invocation_mode, confidence } = deriveInvocationMode({
+      has_skill_md_read: hasSkillMdRead,
+    });
+    records.push(
+      buildCanonicalSkillInvocation({
+        ...baseInput,
+        skill_invocation_id: deriveSkillInvocationId(session.session_id, skillName, i),
+        occurred_at: session.timestamp,
+        matched_prompt_id: derivePromptId(session.session_id, 0),
+        skill_name: skillName,
+        skill_path: `(opencode:${skillName})`,
+        invocation_mode,
+        triggered: true,
+        confidence,
+      }),
+    );
+  }
+
+  if (!session.is_metadata_only) {
+    records.push(
+      buildCanonicalExecutionFact({
+        ...baseInput,
+        occurred_at: session.timestamp,
+        prompt_id: session.query ? derivePromptId(session.session_id, 0) : undefined,
+        tool_calls_json: session.tool_calls,
+        total_tool_calls: session.total_tool_calls,
+        bash_commands_redacted: session.bash_commands,
+        assistant_turns: session.assistant_turns,
+        errors_encountered: session.errors_encountered,
+      }),
+    );
+  }
+
+  return records;
 }
 
 // --- CLI main ---

@@ -411,6 +411,7 @@ describe("writeSession", () => {
     const queryLog = join(tmpDir, "queries.jsonl");
     const telemetryLog = join(tmpDir, "telemetry.jsonl");
     const skillLog = join(tmpDir, "skills.jsonl");
+    const canonicalLog = join(tmpDir, "canonical.jsonl");
 
     const session = {
       timestamp: "2026-03-15T00:00:00.000Z",
@@ -429,28 +430,38 @@ describe("writeSession", () => {
       transcript_chars: 1000,
     };
 
-    writeSession(session, false, queryLog, telemetryLog, skillLog);
+    writeSession(session, false, queryLog, telemetryLog, skillLog, canonicalLog);
 
-    const queryContent = readFileSync(queryLog, "utf-8").trim();
-    const queryRecord = JSON.parse(queryContent);
+    const queryLines = readFileSync(queryLog, "utf-8").trim().split("\n");
+    const queryRecord = JSON.parse(queryLines[0]);
     expect(queryRecord.query).toBe("Build an API");
     expect(queryRecord.source).toBe("openclaw");
 
-    const telemetryContent = readFileSync(telemetryLog, "utf-8").trim();
-    const telemetryRecord = JSON.parse(telemetryContent);
+    const telemetryLines = readFileSync(telemetryLog, "utf-8").trim().split("\n");
+    const telemetryRecord = JSON.parse(telemetryLines[0]);
     expect(telemetryRecord.session_id).toBe("sess-oc-1");
     expect(telemetryRecord.source).toBe("openclaw");
 
-    const skillContent = readFileSync(skillLog, "utf-8").trim();
-    const skillRecord = JSON.parse(skillContent);
+    const skillLines = readFileSync(skillLog, "utf-8").trim().split("\n");
+    const skillRecord = JSON.parse(skillLines[0]);
     expect(skillRecord.skill_name).toBe("RestAPI");
     expect(skillRecord.skill_path).toBe("(openclaw:RestAPI)");
+
+    const canonicalSession = readFileSync(canonicalLog, "utf-8")
+      .trim()
+      .split("\n")
+      .map((l: string) => JSON.parse(l))
+      .find((r: Record<string, unknown>) => r.record_kind === "session");
+    expect(canonicalSession).toBeTruthy();
+    expect(canonicalSession.platform).toBe("openclaw");
+    expect(canonicalSession.capture_mode).toBe("batch_ingest");
   });
 
   test("dry run does not write files", () => {
     const queryLog = join(tmpDir, "queries-dry.jsonl");
     const telemetryLog = join(tmpDir, "telemetry-dry.jsonl");
     const skillLog = join(tmpDir, "skills-dry.jsonl");
+    const canonicalLog = join(tmpDir, "canonical-dry.jsonl");
 
     const session = {
       timestamp: "2026-03-15T00:00:00.000Z",
@@ -469,7 +480,7 @@ describe("writeSession", () => {
       transcript_chars: 100,
     };
 
-    writeSession(session, true, queryLog, telemetryLog, skillLog);
+    writeSession(session, true, queryLog, telemetryLog, skillLog, canonicalLog);
 
     // Files should not exist
     expect(() => readFileSync(queryLog)).toThrow();
@@ -481,6 +492,7 @@ describe("writeSession", () => {
     const queryLog = join(tmpDir, "queries-short.jsonl");
     const telemetryLog = join(tmpDir, "telemetry-short.jsonl");
     const skillLog = join(tmpDir, "skills-short.jsonl");
+    const canonicalLog = join(tmpDir, "canonical-short.jsonl");
 
     const session = {
       timestamp: "2026-03-15T00:00:00.000Z",
@@ -499,13 +511,13 @@ describe("writeSession", () => {
       transcript_chars: 50,
     };
 
-    writeSession(session, false, queryLog, telemetryLog, skillLog);
+    writeSession(session, false, queryLog, telemetryLog, skillLog, canonicalLog);
 
     // Query log should not exist (query too short)
     expect(() => readFileSync(queryLog)).toThrow();
     // But telemetry should still be written
-    const telemetryContent = readFileSync(telemetryLog, "utf-8").trim();
-    expect(JSON.parse(telemetryContent).session_id).toBe("sess-short");
+    const telemetryLines = readFileSync(telemetryLog, "utf-8").trim().split("\n");
+    expect(JSON.parse(telemetryLines[0]).session_id).toBe("sess-short");
   });
 });
 

@@ -19,6 +19,13 @@
    - `skill_invocation_id`: derived from `session_id` + tool call ID + skill identity where possible
    - `event_id`: derived from the source record location when no native event ID exists
 
+## Implementation Note (2026-03-10)
+
+The current local implementation now writes canonical records into the dedicated
+log `~/.claude/canonical_telemetry_log.jsonl` and keeps raw legacy logs separate.
+The extracted local contract source lives at `packages/telemetry-contract/`, with
+`cli/selftune/types.ts` re-exporting the canonical schema for backward compatibility.
+
 ---
 
 ## Confidence and Invocation Rules
@@ -136,7 +143,7 @@
 
 ## Immediate Follow-Through
 
-1. Add the canonical type layer in `cli/selftune/types.ts`.
-2. Migrate Codex first because it is the largest observed contract mismatch.
-3. Update adapters to emit canonical records plus raw-source references.
-4. Only then migrate dashboard/status/evals/watch to canonical readers.
+1. Freeze `packages/telemetry-contract/` as the shared contract surface.
+2. Make the cloud repo consume that contract instead of re-declaring canonical types.
+3. Migrate dashboard/status/evals/watch to canonical readers and projections.
+4. Expand source-native IDs and richer lifecycle coverage where platforms support it.

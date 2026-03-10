@@ -13,6 +13,7 @@ export const LOG_DIR = join(homedir(), ".claude");
 export const TELEMETRY_LOG = join(LOG_DIR, "session_telemetry_log.jsonl");
 export const SKILL_LOG = join(LOG_DIR, "skill_usage_log.jsonl");
 export const REPAIRED_SKILL_LOG = join(LOG_DIR, "skill_usage_repaired.jsonl");
+export const CANONICAL_LOG = join(LOG_DIR, "canonical_telemetry_log.jsonl");
 export const REPAIRED_SKILL_SESSIONS_MARKER = join(
   LOG_DIR,
   "skill_usage_repaired_sessions.json",
@@ -96,6 +97,12 @@ export function sessionStatePath(sessionId: string): string {
   // Sanitize session ID to be filesystem-safe
   const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_");
   return join(SESSION_STATE_DIR, `session-state-${safe}.json`);
+}
+
+/** Build a canonical prompt state file path from a session ID. */
+export function canonicalSessionStatePath(sessionId: string): string {
+  const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return join(SESSION_STATE_DIR, `canonical-session-state-${safe}.json`);
 }
 
 /** Claude Code settings file path. */

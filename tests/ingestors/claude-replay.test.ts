@@ -288,6 +288,7 @@ describe("writeSession", () => {
     const queryLog = join(tmpDir, "queries.jsonl");
     const telemetryLog = join(tmpDir, "telemetry.jsonl");
     const skillLog = join(tmpDir, "skills.jsonl");
+    const canonicalLog = join(tmpDir, "canonical.jsonl");
 
     const session = {
       transcript_path: "/path/to/transcript.jsonl",
@@ -309,9 +310,9 @@ describe("writeSession", () => {
       ],
     };
 
-    writeSession(session, false, queryLog, telemetryLog, skillLog);
+    writeSession(session, false, queryLog, telemetryLog, skillLog, canonicalLog);
 
-    // Should have TWO query records (one per user message)
+    // Raw logs should stay raw.
     const queryLines = readFileSync(queryLog, "utf-8").trim().split("\n");
     expect(queryLines).toHaveLength(2);
     const q1 = JSON.parse(queryLines[0]);
@@ -322,7 +323,6 @@ describe("writeSession", () => {
     expect(q2.query).toBe("second question");
     expect(q2.source).toBe("claude_code_replay");
 
-    // Should have ONE telemetry record
     const telemetryLines = readFileSync(telemetryLog, "utf-8").trim().split("\n");
     expect(telemetryLines).toHaveLength(1);
     const t = JSON.parse(telemetryLines[0]);
@@ -330,18 +330,26 @@ describe("writeSession", () => {
     expect(t.assistant_turns).toBe(3);
     expect(t.source).toBe("claude_code_replay");
 
-    // Should have ONE skill record
     const skillLines = readFileSync(skillLog, "utf-8").trim().split("\n");
     expect(skillLines).toHaveLength(1);
     const s = JSON.parse(skillLines[0]);
     expect(s.skill_name).toBe("MySkill");
     expect(s.source).toBe("claude_code_replay");
+
+    const canonicalLines = readFileSync(canonicalLog, "utf-8").trim().split("\n");
+    const canonicalRecords = canonicalLines.map((line: string) => JSON.parse(line));
+    expect(canonicalRecords.filter((record: Record<string, unknown>) => record.record_kind === "prompt")).toHaveLength(2);
+    const canonicalInvocation = canonicalRecords.find(
+      (record: Record<string, unknown>) => record.record_kind === "skill_invocation",
+    );
+    expect(canonicalInvocation?.matched_prompt_id).toBe("sess-write-test:p1");
   });
 
   test("skips polluted skill rows when last_user_query is not actionable", () => {
     const queryLog = join(tmpDir, "queries-meta.jsonl");
     const telemetryLog = join(tmpDir, "telemetry-meta.jsonl");
     const skillLog = join(tmpDir, "skills-meta.jsonl");
+    const canonicalLog = join(tmpDir, "canonical-meta.jsonl");
 
     const session = {
       transcript_path: "/path/to/transcript.jsonl",
@@ -361,17 +369,29 @@ describe("writeSession", () => {
       user_queries: [{ query: "review the reins repo", timestamp: "2026-03-15T00:00:00.000Z" }],
     };
 
-    writeSession(session, false, queryLog, telemetryLog, skillLog);
+    writeSession(session, false, queryLog, telemetryLog, skillLog, canonicalLog);
 
     expect(existsSync(queryLog)).toBe(true);
     expect(existsSync(telemetryLog)).toBe(true);
-    expect(existsSync(skillLog)).toBe(false);
+    // Raw skill records are skipped (last_user_query not actionable),
+    // but canonical skill invocations are still written with proper classification
+    if (existsSync(skillLog)) {
+      const skillLines = readFileSync(skillLog, "utf-8").trim().split("\n");
+      expect(skillLines.filter(Boolean)).toHaveLength(0);
+    }
+    const canonicalLines = readFileSync(canonicalLog, "utf-8").trim().split("\n");
+    expect(
+      canonicalLines
+        .map((line: string) => JSON.parse(line))
+        .some((record: Record<string, unknown>) => record.record_kind === "skill_invocation"),
+    ).toBe(true);
   });
 
   test("dry-run produces no files", () => {
     const queryLog = join(tmpDir, "queries.jsonl");
     const telemetryLog = join(tmpDir, "telemetry.jsonl");
     const skillLog = join(tmpDir, "skills.jsonl");
+    const canonicalLog = join(tmpDir, "canonical.jsonl");
 
     const session = {
       transcript_path: "/path/to/transcript.jsonl",
@@ -390,17 +410,19 @@ describe("writeSession", () => {
       user_queries: [{ query: "dry run test", timestamp: "" }],
     };
 
-    writeSession(session, true, queryLog, telemetryLog, skillLog);
+    writeSession(session, true, queryLog, telemetryLog, skillLog, canonicalLog);
 
     expect(existsSync(queryLog)).toBe(false);
     expect(existsSync(telemetryLog)).toBe(false);
     expect(existsSync(skillLog)).toBe(false);
+    expect(existsSync(canonicalLog)).toBe(false);
   });
 
   test("writes multiple skill records for multiple skills", () => {
     const queryLog = join(tmpDir, "queries.jsonl");
     const telemetryLog = join(tmpDir, "telemetry.jsonl");
     const skillLog = join(tmpDir, "skills.jsonl");
+    const canonicalLog = join(tmpDir, "canonical.jsonl");
 
     const session = {
       transcript_path: "/path/to/transcript.jsonl",
@@ -419,7 +441,7 @@ describe("writeSession", () => {
       user_queries: [{ query: "test multi skills", timestamp: "" }],
     };
 
-    writeSession(session, false, queryLog, telemetryLog, skillLog);
+    writeSession(session, false, queryLog, telemetryLog, skillLog, canonicalLog);
 
     const skillLines = readFileSync(skillLog, "utf-8").trim().split("\n");
     expect(skillLines).toHaveLength(2);

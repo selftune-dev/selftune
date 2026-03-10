@@ -360,6 +360,7 @@ describe("writeSession", () => {
     const queryLog = join(tmpDir, "queries.jsonl");
     const telemetryLog = join(tmpDir, "telemetry.jsonl");
     const skillLog = join(tmpDir, "skills.jsonl");
+    const canonicalLog = join(tmpDir, "canonical.jsonl");
 
     const session = {
       timestamp: "2026-03-15T00:00:00.000Z",
@@ -378,21 +379,28 @@ describe("writeSession", () => {
       transcript_chars: 1000,
     };
 
-    writeSession(session, false, queryLog, telemetryLog, skillLog);
+    writeSession(session, false, queryLog, telemetryLog, skillLog, canonicalLog);
 
-    const queryContent = readFileSync(queryLog, "utf-8").trim();
-    const queryRecord = JSON.parse(queryContent);
+    const queryLines = readFileSync(queryLog, "utf-8").trim().split("\n");
+    const queryRecord = JSON.parse(queryLines[0]);
     expect(queryRecord.query).toBe("Build an API");
     expect(queryRecord.source).toBe("opencode");
 
-    const telemetryContent = readFileSync(telemetryLog, "utf-8").trim();
-    const telemetryRecord = JSON.parse(telemetryContent);
+    const telemetryLines = readFileSync(telemetryLog, "utf-8").trim().split("\n");
+    const telemetryRecord = JSON.parse(telemetryLines[0]);
     expect(telemetryRecord.session_id).toBe("sess-oc-1");
 
-    const skillContent = readFileSync(skillLog, "utf-8").trim();
-    const skillRecord = JSON.parse(skillContent);
+    const skillLines = readFileSync(skillLog, "utf-8").trim().split("\n");
+    const skillRecord = JSON.parse(skillLines[0]);
     expect(skillRecord.skill_name).toBe("RestAPI");
     expect(skillRecord.skill_path).toBe("(opencode:RestAPI)");
+
+    const canonicalLines = readFileSync(canonicalLog, "utf-8").trim().split("\n");
+    expect(
+      canonicalLines
+        .map((line: string) => JSON.parse(line))
+        .some((record: Record<string, unknown>) => record.record_kind === "session"),
+    ).toBe(true);
   });
 });
 

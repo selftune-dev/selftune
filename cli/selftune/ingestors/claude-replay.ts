@@ -25,13 +25,26 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { parseArgs } from "node:util";
 import {
+  CANONICAL_LOG,
   CLAUDE_CODE_MARKER,
   CLAUDE_CODE_PROJECTS_DIR,
   QUERY_LOG,
   SKILL_LOG,
   TELEMETRY_LOG,
 } from "../constants.js";
+import {
+  appendCanonicalRecords,
+  buildCanonicalExecutionFact,
+  buildCanonicalPrompt,
+  buildCanonicalSession,
+  buildCanonicalSkillInvocation,
+  deriveInvocationMode,
+  derivePromptId,
+  deriveSkillInvocationId,
+  type CanonicalBaseInput,
+} from "../normalization.js";
 import type {
+  CanonicalRecord,
   QueryLogRecord,
   SessionTelemetryRecord,
   SkillUsageRecord,
@@ -214,6 +227,7 @@ export function writeSession(
   queryLogPath: string = QUERY_LOG,
   telemetryLogPath: string = TELEMETRY_LOG,
   skillLogPath: string = SKILL_LOG,
+  canonicalLogPath: string = CANONICAL_LOG,
 ): void {
   if (dryRun) {
     console.log(
@@ -276,6 +290,91 @@ export function writeSession(
     };
     appendJsonl(skillLogPath, skillRecord, "skill_usage");
   }
+
+  // --- Canonical normalization records (additive) ---
+  const canonicalRecords = buildCanonicalRecordsFromReplay(session);
+  appendCanonicalRecords(canonicalRecords, canonicalLogPath);
+}
+
+/** Build canonical records from a parsed Claude Code replay session. */
+export function buildCanonicalRecordsFromReplay(session: ParsedSession): CanonicalRecord[] {
+  const records: CanonicalRecord[] = [];
+  const latestPromptIndex =
+    session.user_queries.length > 0 ? session.user_queries.length - 1 : undefined;
+  const latestPromptId =
+    latestPromptIndex !== undefined ? derivePromptId(session.session_id, latestPromptIndex) : undefined;
+  const baseInput: CanonicalBaseInput = {
+    platform: "claude_code",
+    capture_mode: "replay",
+    source_session_kind: "replayed",
+    session_id: session.session_id,
+    raw_source_ref: {
+      path: session.transcript_path,
+      event_type: "claude_code_replay",
+    },
+  };
+
+  records.push(
+    buildCanonicalSession({
+      ...baseInput,
+      started_at: session.timestamp,
+    }),
+  );
+
+  // One canonical prompt per user query
+  for (let i = 0; i < session.user_queries.length; i++) {
+    const uq = session.user_queries[i];
+    records.push(
+      buildCanonicalPrompt({
+        ...baseInput,
+        prompt_id: derivePromptId(session.session_id, i),
+        occurred_at: uq.timestamp || session.timestamp,
+        prompt_text: uq.query,
+        prompt_index: i,
+      }),
+    );
+  }
+
+  // Skill invocation records — prefer invoked over triggered
+  const invoked = session.metrics.skills_invoked ?? [];
+  const skillSource = invoked.length > 0 ? invoked : session.metrics.skills_triggered;
+  const wasInvoked = invoked.length > 0;
+
+  for (let i = 0; i < skillSource.length; i++) {
+    const skillName = skillSource[i];
+    const { invocation_mode, confidence } = deriveInvocationMode({
+      has_skill_tool_call: wasInvoked,
+      has_skill_md_read: !wasInvoked,
+    });
+    records.push(
+      buildCanonicalSkillInvocation({
+        ...baseInput,
+        skill_invocation_id: deriveSkillInvocationId(session.session_id, skillName, i),
+        occurred_at: session.timestamp,
+        matched_prompt_id: latestPromptId ?? derivePromptId(session.session_id, 0),
+        skill_name: skillName,
+        skill_path: `(claude_code:${skillName})`,
+        invocation_mode,
+        triggered: wasInvoked,
+        confidence,
+      }),
+    );
+  }
+
+  records.push(
+    buildCanonicalExecutionFact({
+      ...baseInput,
+      occurred_at: session.timestamp,
+      prompt_id: latestPromptId,
+      tool_calls_json: session.metrics.tool_calls,
+      total_tool_calls: session.metrics.total_tool_calls,
+      bash_commands_redacted: session.metrics.bash_commands,
+      assistant_turns: session.metrics.assistant_turns,
+      errors_encountered: session.metrics.errors_encountered,
+    }),
+  );
+
+  return records;
 }
 
 // --- CLI main ---
