@@ -56,6 +56,12 @@
     "check": "bun run lint && bun run lint:arch && bun test",
     "start": "bun run cli/selftune/index.ts --help"
   },
+  "workspaces": [
+    "packages/*"
+  ],
+  "dependencies": {
+    "@selftune/telemetry-contract": "workspace:*"
+  },
   "devDependencies": {
     "@biomejs/biome": "2.4.6",
     "@types/bun": "^1.1.0"

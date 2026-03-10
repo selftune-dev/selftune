@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  CANONICAL_SCHEMA_VERSION,
-  isCanonicalRecord,
-} from "../../packages/telemetry-contract/index.js";
+import { CANONICAL_SCHEMA_VERSION, isCanonicalRecord } from "@selftune/telemetry-contract";
 
 describe("telemetry contract validators", () => {
   test("accepts a valid canonical prompt record", () => {
