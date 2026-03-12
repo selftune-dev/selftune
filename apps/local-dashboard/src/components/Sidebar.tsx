@@ -20,7 +20,7 @@ export function Sidebar({
   onSearchChange: (v: string) => void;
   statusFilter: SkillHealthStatus | "ALL";
   onStatusFilterChange: (v: SkillHealthStatus | "ALL") => void;
-  counts: Record<string, number>;
+  counts: Partial<Record<SkillHealthStatus, number>>;
 }) {
   const [collapsed, setCollapsed] = useState(false);
 

@@ -283,7 +283,7 @@ a { color: inherit; text-decoration: none; }
   display: flex;
   gap: 0.5rem;
   padding: 0.4rem 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.5);
 }
 .timeline-item:last-child { border-bottom: none; }
 
