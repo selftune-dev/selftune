@@ -55,11 +55,29 @@ One record per skill trigger event. Populated by skill-eval.ts (PostToolUse hook
   "session_id": "abc123",
   "skill_name": "pptx",
   "skill_path": "/mnt/skills/public/pptx/SKILL.md",
+  "skill_scope": "project",
+  "skill_project_root": "/home/user/projects/myapp",
+  "skill_registry_dir": "/home/user/projects/myapp/.agents/skills",
+  "skill_path_resolution_source": "raw_log",
   "query": "Make me a slide deck for the board meeting",
   "triggered": true,
   "source": "claude_code"
 }
 ```
+
+Optional provenance fields:
+- `skill_scope`: `project | global | admin | system | unknown`
+- `skill_project_root`: resolved repo/worktree root when the skill came from a project-local registry
+- `skill_registry_dir`: the registry directory where the resolved `SKILL.md` came from
+- `skill_path_resolution_source`: `raw_log | installed_scope | launcher_base_dir | fallback`
+
+The repaired overlay at `~/.claude/skill_usage_repaired.jsonl` uses the same
+record shape, but is rebuilt from source-truth transcripts/rollouts rather than
+hooks alone.
+
+Notes:
+- `launcher_base_dir` means selftune recovered Claude's `Base directory for this skill:` launcher metadata. If that recovered `SKILL.md` path points into a stable registry like `~/.agents/skills`, `~/.claude/skills`, `/etc/codex/skills`, or a real project checkout, selftune now reclassifies the invocation into the matching `skill_scope`. Ephemeral temp launcher directories still remain `unknown`.
+- `fallback` means selftune confirmed a skill invocation but could not yet resolve a concrete `SKILL.md` path.
 
 ---
 

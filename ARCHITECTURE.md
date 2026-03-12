@@ -7,6 +7,7 @@
 | Bootstrap | `cli/selftune/init.ts` | Agent detection, config write, hook check | B |
 | Telemetry | `cli/selftune/hooks/` | Session capture hooks and log writers | B |
 | Ingestors | `cli/selftune/ingestors/` | Platform adapters (Claude Code, Codex, OpenCode, OpenClaw) | B |
+| Source Sync | `cli/selftune/sync.ts`, `cli/selftune/repair/skill-usage.ts` | Source-truth sync orchestration + repaired overlay rebuild | B |
 | Cron | `cli/selftune/cron/` | OpenClaw cron job management (setup, list, remove) | B |
 | Eval | `cli/selftune/eval/` | False negative detection, eval generation (log-based + synthetic), baseline, unit tests, composability, SkillsBench import | B |
 | Grading | `cli/selftune/grading/` | 3-tier session grading with pre-gates + graduated scoring | B |
@@ -27,7 +28,9 @@
 Observe → Detect → Diagnose → Propose → Validate → Deploy → Watch → Repeat
 ```
 
-Telemetry feeds Ingestors, Ingestors feed Eval, Eval feeds Grading, Grading feeds Evolution.
+Hooks provide low-latency local signal, but the authoritative pipeline is now
+source-truth first: transcripts/rollouts feed `sync`, `sync` rebuilds repaired
+overlays, then Eval feeds Grading, Grading feeds Evolution.
 
 ## Module Architecture
 
@@ -62,7 +65,10 @@ cli/selftune/
 ├── ingestors/            Platform adapters (normalize)
 │     │              (incl. openclaw-ingest.ts)
 │     v
-├── cron/            OpenClaw cron job management
+├── sync.ts              Source-truth sync orchestration + repaired overlay rebuild
+│     │
+│     v
+├── cron/                OpenClaw cron job management
 │     │
 │     v
 │   Shared Log Schema (~/.claude/*.jsonl)
@@ -116,6 +122,7 @@ tests/sandbox/
 | Enforcement | `cli/selftune/hooks/` | `evolution-guard.ts`, `skill-change-guard.ts` | Block unguarded SKILL.md edits | Shared only |
 | Memory | `cli/selftune/memory/` | `writer.ts` | Persist evolution context across resets | Shared only |
 | Ingestors | `cli/selftune/ingestors/` | `codex-wrapper.ts`, `codex-rollout.ts`, `opencode-ingest.ts`, `openclaw-ingest.ts`, `claude-replay.ts` | Normalize platform data | Shared only |
+| Source Sync | `cli/selftune/` | `sync.ts`, `repair/skill-usage.ts` | Rebuild source-truth telemetry and repaired overlays before downstream analysis | Shared, Ingestors |
 | Cron | `cli/selftune/cron/` | `setup.ts` | OpenClaw cron job management | Shared only |
 | Eval | `cli/selftune/eval/` | `hooks-to-evals.ts`, `synthetic-evals.ts`, `baseline.ts`, `unit-test.ts`, `generate-unit-tests.ts`, `composability.ts`, `import-skillsbench.ts` | Detect false negatives, generate eval sets (log-based + synthetic), baseline comparison, unit tests, composability analysis, SkillsBench import | Shared only |
 | Grading | `cli/selftune/grading/` | `grade-session.ts`, `pre-gates.ts` | Grade sessions across 3 tiers with pre-gates + graduated scoring | Shared only |
@@ -170,6 +177,7 @@ All modules communicate through four JSONL files:
 |------|--------|--------|
 | `~/.claude/session_telemetry_log.jsonl` | Telemetry, Ingestors | Eval, Grading, Status, Last, Dashboard |
 | `~/.claude/skill_usage_log.jsonl` | Telemetry | Eval, Status, Last, Dashboard |
+| `~/.claude/skill_usage_repaired.jsonl` | Source Sync / Repair | Eval, Status, Last, Dashboard |
 | `~/.claude/all_queries_log.jsonl` | Telemetry, Ingestors | Eval, Status, Last, Dashboard |
 | `~/.claude/evolution_audit_log.jsonl` | Evolution | Monitoring, Status, Dashboard |
 

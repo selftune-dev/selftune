@@ -21,8 +21,8 @@
  *   bun claude-replay.ts --force
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
+import { statSync } from "node:fs";
+import { basename } from "node:path";
 import { parseArgs } from "node:util";
 import {
   CANONICAL_LOG,
@@ -52,7 +52,11 @@ import type {
 } from "../types.js";
 import { appendJsonl, loadMarker, saveMarker } from "../utils/jsonl.js";
 import { isActionableQueryText } from "../utils/query-filter.js";
-import { parseTranscript } from "../utils/transcript.js";
+import {
+  extractActionableUserQueries,
+  findTranscriptFiles as findTranscriptFilesShared,
+  parseTranscript,
+} from "../utils/transcript.js";
 
 export interface ParsedSession {
   transcript_path: string;
@@ -63,54 +67,19 @@ export interface ParsedSession {
 }
 
 /**
- * Find all .jsonl transcript files under projectsDir/<hash>/<session>.jsonl.
- * If `since` is given, only return files with mtime >= since.
+ * Find all .jsonl transcript files under the Claude projects tree.
+ *
+ * Claude stores the main session transcript at:
+ *   projects/<hash>/<session>.jsonl
+ *
+ * But newer sessions and agent-sidechains may also write nested transcripts such as:
+ *   projects/<hash>/subagents/<agent>.jsonl
+ *
+ * We scan recursively so replay, repair, and canonical export see the full source-of-truth
+ * transcript set instead of only top-level sessions.
  */
 export function findTranscriptFiles(projectsDir: string, since?: Date): string[] {
-  if (!existsSync(projectsDir)) return [];
-
-  const files: string[] = [];
-
-  let hashDirs: string[];
-  try {
-    hashDirs = readdirSync(projectsDir).sort();
-  } catch {
-    return [];
-  }
-
-  for (const hashEntry of hashDirs) {
-    const hashDir = join(projectsDir, hashEntry);
-    try {
-      if (!statSync(hashDir).isDirectory()) continue;
-    } catch {
-      continue;
-    }
-
-    let sessionFiles: string[];
-    try {
-      sessionFiles = readdirSync(hashDir).sort();
-    } catch {
-      continue;
-    }
-
-    for (const file of sessionFiles) {
-      if (!file.endsWith(".jsonl")) continue;
-
-      const filePath = join(hashDir, file);
-      if (since) {
-        try {
-          const mtime = statSync(filePath).mtime;
-          if (mtime < since) continue;
-        } catch {
-          continue;
-        }
-      }
-
-      files.push(filePath);
-    }
-  }
-
-  return files.sort();
+  return findTranscriptFilesShared(projectsDir, since);
 }
 
 /**
@@ -125,64 +94,7 @@ export function findTranscriptFiles(projectsDir: string, since?: Date): string[]
 export function extractAllUserQueries(
   transcriptPath: string,
 ): Array<{ query: string; timestamp: string }> {
-  if (!existsSync(transcriptPath)) return [];
-
-  let content: string;
-  try {
-    content = readFileSync(transcriptPath, "utf-8");
-  } catch {
-    return [];
-  }
-
-  const results: Array<{ query: string; timestamp: string }> = [];
-
-  for (const raw of content.split("\n")) {
-    const line = raw.trim();
-    if (!line) continue;
-
-    let entry: Record<string, unknown>;
-    try {
-      entry = JSON.parse(line);
-    } catch {
-      continue;
-    }
-
-    // Normalise: unwrap nested message if present
-    const msg = (entry.message as Record<string, unknown>) ?? entry;
-    const role = (msg.role as string) ?? (entry.role as string) ?? "";
-
-    if (role !== "user") continue;
-
-    const entryContent = msg.content ?? entry.content ?? "";
-    let text = "";
-
-    if (typeof entryContent === "string") {
-      text = entryContent.trim();
-    } else if (Array.isArray(entryContent)) {
-      const texts = entryContent
-        .filter(
-          (p): p is Record<string, unknown> =>
-            typeof p === "object" && p !== null && (p as Record<string, unknown>).type === "text",
-        )
-        .map((p) => (p.text as string) ?? "")
-        .filter(Boolean);
-      text = texts.join(" ").trim();
-    }
-
-    if (!text) continue;
-
-    if (!isActionableQueryText(text)) continue;
-
-    // Apply 4-char minimum length filter
-    if (text.length < 4) continue;
-
-    // Extract timestamp from entry if present, else empty string
-    const timestamp = (entry.timestamp as string) ?? (msg.timestamp as string) ?? "";
-
-    results.push({ query: text, timestamp });
-  }
-
-  return results;
+  return extractActionableUserQueries(transcriptPath);
 }
 
 /**

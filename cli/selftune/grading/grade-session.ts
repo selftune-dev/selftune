@@ -9,16 +9,22 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 
-import { AGENT_CANDIDATES, TELEMETRY_LOG } from "../constants.js";
+import {
+  AGENT_CANDIDATES,
+  CLAUDE_CODE_PROJECTS_DIR,
+  SELFTUNE_CONFIG_DIR,
+  TELEMETRY_LOG,
+} from "../constants.js";
 import type {
   ExecutionMetrics,
   GraderOutput,
   GradingExpectation,
   GradingResult,
   SessionTelemetryRecord,
+  SkillUsageRecord,
 } from "../types.js";
 import { readJsonl } from "../utils/jsonl.js";
 import {
@@ -27,7 +33,11 @@ import {
   callViaAgent,
 } from "../utils/llm-call.js";
 import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
-import { readExcerpt } from "../utils/transcript.js";
+import {
+  buildTelemetryFromTranscript,
+  findTranscriptPathForSession,
+  readExcerpt,
+} from "../utils/transcript.js";
 import { type PreGateContext, runPreGates } from "./pre-gates.js";
 
 // Re-export for backward compatibility
@@ -109,6 +119,137 @@ export function latestSessionForSkill(
     if (telemetry[i].skills_triggered?.includes(skillName)) return telemetry[i];
   }
   return null;
+}
+
+export function latestSkillUsageForSkill(
+  skillUsage: SkillUsageRecord[],
+  skillName: string,
+): SkillUsageRecord | null {
+  for (let i = skillUsage.length - 1; i >= 0; i--) {
+    const record = skillUsage[i];
+    if (record.skill_name === skillName && record.triggered) return record;
+  }
+  return null;
+}
+
+export interface ResolvedSessionContext {
+  telemetry: SessionTelemetryRecord;
+  sessionId: string;
+  transcriptPath: string;
+  source: "telemetry" | "transcript_fallback" | "skill_usage_fallback";
+}
+
+function buildSkillUsageFallbackTelemetry(record: SkillUsageRecord): SessionTelemetryRecord {
+  return {
+    timestamp: record.timestamp,
+    session_id: record.session_id,
+    cwd: "",
+    transcript_path: "",
+    tool_calls: {},
+    total_tool_calls: 0,
+    bash_commands: [],
+    skills_triggered: [record.skill_name],
+    skills_invoked: [record.skill_name],
+    assistant_turns: 0,
+    errors_encountered: 0,
+    transcript_chars: 0,
+    last_user_query: record.query,
+    source: record.source ?? "skill_usage_fallback",
+  };
+}
+
+export function resolveSessionById(
+  telemetry: SessionTelemetryRecord[],
+  sessionId: string,
+  projectsDir: string = CLAUDE_CODE_PROJECTS_DIR,
+): ResolvedSessionContext | null {
+  const direct = findSession(telemetry, sessionId);
+  if (direct) {
+    return {
+      telemetry: direct,
+      sessionId: direct.session_id,
+      transcriptPath: direct.transcript_path ?? "",
+      source: "telemetry",
+    };
+  }
+
+  const transcriptPath = findTranscriptPathForSession(sessionId, projectsDir);
+  if (!transcriptPath) return null;
+
+  const rebuilt = buildTelemetryFromTranscript(sessionId, transcriptPath);
+  if (!rebuilt) return null;
+
+  return {
+    telemetry: rebuilt,
+    sessionId,
+    transcriptPath,
+    source: "transcript_fallback",
+  };
+}
+
+export function resolveLatestSessionForSkill(
+  telemetry: SessionTelemetryRecord[],
+  skillUsage: SkillUsageRecord[],
+  skillName: string,
+  projectsDir: string = CLAUDE_CODE_PROJECTS_DIR,
+): ResolvedSessionContext | null {
+  const direct = latestSessionForSkill(telemetry, skillName);
+  if (direct) {
+    return {
+      telemetry: direct,
+      sessionId: direct.session_id,
+      transcriptPath: direct.transcript_path ?? "",
+      source: "telemetry",
+    };
+  }
+
+  const usage = latestSkillUsageForSkill(skillUsage, skillName);
+  if (!usage) return null;
+
+  const transcriptPath = findTranscriptPathForSession(usage.session_id, projectsDir);
+  if (!transcriptPath) {
+    const fallback = buildSkillUsageFallbackTelemetry(usage);
+    return {
+      telemetry: fallback,
+      sessionId: fallback.session_id,
+      transcriptPath: fallback.transcript_path,
+      source: "skill_usage_fallback",
+    };
+  }
+
+  const rebuilt = buildTelemetryFromTranscript(usage.session_id, transcriptPath);
+  if (!rebuilt) {
+    const fallback = buildSkillUsageFallbackTelemetry(usage);
+    fallback.transcript_path = transcriptPath;
+    return {
+      telemetry: fallback,
+      sessionId: fallback.session_id,
+      transcriptPath,
+      source: "skill_usage_fallback",
+    };
+  }
+
+  if (!rebuilt.skills_triggered.includes(skillName)) {
+    rebuilt.skills_triggered = [...rebuilt.skills_triggered, skillName];
+  }
+  if (rebuilt.skills_invoked && !rebuilt.skills_invoked.includes(skillName)) {
+    rebuilt.skills_invoked = [...rebuilt.skills_invoked, skillName];
+  }
+  if (!rebuilt.last_user_query) {
+    rebuilt.last_user_query = usage.query;
+  }
+
+  return {
+    telemetry: rebuilt,
+    sessionId: rebuilt.session_id,
+    transcriptPath,
+    source: "transcript_fallback",
+  };
+}
+
+export function buildDefaultGradingOutputPath(sessionId: string): string {
+  const safeSessionId = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return join(SELFTUNE_CONFIG_DIR, "grading", `result-${safeSessionId}.json`);
 }
 
 export function loadExpectationsFromEvalsJson(evalsJsonPath: string, evalId: number): string[] {
@@ -569,7 +710,7 @@ export async function cliMain(): Promise<void> {
       "session-id": { type: "string" },
       transcript: { type: "string" },
       "telemetry-log": { type: "string", default: TELEMETRY_LOG },
-      output: { type: "string", default: "grading.json" },
+      output: { type: "string" },
       agent: { type: "string" },
       "show-transcript": { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
@@ -592,7 +733,7 @@ Options:
   --session-id        Grade a specific session by ID
   --transcript        Path to transcript file
   --telemetry-log     Path to telemetry log (default: ~/.claude/session_telemetry_log.jsonl)
-  --output            Output path for grading JSON (default: grading.json)
+  --output            Output path for grading JSON (default: ~/.selftune/grading/result-<session>.json)
   --agent             Agent CLI to use (${AGENT_CANDIDATES.join(", ")})
   --show-transcript   Print transcript excerpt before grading
   -h, --help          Show this help message`);
@@ -663,9 +804,15 @@ Options:
 
   const telemetryLog = values["telemetry-log"] ?? TELEMETRY_LOG;
   const telRecords = readJsonl<SessionTelemetryRecord>(telemetryLog);
+  const skillUsageRecords = readEffectiveSkillUsageRecords();
 
   if (values.transcript) {
     transcriptPath = values.transcript;
+    telemetry =
+      buildTelemetryFromTranscript(
+        values["session-id"] ?? basename(transcriptPath, ".jsonl"),
+        transcriptPath,
+      ) ?? ({} as SessionTelemetryRecord);
     for (let i = telRecords.length - 1; i >= 0; i--) {
       if (telRecords[i].transcript_path === transcriptPath) {
         telemetry = telRecords[i];
@@ -673,18 +820,25 @@ Options:
         break;
       }
     }
+    if (telemetry.session_id) sessionId = telemetry.session_id;
   } else if (values["session-id"]) {
     sessionId = values["session-id"];
-    telemetry = findSession(telRecords, sessionId) ?? ({} as SessionTelemetryRecord);
-    transcriptPath = telemetry.transcript_path ?? "";
+    const resolved = resolveSessionById(telRecords, sessionId);
+    telemetry = resolved?.telemetry ?? ({} as SessionTelemetryRecord);
+    transcriptPath = resolved?.transcriptPath ?? "";
   } else {
-    telemetry = latestSessionForSkill(telRecords, skill) ?? ({} as SessionTelemetryRecord);
-    if (telemetry.session_id) {
-      sessionId = telemetry.session_id;
-      transcriptPath = telemetry.transcript_path ?? "";
-      console.error(`[INFO] Grading most recent '${skill}' session: ${sessionId}`);
+    const resolved = resolveLatestSessionForSkill(telRecords, skillUsageRecords, skill);
+    telemetry = resolved?.telemetry ?? ({} as SessionTelemetryRecord);
+    if (resolved) {
+      sessionId = resolved.sessionId;
+      transcriptPath = resolved.transcriptPath;
+      const note =
+        resolved.source === "telemetry" ? "" : ` (${resolved.source.replaceAll("_", " ")})`;
+      console.error(`[INFO] Grading most recent '${skill}' session: ${sessionId}${note}`);
     } else {
-      console.error(`[WARN] No telemetry for skill '${skill}'. Is session_stop_hook installed?`);
+      console.error(
+        `[WARN] No session found for skill '${skill}' in telemetry or recovered usage data.`,
+      );
     }
   }
 
@@ -712,7 +866,7 @@ Options:
     process.exit(1);
   }
 
-  const outputPath = values.output ?? "grading.json";
+  const outputPath = values.output ?? buildDefaultGradingOutputPath(sessionId);
   const outputDir = dirname(outputPath);
   if (outputDir !== ".") {
     mkdirSync(outputDir, { recursive: true });

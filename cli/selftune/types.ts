@@ -31,6 +31,10 @@ export interface SkillUsageRecord {
   session_id: string;
   skill_name: string;
   skill_path: string;
+  skill_scope?: "project" | "global" | "admin" | "system" | "unknown";
+  skill_project_root?: string;
+  skill_registry_dir?: string;
+  skill_path_resolution_source?: "raw_log" | "installed_scope" | "launcher_base_dir" | "fallback";
   query: string;
   triggered: boolean;
   source?: string;
@@ -74,7 +78,7 @@ export type {
   CanonicalSessionRecord,
   CanonicalSkillInvocationRecord,
   CanonicalSourceSessionKind,
-} from "../../packages/telemetry-contract/index.js";
+} from "@selftune/telemetry-contract";
 // ---------------------------------------------------------------------------
 // Canonical normalization types (local + cloud projection layer)
 // ---------------------------------------------------------------------------
@@ -87,7 +91,7 @@ export {
   CANONICAL_RECORD_KINDS,
   CANONICAL_SCHEMA_VERSION,
   CANONICAL_SOURCE_SESSION_KINDS,
-} from "../../packages/telemetry-contract/index.js";
+} from "@selftune/telemetry-contract";
 
 // ---------------------------------------------------------------------------
 // Transcript parsing

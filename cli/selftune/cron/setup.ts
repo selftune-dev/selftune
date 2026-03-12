@@ -31,29 +31,32 @@ export interface CronJobConfig {
 
 export const DEFAULT_CRON_JOBS: CronJobConfig[] = [
   {
-    name: "selftune-ingest",
+    name: "selftune-sync",
     cron: "*/30 * * * *",
-    message: "Run selftune ingest-openclaw to capture any new sessions.",
-    description: "Ingest new sessions every 30 minutes",
+    message:
+      "Run selftune sync to replay and ingest new Claude Code, Codex, OpenCode, and OpenClaw source data, then rebuild the repaired skill-usage overlay.",
+    description: "Sync source-truth telemetry every 30 minutes",
   },
   {
     name: "selftune-status",
     cron: "0 8 * * *",
-    message: "Run selftune status --json and report any skills with pass rate below 80%.",
-    description: "Daily health check at 8am",
+    message:
+      "Run selftune sync first, then run selftune status --json and report any skills with pass rate below 80% or still ungraded due to sparse recent checks.",
+    description: "Daily health check after source sync",
   },
   {
     name: "selftune-evolve",
     cron: "0 3 * * 0",
     message:
-      "Run the full selftune evolution pipeline: ingest new sessions, check status, evolve any undertriggering skills, and report results.",
+      "Run selftune sync, review source-truth status, and run selftune evolve --sync-first for any skills with enough negative evidence or clear undertriggering patterns. Report proposed changes and validation results.",
     description: "Weekly evolution at 3am Sunday",
   },
   {
     name: "selftune-watch",
     cron: "0 */6 * * *",
-    message: "Run selftune watch on all recently evolved skills to detect regressions.",
-    description: "Monitor regressions every 6 hours",
+    message:
+      "Run selftune sync first, then run selftune watch --sync-first on all recently evolved skills to detect regressions against the latest source-truth telemetry.",
+    description: "Monitor regressions every 6 hours after source sync",
   },
 ];
 

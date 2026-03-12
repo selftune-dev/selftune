@@ -17,11 +17,14 @@ import { AGENT_CANDIDATES, TELEMETRY_LOG } from "../constants.js";
 import type { GradingResult, SessionTelemetryRecord } from "../types.js";
 import { readJsonl } from "../utils/jsonl.js";
 import { detectAgent as _detectAgent } from "../utils/llm-call.js";
+import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
 import { readExcerpt } from "../utils/transcript.js";
 import {
+  buildDefaultGradingOutputPath,
   deriveExpectationsFromSkill,
   gradeSession,
-  latestSessionForSkill,
+  resolveLatestSessionForSkill,
+  resolveSessionById,
 } from "./grade-session.js";
 
 export async function cliMain(): Promise<void> {
@@ -31,7 +34,7 @@ export async function cliMain(): Promise<void> {
       "skill-path": { type: "string" },
       "session-id": { type: "string" },
       "telemetry-log": { type: "string", default: TELEMETRY_LOG },
-      output: { type: "string", default: "grading.json" },
+      output: { type: "string" },
       agent: { type: "string" },
       "show-transcript": { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
@@ -50,7 +53,7 @@ Options:
   --skill-path        Path to SKILL.md (auto-detected if omitted)
   --session-id        Grade a specific session (auto-detects most recent if omitted)
   --telemetry-log     Path to telemetry log (default: ~/.claude/session_telemetry_log.jsonl)
-  --output            Output path for grading JSON (default: grading.json)
+  --output            Output path for grading JSON (default: ~/.selftune/grading/result-<session>.json)
   --agent             Agent CLI to use (${AGENT_CANDIDATES.join(", ")})
   --show-transcript   Print transcript excerpt before grading
   -h, --help          Show this help message`);
@@ -91,6 +94,7 @@ Options:
   // --- Auto-find session ---
   const telemetryLog = values["telemetry-log"] ?? TELEMETRY_LOG;
   const telRecords = readJsonl<SessionTelemetryRecord>(telemetryLog);
+  const skillUsageRecords = readEffectiveSkillUsageRecords();
 
   let telemetry: SessionTelemetryRecord;
   let sessionId: string;
@@ -98,28 +102,30 @@ Options:
 
   if (values["session-id"]) {
     sessionId = values["session-id"];
-    const found = telRecords.find((r) => r.session_id === sessionId);
-    if (!found) {
+    const resolved = resolveSessionById(telRecords, sessionId);
+    if (!resolved) {
       console.error(
-        `[ERROR] Session '${sessionId}' not found in telemetry log. ` +
+        `[ERROR] Session '${sessionId}' not found in telemetry or recoverable transcript data. ` +
           "Check the session ID or omit --session-id to auto-select the latest matching session.",
       );
       process.exit(1);
     }
-    telemetry = found;
-    transcriptPath = found.transcript_path ?? "";
+    telemetry = resolved.telemetry;
+    transcriptPath = resolved.transcriptPath;
   } else {
-    const found = latestSessionForSkill(telRecords, skill);
-    if (!found) {
+    const resolved = resolveLatestSessionForSkill(telRecords, skillUsageRecords, skill);
+    if (!resolved) {
       console.error(
         `[ERROR] No session found for skill '${skill}'. Run the skill first, or pass --session-id.`,
       );
       process.exit(1);
     }
-    telemetry = found;
-    sessionId = found.session_id ?? "unknown";
-    transcriptPath = found.transcript_path ?? "";
-    console.error(`[INFO] Found most recent '${skill}' session: ${sessionId}`);
+    telemetry = resolved.telemetry;
+    sessionId = resolved.sessionId ?? "unknown";
+    transcriptPath = resolved.transcriptPath ?? "";
+    const note =
+      resolved.source === "telemetry" ? "" : ` (${resolved.source.replaceAll("_", " ")})`;
+    console.error(`[INFO] Found most recent '${skill}' session: ${sessionId}${note}`);
   }
 
   const transcriptExcerpt = transcriptPath ? readExcerpt(transcriptPath) : "(no transcript)";
@@ -157,7 +163,7 @@ Options:
     process.exit(1);
   }
 
-  const outputPath = values.output ?? "grading.json";
+  const outputPath = values.output ?? buildDefaultGradingOutputPath(sessionId);
   const outputDir = dirname(outputPath);
   if (outputDir !== ".") {
     mkdirSync(outputDir, { recursive: true });

@@ -3,7 +3,7 @@
  * and action endpoints for the interactive dashboard.
  *
  * Endpoints:
- *   GET  /              — Serve dashboard HTML with embedded data + live mode flag
+ *   GET  /              — Serve dashboard HTML shell + live mode flag
  *   GET  /api/data      — JSON endpoint returning current telemetry data
  *   GET  /api/events    — SSE stream sending data updates every 5 seconds
  *   POST /api/actions/watch    — Trigger `selftune watch` for a skill
@@ -24,7 +24,7 @@ import { readDecisions } from "./memory/writer.js";
 import { computeMonitoringSnapshot } from "./monitoring/watch.js";
 import { doctor } from "./observability.js";
 import type { StatusResult } from "./status.js";
-import { computeStatus } from "./status.js";
+import { computeStatus, DEFAULT_WINDOW_SESSIONS } from "./status.js";
 import type {
   EvolutionAuditEntry,
   EvolutionEvidenceEntry,
@@ -32,7 +32,6 @@ import type {
   SessionTelemetryRecord,
   SkillUsageRecord,
 } from "./types.js";
-import { escapeJsonForHtmlScript } from "./utils/html.js";
 import { readJsonl } from "./utils/jsonl.js";
 import {
   filterActionableQueryRecords,
@@ -46,7 +45,11 @@ export interface DashboardServerOptions {
   openBrowser?: boolean;
   dataLoader?: () => DashboardData;
   statusLoader?: () => StatusResult;
+  evidenceLoader?: () => EvolutionEvidenceEntry[];
+  actionRunner?: typeof runAction;
 }
+
+const LIVE_CACHE_TTL_MS = 30_000;
 
 interface DashboardData {
   telemetry: SessionTelemetryRecord[];
@@ -59,6 +62,34 @@ interface DashboardData {
     snapshots: Record<string, ReturnType<typeof computeMonitoringSnapshot>>;
     unmatched: Array<{ timestamp: string; session_id: string; query: string }>;
     pendingProposals: EvolutionAuditEntry[];
+  };
+}
+
+interface LiveDashboardPayload {
+  telemetry: Array<
+    Pick<
+      SessionTelemetryRecord,
+      "timestamp" | "session_id" | "skills_triggered" | "errors_encountered" | "total_tool_calls"
+    >
+  >;
+  skills: Array<
+    Pick<
+      SkillUsageRecord,
+      "timestamp" | "session_id" | "skill_name" | "skill_path" | "query" | "triggered" | "source"
+    >
+  >;
+  queries: Array<Pick<QueryLogRecord, never>>;
+  evolution: Array<Pick<EvolutionAuditEntry, "timestamp" | "proposal_id" | "action" | "details">>;
+  evidence: Array<Pick<EvolutionEvidenceEntry, never>>;
+  decisions: DashboardData["decisions"];
+  computed: DashboardData["computed"] & { unmatched_count: number };
+  counts: {
+    telemetry: number;
+    skills: number;
+    queries: number;
+    evolution: number;
+    evidence: number;
+    decisions: number;
   };
 }
 
@@ -94,7 +125,7 @@ function collectData(): DashboardData {
       telemetry,
       skills,
       actionableQueries,
-      telemetry.length,
+      DEFAULT_WINDOW_SESSIONS,
       baselinePassRate,
     );
   }
@@ -150,15 +181,54 @@ function computeStatusFromLogs(): StatusResult {
   return computeStatus(telemetry, skillRecords, queryRecords, auditEntries, doctorResult);
 }
 
-function buildLiveHTML(data: DashboardData): string {
+function buildLivePayload(data: DashboardData): LiveDashboardPayload {
+  return {
+    telemetry: data.telemetry.map((record) => ({
+      timestamp: record.timestamp,
+      session_id: record.session_id,
+      skills_triggered: record.skills_triggered,
+      errors_encountered: record.errors_encountered,
+      total_tool_calls: record.total_tool_calls,
+    })),
+    skills: data.skills.map((record) => ({
+      timestamp: record.timestamp,
+      session_id: record.session_id,
+      skill_name: record.skill_name,
+      skill_path: record.skill_path,
+      query: record.query,
+      triggered: record.triggered,
+      source: record.source,
+    })),
+    queries: [],
+    evolution: data.evolution.map((record) => ({
+      timestamp: record.timestamp,
+      proposal_id: record.proposal_id,
+      action: record.action,
+      details: record.details,
+    })),
+    evidence: [],
+    decisions: data.decisions,
+    computed: {
+      ...data.computed,
+      unmatched: data.computed.unmatched.slice(0, 500),
+      unmatched_count: data.computed.unmatched.length,
+    },
+    counts: {
+      telemetry: data.telemetry.length,
+      skills: data.skills.length,
+      queries: data.queries.length,
+      evolution: data.evolution.length,
+      evidence: data.evidence.length,
+      decisions: data.decisions.length,
+    },
+  };
+}
+
+function buildLiveHTML(): string {
   const template = readFileSync(findViewerHTML(), "utf-8");
-
-  const safeJson = escapeJsonForHtmlScript(data);
-  const encodedJson = Buffer.from(safeJson, "utf8").toString("base64");
   const liveFlag = "<script>window.__SELFTUNE_LIVE__ = true;</script>";
-  const dataScript = `<script id="embedded-data" type="application/json" data-encoding="base64">${encodedJson}</script>`;
 
-  return template.replace("</body>", `${liveFlag}\n${dataScript}\n</body>`);
+  return template.replace("</body>", `${liveFlag}\n</body>`);
 }
 
 interface MergedEvidenceEntry {
@@ -462,8 +532,73 @@ export async function startDashboardServer(
   const openBrowser = options?.openBrowser ?? true;
   const getDashboardData = options?.dataLoader ?? collectData;
   const getStatusResult = options?.statusLoader ?? computeStatusFromLogs;
+  const getEvidenceEntries = options?.evidenceLoader ?? readEvidenceTrail;
+  const executeAction = options?.actionRunner ?? runAction;
 
   const sseClients = new Set<ReadableStreamDefaultController>();
+  let cachedDashboardData: DashboardData | null = null;
+  let cachedLivePayload: LiveDashboardPayload | null = null;
+  let cachedStatusResult: StatusResult | null = null;
+  let lastDataCacheRefreshAt = 0;
+  let lastStatusCacheRefreshAt = 0;
+  let dataRefreshPromise: Promise<void> | null = null;
+  let statusRefreshPromise: Promise<void> | null = null;
+
+  async function refreshLiveCache(force = false): Promise<void> {
+    const cacheIsFresh =
+      cachedDashboardData !== null && Date.now() - lastDataCacheRefreshAt < LIVE_CACHE_TTL_MS;
+    if (!force && cacheIsFresh) return;
+    if (dataRefreshPromise) return dataRefreshPromise;
+
+    dataRefreshPromise = (async () => {
+      const data = getDashboardData();
+      cachedDashboardData = data;
+      cachedLivePayload = buildLivePayload(data);
+      lastDataCacheRefreshAt = Date.now();
+    })();
+
+    try {
+      await dataRefreshPromise;
+    } finally {
+      dataRefreshPromise = null;
+    }
+  }
+
+  async function refreshStatusCache(force = false): Promise<void> {
+    const cacheIsFresh =
+      cachedStatusResult !== null && Date.now() - lastStatusCacheRefreshAt < LIVE_CACHE_TTL_MS;
+    if (!force && cacheIsFresh) return;
+    if (statusRefreshPromise) return statusRefreshPromise;
+
+    statusRefreshPromise = (async () => {
+      cachedStatusResult = getStatusResult();
+      lastStatusCacheRefreshAt = Date.now();
+    })();
+
+    try {
+      await statusRefreshPromise;
+    } finally {
+      statusRefreshPromise = null;
+    }
+  }
+
+  async function getCachedLivePayload(): Promise<LiveDashboardPayload> {
+    if (!cachedLivePayload) {
+      await refreshLiveCache(true);
+    } else {
+      void refreshLiveCache(false);
+    }
+    return cachedLivePayload as LiveDashboardPayload;
+  }
+
+  async function getCachedStatusResult(): Promise<StatusResult> {
+    if (!cachedStatusResult) {
+      await refreshStatusCache(true);
+    } else {
+      void refreshStatusCache(false);
+    }
+    return cachedStatusResult as StatusResult;
+  }
 
   const server = Bun.serve({
     port,
@@ -478,8 +613,7 @@ export async function startDashboardServer(
 
       // ---- GET / ---- Serve dashboard HTML
       if (url.pathname === "/" && req.method === "GET") {
-        const data = getDashboardData();
-        const html = buildLiveHTML(data);
+        const html = buildLiveHTML();
         return new Response(html, {
           headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders() },
         });
@@ -487,26 +621,26 @@ export async function startDashboardServer(
 
       // ---- GET /api/data ---- JSON data endpoint
       if (url.pathname === "/api/data" && req.method === "GET") {
-        const data = getDashboardData();
-        return Response.json(data, { headers: corsHeaders() });
+        const payload = await getCachedLivePayload();
+        return Response.json(payload, { headers: corsHeaders() });
       }
 
       // ---- GET /api/events ---- SSE stream
       if (url.pathname === "/api/events" && req.method === "GET") {
         const stream = new ReadableStream({
-          start(controller) {
+          async start(controller) {
             sseClients.add(controller);
 
             // Send initial data immediately
-            const data = getDashboardData();
-            const payload = `event: data\ndata: ${JSON.stringify(data)}\n\n`;
+            const initialPayload = await getCachedLivePayload();
+            const payload = `event: data\ndata: ${JSON.stringify(initialPayload)}\n\n`;
             controller.enqueue(new TextEncoder().encode(payload));
 
             // Set up periodic updates every 5 seconds
-            const interval = setInterval(() => {
+            const interval = setInterval(async () => {
               try {
-                const freshData = getDashboardData();
-                const msg = `event: data\ndata: ${JSON.stringify(freshData)}\n\n`;
+                const freshPayload = await getCachedLivePayload();
+                const msg = `event: data\ndata: ${JSON.stringify(freshPayload)}\n\n`;
                 controller.enqueue(new TextEncoder().encode(msg));
               } catch {
                 clearInterval(interval);
@@ -549,8 +683,8 @@ export async function startDashboardServer(
             { status: 400, headers: corsHeaders() },
           );
         }
-        const args = ["--skill", body.skill, "--skill-path", body.skillPath];
-        const result = await runAction("watch", args);
+        const args = ["--skill", body.skill, "--skill-path", body.skillPath, "--sync-first"];
+        const result = await executeAction("watch", args);
         return Response.json(result, { headers: corsHeaders() });
       }
 
@@ -563,8 +697,8 @@ export async function startDashboardServer(
             { status: 400, headers: corsHeaders() },
           );
         }
-        const args = ["--skill", body.skill, "--skill-path", body.skillPath];
-        const result = await runAction("evolve", args);
+        const args = ["--skill", body.skill, "--skill-path", body.skillPath, "--sync-first"];
+        const result = await executeAction("evolve", args);
         return Response.json(result, { headers: corsHeaders() });
       }
 
@@ -589,7 +723,7 @@ export async function startDashboardServer(
           "--proposal-id",
           body.proposalId,
         ];
-        const result = await runAction("rollback", args);
+        const result = await executeAction("rollback", args);
         return Response.json(result, { headers: corsHeaders() });
       }
 
@@ -601,7 +735,7 @@ export async function startDashboardServer(
         const format: BadgeFormat =
           formatParam && validFormats.has(formatParam) ? (formatParam as BadgeFormat) : "svg";
 
-        const statusResult = getStatusResult();
+        const statusResult = await getCachedStatusResult();
         const badgeData = findSkillBadgeData(statusResult, skillName);
 
         if (!badgeData) {
@@ -660,10 +794,11 @@ export async function startDashboardServer(
       // ---- GET /report/:skillName ---- Skill health report
       if (url.pathname.startsWith("/report/") && req.method === "GET") {
         const skillName = decodeURIComponent(url.pathname.slice("/report/".length));
-        const statusResult = getStatusResult();
-        const data = getDashboardData();
+        const statusResult = await getCachedStatusResult();
         const skill = statusResult.skills.find((s) => s.name === skillName);
-        const evidenceEntries = data.evidence.filter((entry) => entry.skill_name === skillName);
+        const evidenceEntries = getEvidenceEntries().filter(
+          (entry) => entry.skill_name === skillName,
+        );
 
         if (!skill) {
           return new Response("Skill not found", {

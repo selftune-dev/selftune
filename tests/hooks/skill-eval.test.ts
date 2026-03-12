@@ -254,4 +254,45 @@ describe("skill-eval hook", () => {
     expect(record.query).toBe("Generate slides");
     expect(record.triggered).toBe(true);
   });
+
+  test("records global skill provenance for installed global skills", () => {
+    const originalHome = process.env.HOME;
+    process.env.HOME = tmpDir;
+    try {
+      const transcriptPath = join(tmpDir, "transcript-global.jsonl");
+      writeFileSync(
+        transcriptPath,
+        `${JSON.stringify({ role: "user", content: "Use the global skill" })}\n${JSON.stringify({
+          role: "assistant",
+          content: [{ type: "tool_use", name: "Skill", input: { skill: "pptx" } }],
+        })}\n`,
+      );
+
+      processPrompt(
+        { user_prompt: "Use the global skill", session_id: "sess-global" },
+        queryLogPath,
+        canonicalLogPath,
+        promptStatePath,
+      );
+
+      const result = processToolUse(
+        {
+          tool_name: "Read",
+          tool_input: { file_path: join(tmpDir, ".agents", "skills", "pptx", "SKILL.md") },
+          session_id: "sess-global",
+          transcript_path: transcriptPath,
+        },
+        logPath,
+        canonicalLogPath,
+        promptStatePath,
+      );
+
+      expect(result).not.toBeNull();
+      expect(result?.skill_scope).toBe("global");
+      expect(result?.skill_registry_dir).toBe(join(tmpDir, ".agents", "skills"));
+      expect(result?.skill_project_root).toBeUndefined();
+    } finally {
+      process.env.HOME = originalHome;
+    }
+  });
 });

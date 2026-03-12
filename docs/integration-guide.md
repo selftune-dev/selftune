@@ -18,13 +18,36 @@ selftune init
 # 2. Verify everything is working
 selftune doctor
 
-# 3. Run a session and check telemetry
-selftune last
+# 3. Refresh source-truth telemetry
+selftune sync
+
+# 4. Inspect health
+selftune status
 ```
 
 `selftune init` now detects your workspace structure (single-skill, multi-skill,
 or monorepo) and suggests the appropriate template. See the sections below for
 project-specific setup.
+
+### Source of Truth vs. Hooks
+
+For Claude Code, hooks provide low-latency local signal:
+- prompt logging
+- best-effort skill-use hints
+- session-stop telemetry
+
+But the authoritative view is now **source-truth sync**:
+- Claude transcripts
+- Codex rollout logs
+- OpenCode history
+- OpenClaw session history
+
+Run `selftune sync` before trusting `status`, `dashboard`, `watch`, or `evolve`,
+especially on polluted hosts or after large batches of agent activity.
+
+If your primary `~/.claude` is modified by another system or routing layer,
+keep using selftune's sandbox harness as the clean regression environment while
+treating host-machine `sync` output as the real-world proof source.
 
 ---
 
@@ -53,7 +76,8 @@ my-project/
 1. Run `selftune init`. It will detect the single skill automatically.
 2. Merge `templates/single-skill-settings.json` into `~/.claude/settings.json`.
    Replace `/PATH/TO` with the absolute path to your selftune installation.
-3. Run `selftune doctor` to verify hooks are connected.
+3. Run `selftune doctor` to verify local install health.
+4. Run `selftune sync` after real sessions to rebuild source-truth telemetry.
 
 **Template:** `templates/single-skill-settings.json`
 
@@ -62,6 +86,9 @@ my-project/
 - Skill evaluation on every `Read` tool use
 - Session telemetry on session stop
 - Auto-activation suggestions when metrics are low
+
+**Important:** the hooks are convenience signals for Claude Code only. The
+authoritative usage view still comes from `selftune sync`.
 
 ---
 
@@ -95,6 +122,7 @@ my-project/
 3. Copy `templates/activation-rules-default.json` to `~/.selftune/activation-rules.json`
    and customize rule thresholds if needed.
 4. Run `selftune doctor`.
+5. Run `selftune sync` after sessions to rebuild the repaired/source-truth overlay.
 
 **Template:** `templates/multi-skill-settings.json`
 
@@ -150,6 +178,7 @@ my-monorepo/
 2. Use the `templates/multi-skill-settings.json` template (monorepos are multi-skill).
 3. Each package's `SKILL.md` is independently tracked for eval and grading.
 4. Run `selftune doctor`.
+5. Run `selftune sync` to refresh usage/telemetry from actual session history.
 
 **Tips:**
 - Run `selftune init` from the monorepo root, not from individual packages.
@@ -183,6 +212,9 @@ selftune ingest-codex --dir /path/to/codex/sessions
 - Eval and grading work the same way once sessions are ingested
 - Auto-activation suggestions are not available (no `UserPromptSubmit` hook)
 
+After wrapping or ingesting Codex activity, run `selftune sync` before
+trusting status/evolution decisions.
+
 ---
 
 ### OpenCode-Only
@@ -205,6 +237,8 @@ Override with `--db /path/to/opencode.db`.
 - Same as Codex: no real-time hooks, batch ingest only
 - Session format differs; selftune normalizes on import
 
+After import, run `selftune sync` before checking `status`, `watch`, or `evolve`.
+
 ---
 
 ### OpenClaw-Only
@@ -225,7 +259,8 @@ selftune ingest-openclaw
 This scans `~/.openclaw/agents/*/sessions/*.jsonl` for all agent sessions.
 Use `--since 2026-02-01` to limit scope. Use `--dry-run` to preview.
 
-1. Run `selftune doctor` to verify logs are healthy.
+3. Run `selftune doctor` to verify logs are healthy.
+4. Run `selftune sync` so all imported sessions flow into the repaired/source-truth overlay.
 
 **Options:**
 
@@ -260,10 +295,10 @@ This registers 4 jobs with OpenClaw:
 
 | Job | Schedule | Purpose |
 |-----|----------|---------|
-| `selftune-ingest` | Every 30 min | Ingest new sessions |
-| `selftune-status` | Daily 8am | Health check, flag skills below 80% |
+| `selftune-sync` | Every 30 min | Sync source-truth telemetry and rebuild repaired overlay |
+| `selftune-status` | Daily 8am | Sync first, then flag skills below 80% |
 | `selftune-evolve` | Weekly Sunday 3am | Full evolution pipeline on undertriggering skills |
-| `selftune-watch` | Every 6 hours | Regression monitoring on recently evolved skills |
+| `selftune-watch` | Every 6 hours | Sync first, then monitor recently evolved skills |
 
 1. Customize timezone: `selftune cron setup --tz America/New_York`
 2. Preview without registering: `selftune cron setup --dry-run`
@@ -277,7 +312,7 @@ Cron fires (isolated session)
     ↓
 OpenClaw agent reads selftune skill instructions
     ↓
-Runs: selftune ingest-openclaw → selftune status
+Runs: selftune sync → selftune status
     ↓
 For each skill below 80% pass rate:
     selftune evals → selftune evolve → selftune watch
@@ -344,6 +379,32 @@ record identifies the originating agent.
 
 ---
 
+## `selftune sync` Reference
+
+`selftune sync` is the source-truth telemetry command. It replays Claude
+transcripts, Codex rollout logs, OpenCode history, and OpenClaw sessions into
+the canonical JSONL logs, then rebuilds the repaired skill-usage overlay.
+
+Run it before trusting `status`, `dashboard`, `watch`, or `evolve`.
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--since <date>` | Only sync sessions modified on/after this date (YYYY-MM-DD) |
+| `--dry-run` | Show summary without writing files |
+| `--force` | Ignore per-source markers and rescan everything |
+| `--no-claude` | Skip Claude transcript replay |
+| `--no-codex` | Skip Codex rollout ingest |
+| `--no-opencode` | Skip OpenCode ingest |
+| `--no-openclaw` | Skip OpenClaw ingest |
+| `--no-repair` | Skip rebuilt skill-usage overlay |
+| `--projects-dir <dir>` | Override Claude transcript directory (default: `~/.claude/projects`) |
+| `--codex-home <dir>` | Override Codex home directory (default: `~/.codex`) |
+| `--openclaw-agents-dir <dir>` | Override OpenClaw agents directory |
+
+---
+
 ## Hook Reference
 
 selftune uses Claude Code hooks for real-time telemetry. Here is the full hook chain:
@@ -362,6 +423,21 @@ All hooks:
 - Write to stderr for advisory messages (shown to Claude as system messages)
 - Have 5-15 second timeouts to avoid blocking the agent
 - Fail open: errors are silently caught, never interrupting the session
+
+**Portable hook dispatch:** Instead of hardcoding absolute paths to hook scripts
+in `settings.json`, use `selftune hook <name>`:
+
+```bash
+selftune hook prompt-log
+selftune hook session-stop
+selftune hook skill-eval
+selftune hook auto-activate
+selftune hook skill-change-guard
+selftune hook evolution-guard
+```
+
+This lets you write `selftune hook prompt-log` (or `npx selftune hook prompt-log`)
+in your hook configuration, which resolves the correct script path at runtime.
 
 ---
 

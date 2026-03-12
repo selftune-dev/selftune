@@ -104,7 +104,7 @@ make check
 | `ingest-openclaw` | `ingest-openclaw --agents-dir <sandbox>` | Exit 0 + openclaw records in logs |
 | `ingest-openclaw --dry-run` | `ingest-openclaw --agents-dir <sandbox> --dry-run` | Exit 0 + no new log records |
 | `ingest-openclaw (idempotent)` | Run ingest twice | Second run: "0 not yet ingested" |
-| `cron list` | `cron list` | Exit 0 + shows selftune-ingest |
+| `cron list` | `cron list` | Exit 0 + shows selftune-sync |
 | `cron setup --dry-run` | `cron setup --dry-run --tz UTC` | Exit 0 + shows [DRY RUN] |
 
 **Fixtures:** 5 sessions across 2 agents, 2 skills (Deploy, CodeReview), cron jobs.

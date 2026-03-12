@@ -12,6 +12,7 @@
  *   selftune ingest-openclaw [options] — Ingest OpenClaw sessions
  *   selftune wrap-codex [options]     — Wrap codex exec with telemetry
  *   selftune replay [options]         — Replay Claude Code transcripts into logs
+ *   selftune sync [options]           — Sync source-truth telemetry across supported agents
  *   selftune contribute [options]     — Export anonymized skill data for community
  *   selftune evolve [options]         — Evolve a skill description via failure patterns
  *   selftune evolve-body [options]    — Evolve a skill body or routing table
@@ -51,6 +52,7 @@ Commands:
   ingest-openclaw    Ingest OpenClaw sessions
   wrap-codex         Wrap codex exec with telemetry
   replay             Replay Claude Code transcripts into logs
+  sync               Sync source-truth telemetry across supported agents
   contribute         Export anonymized skill data for community
   evolve             Evolve a skill description via failure patterns
   evolve-body        Evolve a skill body or routing table
@@ -125,6 +127,11 @@ switch (command) {
   }
   case "replay": {
     const { cliMain } = await import("./ingestors/claude-replay.js");
+    cliMain();
+    break;
+  }
+  case "sync": {
+    const { cliMain } = await import("./sync.js");
     cliMain();
     break;
   }

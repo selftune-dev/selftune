@@ -111,6 +111,12 @@ export const CLAUDE_CODE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
 /** Marker file tracking which Claude Code sessions have been ingested. */
 export const CLAUDE_CODE_MARKER = join(homedir(), ".claude", "claude_code_ingested_sessions.json");
 
+/** Marker file tracking which Codex rollout files have been ingested. */
+export const CODEX_INGEST_MARKER = join(homedir(), ".claude", "codex_ingested_rollouts.json");
+
+/** Marker file tracking which OpenCode sessions have been ingested. */
+export const OPENCODE_INGEST_MARKER = join(homedir(), ".claude", "opencode_ingested_sessions.json");
+
 /** OpenClaw agents directory containing session data. */
 export const OPENCLAW_AGENTS_DIR = join(homedir(), ".openclaw", "agents");
 

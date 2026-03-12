@@ -24,6 +24,7 @@ import {
 } from "../normalization.js";
 import type { PostToolUsePayload, SkillUsageRecord } from "../types.js";
 import { appendJsonl } from "../utils/jsonl.js";
+import { classifySkillPath } from "../utils/skill-discovery.js";
 import { getLastUserMessage } from "../utils/transcript.js";
 
 /**
@@ -121,12 +122,14 @@ export function processToolUse(
   // Distinguish actual invocation from browsing by checking for a Skill tool call
   const invocationCount = countSkillToolInvocations(transcriptPath, skillName);
   const wasInvoked = invocationCount > 0;
+  const skillPathMetadata = classifySkillPath(filePath);
 
   const record: SkillUsageRecord = {
     timestamp: new Date().toISOString(),
     session_id: sessionId,
     skill_name: skillName,
     skill_path: filePath,
+    ...skillPathMetadata,
     query,
     triggered: wasInvoked,
     source: "claude_code",

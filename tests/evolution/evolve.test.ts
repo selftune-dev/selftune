@@ -256,6 +256,41 @@ describe("evolve orchestrator", () => {
     expect(deployedCalls.length).toBe(0);
   });
 
+  test("sync-first refreshes source truth before building evals", async () => {
+    const syncMock = mock(() => ({
+      since: null,
+      dry_run: false,
+      sources: {
+        claude: { available: true, scanned: 4, synced: 2, skipped: 0 },
+        codex: { available: true, scanned: 1, synced: 1, skipped: 0 },
+        opencode: { available: false, scanned: 0, synced: 0, skipped: 0 },
+        openclaw: { available: false, scanned: 0, synced: 0, skipped: 0 },
+      },
+      repair: {
+        ran: true,
+        repaired_sessions: 2,
+        repaired_records: 7,
+        codex_repaired_records: 1,
+      },
+    }));
+
+    const opts = makeOptions({ dryRun: true, syncFirst: true, syncForce: true });
+    const result = await evolve(opts, {
+      ...makeDeps(),
+      syncSources: syncMock,
+    });
+
+    expect(syncMock).toHaveBeenCalledTimes(1);
+    expect(syncMock.mock.calls[0]?.[0]).toMatchObject({
+      force: true,
+      dryRun: false,
+      syncClaude: true,
+      syncCodex: true,
+      rebuildSkillUsage: true,
+    });
+    expect(result.sync_result?.repair.repaired_records).toBe(7);
+  });
+
   // 2. No failure patterns and no positive evals -> early exit with clear reason
   test("no failure patterns returns early with clear reason", async () => {
     mockExtractFailurePatterns.mockImplementation(() => []);

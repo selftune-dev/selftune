@@ -23,22 +23,70 @@ const NON_USER_QUERY_PREFIXES = [
   "You are a skill description optimizer for an AI agent routing system.",
 ] as const;
 
-export function isActionableQueryText(query: string): boolean {
-  if (typeof query !== "string") return false;
-  const trimmed = query.trim();
-  if (!trimmed) return false;
-  if (trimmed === "-") return false;
+const LEADING_WRAPPED_QUERY_TAGS = [
+  "system_instruction",
+  "system-instruction",
+  "task-notification",
+  "teammate-message",
+  "local-command-caveat",
+  "local-command-stdout",
+  "local-command-stderr",
+  "command-name",
+] as const;
 
-  return (
-    !SKIP_PREFIXES.some((prefix) => trimmed.startsWith(prefix)) &&
-    !NON_USER_QUERY_PREFIXES.some((prefix) => trimmed.startsWith(prefix))
-  );
+function stripLeadingWrappedQueryText(query: string): string {
+  let current = query.trim();
+
+  for (;;) {
+    let changed = false;
+
+    for (const tag of LEADING_WRAPPED_QUERY_TAGS) {
+      const pattern = new RegExp(`^<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}>\\s*`, "i");
+      const next = current.replace(pattern, "").trim();
+      if (next !== current) {
+        current = next;
+        changed = true;
+        break;
+      }
+    }
+
+    if (!changed) return current;
+  }
+}
+
+export function extractActionableQueryText(query: string): string | null {
+  if (typeof query !== "string") return null;
+
+  const trimmed = query.trim();
+  if (!trimmed || trimmed === "-" || trimmed === "(query not found)") return null;
+
+  const candidate = stripLeadingWrappedQueryText(trimmed) || trimmed;
+  if (!candidate || candidate === "-" || candidate === "(query not found)") return null;
+
+  const isBlocked =
+    SKIP_PREFIXES.some((prefix) => candidate.startsWith(prefix)) ||
+    NON_USER_QUERY_PREFIXES.some((prefix) => candidate.startsWith(prefix));
+
+  return isBlocked ? null : candidate;
+}
+
+export function isActionableQueryText(query: string): boolean {
+  return extractActionableQueryText(query) !== null;
 }
 
 export function filterActionableQueryRecords(queryRecords: QueryLogRecord[]): QueryLogRecord[] {
-  return queryRecords.filter(
-    (record) => record != null && isActionableQueryText((record as QueryLogRecord).query),
-  );
+  const actionable: QueryLogRecord[] = [];
+
+  for (const record of queryRecords) {
+    if (record == null) continue;
+    const normalizedQuery = extractActionableQueryText((record as QueryLogRecord).query);
+    if (!normalizedQuery) continue;
+    actionable.push(
+      normalizedQuery === record.query ? record : { ...record, query: normalizedQuery },
+    );
+  }
+
+  return actionable;
 }
 
 export function isActionableSkillUsageRecord(record: SkillUsageRecord | null | undefined): boolean {
@@ -49,11 +97,21 @@ export function isActionableSkillUsageRecord(record: SkillUsageRecord | null | u
   const query = record.query.trim();
   if (!query || query === "(query not found)") return false;
 
-  return isActionableQueryText(query);
+  return extractActionableQueryText(query) !== null;
 }
 
 export function filterActionableSkillUsageRecords(
   skillRecords: SkillUsageRecord[],
 ): SkillUsageRecord[] {
-  return skillRecords.filter((record) => isActionableSkillUsageRecord(record));
+  const actionable: SkillUsageRecord[] = [];
+
+  for (const record of skillRecords) {
+    const normalizedQuery = extractActionableQueryText(record?.query);
+    if (!normalizedQuery) continue;
+    actionable.push(
+      normalizedQuery === record.query ? record : { ...record, query: normalizedQuery },
+    );
+  }
+
+  return actionable;
 }

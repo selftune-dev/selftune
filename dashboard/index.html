@@ -1002,7 +1002,9 @@ const state = {
   queries: [],     // QueryLogRecord[]
   evolution: [],   // EvolutionAuditEntry[]
   evidence: [],    // EvolutionEvidenceEntry[]
+  counts: null,    // Optional aggregated counts for live mode payloads
   computed: null,  // Pre-computed monitoring data (from CLI)
+  liveLoading: false,
 };
 
 const charts = {};
@@ -1168,6 +1170,7 @@ function loadEmbeddedData() {
     if (data.queries) state.queries = data.queries;
     if (data.evolution) state.evolution = data.evolution;
     if (data.evidence) state.evidence = data.evidence;
+    if (data.counts) state.counts = data.counts;
     if (data.computed) {
       state.computed = data.computed;
     } else {
@@ -1175,6 +1178,12 @@ function loadEmbeddedData() {
     }
     return state.telemetry.length || state.skills.length || state.queries.length || state.evolution.length;
   } catch { return false; }
+}
+
+function getCount(key, records) {
+  return state.counts && Number.isFinite(Number(state.counts[key]))
+    ? Number(state.counts[key])
+    : records.length;
 }
 
 // ========================================================================
@@ -1244,8 +1253,9 @@ const CHART_COLORS = [
 function refreshAll() {
   const hasData = state.telemetry.length || state.skills.length ||
                   state.queries.length || state.evolution.length;
+  const isLoading = isLiveMode() && state.liveLoading && !hasData;
 
-  if (hasData) {
+  if (hasData || isLoading) {
     dropZone.classList.remove('visible');
     document.getElementById('healthSummary').style.display = 'block';
     document.getElementById('statusRow').style.display = 'grid';
@@ -1271,16 +1281,27 @@ function refreshAll() {
 // Header
 // ========================================================================
 function updateHeader() {
+  const isLoading = isLiveMode() && state.liveLoading;
   const parts = [];
-  if (state.telemetry.length) parts.push(`<span class="count">${state.telemetry.length}</span> sessions`);
-  if (state.skills.length) parts.push(`<span class="count">${state.skills.length}</span> skill events`);
-  if (state.queries.length) parts.push(`<span class="count">${state.queries.length}</span> queries`);
-  if (state.evolution.length) parts.push(`<span class="count">${state.evolution.length}</span> evolution actions`);
-  document.getElementById('headerStatus').innerHTML = parts.length ? parts.join(' &middot; ') : 'No embedded data found. Load log files to explore a local snapshot.';
+  const telemetryCount = getCount('telemetry', state.telemetry);
+  const skillCount = getCount('skills', state.skills);
+  const queryCount = getCount('queries', state.queries);
+  const evolutionCount = getCount('evolution', state.evolution);
+  if (telemetryCount) parts.push(`<span class="count">${telemetryCount}</span> sessions`);
+  if (skillCount) parts.push(`<span class="count">${skillCount}</span> skill events`);
+  if (queryCount) parts.push(`<span class="count">${queryCount}</span> queries`);
+  if (evolutionCount) parts.push(`<span class="count">${evolutionCount}</span> evolution actions`);
+  document.getElementById('headerStatus').innerHTML = isLoading
+    ? 'Loading live dashboard data&hellip;'
+    : parts.length
+      ? parts.join(' &middot; ')
+      : 'No embedded data found. Load log files to explore a local snapshot.';
   document.getElementById('overviewMode').textContent = isLiveMode() ? 'Live dashboard' : 'Static export';
-  document.getElementById('overviewContext').textContent = parts.length
-    ? `${state.skills.length || 0} tracked skill events across your local logs`
-    : 'Open a built dashboard or run live mode for updates.';
+  document.getElementById('overviewContext').textContent = isLoading
+    ? 'Waiting for the first live payload from your local server.'
+    : parts.length
+      ? `${skillCount || 0} tracked skill events across your local logs`
+      : 'Open a built dashboard or run live mode for updates.';
 }
 
 // ========================================================================
@@ -1288,7 +1309,23 @@ function updateHeader() {
 // ========================================================================
 function updateHealthSummary() {
   const computed = state.computed;
-  if (!computed) return;
+  if (!computed) {
+    if (isLiveMode() && state.liveLoading) {
+      document.getElementById('kpi-skills-monitored').textContent = '—';
+      document.getElementById('kpi-skills-sub').textContent = 'loading live metrics';
+      document.getElementById('kpi-avg-pass-rate').textContent = '—';
+      document.getElementById('kpi-pass-rate-sub').textContent = 'waiting for summary';
+      document.getElementById('kpi-regressions').textContent = '—';
+      document.getElementById('kpi-regressions-sub').textContent = 'waiting for summary';
+      document.getElementById('kpi-unmatched').textContent = '—';
+      document.getElementById('kpi-unmatched-sub').textContent = 'waiting for summary';
+      document.getElementById('kpi-sessions').textContent = '—';
+      document.getElementById('kpi-sessions-sub').textContent = 'waiting for summary';
+      document.getElementById('kpi-pending').textContent = '—';
+      document.getElementById('kpi-pending-sub').textContent = 'waiting for summary';
+    }
+    return;
+  }
 
   const snapshots = computed.snapshots || {};
   const skillNames = Object.keys(snapshots);
@@ -1312,11 +1349,14 @@ function updateHealthSummary() {
     regressions.length ? regressions.join(', ') : 'none detected';
 
   const unmatched = computed.unmatched || [];
-  document.getElementById('kpi-unmatched').textContent = unmatched.length;
+  const unmatchedCount = Number.isFinite(Number(computed.unmatched_count))
+    ? Number(computed.unmatched_count)
+    : unmatched.length;
+  document.getElementById('kpi-unmatched').textContent = unmatchedCount;
   document.getElementById('kpi-unmatched-sub').textContent =
-    unmatched.length ? 'queries not matched to any skill' : 'all queries matched';
+    unmatchedCount ? 'queries not matched to any skill' : 'all queries matched';
 
-  document.getElementById('kpi-sessions').textContent = state.telemetry.length;
+  document.getElementById('kpi-sessions').textContent = getCount('telemetry', state.telemetry);
   if (state.telemetry.length) {
     const sorted = [...state.telemetry].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     const first = formatDate(sorted[0].timestamp);
@@ -1353,12 +1393,21 @@ function updateStatusSummary() {
 // ========================================================================
 function updateSkillHealthGrid() {
   const computed = state.computed;
-  if (!computed) return;
+  const grid = document.getElementById('skillHealthGrid');
+  if (!computed) {
+    if (isLiveMode() && state.liveLoading) {
+      grid.innerHTML = '<div class="empty-state">Loading live skill health…</div>';
+    }
+    return;
+  }
 
   const snapshots = computed.snapshots || {};
   const skillNames = Object.keys(snapshots);
 
-  if (!skillNames.length) return;
+  if (!skillNames.length) {
+    grid.innerHTML = '<div class="empty-state">No skill health data yet</div>';
+    return;
+  }
 
   // Sort worst-first
   const sorted = skillNames.sort((a, b) => {
@@ -1369,7 +1418,6 @@ function updateSkillHealthGrid() {
     return sa.pass_rate - sb.pass_rate;
   });
 
-  const grid = document.getElementById('skillHealthGrid');
   grid.innerHTML = sorted.map(name => {
     const snap = snapshots[name];
     const status = getSkillStatus(snap.pass_rate, snap.regression_detected, snap.skill_checks);
@@ -1785,11 +1833,14 @@ function startSSE() {
   sseSource.addEventListener('data', (e) => {
     try {
       const data = JSON.parse(e.data);
+      state.liveLoading = false;
       if (data.telemetry) state.telemetry = data.telemetry;
       if (data.skills) state.skills = data.skills;
       if (data.queries) state.queries = data.queries;
       if (data.evolution) state.evolution = data.evolution;
+      if (data.evidence) state.evidence = data.evidence;
       if (data.decisions) state.decisions = data.decisions;
+      if (data.counts) state.counts = data.counts;
       if (data.computed) {
         state.computed = data.computed;
       } else {
@@ -2041,6 +2092,8 @@ function initLiveMode() {
   if (!isLiveMode()) return;
   // Show live sections
   document.getElementById('actionsSection').style.display = 'block';
+  state.liveLoading = true;
+  refreshAll();
 
   startSSE();
   updateEvolutionTimeline();

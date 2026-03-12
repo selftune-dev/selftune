@@ -19,6 +19,8 @@ selftune watch --skill <name> --skill-path <path> [options]
 | `--threshold <n>` | Regression threshold (drop from baseline) | 0.1 |
 | `--baseline <n>` | Explicit baseline pass rate (0-1) | Auto-detected from last deploy |
 | `--auto-rollback` | Automatically rollback on detected regression | Off |
+| `--sync-first` | Refresh source-truth telemetry before reading watch inputs | Off |
+| `--sync-force` | Force a full source rescan during `--sync-first` | Off |
 
 ## Output Format
 
@@ -80,13 +82,24 @@ evaluating the skill. The auto-activation system uses watch results to
 adjust suggestion confidence -- skills showing regressions get flagged for
 attention in subsequent prompts.
 
-### 1. Run Watch
+### 1. Refresh Source Truth (Recommended)
+
+When monitoring after a burst of activity, or on hosts with extra wrappers
+like PAI/Paperclip, prefer:
+
+```bash
+selftune watch --skill pptx --skill-path /path/to/SKILL.md --sync-first
+```
+
+This rebuilds the authoritative repaired overlay before watch reads logs.
+
+### 2. Run Watch
 
 ```bash
 selftune watch --skill pptx --skill-path /path/to/SKILL.md
 ```
 
-### 2. Check Regression Status
+### 3. Check Regression Status
 
 Parse the JSON output. Key decision points:
 
@@ -97,7 +110,7 @@ Parse the JSON output. Key decision points:
 | `regression` | Investigate. Consider rollback. |
 | `insufficient_data` | Wait for more sessions before evaluating. |
 
-### 3. Decide Action
+### 4. Decide Action
 
 If regression is detected:
 - Review recent session transcripts to understand what changed
@@ -107,7 +120,7 @@ If regression is detected:
 If `--auto-rollback` was set, the command automatically restores the
 previous description and logs a `rolled_back` entry.
 
-### 4. Report
+### 5. Report
 
 Summarize the snapshot for the user:
 - Current pass rate vs baseline
@@ -115,7 +128,7 @@ Summarize the snapshot for the user:
 - Whether regression was detected
 - Recommended action
 
-### 5. Update Memory
+### 6. Update Memory
 
 After watch completes, the memory writer updates
 `~/.selftune/memory/context.md` with the current regression status,

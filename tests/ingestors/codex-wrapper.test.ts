@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   buildCanonicalRecordsFromWrapper,
   extractPromptFromArgs,
+  findCodexSkillNames,
   logQuery,
   logSkillTrigger,
   logTelemetry,
@@ -42,6 +43,39 @@ describe("extractPromptFromArgs", () => {
 });
 
 describe("parseJsonlStream", () => {
+  test("discovers repo-local and global agent skills from .agents/skills", () => {
+    const repoRoot = join(tmpDir, "workspace");
+    const workspace = join(repoRoot, "apps", "api");
+    mkdirSync(workspace, { recursive: true });
+    writeFileSync(join(repoRoot, ".git"), "gitdir: ./.git/worktrees/api\n", "utf-8");
+    mkdirSync(join(repoRoot, ".agents", "skills", "LocalSkill"), { recursive: true });
+    writeFileSync(
+      join(repoRoot, ".agents", "skills", "LocalSkill", "SKILL.md"),
+      "# local",
+      "utf-8",
+    );
+    mkdirSync(join(tmpDir, ".agents", "skills", "TooHigh"), { recursive: true });
+    writeFileSync(join(tmpDir, ".agents", "skills", "TooHigh", "SKILL.md"), "# nope", "utf-8");
+
+    const home = join(tmpDir, "home");
+    mkdirSync(join(home, ".agents", "skills", "GlobalSkill"), { recursive: true });
+    writeFileSync(join(home, ".agents", "skills", "GlobalSkill", "SKILL.md"), "# global", "utf-8");
+    const adminDir = join(tmpDir, "etc", "codex", "skills");
+    mkdirSync(join(adminDir, "AdminSkill"), { recursive: true });
+    writeFileSync(join(adminDir, "AdminSkill", "SKILL.md"), "# admin", "utf-8");
+    const codexHome = join(tmpDir, "codex-home");
+    mkdirSync(join(codexHome, "skills", ".system", "SystemSkill"), { recursive: true });
+    writeFileSync(
+      join(codexHome, "skills", ".system", "SystemSkill", "SKILL.md"),
+      "# system",
+      "utf-8",
+    );
+
+    expect(findCodexSkillNames(workspace, home, adminDir, codexHome)).toEqual(
+      new Set(["LocalSkill", "GlobalSkill", "AdminSkill", "SystemSkill"]),
+    );
+  });
+
   test("handles all event types", () => {
     const lines = [
       '{"type":"thread.started","thread_id":"th-123"}',
@@ -82,6 +116,38 @@ describe("parseJsonlStream", () => {
     expect(result.skills_triggered).toContain("MySkill");
     expect(result.skills_triggered).toContain("MyOtherSkill");
     expect(result.skills_triggered).not.toContain("UnusedSkill");
+  });
+
+  test("extracts session-scoped skill inventory from observed session metadata", () => {
+    const lines = [
+      '{"type":"session_meta","payload":{"instructions":"## Skills\\n### Available skills\\n- selftune: Self-improving skills toolkit.\\n- paperclip: Paperclip operator skill.\\n### How to use skills"}}',
+      '{"type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\\"cmd\\":\\"cat .agents/skills/selftune/SKILL.md && cat .agents/skills/paperclip/SKILL.md\\"}"}}',
+    ];
+
+    const result = parseJsonlStream(lines, new Set());
+    expect(result.skills_triggered).toContain("selftune");
+    expect(result.skills_triggered).toContain("paperclip");
+  });
+
+  test("treats explicit prompt mention as a Codex skill trigger", () => {
+    const lines = [
+      '{"type":"session_meta","payload":{"instructions":"### Available skills\\n- Reins: Reins CLI skill for scaffold/audit/doctor/evolve workflows.\\n### How to use skills"}}',
+      '{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"audit the project with reins"}]}}',
+    ];
+
+    const result = parseJsonlStream(lines, new Set(["reins"]));
+    expect(result.skills_triggered).toContain("reins");
+    expect(result.skills_triggered).not.toContain("Reins");
+  });
+
+  test("ignores incidental user mentions that do not explicitly invoke a skill", () => {
+    const lines = [
+      '{"type":"session_meta","payload":{"instructions":"### Available skills\\n- selftune: Self-improving skills toolkit.\\n### How to use skills"}}',
+      '{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"the selftune dashboard is broken and ugly try to test it yourself"}]}}',
+    ];
+
+    const result = parseJsonlStream(lines, new Set());
+    expect(result.skills_triggered).not.toContain("selftune");
   });
 
   test("counts errors correctly", () => {
@@ -170,7 +236,7 @@ describe("logTelemetry", () => {
 describe("logSkillTrigger", () => {
   test("writes correct record to JSONL", () => {
     const logPath = join(tmpDir, "skills.jsonl");
-    logSkillTrigger("MySkill", "build it", "session-1", logPath);
+    logSkillTrigger("MySkill", "build it", "session-1", tmpDir, logPath);
 
     const content = readFileSync(logPath, "utf-8").trim();
     const record = JSON.parse(content);
@@ -180,6 +246,23 @@ describe("logSkillTrigger", () => {
     expect(record.query).toBe("build it");
     expect(record.triggered).toBe(true);
     expect(record.source).toBe("codex");
+  });
+
+  test("records project-scoped provenance for repo-local skills", () => {
+    const repoRoot = join(tmpDir, "workspace");
+    mkdirSync(repoRoot, { recursive: true });
+    writeFileSync(join(repoRoot, ".git"), "gitdir: ./.git/worktrees/workspace\n", "utf-8");
+    mkdirSync(join(repoRoot, ".agents", "skills", "MySkill"), { recursive: true });
+    writeFileSync(join(repoRoot, ".agents", "skills", "MySkill", "SKILL.md"), "# my skill");
+
+    const logPath = join(tmpDir, "skills-project.jsonl");
+    logSkillTrigger("MySkill", "build it", "session-1", repoRoot, logPath);
+
+    const record = JSON.parse(readFileSync(logPath, "utf-8").trim());
+    expect(record.skill_path).toEndWith(".agents/skills/MySkill/SKILL.md");
+    expect(record.skill_scope).toBe("project");
+    expect(record.skill_project_root).toContain("workspace");
+    expect(record.skill_registry_dir).toEndWith("/workspace/.agents/skills");
   });
 });
 

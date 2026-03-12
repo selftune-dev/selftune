@@ -234,6 +234,108 @@ describe("buildEvalSet", () => {
     expect(positives).toHaveLength(2);
   });
 
+  test("ignores inferred codex rollout positives when building routing eval positives", () => {
+    const recordsWithCodexInference: SkillUsageRecord[] = [
+      ...skillRecords,
+      {
+        timestamp: "2025-01-01T00:06:00Z",
+        session_id: "s7",
+        skill_name: "pptx",
+        skill_path: "/skills/pptx",
+        query: "commit and push all changes",
+        triggered: true,
+        source: "codex_rollout",
+      },
+    ];
+
+    const result = buildEvalSet(
+      recordsWithCodexInference,
+      [
+        ...queryRecords,
+        {
+          timestamp: "2025-01-01T00:06:00Z",
+          session_id: "s7",
+          query: "commit and push all changes",
+        },
+      ],
+      "pptx",
+      50,
+      true,
+      42,
+      true,
+    );
+    const positives = result.filter((e) => e.should_trigger).map((e) => e.query);
+
+    expect(positives).not.toContain("commit and push all changes");
+    expect(positives).toHaveLength(2);
+  });
+
+  test("includes explicit codex rollout positives when building routing eval positives", () => {
+    const result = buildEvalSet(
+      [
+        ...skillRecords,
+        {
+          timestamp: "2025-01-01T00:06:00Z",
+          session_id: "s7",
+          skill_name: "pptx",
+          skill_path: "/skills/pptx",
+          query: "commit and push all changes",
+          triggered: true,
+          source: "codex_rollout_explicit",
+        },
+      ],
+      [
+        ...queryRecords,
+        {
+          timestamp: "2025-01-01T00:06:00Z",
+          session_id: "s7",
+          query: "commit and push all changes",
+        },
+      ],
+      "pptx",
+      50,
+      true,
+      42,
+      true,
+    );
+
+    const positives = result.filter((entry) => entry.should_trigger).map((entry) => entry.query);
+    expect(positives).toContain("commit and push all changes");
+  });
+
+  test("ignores raw claude hook positives when building routing eval positives", () => {
+    const result = buildEvalSet(
+      [
+        ...skillRecords,
+        {
+          timestamp: "2025-01-01T00:06:00Z",
+          session_id: "s7",
+          skill_name: "pptx",
+          skill_path: "/skills/pptx",
+          query: "draft launch notes",
+          triggered: true,
+          source: "claude_code",
+        },
+      ],
+      [
+        ...queryRecords,
+        {
+          timestamp: "2025-01-01T00:06:00Z",
+          session_id: "s7",
+          query: "draft launch notes",
+        },
+      ],
+      "pptx",
+      50,
+      true,
+      42,
+      true,
+    );
+
+    const positives = result.filter((entry) => entry.should_trigger).map((entry) => entry.query);
+    expect(positives).not.toContain("draft launch notes");
+  });
+
   test("ignores legacy or malformed records whose triggered field is not boolean true", () => {
     const malformedTriggeredRecords: SkillUsageRecord[] = [
       ...skillRecords,

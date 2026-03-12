@@ -12,6 +12,7 @@ import { QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
 import { classifyInvocation } from "../eval/hooks-to-evals.js";
 import { getLastDeployedProposal } from "../evolution/audit.js";
 import { updateContextAfterWatch } from "../memory/writer.js";
+import type { SyncResult } from "../sync.js";
 import type {
   InvocationType,
   MonitoringSnapshot,
@@ -47,6 +48,10 @@ export interface WatchOptions {
     skillPath: string;
     proposalId?: string;
   }) => Promise<{ rolledBack: boolean; restoredDescription: string; reason: string }>;
+  /** Source-truth refresh before reading logs. */
+  syncFirst?: boolean;
+  syncForce?: boolean;
+  _syncFn?: typeof import("../sync.js").syncSources;
 }
 
 export interface WatchResult {
@@ -54,6 +59,7 @@ export interface WatchResult {
   alert: string | null;
   rolledBack: boolean;
   recommendation: string;
+  sync_result?: SyncResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -185,7 +191,21 @@ export async function watch(options: WatchOptions): Promise<WatchResult> {
     _queryLogPath = QUERY_LOG,
     _auditLogPath,
     _rollbackFn,
+    syncFirst = false,
+    syncForce = false,
+    _syncFn,
   } = options;
+
+  let syncResult: SyncResult | undefined;
+  if (syncFirst) {
+    const { createDefaultSyncOptions, syncSources: realSyncSources } = await import("../sync.js");
+    const syncRunner = _syncFn ?? realSyncSources;
+    syncResult = syncRunner(
+      createDefaultSyncOptions({
+        force: syncForce,
+      }),
+    );
+  }
 
   // 1. Read log files
   const telemetry = readJsonl<SessionTelemetryRecord>(_telemetryLogPath);
@@ -260,6 +280,7 @@ export async function watch(options: WatchOptions): Promise<WatchResult> {
     alert,
     rolledBack,
     recommendation,
+    ...(syncResult ? { sync_result: syncResult } : {}),
   };
 }
 
@@ -303,6 +324,8 @@ export async function cliMain(): Promise<void> {
       window: { type: "string", default: "20" },
       threshold: { type: "string", default: "0.1" },
       "auto-rollback": { type: "boolean", default: false },
+      "sync-first": { type: "boolean", default: false },
+      "sync-force": { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
     strict: true,
@@ -320,12 +343,18 @@ Options:
   --window            Number of recent sessions to consider (default: 20)
   --threshold         Regression threshold below baseline (default: 0.1)
   --auto-rollback     Automatically rollback on regression detection
+  --sync-first        Refresh source-truth telemetry before reading watch inputs
+  --sync-force        Force a full rescan during --sync-first
   --help              Show this help message`);
     process.exit(0);
   }
 
   if (!values.skill || !values["skill-path"]) {
     console.error("[ERROR] --skill and --skill-path are required");
+    process.exit(1);
+  }
+  if ((values["sync-force"] ?? false) && !(values["sync-first"] ?? false)) {
+    console.error("[ERROR] --sync-force requires --sync-first");
     process.exit(1);
   }
 
@@ -357,6 +386,8 @@ Options:
     windowSessions,
     regressionThreshold,
     autoRollback: values["auto-rollback"] ?? false,
+    syncFirst: values["sync-first"] ?? false,
+    syncForce: values["sync-force"] ?? false,
   });
 
   console.log(JSON.stringify(result, null, 2));
