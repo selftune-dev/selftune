@@ -53,34 +53,66 @@ export const SCHEDULE_ENTRIES: ScheduleEntry[] = DEFAULT_CRON_JOBS.map((job) => 
 // Helpers for launchd/systemd generation
 // ---------------------------------------------------------------------------
 
-/** Convert a cron schedule to a launchd StartInterval in seconds (best-effort). */
-function cronToInterval(cron: string): number {
-  // Simple heuristic for common patterns
+/**
+ * Convert a cron schedule to launchd scheduling XML.
+ * Uses StartInterval for repeating intervals (e.g. every N minutes/hours),
+ * and StartCalendarInterval for fixed calendar times (e.g. daily at 8am).
+ */
+function cronToLaunchdSchedule(cron: string): string {
+  // Repeating intervals: */N minutes
   if (cron.startsWith("*/")) {
     const minutes = Number.parseInt(cron.split(" ")[0].replace("*/", ""), 10);
-    return minutes * 60;
+    return `  <key>StartInterval</key>\n  <integer>${minutes * 60}</integer>`;
   }
+  // Repeating intervals: every N hours
   if (cron.startsWith("0 */")) {
     const hours = Number.parseInt(cron.split(" ")[1].replace("*/", ""), 10);
-    return hours * 3600;
+    return `  <key>StartInterval</key>\n  <integer>${hours * 3600}</integer>`;
   }
-  if (cron.startsWith("0 ") && cron.includes("* * 0")) {
-    return 604800; // weekly
+
+  // Fixed calendar times use StartCalendarInterval
+  const parts = cron.split(" ");
+  const [minute, hour, , , weekday] = parts;
+  let dict = "  <key>StartCalendarInterval</key>\n  <dict>";
+  if (weekday !== "*") {
+    dict += `\n    <key>Weekday</key>\n    <integer>${weekday}</integer>`;
   }
-  if (cron.startsWith("0 ") && cron.endsWith("* * *")) {
-    return 86400; // daily
+  if (hour !== "*") {
+    dict += `\n    <key>Hour</key>\n    <integer>${Number.parseInt(hour, 10)}</integer>`;
   }
-  return 1800; // default 30 min
+  if (minute !== "*") {
+    dict += `\n    <key>Minute</key>\n    <integer>${Number.parseInt(minute, 10)}</integer>`;
+  }
+  dict += "\n  </dict>";
+  return dict;
 }
 
-/** Convert a cron schedule to a systemd OnCalendar value (best-effort). */
+/** Convert a cron schedule to a systemd OnCalendar value. */
 function cronToOnCalendar(cron: string): string {
   if (cron === "*/30 * * * *") return "*:0/30";
   if (cron === "0 8 * * *") return "*-*-* 08:00:00";
   if (cron === "0 3 * * 0") return "Sun *-*-* 03:00:00";
   if (cron === "0 */6 * * *") return "*-*-* 0/6:00:00";
-  // Fallback: return cron expression in a comment
   return cron;
+}
+
+/** Build launchd ProgramArguments, using /bin/sh -c for chained commands. */
+function toLaunchdArgs(command: string): string {
+  if (command.includes(" && ")) {
+    return ["/bin/sh", "-c", command].map((a) => `    <string>${a}</string>`).join("\n");
+  }
+  return command
+    .split(" ")
+    .map((a) => `    <string>${a}</string>`)
+    .join("\n");
+}
+
+/** Build systemd ExecStart, using /bin/sh -c for chained commands. */
+function toSystemdExecStart(command: string): string {
+  if (command.includes(" && ")) {
+    return `/bin/sh -c "${command}"`;
+  }
+  return command;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,12 +140,8 @@ export function generateLaunchd(): string {
 
   for (const entry of SCHEDULE_ENTRIES) {
     const label = `com.selftune.${entry.name.replace("selftune-", "")}`;
-    const lastCmd = entry.command.split(" && ").pop() ?? entry.command;
-    const args = lastCmd
-      .split(" ")
-      .map((a) => `    <string>${a}</string>`)
-      .join("\n");
-    const interval = cronToInterval(entry.schedule);
+    const args = toLaunchdArgs(entry.command);
+    const schedule = cronToLaunchdSchedule(entry.schedule);
 
     plists.push(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -133,8 +161,7 @@ export function generateLaunchd(): string {
   <array>
 ${args}
   </array>
-  <key>StartInterval</key>
-  <integer>${interval}</integer>
+${schedule}
   <key>StandardOutPath</key>
   <string>/tmp/${entry.name}.log</string>
   <key>StandardErrorPath</key>
@@ -152,7 +179,7 @@ export function generateSystemd(): string {
   for (const entry of SCHEDULE_ENTRIES) {
     const unitName = entry.name;
     const calendar = cronToOnCalendar(entry.schedule);
-    const execStart = (entry.command.split(" && ").pop() ?? entry.command).trim();
+    const execStart = toSystemdExecStart(entry.command);
 
     units.push(`# --- ${unitName}.timer ---
 # ${entry.description}

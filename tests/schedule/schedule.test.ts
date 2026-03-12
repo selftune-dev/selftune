@@ -81,8 +81,28 @@ describe("generateLaunchd", () => {
   test("outputs valid plist structure", () => {
     const output = generateLaunchd();
     expect(output).toContain("<?xml");
-    expect(output).toContain("<key>StartInterval</key>");
     expect(output).toContain("</plist>");
+  });
+
+  test("uses StartInterval for repeating schedules", () => {
+    const output = generateLaunchd();
+    // sync runs every 30 min — should use StartInterval
+    expect(output).toContain("<key>StartInterval</key>");
+  });
+
+  test("uses StartCalendarInterval for fixed-time schedules", () => {
+    const output = generateLaunchd();
+    // status runs daily at 8am — should use StartCalendarInterval
+    expect(output).toContain("<key>StartCalendarInterval</key>");
+    expect(output).toContain("<key>Hour</key>");
+  });
+
+  test("uses /bin/sh -c for chained commands", () => {
+    const output = generateLaunchd();
+    // status command has && — should use shell wrapper
+    expect(output).toContain("<string>/bin/sh</string>");
+    expect(output).toContain("<string>-c</string>");
+    expect(output).toContain("selftune sync && selftune status");
   });
 
   test("includes install instructions", () => {
@@ -107,6 +127,17 @@ describe("generateSystemd", () => {
     const output = generateSystemd();
     expect(output).toContain("[Timer]");
     expect(output).toContain("[Service]");
+  });
+
+  test("uses /bin/sh -c for chained commands", () => {
+    const output = generateSystemd();
+    // status has && — should wrap in shell
+    expect(output).toContain('ExecStart=/bin/sh -c "selftune sync && selftune status"');
+  });
+
+  test("uses bare command for simple entries", () => {
+    const output = generateSystemd();
+    expect(output).toContain("ExecStart=selftune sync\n");
   });
 
   test("includes install instructions", () => {
