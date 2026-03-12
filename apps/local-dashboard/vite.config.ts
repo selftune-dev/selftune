@@ -25,8 +25,20 @@ export default defineConfig({
       output: {
         manualChunks: {
           "vendor-react": ["react", "react-dom", "react-router-dom"],
-          "vendor-table": ["@tanstack/react-table", "@dnd-kit/core", "@dnd-kit/sortable", "@dnd-kit/modifiers", "@dnd-kit/utilities"],
-          "vendor-ui": ["@base-ui/react", "class-variance-authority", "clsx", "tailwind-merge", "lucide-react"],
+          "vendor-table": [
+            "@tanstack/react-table",
+            "@dnd-kit/core",
+            "@dnd-kit/sortable",
+            "@dnd-kit/modifiers",
+            "@dnd-kit/utilities",
+          ],
+          "vendor-ui": [
+            "@base-ui/react",
+            "class-variance-authority",
+            "clsx",
+            "tailwind-merge",
+            "lucide-react",
+          ],
         },
       },
     },
