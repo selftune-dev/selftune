@@ -160,7 +160,7 @@ export function selectCandidates(
     actions.push({
       skill: skill.name,
       action: "evolve",
-      reason: `status=${skill.status}, passRate=${skill.passRate !== null ? (skill.passRate * 100).toFixed(0) + "%" : "—"}, missed=${skill.missedQueries}`,
+      reason: `status=${skill.status}, passRate=${skill.passRate !== null ? `${(skill.passRate * 100).toFixed(0)}%` : "—"}, missed=${skill.missedQueries}`,
     });
   }
 
@@ -296,6 +296,9 @@ export async function orchestrate(
   let deployedCount = 0;
 
   for (const candidate of evolveCandidates) {
+    // Skip if agent detection marked this candidate as skip
+    if (candidate.action === "skip") continue;
+
     const skillPath = _resolveSkillPath(candidate.skill);
     if (!skillPath) {
       candidate.action = "skip";
@@ -313,7 +316,7 @@ export async function orchestrate(
       const evolveResult = await _evolve({
         skillName: candidate.skill,
         skillPath,
-        agent: agent!,
+        agent: agent as string,
         dryRun: effectiveDryRun,
         confidenceThreshold: 0.6,
         maxIterations: 3,
@@ -499,7 +502,7 @@ Examples:
   console.log(JSON.stringify(result.summary, null, 2));
 
   // Print human-readable recap to stderr
-  console.error("\n" + "═".repeat(40));
+  console.error(`\n${"═".repeat(40)}`);
   console.error("selftune orchestrate — summary");
   console.error("═".repeat(40));
   console.error(`  Total skills:   ${result.summary.totalSkills}`);

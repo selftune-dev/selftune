@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { SkillStatus, StatusResult } from "../cli/selftune/status.js";
 import type { SyncResult, SyncStepResult } from "../cli/selftune/sync.js";
-import type { DoctorResult, EvolutionAuditEntry } from "../cli/selftune/types.js";
+import type { DoctorResult } from "../cli/selftune/types.js";
 import {
   type OrchestrateOptions,
   type OrchestrateDeps,
@@ -37,7 +37,7 @@ function makeSyncResult(): SyncResult {
 }
 
 function makeDoctorResult(): DoctorResult {
-  return { healthy: true, checks: [], summary: { pass: 5, fail: 0, warn: 0 } };
+  return { command: "doctor", timestamp: new Date().toISOString(), checks: [], summary: { pass: 5, fail: 0, warn: 0, total: 5 }, healthy: true };
 }
 
 function makeStatusResult(skills: SkillStatus[]): StatusResult {
