@@ -1,13 +1,13 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { ActivityTimeline } from "../components/ActivityTimeline";
-import { KpiCard } from "../components/KpiCard";
-import { EmptyState, ErrorState, LoadingState } from "../components/LoadingState";
-import { Sidebar } from "../components/Sidebar";
-import { StatusPill } from "../components/StatusPill";
-import { useOverview } from "../hooks/useOverview";
-import type { SkillCard, SkillHealthStatus, SkillSummary } from "../types";
-import { deriveStatus, formatRate, timeAgo } from "../utils";
+import { useMemo } from "react"
+import { ActivityPanel } from "@/components/ActivityTimeline"
+import { SectionCards } from "@/components/section-cards"
+import { SkillHealthGrid } from "@/components/skill-health-grid"
+import { useOverview } from "@/hooks/useOverview"
+import type { SkillCard, SkillHealthStatus, SkillSummary } from "@/types"
+import { deriveStatus } from "@/utils"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Button } from "@/components/ui/button"
+import { AlertCircleIcon, RefreshCwIcon } from "lucide-react"
 
 function deriveSkillCards(skills: SkillSummary[]): SkillCard[] {
   const cards: SkillCard[] = skills.map((s) => ({
@@ -18,144 +18,109 @@ function deriveSkillCards(skills: SkillSummary[]): SkillCard[] {
     hasEvidence: s.has_evidence,
     uniqueSessions: s.unique_sessions,
     lastSeen: s.last_seen,
-  }));
+  }))
 
-  // Sort: lowest pass rate first, then most checks
   cards.sort((a, b) => {
-    const aRate = a.passRate ?? 1;
-    const bRate = b.passRate ?? 1;
-    if (aRate !== bRate) return aRate - bRate;
-    return b.checks - a.checks;
-  });
+    const aRate = a.passRate ?? 1
+    const bRate = b.passRate ?? 1
+    if (aRate !== bRate) return aRate - bRate
+    return b.checks - a.checks
+  })
 
-  return cards;
+  return cards
 }
 
-export function Overview() {
-  const { data, state, error, retry } = useOverview();
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<SkillHealthStatus | "ALL">("ALL");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+export function Overview({
+  search,
+  statusFilter,
+}: {
+  search: string
+  statusFilter: SkillHealthStatus | "ALL"
+}) {
+  const { data, state, error, retry } = useOverview()
 
-  const cards = useMemo(() => (data ? deriveSkillCards(data.skills) : []), [data]);
-
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { HEALTHY: 0, WARNING: 0, CRITICAL: 0, UNGRADED: 0, UNKNOWN: 0 };
-    for (const c of cards) {
-      counts[c.status] = (counts[c.status] ?? 0) + 1;
-    }
-    return counts;
-  }, [cards]);
+  const cards = useMemo(() => (data ? deriveSkillCards(data.skills) : []), [data])
 
   const filteredCards = useMemo(() => {
-    let result = cards;
+    let result = cards
     if (search) {
-      const q = search.toLowerCase();
-      result = result.filter((c) => c.name.toLowerCase().includes(q));
+      const q = search.toLowerCase()
+      result = result.filter((c) => c.name.toLowerCase().includes(q))
     }
     if (statusFilter !== "ALL") {
-      result = result.filter((c) => c.status === statusFilter);
+      result = result.filter((c) => c.status === statusFilter)
     }
-    return result;
-  }, [cards, search, statusFilter]);
+    return result
+  }, [cards, search, statusFilter])
 
-  if (state === "loading") return <LoadingState message="Loading dashboard..." />;
-  if (state === "error") return <ErrorState message={error ?? "Unknown error"} onRetry={retry} />;
-  if (!data) return <EmptyState message="No telemetry data found. Run some sessions first." />;
+  if (state === "loading") {
+    return (
+      <div className="@container/main flex flex-1 flex-col gap-6 py-6">
+        <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
+          ))}
+        </div>
+        <div className="px-4 lg:px-6">
+          <Skeleton className="h-8 w-32 mb-4" />
+          <div className="grid grid-cols-1 gap-3 @xl/main:grid-cols-2 @5xl/main:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-28 rounded-xl" />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
-  const { overview, skills } = data;
+  if (state === "error") {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 py-16">
+        <AlertCircleIcon className="size-10 text-destructive" />
+        <p className="text-sm font-medium text-destructive">{error ?? "Unknown error"}</p>
+        <Button variant="outline" size="sm" onClick={retry}>
+          <RefreshCwIcon className="mr-2 size-3.5" />
+          Retry
+        </Button>
+      </div>
+    )
+  }
 
-  const gradedSkills = skills.filter((s) => s.total_checks >= 5);
+  if (!data) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 py-16">
+        <p className="text-sm text-muted-foreground">No telemetry data found. Run some sessions first.</p>
+      </div>
+    )
+  }
+
+  const { overview, skills } = data
+  const gradedSkills = skills.filter((s) => s.total_checks >= 5)
   const avgPassRate =
     gradedSkills.length > 0
       ? gradedSkills.reduce((sum, s) => sum + s.pass_rate, 0) / gradedSkills.length
-      : null;
+      : null
 
   return (
-    <div className={`dashboard-layout ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
-      <Sidebar
-        search={search}
-        onSearchChange={setSearch}
-        statusFilter={statusFilter}
-        onStatusFilterChange={setStatusFilter}
-        counts={statusCounts}
-        collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed((c) => !c)}
+    <div className="@container/main flex flex-1 flex-col gap-6 py-6">
+      <SectionCards
+        skillsCount={skills.length}
+        avgPassRate={avgPassRate}
+        unmatchedCount={overview.unmatched_queries.length}
+        sessionsCount={overview.counts.sessions}
+        pendingCount={overview.pending_proposals.length}
+        evidenceCount={overview.counts.evidence}
       />
 
-      <div className="dashboard-center">
-        {/* KPI Strip */}
-        <section className="kpi-strip">
-          <KpiCard label="Skills Monitored" value={skills.length} />
-          <KpiCard
-            label="Avg Pass Rate"
-            value={formatRate(avgPassRate)}
-            color={avgPassRate !== null && avgPassRate < 0.5 ? "#dc2626" : undefined}
-          />
-          <KpiCard label="Unmatched Queries" value={overview.unmatched_queries.length} />
-          <KpiCard label="Sessions" value={overview.counts.sessions} />
-          <KpiCard label="Pending Proposals" value={overview.pending_proposals.length} />
-          <KpiCard label="Total Evidence" value={overview.counts.evidence} />
-        </section>
+      <SkillHealthGrid cards={filteredCards} totalCount={cards.length} />
 
-        {/* Skill Health Grid */}
-        <section className="section">
-          <h2 className="section-title">
-            Skill Health
-            {filteredCards.length !== cards.length && (
-              <span className="section-count">
-                {filteredCards.length} / {cards.length}
-              </span>
-            )}
-          </h2>
-          {filteredCards.length === 0 ? (
-            <EmptyState
-              message={
-                cards.length === 0
-                  ? "No skills detected yet. Trigger some skills to see data."
-                  : "No skills match your filters."
-              }
-            />
-          ) : (
-            <div className="skill-grid">
-              {filteredCards.map((card) => (
-                <Link to={`/skills/${encodeURIComponent(card.name)}`} key={card.name} className="skill-card">
-                  <div className="skill-card-header">
-                    <span className="skill-name">{card.name}</span>
-                    <StatusPill status={card.status} />
-                  </div>
-                  <div className="skill-card-body">
-                    <div className="skill-stat">
-                      <span className="skill-stat-value">{formatRate(card.passRate)}</span>
-                      <span className="skill-stat-label">pass rate</span>
-                    </div>
-                    <div className="skill-stat">
-                      <span className="skill-stat-value">{card.checks}</span>
-                      <span className="skill-stat-label">checks</span>
-                    </div>
-                    <div className="skill-stat">
-                      <span className="skill-stat-value">{card.uniqueSessions}</span>
-                      <span className="skill-stat-label">sessions</span>
-                    </div>
-                    {card.lastSeen && (
-                      <div className="skill-stat skill-stat-last">
-                        <span className="skill-stat-value skill-stat-time">{timeAgo(card.lastSeen)}</span>
-                        <span className="skill-stat-label">last seen</span>
-                      </div>
-                    )}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </section>
+      <div className="px-4 lg:px-6">
+        <ActivityPanel
+          evolution={overview.evolution}
+          pendingProposals={overview.pending_proposals}
+          unmatchedQueries={overview.unmatched_queries}
+        />
       </div>
-
-      <ActivityTimeline
-        evolution={overview.evolution}
-        pendingProposals={overview.pending_proposals}
-        unmatchedQueries={overview.unmatched_queries}
-      />
     </div>
-  );
+  )
 }
