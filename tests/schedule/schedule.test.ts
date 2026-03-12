@@ -1,0 +1,155 @@
+import { describe, expect, test } from "bun:test";
+
+import {
+  formatOutput,
+  generateCrontab,
+  generateLaunchd,
+  generateSystemd,
+  SCHEDULE_ENTRIES,
+} from "../../cli/selftune/schedule.js";
+
+// ---------------------------------------------------------------------------
+// 1. SCHEDULE_ENTRIES structure
+// ---------------------------------------------------------------------------
+describe("SCHEDULE_ENTRIES", () => {
+  test("has exactly 4 entries", () => {
+    expect(SCHEDULE_ENTRIES).toHaveLength(4);
+  });
+
+  test("all entries have required fields", () => {
+    for (const entry of SCHEDULE_ENTRIES) {
+      expect(typeof entry.name).toBe("string");
+      expect(entry.name.length).toBeGreaterThan(0);
+      expect(typeof entry.schedule).toBe("string");
+      expect(entry.schedule.length).toBeGreaterThan(0);
+      expect(typeof entry.command).toBe("string");
+      expect(entry.command.length).toBeGreaterThan(0);
+      expect(typeof entry.description).toBe("string");
+      expect(entry.description.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("contains sync, status, evolve, and watch entries", () => {
+    const names = SCHEDULE_ENTRIES.map((e) => e.name);
+    expect(names).toContain("selftune-sync");
+    expect(names).toContain("selftune-status");
+    expect(names).toContain("selftune-evolve");
+    expect(names).toContain("selftune-watch");
+  });
+
+  test("evolve entry uses --sync-first", () => {
+    const evolve = SCHEDULE_ENTRIES.find((e) => e.name === "selftune-evolve");
+    expect(evolve?.command).toContain("--sync-first");
+  });
+
+  test("watch entry uses --sync-first", () => {
+    const watch = SCHEDULE_ENTRIES.find((e) => e.name === "selftune-watch");
+    expect(watch?.command).toContain("--sync-first");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2. Crontab generation
+// ---------------------------------------------------------------------------
+describe("generateCrontab", () => {
+  test("includes crontab header comment", () => {
+    const output = generateCrontab();
+    expect(output).toContain("crontab -e");
+  });
+
+  test("includes all schedule entries", () => {
+    const output = generateCrontab();
+    for (const entry of SCHEDULE_ENTRIES) {
+      expect(output).toContain(entry.schedule);
+      expect(output).toContain(entry.command);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3. Launchd generation
+// ---------------------------------------------------------------------------
+describe("generateLaunchd", () => {
+  test("outputs valid plist structure", () => {
+    const output = generateLaunchd();
+    expect(output).toContain("<?xml");
+    expect(output).toContain("com.selftune.sync");
+    expect(output).toContain("<key>StartInterval</key>");
+    expect(output).toContain("</plist>");
+  });
+
+  test("includes install instructions", () => {
+    const output = generateLaunchd();
+    expect(output).toContain("launchctl load");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4. Systemd generation
+// ---------------------------------------------------------------------------
+describe("generateSystemd", () => {
+  test("outputs timer and service sections", () => {
+    const output = generateSystemd();
+    expect(output).toContain("[Timer]");
+    expect(output).toContain("[Service]");
+    expect(output).toContain("selftune sync");
+  });
+
+  test("includes install instructions", () => {
+    const output = generateSystemd();
+    expect(output).toContain("systemctl --user");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5. formatOutput (default and filtered)
+// ---------------------------------------------------------------------------
+describe("formatOutput", () => {
+  test("default output includes all three sections", () => {
+    const result = formatOutput();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toContain("## System cron");
+      expect(result.data).toContain("## macOS launchd");
+      expect(result.data).toContain("## Linux systemd");
+    }
+  });
+
+  test("--format cron outputs only cron section", () => {
+    const result = formatOutput("cron");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toContain("## System cron");
+      expect(result.data).not.toContain("## macOS launchd");
+      expect(result.data).not.toContain("## Linux systemd");
+    }
+  });
+
+  test("--format launchd outputs only launchd section", () => {
+    const result = formatOutput("launchd");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).not.toContain("## System cron");
+      expect(result.data).toContain("## macOS launchd");
+      expect(result.data).not.toContain("## Linux systemd");
+    }
+  });
+
+  test("--format systemd outputs only systemd section", () => {
+    const result = formatOutput("systemd");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).not.toContain("## System cron");
+      expect(result.data).not.toContain("## macOS launchd");
+      expect(result.data).toContain("## Linux systemd");
+    }
+  });
+
+  test("unknown format returns error result", () => {
+    const result = formatOutput("docker");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("docker");
+    }
+  });
+});
