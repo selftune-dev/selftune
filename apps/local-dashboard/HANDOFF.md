@@ -58,9 +58,9 @@ bunx vite
 
 ## What remains before this can become default
 
-1. **Serve built SPA from dashboard-server**: Route `/` to serve `apps/local-dashboard/dist/` (move old dashboard to `/legacy/`)
-2. **Regression detection**: The SQLite layer doesn't compute regression detection yet — `deriveStatus()` currently only uses pass rate + check count. Add a `regression_detected` column to skill summaries when the monitoring snapshot computation moves to SQLite.
-3. **Monitoring snapshot migration**: Move `computeMonitoringSnapshot()` logic into the SQLite materializer or a query helper (window sessions, false negative rate, baseline comparison)
-4. **Actions integration**: Wire up watch/evolve/rollback buttons in the SPA to `/api/actions/*`
-5. **Migrate badge/report endpoints**: Switch to SQLite-backed queries
-6. **Production build**: Add `build:dashboard` script to root package.json
+1. ~~**Serve built SPA from dashboard-server**~~: Done — `/` serves SPA, old dashboard at `/legacy/`
+2. ~~**Production build**~~: Done — `bun run build:dashboard` in root package.json
+3. **Regression detection**: The SQLite layer doesn't compute regression detection yet — `deriveStatus()` currently only uses pass rate + check count. Add a `regression_detected` column to skill summaries when the monitoring snapshot computation moves to SQLite.
+4. **Monitoring snapshot migration**: Move `computeMonitoringSnapshot()` logic into the SQLite materializer or a query helper (window sessions, false negative rate, baseline comparison)
+5. **Actions integration**: Wire up watch/evolve/rollback buttons in the SPA to `/api/actions/*`
+6. **Migrate badge/report endpoints**: Switch to SQLite-backed queries

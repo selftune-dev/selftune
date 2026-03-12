@@ -14,8 +14,8 @@
  */
 
 import type { Database } from "bun:sqlite";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, extname, join, resolve } from "node:path";
 import type { BadgeData } from "./badge/badge-data.js";
 import { findSkillBadgeData } from "./badge/badge-data.js";
 import type { BadgeFormat } from "./badge/badge-svg.js";
@@ -110,6 +110,31 @@ function findViewerHTML(): string {
   }
   throw new Error("Could not find dashboard/index.html. Ensure it exists in the selftune repo.");
 }
+
+function findSpaDir(): string | null {
+  const candidates = [
+    join(dirname(import.meta.dir), "..", "apps", "local-dashboard", "dist"),
+    join(dirname(import.meta.dir), "apps", "local-dashboard", "dist"),
+    resolve("apps", "local-dashboard", "dist"),
+  ];
+  for (const c of candidates) {
+    if (existsSync(join(c, "index.html"))) return c;
+  }
+  return null;
+}
+
+const MIME_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".ttf": "font/ttf",
+  ".ico": "image/x-icon",
+};
 
 function collectData(): DashboardData {
   const telemetry = readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG);
@@ -541,6 +566,14 @@ export async function startDashboardServer(
   const getEvidenceEntries = options?.evidenceLoader ?? readEvidenceTrail;
   const executeAction = options?.actionRunner ?? runAction;
 
+  // -- SPA serving -------------------------------------------------------------
+  const spaDir = findSpaDir();
+  if (spaDir) {
+    console.log(`SPA found at ${spaDir}, serving as default dashboard`);
+  } else {
+    console.log("SPA build not found, serving legacy dashboard at /");
+  }
+
   // -- SQLite v2 data layer ---------------------------------------------------
   const db: Database = openDb();
   materializeIncremental(db);
@@ -634,8 +667,39 @@ export async function startDashboardServer(
         return new Response(null, { status: 204, headers: corsHeaders() });
       }
 
-      // ---- GET / ---- Serve dashboard HTML
+      // ---- SPA static assets ---- Serve from dist/assets/
+      if (spaDir && req.method === "GET" && url.pathname.startsWith("/assets/")) {
+        const filePath = resolve(spaDir, `.${url.pathname}`);
+        if (filePath.startsWith(spaDir) && existsSync(filePath) && statSync(filePath).isFile()) {
+          const ext = extname(filePath);
+          const contentType = MIME_TYPES[ext] ?? "application/octet-stream";
+          const file = readFileSync(filePath);
+          return new Response(file, {
+            headers: {
+              "Content-Type": contentType,
+              "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=31536000, immutable",
+              ...corsHeaders(),
+            },
+          });
+        }
+      }
+
+      // ---- GET / ---- Serve SPA (or legacy fallback)
       if (url.pathname === "/" && req.method === "GET") {
+        if (spaDir) {
+          const html = readFileSync(join(spaDir, "index.html"), "utf-8");
+          return new Response(html, {
+            headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders() },
+          });
+        }
+        const html = buildLiveHTML();
+        return new Response(html, {
+          headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders() },
+        });
+      }
+
+      // ---- GET /legacy/ ---- Serve old dashboard HTML
+      if (url.pathname === "/legacy/" && req.method === "GET") {
         const html = buildLiveHTML();
         return new Response(html, {
           headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders() },
@@ -920,6 +984,14 @@ export async function startDashboardServer(
           { ...report, evolution, pending_proposals },
           { headers: corsHeaders() },
         );
+      }
+
+      // ---- SPA fallback ---- Serve index.html for client-side routes
+      if (spaDir && req.method === "GET" && !url.pathname.startsWith("/api/")) {
+        const html = readFileSync(join(spaDir, "index.html"), "utf-8");
+        return new Response(html, {
+          headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders() },
+        });
       }
 
       // ---- 404 ----
