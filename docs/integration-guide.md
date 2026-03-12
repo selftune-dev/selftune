@@ -390,7 +390,7 @@ in your hook configuration, which resolves the correct script path at runtime.
 selftune is designed to run unattended on any machine. The core automation
 loop is four commands:
 
-```
+```text
 sync → status → evolve --sync-first → watch --sync-first
 ```
 

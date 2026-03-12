@@ -46,6 +46,14 @@ describe("SCHEDULE_ENTRIES", () => {
     const watch = SCHEDULE_ENTRIES.find((e) => e.name === "selftune-watch");
     expect(watch?.command).toContain("--sync-first");
   });
+
+  test("derives from DEFAULT_CRON_JOBS (shared source of truth)", () => {
+    // Schedules should match cron expressions from DEFAULT_CRON_JOBS
+    const sync = SCHEDULE_ENTRIES.find((e) => e.name === "selftune-sync");
+    expect(sync?.schedule).toBe("*/30 * * * *");
+    const status = SCHEDULE_ENTRIES.find((e) => e.name === "selftune-status");
+    expect(status?.schedule).toBe("0 8 * * *");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -73,7 +81,6 @@ describe("generateLaunchd", () => {
   test("outputs valid plist structure", () => {
     const output = generateLaunchd();
     expect(output).toContain("<?xml");
-    expect(output).toContain("com.selftune.sync");
     expect(output).toContain("<key>StartInterval</key>");
     expect(output).toContain("</plist>");
   });
@@ -81,6 +88,14 @@ describe("generateLaunchd", () => {
   test("includes install instructions", () => {
     const output = generateLaunchd();
     expect(output).toContain("launchctl load");
+  });
+
+  test("generates plists for all schedule entries", () => {
+    const output = generateLaunchd();
+    expect(output).toContain("com.selftune.sync");
+    expect(output).toContain("com.selftune.status");
+    expect(output).toContain("com.selftune.evolve");
+    expect(output).toContain("com.selftune.watch");
   });
 });
 
@@ -92,12 +107,19 @@ describe("generateSystemd", () => {
     const output = generateSystemd();
     expect(output).toContain("[Timer]");
     expect(output).toContain("[Service]");
-    expect(output).toContain("selftune sync");
   });
 
   test("includes install instructions", () => {
     const output = generateSystemd();
     expect(output).toContain("systemctl --user");
+  });
+
+  test("generates units for all schedule entries", () => {
+    const output = generateSystemd();
+    expect(output).toContain("selftune-sync.timer");
+    expect(output).toContain("selftune-status.timer");
+    expect(output).toContain("selftune-evolve.timer");
+    expect(output).toContain("selftune-watch.timer");
   });
 });
 

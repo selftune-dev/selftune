@@ -13,8 +13,10 @@
 
 import { parseArgs } from "node:util";
 
+import { DEFAULT_CRON_JOBS } from "./cron/setup.js";
+
 // ---------------------------------------------------------------------------
-// Schedule definitions (matches the selftune automation loop)
+// Schedule definitions — derived from the shared DEFAULT_CRON_JOBS
 // ---------------------------------------------------------------------------
 
 export interface ScheduleEntry {
@@ -24,32 +26,62 @@ export interface ScheduleEntry {
   description: string;
 }
 
-export const SCHEDULE_ENTRIES: ScheduleEntry[] = [
-  {
-    name: "selftune-sync",
-    schedule: "*/30 * * * *",
-    command: "selftune sync",
-    description: "Sync source-truth telemetry every 30 minutes",
-  },
-  {
-    name: "selftune-status",
-    schedule: "0 8 * * *",
-    command: "selftune sync && selftune status",
-    description: "Daily health check at 8am (syncs first)",
-  },
-  {
-    name: "selftune-evolve",
-    schedule: "0 3 * * 0",
-    command: "selftune evolve --sync-first --skill <name> --skill-path <path>",
-    description: "Weekly evolution at 3am Sunday",
-  },
-  {
-    name: "selftune-watch",
-    schedule: "0 */6 * * *",
-    command: "selftune watch --sync-first --skill <name> --skill-path <path>",
-    description: "Monitor regressions every 6 hours",
-  },
-];
+/** Map cron job metadata to schedule entries with CLI commands. */
+function commandForJob(jobName: string): string {
+  switch (jobName) {
+    case "selftune-sync":
+      return "selftune sync";
+    case "selftune-status":
+      return "selftune sync && selftune status";
+    case "selftune-evolve":
+      return "selftune evolve --sync-first --skill <name> --skill-path <path>";
+    case "selftune-watch":
+      return "selftune watch --sync-first --skill <name> --skill-path <path>";
+    default:
+      return `selftune ${jobName.replace("selftune-", "")}`;
+  }
+}
+
+export const SCHEDULE_ENTRIES: ScheduleEntry[] = DEFAULT_CRON_JOBS.map((job) => ({
+  name: job.name,
+  schedule: job.cron,
+  command: commandForJob(job.name),
+  description: job.description,
+}));
+
+// ---------------------------------------------------------------------------
+// Helpers for launchd/systemd generation
+// ---------------------------------------------------------------------------
+
+/** Convert a cron schedule to a launchd StartInterval in seconds (best-effort). */
+function cronToInterval(cron: string): number {
+  // Simple heuristic for common patterns
+  if (cron.startsWith("*/")) {
+    const minutes = Number.parseInt(cron.split(" ")[0].replace("*/", ""), 10);
+    return minutes * 60;
+  }
+  if (cron.startsWith("0 */")) {
+    const hours = Number.parseInt(cron.split(" ")[1].replace("*/", ""), 10);
+    return hours * 3600;
+  }
+  if (cron.startsWith("0 ") && cron.includes("* * 0")) {
+    return 604800; // weekly
+  }
+  if (cron.startsWith("0 ") && cron.endsWith("* * *")) {
+    return 86400; // daily
+  }
+  return 1800; // default 30 min
+}
+
+/** Convert a cron schedule to a systemd OnCalendar value (best-effort). */
+function cronToOnCalendar(cron: string): string {
+  if (cron === "*/30 * * * *") return "*:0/30";
+  if (cron === "0 8 * * *") return "*-*-* 08:00:00";
+  if (cron === "0 3 * * 0") return "Sun *-*-* 03:00:00";
+  if (cron === "0 */6 * * *") return "*-*-* 0/6:00:00";
+  // Fallback: return cron expression in a comment
+  return cron;
+}
 
 // ---------------------------------------------------------------------------
 // Generators
@@ -72,70 +104,84 @@ export function generateCrontab(): string {
 }
 
 export function generateLaunchd(): string {
-  const plist = `<?xml version="1.0" encoding="UTF-8"?>
+  const plists: string[] = [];
+
+  for (const entry of SCHEDULE_ENTRIES) {
+    const label = `com.selftune.${entry.name.replace("selftune-", "")}`;
+    const lastCmd = entry.command.split(" && ").pop() ?? entry.command;
+    const args = lastCmd
+      .split(" ")
+      .map((a) => `    <string>${a}</string>`)
+      .join("\n");
+    const interval = cronToInterval(entry.schedule);
+
+    plists.push(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  selftune automation — macOS launchd agent.
+  ${entry.description}
 
   Install:
-    cp com.selftune.sync.plist ~/Library/LaunchAgents/
-    launchctl load ~/Library/LaunchAgents/com.selftune.sync.plist
-
-  This example runs \`selftune sync\` every 30 minutes.
-  Create similar plists for status, evolve, and watch,
-  or combine them into a single wrapper script.
+    cp ${label}.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/${label}.plist
 -->
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.selftune.sync</string>
+  <string>${label}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>selftune</string>
-    <string>sync</string>
+${args}
   </array>
   <key>StartInterval</key>
-  <integer>1800</integer>
+  <integer>${interval}</integer>
   <key>StandardOutPath</key>
-  <string>/tmp/selftune-sync.log</string>
+  <string>/tmp/${entry.name}.log</string>
   <key>StandardErrorPath</key>
-  <string>/tmp/selftune-sync.err</string>
+  <string>/tmp/${entry.name}.err</string>
 </dict>
-</plist>`;
-  return plist;
+</plist>`);
+  }
+
+  return plists.join("\n\n");
 }
 
 export function generateSystemd(): string {
-  const timer = `# selftune automation — systemd timer + service
+  const units: string[] = [];
+
+  for (const entry of SCHEDULE_ENTRIES) {
+    const unitName = entry.name;
+    const calendar = cronToOnCalendar(entry.schedule);
+    const execStart = (entry.command.split(" && ").pop() ?? entry.command).trim();
+
+    units.push(`# --- ${unitName}.timer ---
+# ${entry.description}
 #
 # Install:
-#   cp selftune-sync.service selftune-sync.timer ~/.config/systemd/user/
+#   cp ${unitName}.service ${unitName}.timer ~/.config/systemd/user/
 #   systemctl --user daemon-reload
-#   systemctl --user enable --now selftune-sync.timer
-#
-# Create similar pairs for status, evolve, and watch,
-# or combine them into a single wrapper script.
+#   systemctl --user enable --now ${unitName}.timer
 
-# --- selftune-sync.timer ---
 [Unit]
-Description=selftune sync timer
+Description=${entry.description}
 
 [Timer]
-OnCalendar=*:0/30
+OnCalendar=${calendar}
 Persistent=true
 
 [Install]
 WantedBy=timers.target
 
-# --- selftune-sync.service ---
+# --- ${unitName}.service ---
 [Unit]
-Description=selftune sync
+Description=${entry.description}
 
 [Service]
 Type=oneshot
-ExecStart=selftune sync`;
-  return timer;
+ExecStart=${execStart}`);
+  }
+
+  return units.join("\n\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -149,9 +195,14 @@ function isValidFormat(value: string): value is ScheduleFormat {
   return (VALID_FORMATS as readonly string[]).includes(value);
 }
 
-export function formatOutput(format?: string): { ok: true; data: string } | { ok: false; error: string } {
+export function formatOutput(
+  format?: string,
+): { ok: true; data: string } | { ok: false; error: string } {
   if (format && !isValidFormat(format)) {
-    return { ok: false, error: `Unknown format "${format}". Valid formats: ${VALID_FORMATS.join(", ")}` };
+    return {
+      ok: false,
+      error: `Unknown format "${format}". Valid formats: ${VALID_FORMATS.join(", ")}`,
+    };
   }
 
   const sections: string[] = [];
