@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  buildTelemetryFromTranscript,
+  extractActionableUserQueries,
   extractTokenUsage,
+  findTranscriptFiles,
+  findTranscriptPathForSession,
   getLastUserMessage,
   parseTranscript,
   readExcerpt,
@@ -100,6 +104,62 @@ describe("parseTranscript", () => {
   });
 });
 
+describe("extractActionableUserQueries", () => {
+  test("returns only actionable user queries", () => {
+    const path = writeTranscript("queries.jsonl", [
+      { role: "user", content: "real actionable request", timestamp: "2026-03-01T00:00:00Z" },
+      { role: "user", content: "<local-command-stdout> ignored output" },
+      { role: "assistant", content: [{ type: "text", text: "ok" }] },
+      { role: "user", content: "ok" },
+    ]);
+
+    expect(extractActionableUserQueries(path)).toEqual([
+      { query: "real actionable request", timestamp: "2026-03-01T00:00:00Z" },
+    ]);
+  });
+});
+
+describe("findTranscriptFiles / findTranscriptPathForSession", () => {
+  test("finds nested transcript files recursively", () => {
+    const projectRoot = join(tmpDir, "projects");
+    const nestedDir = join(projectRoot, "hash", "subagents");
+    const topLevelDir = join(projectRoot, "hash");
+    mkdirSync(nestedDir, { recursive: true });
+    writeFileSync(join(topLevelDir, "root-session.jsonl"), "", "utf-8");
+    writeFileSync(join(nestedDir, "nested-session.jsonl"), "", "utf-8");
+
+    const found = findTranscriptFiles(projectRoot);
+    expect(found).toContain(join(topLevelDir, "root-session.jsonl"));
+    expect(found).toContain(join(nestedDir, "nested-session.jsonl"));
+    expect(findTranscriptPathForSession("nested-session", projectRoot)).toBe(
+      join(nestedDir, "nested-session.jsonl"),
+    );
+  });
+});
+
+describe("buildTelemetryFromTranscript", () => {
+  test("builds a telemetry record from transcript source data", () => {
+    const path = writeTranscript("sess-build.jsonl", [
+      { role: "user", content: "review the paperclip repo", timestamp: "2026-03-01T10:00:00Z" },
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", name: "Read", input: { file_path: "/tmp/paperclip/SKILL.md" } },
+          { type: "tool_use", name: "Bash", input: { command: "git status" } },
+        ],
+      },
+    ]);
+
+    const telemetry = buildTelemetryFromTranscript("sess-build", path);
+    expect(telemetry).not.toBeNull();
+    expect(telemetry?.session_id).toBe("sess-build");
+    expect(telemetry?.transcript_path).toBe(path);
+    expect(telemetry?.last_user_query).toBe("review the paperclip repo");
+    expect(telemetry?.tool_calls.Read).toBe(1);
+    expect(telemetry?.bash_commands).toEqual(["git status"]);
+  });
+});
+
 describe("getLastUserMessage", () => {
   test("returns null for missing file", () => {
     expect(getLastUserMessage(join(tmpDir, "nope.jsonl"))).toBeNull();
@@ -151,6 +211,47 @@ describe("readExcerpt", () => {
     expect(excerpt).toContain("[USER] do something");
     expect(excerpt).toContain("[ASSISTANT] I'll help");
     expect(excerpt).toContain("[TOOL:Bash] echo hi");
+  });
+
+  test("produces readable excerpts for codex rollout files", () => {
+    const path = writeTranscript("codex-rollout.jsonl", [
+      {
+        type: "event_msg",
+        payload: {
+          type: "user_message",
+          message: "investigate selftune routing",
+        },
+      },
+      {
+        type: "response_item",
+        payload: {
+          type: "function_call",
+          name: "exec_command",
+          arguments: '{"cmd":"cat .agents/skills/selftune/SKILL.md"}',
+        },
+      },
+      {
+        type: "response_item",
+        payload: {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "text", text: "I found the selftune skill definition." }],
+        },
+      },
+      {
+        type: "item.completed",
+        item: {
+          item_type: "command_execution",
+          command: "git status",
+        },
+      },
+    ]);
+
+    const excerpt = readExcerpt(path);
+    expect(excerpt).toContain("[USER] investigate selftune routing");
+    expect(excerpt).toContain("[TOOL:exec_command] cat .agents/skills/selftune/SKILL.md");
+    expect(excerpt).toContain("[ASSISTANT] I found the selftune skill definition.");
+    expect(excerpt).toContain("[TOOL:command_execution] git status");
   });
 
   test("truncates long excerpts", () => {

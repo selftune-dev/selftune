@@ -2,9 +2,10 @@
  * Transcript parsing utilities shared by hooks and grading.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname } from "node:path";
-import type { TranscriptMetrics } from "../types.js";
+import { CLAUDE_CODE_PROJECTS_DIR } from "../constants.js";
+import type { SessionTelemetryRecord, TranscriptMetrics } from "../types.js";
 import { isActionableQueryText } from "./query-filter.js";
 
 /**
@@ -123,6 +124,142 @@ export function parseTranscript(transcriptPath: string): TranscriptMetrics {
 }
 
 /**
+ * Extract actionable user queries from a Claude transcript.
+ */
+export function extractActionableUserQueries(
+  transcriptPath: string,
+): Array<{ query: string; timestamp: string }> {
+  if (!existsSync(transcriptPath)) return [];
+
+  let content: string;
+  try {
+    content = readFileSync(transcriptPath, "utf-8");
+  } catch {
+    return [];
+  }
+
+  const results: Array<{ query: string; timestamp: string }> = [];
+
+  for (const raw of content.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+
+    let entry: Record<string, unknown>;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+
+    const msg = (entry.message as Record<string, unknown>) ?? entry;
+    const role = (msg.role as string) ?? (entry.role as string) ?? "";
+    if (role !== "user") continue;
+
+    const text = extractActionableUserText(msg.content ?? entry.content ?? "");
+    if (!text || text.length < 4) continue;
+
+    const timestamp = (entry.timestamp as string) ?? (msg.timestamp as string) ?? "";
+    results.push({ query: text, timestamp });
+  }
+
+  return results;
+}
+
+/**
+ * Recursively find Claude transcript JSONL files under a projects directory.
+ */
+export function findTranscriptFiles(projectsDir: string, since?: Date): string[] {
+  if (!existsSync(projectsDir)) return [];
+
+  const files: string[] = [];
+
+  const walk = (dir: string): void => {
+    let entries: string[];
+    try {
+      entries = readdirSync(dir).sort();
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const entryPath = `${dir}/${entry}`;
+      try {
+        const stats = statSync(entryPath);
+
+        if (stats.isDirectory()) {
+          walk(entryPath);
+          continue;
+        }
+
+        if (!stats.isFile() || !entry.endsWith(".jsonl")) continue;
+        if (since && stats.mtime < since) continue;
+
+        files.push(entryPath);
+      } catch {
+        // Ignore unreadable files and keep scanning.
+      }
+    }
+  };
+
+  walk(projectsDir);
+  return files.sort();
+}
+
+/**
+ * Find a Claude transcript path by session ID.
+ */
+export function findTranscriptPathForSession(
+  sessionId: string,
+  projectsDir: string = CLAUDE_CODE_PROJECTS_DIR,
+): string | null {
+  const filename = `${sessionId}.jsonl`;
+  for (const transcriptPath of findTranscriptFiles(projectsDir)) {
+    if (basename(transcriptPath) === filename) return transcriptPath;
+  }
+  return null;
+}
+
+/**
+ * Build a SessionTelemetryRecord directly from a transcript file.
+ */
+export function buildTelemetryFromTranscript(
+  sessionId: string,
+  transcriptPath: string,
+  source = "claude_code_transcript_fallback",
+): SessionTelemetryRecord | null {
+  if (!existsSync(transcriptPath)) return null;
+
+  const metrics = parseTranscript(transcriptPath);
+  const userQueries = extractActionableUserQueries(transcriptPath);
+
+  let timestamp = userQueries[0]?.timestamp ?? "";
+  if (!timestamp) {
+    try {
+      timestamp = statSync(transcriptPath).mtime.toISOString();
+    } catch {
+      timestamp = new Date().toISOString();
+    }
+  }
+
+  return {
+    timestamp,
+    session_id: sessionId,
+    cwd: "",
+    transcript_path: transcriptPath,
+    tool_calls: metrics.tool_calls,
+    total_tool_calls: metrics.total_tool_calls,
+    bash_commands: metrics.bash_commands,
+    skills_triggered: metrics.skills_triggered,
+    skills_invoked: metrics.skills_invoked,
+    assistant_turns: metrics.assistant_turns,
+    errors_encountered: metrics.errors_encountered,
+    transcript_chars: metrics.transcript_chars,
+    last_user_query: metrics.last_user_query,
+    source,
+  };
+}
+
+/**
  * Walk the transcript JSONL backwards to find the most recent user message.
  */
 export function getLastUserMessage(transcriptPath: string): string | null {
@@ -160,6 +297,40 @@ export function getLastUserMessage(transcriptPath: string): string | null {
   return null;
 }
 
+function extractTextParts(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+
+  return content
+    .filter(
+      (part): part is Record<string, unknown> =>
+        typeof part === "object" &&
+        part !== null &&
+        (part as Record<string, unknown>).type === "text",
+    )
+    .map((part) => (part.text as string) ?? "")
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+}
+
+function summarizeCodexFunctionArguments(argumentsText: unknown): string {
+  if (typeof argumentsText !== "string" || !argumentsText.trim()) return "";
+
+  try {
+    const parsed = JSON.parse(argumentsText) as Record<string, unknown>;
+    return (
+      (typeof parsed.cmd === "string" && parsed.cmd.trim()) ||
+      (typeof parsed.command === "string" && parsed.command.trim()) ||
+      (typeof parsed.file_path === "string" && parsed.file_path.trim()) ||
+      (typeof parsed.path === "string" && parsed.path.trim()) ||
+      (typeof parsed.query === "string" && parsed.query.trim()) ||
+      argumentsText.trim()
+    ).slice(0, 200);
+  } catch {
+    return argumentsText.trim().slice(0, 200);
+  }
+}
+
 /**
  * Parse a transcript into a human-readable excerpt for the grader.
  */
@@ -184,19 +355,13 @@ export function readExcerpt(transcriptPath: string, maxChars = 8000): string {
     const msg = (entry.message as Record<string, unknown>) ?? entry;
     const role = (msg.role as string) ?? (entry.role as string) ?? "";
     const entryContent = msg.content ?? entry.content ?? "";
+    const eventType = (entry.type as string) ?? "";
 
     if (role === "user") {
       if (typeof entryContent === "string") {
         readable.push(`[USER] ${entryContent.slice(0, 200)}`);
       } else if (Array.isArray(entryContent)) {
-        const texts = entryContent
-          .filter(
-            (p): p is Record<string, unknown> =>
-              typeof p === "object" && p !== null && (p as Record<string, unknown>).type === "text",
-          )
-          .map((p) => (p.text as string) ?? "")
-          .filter(Boolean);
-        const text = texts.join(" ").trim().slice(0, 200);
+        const text = extractTextParts(entryContent).slice(0, 200);
         if (text) readable.push(`[USER] ${text}`);
       }
     } else if (role === "assistant") {
@@ -217,6 +382,45 @@ export function readExcerpt(transcriptPath: string, maxChars = 8000): string {
             readable.push(`[TOOL:${name}] ${detail}`);
           }
         }
+      }
+    } else if (eventType === "event_msg") {
+      const payload = (entry.payload as Record<string, unknown>) ?? {};
+      if (payload.type === "user_message") {
+        const text = extractActionableUserText(payload.message)?.slice(0, 200) ?? "";
+        if (text) readable.push(`[USER] ${text}`);
+      }
+    } else if (eventType === "turn.completed") {
+      const text = extractActionableUserText(entry.user_message)?.slice(0, 200) ?? "";
+      if (text) readable.push(`[USER] ${text}`);
+    } else if (eventType === "response_item") {
+      const payload = (entry.payload as Record<string, unknown>) ?? {};
+      const itemType = (payload.type as string) ?? "";
+
+      if (itemType === "function_call") {
+        const name = (payload.name as string) ?? "function_call";
+        const detail = summarizeCodexFunctionArguments(payload.arguments);
+        if (detail) readable.push(`[TOOL:${name}] ${detail}`);
+      } else if (itemType === "agent_reasoning") {
+        const text = ((payload.text as string) ?? "").trim().slice(0, 200);
+        if (text) readable.push(`[ASSISTANT] ${text}`);
+      } else if (itemType === "message" && (payload.role as string) === "assistant") {
+        const text = extractTextParts(payload.content).slice(0, 200);
+        if (text) readable.push(`[ASSISTANT] ${text}`);
+      }
+    } else if (
+      eventType === "item.completed" ||
+      eventType === "item.started" ||
+      eventType === "item.updated"
+    ) {
+      const item = (entry.item as Record<string, unknown>) ?? {};
+      const itemType = (item.item_type as string) ?? (item.type as string) ?? "";
+
+      if (itemType === "command_execution") {
+        const command = ((item.command as string) ?? "").trim().slice(0, 200);
+        if (command) readable.push(`[TOOL:command_execution] ${command}`);
+      } else {
+        const text = ((item.text as string) ?? "").trim().slice(0, 200);
+        if (text) readable.push(`[ASSISTANT] ${text}`);
       }
     }
   }

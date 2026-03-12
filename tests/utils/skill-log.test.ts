@@ -105,4 +105,35 @@ describe("readEffectiveSkillUsageRecords", () => {
 
     expect(readEffectiveSkillUsageRecords(rawPath, repairedPath, markerPath)).toEqual([]);
   });
+
+  test("normalizes wrapped raw queries when returning effective records", () => {
+    const rawPath = join(tempDir, "raw-wrapped.jsonl");
+    const repairedPath = join(tempDir, "repaired-wrapped.jsonl");
+    const markerPath = join(tempDir, "sessions-wrapped.json");
+
+    writeJsonl(rawPath, [
+      {
+        timestamp: "2026-03-10T10:00:00Z",
+        session_id: "session-a",
+        skill_name: "selftune",
+        skill_path: "/skills/selftune/SKILL.md",
+        query:
+          "<system_instruction>hidden prompt</system_instruction>\n\nmy claude code isn't working",
+        triggered: true,
+        source: "codex_rollout",
+      },
+    ]);
+
+    expect(readEffectiveSkillUsageRecords(rawPath, repairedPath, markerPath)).toEqual([
+      {
+        timestamp: "2026-03-10T10:00:00Z",
+        session_id: "session-a",
+        skill_name: "selftune",
+        skill_path: "/skills/selftune/SKILL.md",
+        query: "my claude code isn't working",
+        triggered: true,
+        source: "codex_rollout",
+      },
+    ]);
+  });
 });

@@ -1002,6 +1002,7 @@ const state = {
   queries: [],     // QueryLogRecord[]
   evolution: [],   // EvolutionAuditEntry[]
   evidence: [],    // EvolutionEvidenceEntry[]
+  counts: null,    // Optional aggregated counts for live mode payloads
   computed: null,  // Pre-computed monitoring data (from CLI)
 };
 
@@ -1168,6 +1169,7 @@ function loadEmbeddedData() {
     if (data.queries) state.queries = data.queries;
     if (data.evolution) state.evolution = data.evolution;
     if (data.evidence) state.evidence = data.evidence;
+    if (data.counts) state.counts = data.counts;
     if (data.computed) {
       state.computed = data.computed;
     } else {
@@ -1175,6 +1177,12 @@ function loadEmbeddedData() {
     }
     return state.telemetry.length || state.skills.length || state.queries.length || state.evolution.length;
   } catch { return false; }
+}
+
+function getCount(key, records) {
+  return state.counts && Number.isFinite(Number(state.counts[key]))
+    ? Number(state.counts[key])
+    : records.length;
 }
 
 // ========================================================================
@@ -1272,14 +1280,18 @@ function refreshAll() {
 // ========================================================================
 function updateHeader() {
   const parts = [];
-  if (state.telemetry.length) parts.push(`<span class="count">${state.telemetry.length}</span> sessions`);
-  if (state.skills.length) parts.push(`<span class="count">${state.skills.length}</span> skill events`);
-  if (state.queries.length) parts.push(`<span class="count">${state.queries.length}</span> queries`);
-  if (state.evolution.length) parts.push(`<span class="count">${state.evolution.length}</span> evolution actions`);
+  const telemetryCount = getCount('telemetry', state.telemetry);
+  const skillCount = getCount('skills', state.skills);
+  const queryCount = getCount('queries', state.queries);
+  const evolutionCount = getCount('evolution', state.evolution);
+  if (telemetryCount) parts.push(`<span class="count">${telemetryCount}</span> sessions`);
+  if (skillCount) parts.push(`<span class="count">${skillCount}</span> skill events`);
+  if (queryCount) parts.push(`<span class="count">${queryCount}</span> queries`);
+  if (evolutionCount) parts.push(`<span class="count">${evolutionCount}</span> evolution actions`);
   document.getElementById('headerStatus').innerHTML = parts.length ? parts.join(' &middot; ') : 'No embedded data found. Load log files to explore a local snapshot.';
   document.getElementById('overviewMode').textContent = isLiveMode() ? 'Live dashboard' : 'Static export';
   document.getElementById('overviewContext').textContent = parts.length
-    ? `${state.skills.length || 0} tracked skill events across your local logs`
+    ? `${skillCount || 0} tracked skill events across your local logs`
     : 'Open a built dashboard or run live mode for updates.';
 }
 
@@ -1312,11 +1324,14 @@ function updateHealthSummary() {
     regressions.length ? regressions.join(', ') : 'none detected';
 
   const unmatched = computed.unmatched || [];
-  document.getElementById('kpi-unmatched').textContent = unmatched.length;
+  const unmatchedCount = Number.isFinite(Number(computed.unmatched_count))
+    ? Number(computed.unmatched_count)
+    : unmatched.length;
+  document.getElementById('kpi-unmatched').textContent = unmatchedCount;
   document.getElementById('kpi-unmatched-sub').textContent =
-    unmatched.length ? 'queries not matched to any skill' : 'all queries matched';
+    unmatchedCount ? 'queries not matched to any skill' : 'all queries matched';
 
-  document.getElementById('kpi-sessions').textContent = state.telemetry.length;
+  document.getElementById('kpi-sessions').textContent = getCount('telemetry', state.telemetry);
   if (state.telemetry.length) {
     const sorted = [...state.telemetry].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     const first = formatDate(sorted[0].timestamp);
@@ -1790,6 +1805,7 @@ function startSSE() {
       if (data.queries) state.queries = data.queries;
       if (data.evolution) state.evolution = data.evolution;
       if (data.decisions) state.decisions = data.decisions;
+      if (data.counts) state.counts = data.counts;
       if (data.computed) {
         state.computed = data.computed;
       } else {

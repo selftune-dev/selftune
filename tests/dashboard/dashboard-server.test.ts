@@ -9,6 +9,37 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
 // Dynamic import to avoid module-level failures when file doesn't exist yet
 let startDashboardServer: typeof import("../../cli/selftune/dashboard-server.js").startDashboardServer;
+const fakeData = {
+  telemetry: [{ timestamp: "2026-03-12T10:00:00Z", session_id: "sess-1" }],
+  skills: [
+    {
+      timestamp: "2026-03-12T10:00:00Z",
+      session_id: "sess-1",
+      skill_name: "test-skill",
+      skill_path: "/tmp/test-skill/SKILL.md",
+      query: "test prompt",
+      triggered: true,
+    },
+  ],
+  queries: [{ timestamp: "2026-03-12T10:00:00Z", session_id: "sess-1", query: "test prompt" }],
+  evolution: [],
+  evidence: [],
+  decisions: [],
+  computed: {
+    snapshots: {
+      "test-skill": {
+        window_sessions: 1,
+        pass_rate: 1,
+        false_negative_rate: 0,
+        regression_detected: false,
+        baseline_pass_rate: 0.5,
+        skill_checks: 1,
+      },
+    },
+    unmatched: [],
+    pendingProposals: [],
+  },
+};
 
 beforeAll(async () => {
   const mod = await import("../../cli/selftune/dashboard-server.js");
@@ -23,6 +54,33 @@ describe("dashboard-server", () => {
       port: 0, // random port
       host: "localhost",
       openBrowser: false,
+      dataLoader: () => fakeData,
+      statusLoader: () => ({
+        skills: [
+          {
+            name: "test-skill",
+            passRate: 1,
+            trend: "stable",
+            missedQueries: 0,
+            status: "HEALTHY",
+            snapshot: null,
+          },
+        ],
+        unmatchedQueries: 0,
+        pendingProposals: 0,
+        lastSession: "2026-03-12T10:00:00Z",
+        system: {
+          healthy: true,
+          pass: 1,
+          fail: 0,
+          warn: 0,
+        },
+      }),
+      actionRunner: async (command) => ({
+        success: command !== "rollback",
+        output: `${command} ok`,
+        error: command === "rollback" ? "rollback blocked in test" : null,
+      }),
     });
   });
 
@@ -256,6 +314,14 @@ describe("server lifecycle", () => {
       port: 0,
       host: "localhost",
       openBrowser: false,
+      dataLoader: () => fakeData,
+      statusLoader: () => ({
+        skills: [],
+        unmatchedQueries: 0,
+        pendingProposals: 0,
+        lastSession: null,
+        system: { healthy: true, pass: 0, fail: 0, warn: 0 },
+      }),
     });
     expect(s).toHaveProperty("stop");
     expect(s).toHaveProperty("port");
@@ -269,10 +335,79 @@ describe("server lifecycle", () => {
       port: 0,
       host: "localhost",
       openBrowser: false,
+      dataLoader: () => fakeData,
+      statusLoader: () => ({
+        skills: [],
+        unmatchedQueries: 0,
+        pendingProposals: 0,
+        lastSession: null,
+        system: { healthy: true, pass: 0, fail: 0, warn: 0 },
+      }),
     });
     // Verify the server is actually responding
     const res = await fetch(`http://localhost:${s.port}/api/data`);
     expect(res.status).toBe(200);
     s.stop();
+  });
+});
+
+describe("live shell loading", () => {
+  let server: { server: unknown; stop: () => void; port: number };
+  let dataLoaderCalls = 0;
+
+  beforeAll(async () => {
+    dataLoaderCalls = 0;
+    server = await startDashboardServer({
+      port: 0,
+      host: "localhost",
+      openBrowser: false,
+      dataLoader: () => {
+        dataLoaderCalls++;
+        return {
+          telemetry: [],
+          skills: [],
+          queries: [],
+          evolution: [],
+          evidence: [],
+          decisions: [],
+          computed: {
+            snapshots: {},
+            unmatched: [],
+            pendingProposals: [],
+          },
+        };
+      },
+      statusLoader: () => ({
+        skills: [],
+        unmatchedQueries: 0,
+        pendingProposals: 0,
+        lastSession: null,
+        system: {
+          healthy: true,
+          pass: 0,
+          fail: 0,
+          warn: 0,
+        },
+      }),
+    });
+  });
+
+  afterAll(() => {
+    server?.stop();
+  });
+
+  it("serves / without eagerly loading dashboard data", async () => {
+    const res = await fetch(`http://localhost:${server.port}/`);
+    const html = await res.text();
+    expect(res.status).toBe(200);
+    expect(html).toContain("__SELFTUNE_LIVE__");
+    expect(html).not.toContain('id="embedded-data"');
+    expect(dataLoaderCalls).toBe(0);
+  });
+
+  it("loads dashboard data only through /api/data", async () => {
+    const res = await fetch(`http://localhost:${server.port}/api/data`);
+    expect(res.status).toBe(200);
+    expect(dataLoaderCalls).toBe(1);
   });
 });

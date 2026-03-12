@@ -25,6 +25,8 @@ selftune evolve --skill <name> --skill-path <path> [options]
 | `--cheap-loop` | Use cheap models for loop, expensive for final gate | Off |
 | `--gate-model <model>` | Model for final gate validation | `sonnet` (when `--cheap-loop`) |
 | `--proposal-model <model>` | Model for proposal generation LLM calls | None |
+| `--sync-first` | Refresh source-truth telemetry before generating evals/failure patterns | Off |
+| `--sync-force` | Force a full source rescan during `--sync-first` | Off |
 
 ## Output Format
 
@@ -143,7 +145,20 @@ edits on monitored skills during active evolution. This prevents conflicting
 changes while the evolve process is running. The guard is automatically
 engaged when evolve starts and released when it completes.
 
-### 2. Load or Generate Eval Set
+### 2. Refresh Source Truth (Recommended)
+
+If the host has accumulated significant agent activity or is known to be
+polluted, prefer:
+
+```bash
+selftune evolve --skill <name> --skill-path <path> --sync-first
+```
+
+`--sync-first` runs the authoritative transcript/rollout sync before eval-set
+generation and failure-pattern extraction. Use `--sync-force` when you need
+to ignore markers and rescan everything.
+
+### 3. Load or Generate Eval Set
 
 If `--eval-set` is provided, use it directly. Otherwise, the command
 generates one from logs (equivalent to running `evals --skill <name>`).
@@ -151,7 +166,7 @@ generates one from logs (equivalent to running `evals --skill <name>`).
 An eval set is required for validation. Without enough telemetry data,
 evolution cannot reliably measure improvement.
 
-### 3. Extract Failure Patterns
+### 4. Extract Failure Patterns
 
 The command groups missed queries by invocation type:
 - Missed explicit: description is broken (rare, high priority)
@@ -160,7 +175,7 @@ The command groups missed queries by invocation type:
 
 See `references/invocation-taxonomy.md` for the taxonomy.
 
-### 4. Propose Description Changes
+### 5. Propose Description Changes
 
 An LLM generates a candidate description that would catch the missed
 queries. The candidate:
@@ -168,7 +183,7 @@ queries. The candidate:
 - Adds new phrases covering missed patterns
 - Maintains the description's structure and tone
 
-### 5. Validate Against Eval Set
+### 6. Validate Against Eval Set
 
 The candidate is tested against the full eval set:
 - Must improve overall pass rate
@@ -178,7 +193,7 @@ The candidate is tested against the full eval set:
 If validation fails, the command retries up to `--max-iterations` times
 with adjusted proposals.
 
-### 6. Deploy (or Preview)
+### 7. Deploy (or Preview)
 
 If `--dry-run`, the proposal is printed but not deployed. The audit log
 still records `created` and `validated` entries for review.
@@ -188,7 +203,7 @@ If deploying:
 2. The updated description is written to SKILL.md
 3. A `deployed` entry is logged to the evolution audit
 
-### 7. Update Memory
+### 8. Update Memory
 
 After evolution completes (deploy or dry-run), the memory writer updates:
 - `~/.selftune/memory/context.md` -- records the evolution outcome and current state

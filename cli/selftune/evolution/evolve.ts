@@ -13,7 +13,9 @@ import { QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
 import type { BaselineMeasurement } from "../eval/baseline.js";
 import { measureBaseline } from "../eval/baseline.js";
 import { buildEvalSet } from "../eval/hooks-to-evals.js";
+import { readGradingResultsForSkill } from "../grading/results.js";
 import { updateContextAfterEvolve } from "../memory/writer.js";
+import type { SyncResult } from "../sync.js";
 import type {
   EvalEntry,
   EvalPassRate,
@@ -71,6 +73,8 @@ export interface EvolveOptions {
   cheapLoop?: boolean;
   gateModel?: string;
   proposalModel?: string;
+  syncFirst?: boolean;
+  syncForce?: boolean;
 }
 
 export interface EvolveResult {
@@ -84,6 +88,7 @@ export interface EvolveResult {
   elapsedMs: number;
   baselineResult?: BaselineMeasurement;
   gateValidation?: ValidationResult;
+  sync_result?: SyncResult;
 }
 
 /**
@@ -106,6 +111,7 @@ export interface EvolveDeps {
   updateContextAfterEvolve?: typeof import("../memory/writer.js").updateContextAfterEvolve;
   measureBaseline?: typeof import("../eval/baseline.js").measureBaseline;
   readSkillUsageLog?: () => SkillUsageRecord[];
+  syncSources?: typeof import("../sync.js").syncSources;
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +166,7 @@ export async function evolve(
   const _readSkillUsageLog = _deps.readSkillUsageLog ?? (() => readEffectiveSkillUsageRecords());
 
   const auditEntries: EvolutionAuditEntry[] = [];
+  let syncResult: SyncResult | undefined;
 
   function recordAudit(
     proposalId: string,
@@ -197,6 +204,7 @@ export async function evolve(
     ...r,
     llmCallCount,
     elapsedMs: Date.now() - pipelineStart,
+    ...(syncResult ? { sync_result: syncResult } : {}),
   });
 
   // Hoisted so catch block can preserve partial results on error
@@ -227,6 +235,24 @@ export async function evolve(
     const createdAuditDetails = (message: string) =>
       `original_description:${rawContent}\n${message}`;
     tui.done(`Loaded SKILL.md (desc: ${currentDescription.length} chars${versionTag})`);
+
+    if (options.syncFirst) {
+      tui.step(`Syncing source-truth telemetry${options.syncForce ? " (force)" : ""}...`);
+      const { createDefaultSyncOptions, syncSources: realSyncSources } = await import("../sync.js");
+      const syncRunner = _deps.syncSources ?? realSyncSources;
+      syncResult = syncRunner(
+        createDefaultSyncOptions({
+          force: options.syncForce ?? false,
+        }),
+      );
+      const sourceSynced = Object.values(syncResult.sources).reduce(
+        (sum, source) => sum + source.synced,
+        0,
+      );
+      tui.done(
+        `Source sync complete (${sourceSynced} source sessions, ${syncResult.repair.repaired_records} repaired records)`,
+      );
+    }
 
     // -----------------------------------------------------------------------
     // Step 2: Load eval set
@@ -339,11 +365,14 @@ export async function evolve(
     const paretoEnabled = options.paretoEnabled ?? false;
     const candidateCount = options.candidateCount ?? 3;
     const tokenEfficiencyEnabled = options.tokenEfficiencyEnabled ?? false;
+    const telemetryRecords =
+      options.telemetryRecords ??
+      (tokenEfficiencyEnabled ? readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG) : undefined);
 
     // Compute token efficiency score if enabled and telemetry is available
     let tokenEffScore: number | undefined;
-    if (tokenEfficiencyEnabled && options.telemetryRecords && options.telemetryRecords.length > 0) {
-      tokenEffScore = computeTokenEfficiencyScore(skillName, options.telemetryRecords);
+    if (tokenEfficiencyEnabled && telemetryRecords && telemetryRecords.length > 0) {
+      tokenEffScore = computeTokenEfficiencyScore(skillName, telemetryRecords);
       recordAudit(
         "system",
         "created",
@@ -840,6 +869,8 @@ export async function cliMain(): Promise<void> {
       "cheap-loop": { type: "boolean", default: false },
       "gate-model": { type: "string" },
       "proposal-model": { type: "string" },
+      "sync-first": { type: "boolean", default: false },
+      "sync-force": { type: "boolean", default: false },
       verbose: { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
@@ -868,6 +899,8 @@ Options:
   --cheap-loop        Use cheap models for loop, expensive model for final gate
   --gate-model        Model for final gate validation (default: sonnet when --cheap-loop)
   --proposal-model    Model for proposal generation LLM calls
+  --sync-first        Refresh source-truth telemetry before building evals/failure patterns
+  --sync-force        Force a full rescan during --sync-first
   --verbose           Output full EvolveResult JSON (default: compact summary)
   --help              Show this help message`);
     process.exit(0);
@@ -875,6 +908,10 @@ Options:
 
   if (!values.skill || !values["skill-path"]) {
     console.error("[ERROR] --skill and --skill-path are required");
+    process.exit(1);
+  }
+  if ((values["sync-force"] ?? false) && !(values["sync-first"] ?? false)) {
+    console.error("[ERROR] --sync-force requires --sync-first");
     process.exit(1);
   }
 
@@ -926,7 +963,7 @@ Options:
   }
 
   // If no eval-set provided, check that log files exist for auto-generation
-  if (!evalSetPath) {
+  if (!evalSetPath && !(values["sync-first"] ?? false)) {
     const hasSkillLog = readEffectiveSkillUsageRecords().length > 0;
     const hasQueryLog = existsSync(QUERY_LOG);
     if (!hasSkillLog && !hasQueryLog) {
@@ -941,9 +978,10 @@ Options:
 
   const tokenEfficiencyEnabled = values["token-efficiency"] ?? false;
   let telemetryRecords: SessionTelemetryRecord[] | undefined;
-  if (tokenEfficiencyEnabled) {
+  if (tokenEfficiencyEnabled && !(values["sync-first"] ?? false)) {
     telemetryRecords = readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG);
   }
+  const gradingResults = readGradingResultsForSkill(values.skill);
 
   if (values.verbose) {
     console.error("[verbose] Pre-flight checks passed");
@@ -951,8 +989,11 @@ Options:
     console.error(`[verbose] Skill path: ${skillPath}`);
     console.error(`[verbose] Agent: ${agent}`);
     console.error(`[verbose] Eval set: ${evalSetPath ?? "(auto-generated from logs)"}`);
+    console.error(`[verbose] Loaded grading results: ${gradingResults.length}`);
     console.error(`[verbose] Cheap loop: ${values["cheap-loop"] ?? false}`);
     console.error(`[verbose] Dry run: ${values["dry-run"] ?? false}`);
+    console.error(`[verbose] Sync first: ${values["sync-first"] ?? false}`);
+    console.error(`[verbose] Sync force: ${values["sync-force"] ?? false}`);
   }
 
   const result = await evolve({
@@ -972,6 +1013,9 @@ Options:
     cheapLoop: values["cheap-loop"] ?? false,
     gateModel: values["gate-model"],
     proposalModel: values["proposal-model"],
+    gradingResults,
+    syncFirst: values["sync-first"] ?? false,
+    syncForce: values["sync-force"] ?? false,
   });
 
   if (values.verbose) {

@@ -117,6 +117,29 @@ describe("findTranscriptFiles", () => {
     expect(files[0]).toContain("aaa111");
     expect(files[1]).toContain("zzz999");
   });
+
+  test("finds nested subagent transcripts recursively", () => {
+    const projectsDir = join(tmpDir, "projects");
+    createTranscriptFile(
+      projectsDir,
+      "base123",
+      "top-level",
+      '{"role":"user","content":"top level session"}\n',
+    );
+
+    const subagentDir = join(projectsDir, "base123", "subagents");
+    mkdirSync(subagentDir, { recursive: true });
+    writeFileSync(
+      join(subagentDir, "agent-1.jsonl"),
+      '{"role":"user","content":"nested subagent session"}\n',
+      "utf-8",
+    );
+
+    const files = findTranscriptFiles(projectsDir);
+    expect(files).toHaveLength(2);
+    expect(files.some((f) => f.endsWith("top-level.jsonl"))).toBe(true);
+    expect(files.some((f) => f.endsWith("subagents/agent-1.jsonl"))).toBe(true);
+  });
 });
 
 describe("extractAllUserQueries", () => {

@@ -33,6 +33,7 @@ import {
 } from "../utils/query-filter.js";
 import { seededShuffle } from "../utils/seeded-random.js";
 import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
+import { isHighConfidencePositiveSkillRecord } from "../utils/skill-usage-confidence.js";
 import { generateSyntheticEvals } from "./synthetic-evals.js";
 
 // ---------------------------------------------------------------------------
@@ -130,7 +131,7 @@ export function buildEvalSet(
   const positiveQueries = new Set<string>();
   for (const r of actionableSkillRecords) {
     if (!r || typeof r.skill_name !== "string" || typeof r.query !== "string") continue;
-    if (r.skill_name === skillName && r.triggered === true) {
+    if (isHighConfidencePositiveSkillRecord(r, skillName)) {
       const q = (r.query ?? "").trim();
       if (q && q !== "(query not found)") {
         positiveQueries.add(q);
@@ -143,7 +144,7 @@ export function buildEvalSet(
   const positives: EvalEntry[] = [];
   for (const r of actionableSkillRecords) {
     if (!r || typeof r.skill_name !== "string" || typeof r.query !== "string") continue;
-    if (r.skill_name !== skillName || r.triggered !== true) continue;
+    if (!isHighConfidencePositiveSkillRecord(r, skillName)) continue;
     const q = (r.query ?? "").trim();
     if (!q || q === "(query not found)" || seen.has(q)) continue;
     seen.add(q);

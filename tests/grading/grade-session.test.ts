@@ -8,12 +8,13 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   assembleResult,
+  buildDefaultGradingOutputPath,
   buildExecutionMetrics,
   buildGradingPrompt,
   buildGraduatedSummary,
@@ -22,12 +23,19 @@ import {
   findSession,
   GRADER_SYSTEM,
   latestSessionForSkill,
+  latestSkillUsageForSkill,
   loadExpectationsFromEvalsJson,
   MAX_TRANSCRIPT_LENGTH,
+  resolveLatestSessionForSkill,
+  resolveSessionById,
   stripMarkdownFences,
 } from "../../cli/selftune/grading/grade-session.js";
 
-import type { GraderOutput, SessionTelemetryRecord } from "../../cli/selftune/types.js";
+import type {
+  GraderOutput,
+  SessionTelemetryRecord,
+  SkillUsageRecord,
+} from "../../cli/selftune/types.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -903,5 +911,108 @@ describe("latestSessionForSkill with skills_invoked", () => {
       }),
     ];
     expect(latestSessionForSkill(records, "pptx")).toBeNull();
+  });
+});
+
+describe("latestSkillUsageForSkill", () => {
+  it("returns the most recent triggered skill usage record", () => {
+    const records: SkillUsageRecord[] = [
+      {
+        timestamp: "2025-01-01T00:00:00Z",
+        session_id: "sess-old",
+        skill_name: "paperclip",
+        skill_path: "/tmp/paperclip/SKILL.md",
+        query: "old query",
+        triggered: true,
+      },
+      {
+        timestamp: "2025-01-02T00:00:00Z",
+        session_id: "sess-new",
+        skill_name: "paperclip",
+        skill_path: "/tmp/paperclip/SKILL.md",
+        query: "new query",
+        triggered: true,
+      },
+    ];
+
+    expect(latestSkillUsageForSkill(records, "paperclip")?.session_id).toBe("sess-new");
+  });
+});
+
+describe("resolveSessionById / resolveLatestSessionForSkill", () => {
+  it("falls back to transcript-derived telemetry by session id", () => {
+    const localTmpDir = mkdtempSync(join(tmpdir(), "grade-session-resolve-"));
+    try {
+      const projectRoot = join(localTmpDir, "projects");
+      const sessionDir = join(projectRoot, "hash");
+      mkdirSync(sessionDir, { recursive: true });
+      const transcriptPath = join(sessionDir, "sess-fallback.jsonl");
+      writeFileSync(
+        transcriptPath,
+        `${JSON.stringify({ role: "user", content: "review the paperclip repo", timestamp: "2026-03-01T10:00:00Z" })}\n${JSON.stringify(
+          {
+            role: "assistant",
+            content: [{ type: "tool_use", name: "Bash", input: { command: "git status" } }],
+          },
+        )}\n`,
+      );
+
+      const resolved = resolveSessionById([], "sess-fallback", projectRoot);
+      expect(resolved).not.toBeNull();
+      expect(resolved?.source).toBe("transcript_fallback");
+      expect(resolved?.telemetry.last_user_query).toBe("review the paperclip repo");
+    } finally {
+      rmSync(localTmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to repaired skill usage when telemetry is missing", () => {
+    const localTmpDir = mkdtempSync(join(tmpdir(), "grade-session-resolve-"));
+    try {
+      const projectRoot = join(localTmpDir, "projects");
+      const nestedDir = join(projectRoot, "hash", "subagents");
+      mkdirSync(nestedDir, { recursive: true });
+      const transcriptPath = join(nestedDir, "sess-paperclip.jsonl");
+      writeFileSync(
+        transcriptPath,
+        `${JSON.stringify({ role: "user", content: "continue your Paperclip work", timestamp: "2026-03-01T10:00:00Z" })}\n${JSON.stringify(
+          {
+            role: "assistant",
+            content: [
+              { type: "tool_use", name: "Read", input: { file_path: "/tmp/paperclip/SKILL.md" } },
+            ],
+          },
+        )}\n`,
+      );
+
+      const skillUsage: SkillUsageRecord[] = [
+        {
+          timestamp: "2026-03-01T10:00:00Z",
+          session_id: "sess-paperclip",
+          skill_name: "paperclip",
+          skill_path: "/tmp/paperclip/SKILL.md",
+          query: "continue your Paperclip work",
+          triggered: true,
+          source: "claude_code_repair",
+        },
+      ];
+
+      const resolved = resolveLatestSessionForSkill([], skillUsage, "paperclip", projectRoot);
+      expect(resolved).not.toBeNull();
+      expect(resolved?.source).toBe("transcript_fallback");
+      expect(resolved?.telemetry.session_id).toBe("sess-paperclip");
+      expect(resolved?.telemetry.skills_triggered).toContain("paperclip");
+      expect(resolved?.transcriptPath).toBe(transcriptPath);
+    } finally {
+      rmSync(localTmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("buildDefaultGradingOutputPath", () => {
+  it("writes grading results into the selftune grading directory by default", () => {
+    expect(buildDefaultGradingOutputPath("sess:123")).toContain(
+      ".selftune/grading/result-sess_123.json",
+    );
   });
 });

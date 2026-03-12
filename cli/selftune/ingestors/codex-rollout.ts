@@ -44,34 +44,43 @@ import type {
   SkillUsageRecord,
 } from "../types.js";
 import { appendJsonl, loadMarker, saveMarker } from "../utils/jsonl.js";
-import { isActionableQueryText } from "../utils/query-filter.js";
+import { extractActionableQueryText } from "../utils/query-filter.js";
+import {
+  classifySkillPath,
+  containsWholeSkillMention,
+  extractExplicitSkillMentions,
+  extractSkillNamesFromInstructions,
+  extractSkillNamesFromPathReferences,
+  findInstalledSkillNames,
+  findInstalledSkillPath,
+  findRepositorySkillDirs,
+} from "../utils/skill-discovery.js";
 
 const MARKER_FILE = join(homedir(), ".claude", "codex_ingested_rollouts.json");
 
-const DEFAULT_CODEX_HOME = process.env.CODEX_HOME ?? join(homedir(), ".codex");
+export const DEFAULT_CODEX_HOME = process.env.CODEX_HOME ?? join(homedir(), ".codex");
+const SKILL_NAME_CACHE = new Map<string, Set<string>>();
 
-const CODEX_SKILLS_DIRS = [
-  join(process.cwd(), ".codex", "skills"),
-  join(homedir(), ".codex", "skills"),
-];
+/** Return skill names from Codex and agent skill directories for the given workspace. */
+export function findSkillNames(
+  cwd: string = process.cwd(),
+  homeDir: string = homedir(),
+  adminDir: string = "/etc/codex/skills",
+  codexHome: string = process.env.CODEX_HOME ?? join(homeDir, ".codex"),
+): Set<string> {
+  const cacheKey = [cwd, homeDir, adminDir, codexHome].join("\u0000");
+  const cached = SKILL_NAME_CACHE.get(cacheKey);
+  if (cached) return new Set(cached);
 
-/** Return skill names from Codex skill directories. */
-export function findSkillNames(dirs: string[] = CODEX_SKILLS_DIRS): Set<string> {
-  const names = new Set<string>();
-  for (const dir of dirs) {
-    if (!existsSync(dir)) continue;
-    for (const entry of readdirSync(dir)) {
-      const skillDir = join(dir, entry);
-      try {
-        if (statSync(skillDir).isDirectory() && existsSync(join(skillDir, "SKILL.md"))) {
-          names.add(entry);
-        }
-      } catch {
-        // skip entries that can't be stat'd (broken symlinks, permission errors, etc.)
-      }
-    }
-  }
-  return names;
+  const names = findInstalledSkillNames([
+    ...findRepositorySkillDirs(cwd),
+    join(homeDir, ".agents", "skills"),
+    adminDir,
+    join(codexHome, "skills"),
+    join(codexHome, "skills", ".system"),
+  ]);
+  SKILL_NAME_CACHE.set(cacheKey, names);
+  return new Set(names);
 }
 
 /**
@@ -141,6 +150,8 @@ export interface ParsedRollout {
   total_tool_calls: number;
   bash_commands: string[];
   skills_triggered: string[];
+  skills_invoked: string[];
+  skill_evidence: Record<string, "explicit" | "inferred">;
   assistant_turns: number;
   errors_encountered: number;
   input_tokens: number;
@@ -189,6 +200,7 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
   const toolCalls: Record<string, number> = {};
   const bashCommands: string[] = [];
   const skillsTriggered: string[] = [];
+  const skillEvidence = new Map<string, "explicit" | "inferred">();
   let errors = 0;
   let turns = 0;
   let inputTokens = 0;
@@ -207,14 +219,57 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
     | undefined;
   let observedSessionId: string | undefined;
   let observedCwd: string | undefined;
+  const sessionSkillNames = new Set(skillNames);
   let hasActionablePrompt = false;
+  const rememberSessionSkillNames = (text: unknown): void => {
+    if (typeof text !== "string" || !text) return;
+    for (const skillName of extractSkillNamesFromInstructions(text, sessionSkillNames)) {
+      sessionSkillNames.add(skillName);
+    }
+  };
+  const rememberWorkspaceSkills = (cwd: unknown): void => {
+    if (typeof cwd !== "string" || !cwd.trim()) return;
+    for (const skillName of findSkillNames(cwd)) {
+      sessionSkillNames.add(skillName);
+    }
+  };
+  const detectTriggeredSkills = (text: unknown): void => {
+    if (typeof text !== "string" || !text) return;
+    for (const skillName of sessionSkillNames) {
+      if (containsWholeSkillMention(text, skillName) && !skillsTriggered.includes(skillName)) {
+        skillsTriggered.push(skillName);
+      }
+      if (containsWholeSkillMention(text, skillName) && !skillEvidence.has(skillName)) {
+        skillEvidence.set(skillName, "inferred");
+      }
+    }
+  };
+  const detectExplicitPromptSkillMentions = (text: unknown): void => {
+    if (typeof text !== "string" || !text) return;
+    for (const skillName of extractExplicitSkillMentions(text, sessionSkillNames)) {
+      if (!skillsTriggered.includes(skillName)) {
+        skillsTriggered.push(skillName);
+      }
+      skillEvidence.set(skillName, "explicit");
+    }
+  };
+  const detectExplicitSkillReads = (text: unknown): void => {
+    if (typeof text !== "string" || !text) return;
+    for (const skillName of extractSkillNamesFromPathReferences(text, sessionSkillNames)) {
+      if (!skillsTriggered.includes(skillName)) {
+        skillsTriggered.push(skillName);
+      }
+      skillEvidence.set(skillName, "explicit");
+    }
+  };
   const rememberPromptCandidate = (value: unknown): void => {
     const message = typeof value === "string" ? value.trim() : "";
     if (!message) return;
     lastUserQuery = message;
-    if (isActionableQueryText(message)) {
+    const actionableMessage = extractActionableQueryText(message);
+    if (actionableMessage) {
       if (!hasActionablePrompt) {
-        prompt = message;
+        prompt = actionableMessage;
         hasActionablePrompt = true;
       }
       return;
@@ -244,6 +299,11 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
       const originator = optionalString(payload.originator);
       if (observedId) observedSessionId = observedId;
       if (observedWorkspace) observedCwd = observedWorkspace;
+      rememberWorkspaceSkills(observedWorkspace);
+      rememberSessionSkillNames(payload.instructions);
+      rememberSessionSkillNames(
+        (payload.base_instructions as Record<string, unknown> | undefined)?.text,
+      );
       if (!observedMeta) observedMeta = {};
       if (modelProvider) observedMeta.model_provider = modelProvider;
       if (model) observedMeta.model = model;
@@ -271,6 +331,7 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
       const msgType = (payload.type as string) ?? "";
       if (msgType === "user_message") {
         rememberPromptCandidate(payload.message);
+        detectExplicitPromptSkillMentions(payload.message);
       }
       // Token usage in event_msg payloads
       const tokenCount = payload.token_count as Record<string, number> | undefined;
@@ -285,19 +346,26 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
         const fnName = (payload.name as string) ?? "function_call";
         toolCalls[fnName] = (toolCalls[fnName] ?? 0) + 1;
         // Check for skill mentions in function arguments
-        const args = (payload.arguments as string) ?? "";
-        for (const skillName of skillNames) {
-          if (args.includes(skillName) && !skillsTriggered.includes(skillName)) {
-            skillsTriggered.push(skillName);
-          }
-        }
+        detectExplicitSkillReads(payload.arguments);
+        detectTriggeredSkills(payload.arguments);
       } else if (itemType === "agent_reasoning") {
         toolCalls.reasoning = (toolCalls.reasoning ?? 0) + 1;
-        const text = (payload.text as string) ?? "";
-        for (const skillName of skillNames) {
-          if (text.includes(skillName) && !skillsTriggered.includes(skillName)) {
-            skillsTriggered.push(skillName);
-          }
+        detectTriggeredSkills(payload.text);
+      } else if (itemType === "message") {
+        const content = Array.isArray(payload.content)
+          ? payload.content
+              .map((part) =>
+                typeof part === "object" && part
+                  ? (((part as Record<string, unknown>).text as string | undefined) ?? "")
+                  : "",
+              )
+              .join("\n")
+          : "";
+        rememberSessionSkillNames(content);
+        if ((payload.role as string) === "assistant") {
+          detectTriggeredSkills(content);
+        } else if ((payload.role as string) === "user") {
+          detectExplicitPromptSkillMentions(content);
         }
       }
     } else if (etype === "turn.started") {
@@ -319,6 +387,7 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
           toolCalls.command_execution = (toolCalls.command_execution ?? 0) + 1;
           const cmd = ((item.command as string) ?? "").trim();
           if (cmd) bashCommands.push(cmd);
+          detectExplicitSkillReads(cmd);
           if ((item.exit_code as number) !== 0 && item.exit_code !== undefined) {
             errors += 1;
           }
@@ -335,14 +404,9 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
 
       // Detect skill names in text content on completed events
       const textContent = ((item.text as string) ?? "") + ((item.command as string) ?? "");
-      for (const skillName of skillNames) {
-        if (
-          textContent.includes(skillName) &&
-          !skillsTriggered.includes(skillName) &&
-          etype === "item.completed"
-        ) {
-          skillsTriggered.push(skillName);
-        }
+      detectExplicitSkillReads(textContent);
+      if (etype === "item.completed") {
+        detectTriggeredSkills(textContent);
       }
     } else if (etype === "error") {
       errors += 1;
@@ -381,6 +445,10 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
     total_tool_calls: Object.values(toolCalls).reduce((a, b) => a + b, 0),
     bash_commands: bashCommands,
     skills_triggered: skillsTriggered,
+    skills_invoked: skillsTriggered.filter(
+      (skillName) => skillEvidence.get(skillName) === "explicit",
+    ),
+    skill_evidence: Object.fromEntries(skillEvidence),
     assistant_turns: turns,
     errors_encountered: errors,
     input_tokens: inputTokens,
@@ -434,6 +502,7 @@ export function ingestFile(
     total_tool_calls: parsed.total_tool_calls,
     bash_commands: parsed.bash_commands,
     skills_triggered: skills,
+    skills_invoked: parsed.skills_invoked,
     assistant_turns: parsed.assistant_turns,
     errors_encountered: parsed.errors_encountered,
     transcript_chars: parsed.transcript_chars,
@@ -447,14 +516,25 @@ export function ingestFile(
 
   // Write skill triggers
   for (const skillName of skills) {
+    const isExplicit = parsed.skill_evidence[skillName] === "explicit";
+    const skillPath = isExplicit
+      ? (findInstalledSkillPath(skillName, [
+          ...findRepositorySkillDirs(parsed.cwd || process.cwd()),
+          join(homedir(), ".agents", "skills"),
+          "/etc/codex/skills",
+          join(DEFAULT_CODEX_HOME, "skills"),
+          join(DEFAULT_CODEX_HOME, "skills", ".system"),
+        ]) ?? `(codex:${skillName})`)
+      : `(codex:${skillName})`;
     const skillRecord: SkillUsageRecord = {
       timestamp: parsed.timestamp,
       session_id: sessionId,
       skill_name: skillName,
-      skill_path: `(codex:${skillName})`,
+      skill_path: skillPath,
+      ...classifySkillPath(skillPath),
       query: prompt,
       triggered: true,
-      source: "codex_rollout",
+      source: isExplicit ? "codex_rollout_explicit" : "codex_rollout",
     };
     appendJsonl(skillLogPath, skillRecord, "skill_usage");
   }
@@ -517,9 +597,10 @@ export function buildCanonicalRecordsFromRollout(parsed: ParsedRollout): Canonic
   // Skill invocation records
   for (let i = 0; i < parsed.skills_triggered.length; i++) {
     const skillName = parsed.skills_triggered[i];
-    const { invocation_mode, confidence } = deriveInvocationMode({
-      is_text_mention_only: true,
-    });
+    const isExplicit = parsed.skill_evidence[skillName] === "explicit";
+    const { invocation_mode, confidence } = deriveInvocationMode(
+      isExplicit ? { has_skill_md_read: true } : { is_text_mention_only: true },
+    );
     records.push(
       buildCanonicalSkillInvocation({
         ...baseInput,

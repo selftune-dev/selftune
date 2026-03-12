@@ -11,6 +11,7 @@ import { parseArgs } from "node:util";
 
 import { QUERY_LOG } from "../constants.js";
 import { buildEvalSet } from "../eval/hooks-to-evals.js";
+import { readGradingResultsForSkill } from "../grading/results.js";
 import type {
   BodyEvolutionProposal,
   BodyValidationResult,
@@ -553,6 +554,7 @@ Options:
     const paths = values["few-shot"].split(",").map((p) => p.trim());
     fewShotExamples = paths.filter((p) => existsSync(p)).map((p) => readFileSync(p, "utf-8"));
   }
+  const gradingResults = readGradingResultsForSkill(values.skill);
 
   const result = await evolveBody({
     skillName: values.skill,
@@ -568,6 +570,7 @@ Options:
     confidenceThreshold: Number.parseFloat(values.confidence ?? "0.6"),
     taskDescription: values["task-description"],
     fewShotExamples,
+    gradingResults,
     validationModel: values["validation-model"],
   });
 

@@ -596,9 +596,9 @@ async function main(): Promise<void> {
     // d. cron list — should show selftune jobs from fixture
     const cronListResult = await runCliCommand("cron list", ["cron", "list"]);
     if (cronListResult.passed) {
-      if (!cronListResult.fullStdout.includes("selftune-ingest")) {
+      if (!cronListResult.fullStdout.includes("selftune-sync")) {
         cronListResult.passed = false;
-        cronListResult.error = `Expected "selftune-ingest" in cron list output, got: ${cronListResult.fullStdout.slice(0, 200)}`;
+        cronListResult.error = `Expected "selftune-sync" in cron list output, got: ${cronListResult.fullStdout.slice(0, 200)}`;
       }
     }
     results.push(cronListResult);

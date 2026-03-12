@@ -5,7 +5,7 @@
  * and tests watch() with dependency injection (no mock.module).
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -865,5 +865,67 @@ describe("watch", () => {
 
     expect(result.snapshot.regression_detected).toBe(false);
     expect(result.recommendation.toLowerCase()).toContain("need at least");
+  });
+
+  test("sync-first refreshes source truth before reading watch inputs", async () => {
+    const sessionIds = ["sess-sync-0", "sess-sync-1", "sess-sync-2"];
+    const telemetryPath = writeJsonl(
+      sessionIds.map((sid) => makeTelemetryRecord({ session_id: sid })),
+    );
+    const skillLogPath = writeJsonl(
+      sessionIds.map((sid, index) =>
+        makeSkillUsageRecord({
+          session_id: sid,
+          skill_name: "my-skill",
+          triggered: index < 2,
+        }),
+      ),
+    );
+    const queryLogPath = writeJsonl(
+      sessionIds.map((sid) => makeQueryLogRecord({ session_id: sid })),
+    );
+
+    const syncMock = mock(() => ({
+      since: null,
+      dry_run: false,
+      sources: {
+        claude: { available: true, scanned: 3, synced: 2, skipped: 0 },
+        codex: { available: true, scanned: 1, synced: 1, skipped: 0 },
+        opencode: { available: false, scanned: 0, synced: 0, skipped: 0 },
+        openclaw: { available: false, scanned: 0, synced: 0, skipped: 0 },
+      },
+      repair: {
+        ran: true,
+        repaired_sessions: 2,
+        repaired_records: 3,
+        codex_repaired_records: 1,
+      },
+    }));
+
+    const { watch } = await import("../../cli/selftune/monitoring/watch.js");
+
+    const result: WatchResult = await watch({
+      skillName: "my-skill",
+      skillPath: "/tmp/skills/my-skill/SKILL.md",
+      windowSessions: 20,
+      regressionThreshold: 0.1,
+      autoRollback: false,
+      syncFirst: true,
+      syncForce: true,
+      _syncFn: syncMock,
+      _telemetryLogPath: telemetryPath,
+      _skillLogPath: skillLogPath,
+      _queryLogPath: queryLogPath,
+    } as WatchOptions);
+
+    expect(syncMock).toHaveBeenCalledTimes(1);
+    expect(syncMock.mock.calls[0]?.[0]).toMatchObject({
+      force: true,
+      dryRun: false,
+      syncClaude: true,
+      syncCodex: true,
+      rebuildSkillUsage: true,
+    });
+    expect(result.sync_result?.repair.repaired_records).toBe(3);
   });
 });

@@ -31,6 +31,14 @@ export interface SkillUsageRecord {
   session_id: string;
   skill_name: string;
   skill_path: string;
+  skill_scope?: "project" | "global" | "admin" | "system" | "unknown";
+  skill_project_root?: string;
+  skill_registry_dir?: string;
+  skill_path_resolution_source?:
+    | "raw_log"
+    | "installed_scope"
+    | "launcher_base_dir"
+    | "fallback";
   query: string;
   triggered: boolean;
   source?: string;

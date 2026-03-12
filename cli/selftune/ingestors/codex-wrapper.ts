@@ -17,7 +17,6 @@
  *        ~/.claude/skill_usage_log.jsonl
  */
 
-import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { CANONICAL_LOG, QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
@@ -39,29 +38,38 @@ import type {
   SkillUsageRecord,
 } from "../types.js";
 import { appendJsonl } from "../utils/jsonl.js";
+import {
+  classifySkillPath,
+  containsWholeSkillMention,
+  extractExplicitSkillMentions,
+  extractSkillNamesFromInstructions,
+  findInstalledSkillNames,
+  findInstalledSkillPath,
+  findRepositorySkillDirs,
+} from "../utils/skill-discovery.js";
 
-const CODEX_SKILLS_DIRS = [
-  join(process.cwd(), ".codex", "skills"),
-  join(homedir(), ".codex", "skills"),
-];
+const SKILL_NAME_CACHE = new Map<string, Set<string>>();
 
 /** Return the set of skill names installed in Codex skill directories. */
-export function findCodexSkillNames(): Set<string> {
-  const names = new Set<string>();
-  for (const dir of CODEX_SKILLS_DIRS) {
-    if (!existsSync(dir)) continue;
-    for (const entry of readdirSync(dir)) {
-      const skillDir = join(dir, entry);
-      try {
-        if (statSync(skillDir).isDirectory() && existsSync(join(skillDir, "SKILL.md"))) {
-          names.add(entry);
-        }
-      } catch {
-        // Skip broken symlinks or inaccessible entries
-      }
-    }
-  }
-  return names;
+export function findCodexSkillNames(
+  cwd: string = process.cwd(),
+  homeDir: string = homedir(),
+  adminDir: string = "/etc/codex/skills",
+  codexHome: string = process.env.CODEX_HOME ?? join(homeDir, ".codex"),
+): Set<string> {
+  const cacheKey = [cwd, homeDir, adminDir, codexHome].join("\u0000");
+  const cached = SKILL_NAME_CACHE.get(cacheKey);
+  if (cached) return new Set(cached);
+
+  const names = findInstalledSkillNames([
+    ...findRepositorySkillDirs(cwd),
+    join(homeDir, ".agents", "skills"),
+    adminDir,
+    join(codexHome, "skills"),
+    join(codexHome, "skills", ".system"),
+  ]);
+  SKILL_NAME_CACHE.set(cacheKey, names);
+  return new Set(names);
 }
 
 /**
@@ -100,12 +108,29 @@ export function parseJsonlStream(lines: string[], skillNames: Set<string>): Pars
   let inputTokens = 0;
   let outputTokens = 0;
   const agentMessages: string[] = [];
-
-  // Precompile word-boundary regex for each skill name (avoids rebuilding per item)
-  const skillPatterns = Array.from(skillNames, (name) => ({
-    name,
-    pattern: new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"),
-  }));
+  const sessionSkillNames = new Set(skillNames);
+  const rememberSessionSkillNames = (text: unknown): void => {
+    if (typeof text !== "string" || !text) return;
+    for (const skillName of extractSkillNamesFromInstructions(text, sessionSkillNames)) {
+      sessionSkillNames.add(skillName);
+    }
+  };
+  const detectTriggeredSkills = (text: unknown): void => {
+    if (typeof text !== "string" || !text) return;
+    for (const skillName of sessionSkillNames) {
+      if (containsWholeSkillMention(text, skillName) && !skillsTriggered.includes(skillName)) {
+        skillsTriggered.push(skillName);
+      }
+    }
+  };
+  const detectExplicitPromptSkillMentions = (text: unknown): void => {
+    if (typeof text !== "string" || !text) return;
+    for (const skillName of extractExplicitSkillMentions(text, sessionSkillNames)) {
+      if (!skillsTriggered.includes(skillName)) {
+        skillsTriggered.push(skillName);
+      }
+    }
+  };
 
   for (const rawLine of lines) {
     const line = rawLine.trim();
@@ -122,6 +147,12 @@ export function parseJsonlStream(lines: string[], skillNames: Set<string>): Pars
 
     if (etype === "thread.started") {
       threadId = (event.thread_id as string) ?? "unknown";
+    } else if (etype === "session_meta") {
+      const payload = (event.payload as Record<string, unknown>) ?? {};
+      rememberSessionSkillNames(payload.instructions);
+      rememberSessionSkillNames(
+        (payload.base_instructions as Record<string, unknown> | undefined)?.text,
+      );
     } else if (etype === "turn.started") {
       turns += 1;
     } else if (etype === "turn.completed") {
@@ -153,6 +184,7 @@ export function parseJsonlStream(lines: string[], skillNames: Set<string>): Pars
         } else if (itemType === "agent_message") {
           const text = (item.text as string) ?? "";
           if (text) agentMessages.push(text.slice(0, 500));
+          detectTriggeredSkills(text);
         } else if (itemType === "reasoning") {
           toolCalls.reasoning = (toolCalls.reasoning ?? 0) + 1;
         }
@@ -160,14 +192,32 @@ export function parseJsonlStream(lines: string[], skillNames: Set<string>): Pars
 
       // Detect skill names in text on completed events (whole-word match)
       const textContent = ((item.text as string) ?? "") + ((item.command as string) ?? "");
-      for (const { name: sName, pattern } of skillPatterns) {
-        if (
-          etype === "item.completed" &&
-          !skillsTriggered.includes(sName) &&
-          pattern.test(textContent)
-        ) {
-          skillsTriggered.push(sName);
+      if (etype === "item.completed") {
+        detectTriggeredSkills(textContent);
+      }
+    } else if (etype === "response_item") {
+      const payload = (event.payload as Record<string, unknown>) ?? {};
+      const itemType = (payload.type as string) ?? "";
+      if (itemType === "function_call") {
+        detectTriggeredSkills(payload.arguments);
+      } else if (itemType === "message") {
+        const content = Array.isArray(payload.content)
+          ? payload.content
+              .map((part) =>
+                typeof part === "object" && part
+                  ? (((part as Record<string, unknown>).text as string | undefined) ?? "")
+                  : "",
+              )
+              .join("\n")
+          : "";
+        rememberSessionSkillNames(content);
+        if ((payload.role as string) === "assistant") {
+          detectTriggeredSkills(content);
+        } else if ((payload.role as string) === "user") {
+          detectExplicitPromptSkillMentions(content);
         }
+      } else if (itemType === "agent_reasoning") {
+        detectTriggeredSkills(payload.text);
       }
     } else if (etype === "error") {
       errors += 1;
@@ -226,13 +276,25 @@ export function logSkillTrigger(
   skillName: string,
   prompt: string,
   sessionId: string,
+  cwd: string = process.cwd(),
   logPath: string = SKILL_LOG,
+  homeDir: string = homedir(),
+  codexHome: string = process.env.CODEX_HOME ?? join(homeDir, ".codex"),
 ): void {
+  const skillPath =
+    findInstalledSkillPath(skillName, [
+      ...findRepositorySkillDirs(cwd),
+      join(homeDir, ".agents", "skills"),
+      "/etc/codex/skills",
+      join(codexHome, "skills"),
+      join(codexHome, "skills", ".system"),
+    ]) ?? `(codex:${skillName})`;
   const record: SkillUsageRecord = {
     timestamp: new Date().toISOString(),
     session_id: sessionId,
     skill_name: skillName,
-    skill_path: `(codex:${skillName})`,
+    skill_path: skillPath,
+    ...classifySkillPath(skillPath, homeDir, codexHome),
     query: prompt,
     triggered: true,
     source: "codex",
@@ -410,7 +472,7 @@ export async function cliMain(): Promise<void> {
     logTelemetry(metricsWithoutThread, prompt, sessionId, cwd);
 
     for (const skillName of metrics.skills_triggered) {
-      logSkillTrigger(skillName, prompt, sessionId);
+      logSkillTrigger(skillName, prompt, sessionId, cwd);
     }
 
     // Emit canonical records (additive)

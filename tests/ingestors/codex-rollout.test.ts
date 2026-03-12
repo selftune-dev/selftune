@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   findRolloutFiles,
+  findSkillNames,
   ingestFile,
   parseRolloutFile,
 } from "../../cli/selftune/ingestors/codex-rollout.js";
@@ -113,6 +114,39 @@ describe("findRolloutFiles", () => {
 });
 
 describe("parseRolloutFile", () => {
+  test("discovers repo-local and global agent skills from .agents/skills", () => {
+    const repoRoot = join(tmpDir, "workspace");
+    const workspace = join(repoRoot, "apps", "web");
+    mkdirSync(workspace, { recursive: true });
+    writeFileSync(join(repoRoot, ".git"), "gitdir: ./.git/worktrees/web\n", "utf-8");
+    mkdirSync(join(repoRoot, ".agents", "skills", "LocalSkill"), { recursive: true });
+    writeFileSync(
+      join(repoRoot, ".agents", "skills", "LocalSkill", "SKILL.md"),
+      "# local",
+      "utf-8",
+    );
+    mkdirSync(join(tmpDir, ".agents", "skills", "TooHigh"), { recursive: true });
+    writeFileSync(join(tmpDir, ".agents", "skills", "TooHigh", "SKILL.md"), "# nope", "utf-8");
+
+    const home = join(tmpDir, "home");
+    mkdirSync(join(home, ".agents", "skills", "GlobalSkill"), { recursive: true });
+    writeFileSync(join(home, ".agents", "skills", "GlobalSkill", "SKILL.md"), "# global", "utf-8");
+    const adminDir = join(tmpDir, "etc", "codex", "skills");
+    mkdirSync(join(adminDir, "AdminSkill"), { recursive: true });
+    writeFileSync(join(adminDir, "AdminSkill", "SKILL.md"), "# admin", "utf-8");
+    const codexHome = join(tmpDir, "codex-home");
+    mkdirSync(join(codexHome, "skills", ".system", "SystemSkill"), { recursive: true });
+    writeFileSync(
+      join(codexHome, "skills", ".system", "SystemSkill", "SKILL.md"),
+      "# system",
+      "utf-8",
+    );
+
+    expect(findSkillNames(workspace, home, adminDir, codexHome)).toEqual(
+      new Set(["LocalSkill", "GlobalSkill", "AdminSkill", "SystemSkill"]),
+    );
+  });
+
   test("extracts metrics from events", () => {
     const codexHome = join(tmpDir, "codex");
     const content = [
@@ -172,6 +206,26 @@ describe("parseRolloutFile", () => {
 
     expect(result?.query).toBe("build the project");
     expect(result?.last_user_query).toBe("also add deployment checks");
+  });
+
+  test("normalizes conductor-wrapped prompts to the underlying user query", () => {
+    const codexHome = join(tmpDir, "codex");
+    const content = [
+      JSON.stringify({
+        type: "event_msg",
+        payload: {
+          type: "user_message",
+          message:
+            "<system_instruction>hidden prompt</system_instruction>\n\nmy claude code isn't working with conductor.build anymore",
+        },
+      }),
+    ].join("\n");
+
+    const path = createRolloutFile(codexHome, "2026", "03", "11", "rollout-wrapped.jsonl", content);
+    const result = parseRolloutFile(path, new Set(["selftune"]));
+
+    expect(result?.query).toBe("my claude code isn't working with conductor.build anymore");
+    expect(result?.last_user_query).toContain("<system_instruction>");
   });
 
   test("detects skill names in completed items", () => {
@@ -257,6 +311,95 @@ describe("parseRolloutFile", () => {
     expect(result?.observed_meta?.git?.commit).toBe("abc123");
   });
 
+  test("extracts session-scoped skill inventory from instructions text", () => {
+    const codexHome = join(tmpDir, "codex");
+    const content = [
+      '{"type":"session_meta","payload":{"id":"obs-session-2","cwd":"/project","instructions":"## Skills\\n### Available skills\\n- selftune: Self-improving skills toolkit.\\n- paperclip: Paperclip operator skill.\\n### How to use skills"}}',
+      '{"type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\\"cmd\\":\\"cat .agents/skills/selftune/SKILL.md && cat .agents/skills/paperclip/SKILL.md\\"}"}}',
+    ].join("\n");
+
+    const path = createRolloutFile(
+      codexHome,
+      "2026",
+      "03",
+      "12",
+      "rollout-session-skills.jsonl",
+      content,
+    );
+    const result = parseRolloutFile(path, new Set());
+
+    expect(result?.skills_triggered).toContain("selftune");
+    expect(result?.skills_triggered).toContain("paperclip");
+  });
+
+  test("marks explicit skill file reads as invoked", () => {
+    const codexHome = join(tmpDir, "codex");
+    const content = [
+      '{"type":"session_meta","payload":{"id":"obs-session-3","cwd":"/project","instructions":"### Available skills\\n- selftune: Self-improving skills toolkit.\\n### How to use skills"}}',
+      '{"type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\\"cmd\\":\\"cat .agents/skills/selftune/SKILL.md\\"}"}}',
+    ].join("\n");
+
+    const path = createRolloutFile(
+      codexHome,
+      "2026",
+      "03",
+      "12",
+      "rollout-explicit-skill.jsonl",
+      content,
+    );
+    const result = parseRolloutFile(path, new Set(["selftune"]));
+
+    expect(result?.skills_triggered).toContain("selftune");
+    expect(result?.skills_invoked).toContain("selftune");
+    expect(result?.skill_evidence.selftune).toBe("explicit");
+  });
+
+  test("treats explicit prompt mention as an invoked skill", () => {
+    const codexHome = join(tmpDir, "codex");
+    const content = [
+      '{"type":"session_meta","payload":{"id":"obs-session-4","cwd":"/project","instructions":"### Available skills\\n- Reins: Reins CLI skill for scaffold/audit/doctor/evolve workflows.\\n### How to use skills"}}',
+      '{"type":"event_msg","payload":{"type":"user_message","message":"audit the project with reins"}}',
+    ].join("\n");
+
+    const path = createRolloutFile(
+      codexHome,
+      "2026",
+      "03",
+      "12",
+      "rollout-explicit-prompt-skill.jsonl",
+      content,
+    );
+    const result = parseRolloutFile(path, new Set(["reins"]));
+
+    expect(result?.query).toBe("audit the project with reins");
+    expect(result?.skills_triggered).toContain("reins");
+    expect(result?.skills_triggered).not.toContain("Reins");
+    expect(result?.skills_invoked).toContain("reins");
+    expect(result?.skill_evidence.reins).toBe("explicit");
+  });
+
+  test("ignores incidental user mentions that do not explicitly invoke a skill", () => {
+    const codexHome = join(tmpDir, "codex");
+    const content = [
+      '{"type":"session_meta","payload":{"id":"obs-session-5","cwd":"/project","instructions":"### Available skills\\n- selftune: Self-improving skills toolkit.\\n### How to use skills"}}',
+      '{"type":"event_msg","payload":{"type":"user_message","message":"the selftune dashboard is broken and ugly try to test it yourself"}}',
+    ].join("\n");
+
+    const path = createRolloutFile(
+      codexHome,
+      "2026",
+      "03",
+      "12",
+      "rollout-inferred-prompt-skill.jsonl",
+      content,
+    );
+    const result = parseRolloutFile(path, new Set());
+
+    expect(result?.skills_triggered).not.toContain("selftune");
+    expect(result?.skills_invoked).not.toContain("selftune");
+    expect(result?.skill_evidence.selftune).toBeUndefined();
+  });
+
   test("ignores non-string observed metadata payload fields", () => {
     const codexHome = join(tmpDir, "codex");
     const content = [
@@ -307,6 +450,8 @@ describe("ingestFile", () => {
       total_tool_calls: 1,
       bash_commands: ["npm test"],
       skills_triggered: ["MySkill"],
+      skills_invoked: ["MySkill"],
+      skill_evidence: { MySkill: "explicit" as const },
       assistant_turns: 2,
       errors_encountered: 0,
       input_tokens: 100,
@@ -333,6 +478,7 @@ describe("ingestFile", () => {
     const skillRecord = JSON.parse(skillLines[0]);
     expect(skillRecord.skill_name).toBe("MySkill");
     expect(skillRecord.skill_path).toBe("(codex:MySkill)");
+    expect(skillRecord.source).toBe("codex_rollout_explicit");
 
     const canonicalSession = readFileSync(canonicalLog, "utf-8")
       .trim()
@@ -342,6 +488,51 @@ describe("ingestFile", () => {
     expect(canonicalSession).toBeTruthy();
     expect(canonicalSession.platform).toBe("codex");
     expect(canonicalSession.capture_mode).toBe("batch_ingest");
+  });
+
+  test("records project-scoped provenance for explicit repo-local skill reads", () => {
+    const repoRoot = join(tmpDir, "workspace");
+    mkdirSync(repoRoot, { recursive: true });
+    writeFileSync(join(repoRoot, ".git"), "gitdir: ./.git/worktrees/workspace\n", "utf-8");
+    mkdirSync(join(repoRoot, ".agents", "skills", "MySkill"), { recursive: true });
+    writeFileSync(join(repoRoot, ".agents", "skills", "MySkill", "SKILL.md"), "# my skill");
+
+    const skillLog = join(tmpDir, "skills-project.jsonl");
+
+    ingestFile(
+      {
+        timestamp: "2026-03-15T00:00:00.000Z",
+        session_id: "sess-project",
+        source: "codex_rollout",
+        rollout_path: "/some/path",
+        query: "build the app",
+        tool_calls: { command_execution: 1 },
+        total_tool_calls: 1,
+        bash_commands: ["npm test"],
+        skills_triggered: ["MySkill"],
+        skills_invoked: ["MySkill"],
+        skill_evidence: { MySkill: "explicit" as const },
+        assistant_turns: 1,
+        errors_encountered: 0,
+        input_tokens: 100,
+        output_tokens: 50,
+        transcript_chars: 200,
+        cwd: repoRoot,
+        transcript_path: "/some/path",
+        last_user_query: "build the app",
+      },
+      false,
+      join(tmpDir, "queries-project.jsonl"),
+      join(tmpDir, "telemetry-project.jsonl"),
+      skillLog,
+      join(tmpDir, "canonical-project.jsonl"),
+    );
+
+    const skillRecord = JSON.parse(readFileSync(skillLog, "utf-8").trim());
+    expect(skillRecord.skill_path).toEndWith(".agents/skills/MySkill/SKILL.md");
+    expect(skillRecord.skill_scope).toBe("project");
+    expect(skillRecord.skill_project_root).toContain("workspace");
+    expect(skillRecord.skill_registry_dir).toEndWith("/workspace/.agents/skills");
   });
 
   test("skips short queries", () => {
@@ -360,6 +551,8 @@ describe("ingestFile", () => {
       total_tool_calls: 0,
       bash_commands: [],
       skills_triggered: ["MySkill"],
+      skills_invoked: [],
+      skill_evidence: { MySkill: "inferred" as const },
       assistant_turns: 0,
       errors_encountered: 0,
       input_tokens: 0,

@@ -52,6 +52,7 @@ selftune ingest-opencode
 selftune ingest-openclaw [--agents-dir PATH] [--since DATE] [--dry-run] [--force] [--verbose]
 selftune wrap-codex -- <codex args>
 selftune replay     [--since DATE] [--dry-run] [--force] [--verbose]
+selftune sync       [--since DATE] [--dry-run] [--force]
 selftune contribute [--skill NAME] [--preview] [--sanitize LEVEL] [--submit]
 selftune cron setup [--dry-run] [--tz <timezone>]
 selftune cron list
@@ -79,6 +80,7 @@ selftune export-canonical [--out FILE] [--pretty] [--platform <name>] [--record-
 | doctor, health, hooks, broken, diagnose | Doctor | Workflows/Doctor.md |
 | ingest, import, codex logs, opencode, openclaw, wrap codex | Ingest | Workflows/Ingest.md |
 | replay, backfill, claude transcripts, historical sessions | Replay | Workflows/Replay.md |
+| sync, source truth, rebuild repaired overlay, rebuild telemetry, refresh logs | Sync | Workflows/Sync.md |
 | contribute, share, community, export data, anonymized | Contribute | Workflows/Contribute.md |
 | init, setup, bootstrap, first time | Initialize | Workflows/Initialize.md |
 | cron, schedule, autonomous, automate evolution | Cron | Workflows/Cron.md |
@@ -173,6 +175,7 @@ Observe --> Detect --> Diagnose --> Propose --> Validate --> Deploy --> Watch
 | `Workflows/Doctor.md` | Health checks on logs, hooks, schema |
 | `Workflows/Ingest.md` | Import sessions from Codex, OpenCode, and OpenClaw |
 | `Workflows/Replay.md` | Backfill logs from Claude Code transcripts |
+| `Workflows/Sync.md` | Source-truth sync across supported agents + repaired overlay rebuild |
 | `Workflows/Contribute.md` | Export anonymized data for community contribution |
 | `Workflows/Cron.md` | Manage OpenClaw cron jobs for autonomous evolution |
 | `Workflows/AutoActivation.md` | Auto-activation hook behavior and rules |
@@ -214,6 +217,8 @@ them.
 - "Give me markdown for a selftune badge"
 - "Replay my Claude Code transcripts"
 - "Backfill logs from historical sessions"
+- "Sync source-truth telemetry before I trust the dashboard"
+- "Rebuild the repaired skill overlay"
 - "Contribute my selftune data to the community"
 - "Share anonymized skill data"
 - "Set up cron jobs for autonomous evolution"

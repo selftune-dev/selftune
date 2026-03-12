@@ -3,7 +3,7 @@
  * and action endpoints for the interactive dashboard.
  *
  * Endpoints:
- *   GET  /              — Serve dashboard HTML with embedded data + live mode flag
+ *   GET  /              — Serve dashboard HTML shell + live mode flag
  *   GET  /api/data      — JSON endpoint returning current telemetry data
  *   GET  /api/events    — SSE stream sending data updates every 5 seconds
  *   POST /api/actions/watch    — Trigger `selftune watch` for a skill
@@ -32,7 +32,6 @@ import type {
   SessionTelemetryRecord,
   SkillUsageRecord,
 } from "./types.js";
-import { escapeJsonForHtmlScript } from "./utils/html.js";
 import { readJsonl } from "./utils/jsonl.js";
 import {
   filterActionableQueryRecords,
@@ -46,6 +45,7 @@ export interface DashboardServerOptions {
   openBrowser?: boolean;
   dataLoader?: () => DashboardData;
   statusLoader?: () => StatusResult;
+  actionRunner?: typeof runAction;
 }
 
 interface DashboardData {
@@ -59,6 +59,34 @@ interface DashboardData {
     snapshots: Record<string, ReturnType<typeof computeMonitoringSnapshot>>;
     unmatched: Array<{ timestamp: string; session_id: string; query: string }>;
     pendingProposals: EvolutionAuditEntry[];
+  };
+}
+
+interface LiveDashboardPayload {
+  telemetry: Array<
+    Pick<
+      SessionTelemetryRecord,
+      "timestamp" | "session_id" | "skills_triggered" | "errors_encountered" | "total_tool_calls"
+    >
+  >;
+  skills: Array<
+    Pick<
+      SkillUsageRecord,
+      "timestamp" | "session_id" | "skill_name" | "skill_path" | "query" | "triggered" | "source"
+    >
+  >;
+  queries: Array<Pick<QueryLogRecord, never>>;
+  evolution: Array<Pick<EvolutionAuditEntry, "timestamp" | "proposal_id" | "action" | "details">>;
+  evidence: EvolutionEvidenceEntry[];
+  decisions: DashboardData["decisions"];
+  computed: DashboardData["computed"] & { unmatched_count: number };
+  counts: {
+    telemetry: number;
+    skills: number;
+    queries: number;
+    evolution: number;
+    evidence: number;
+    decisions: number;
   };
 }
 
@@ -150,15 +178,54 @@ function computeStatusFromLogs(): StatusResult {
   return computeStatus(telemetry, skillRecords, queryRecords, auditEntries, doctorResult);
 }
 
-function buildLiveHTML(data: DashboardData): string {
+function buildLivePayload(data: DashboardData): LiveDashboardPayload {
+  return {
+    telemetry: data.telemetry.map((record) => ({
+      timestamp: record.timestamp,
+      session_id: record.session_id,
+      skills_triggered: record.skills_triggered,
+      errors_encountered: record.errors_encountered,
+      total_tool_calls: record.total_tool_calls,
+    })),
+    skills: data.skills.map((record) => ({
+      timestamp: record.timestamp,
+      session_id: record.session_id,
+      skill_name: record.skill_name,
+      skill_path: record.skill_path,
+      query: record.query,
+      triggered: record.triggered,
+      source: record.source,
+    })),
+    queries: [],
+    evolution: data.evolution.map((record) => ({
+      timestamp: record.timestamp,
+      proposal_id: record.proposal_id,
+      action: record.action,
+      details: record.details,
+    })),
+    evidence: data.evidence,
+    decisions: data.decisions,
+    computed: {
+      ...data.computed,
+      unmatched: data.computed.unmatched.slice(0, 500),
+      unmatched_count: data.computed.unmatched.length,
+    },
+    counts: {
+      telemetry: data.telemetry.length,
+      skills: data.skills.length,
+      queries: data.queries.length,
+      evolution: data.evolution.length,
+      evidence: data.evidence.length,
+      decisions: data.decisions.length,
+    },
+  };
+}
+
+function buildLiveHTML(): string {
   const template = readFileSync(findViewerHTML(), "utf-8");
-
-  const safeJson = escapeJsonForHtmlScript(data);
-  const encodedJson = Buffer.from(safeJson, "utf8").toString("base64");
   const liveFlag = "<script>window.__SELFTUNE_LIVE__ = true;</script>";
-  const dataScript = `<script id="embedded-data" type="application/json" data-encoding="base64">${encodedJson}</script>`;
 
-  return template.replace("</body>", `${liveFlag}\n${dataScript}\n</body>`);
+  return template.replace("</body>", `${liveFlag}\n</body>`);
 }
 
 interface MergedEvidenceEntry {
@@ -462,6 +529,7 @@ export async function startDashboardServer(
   const openBrowser = options?.openBrowser ?? true;
   const getDashboardData = options?.dataLoader ?? collectData;
   const getStatusResult = options?.statusLoader ?? computeStatusFromLogs;
+  const executeAction = options?.actionRunner ?? runAction;
 
   const sseClients = new Set<ReadableStreamDefaultController>();
 
@@ -478,8 +546,7 @@ export async function startDashboardServer(
 
       // ---- GET / ---- Serve dashboard HTML
       if (url.pathname === "/" && req.method === "GET") {
-        const data = getDashboardData();
-        const html = buildLiveHTML(data);
+        const html = buildLiveHTML();
         return new Response(html, {
           headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders() },
         });
@@ -488,7 +555,7 @@ export async function startDashboardServer(
       // ---- GET /api/data ---- JSON data endpoint
       if (url.pathname === "/api/data" && req.method === "GET") {
         const data = getDashboardData();
-        return Response.json(data, { headers: corsHeaders() });
+        return Response.json(buildLivePayload(data), { headers: corsHeaders() });
       }
 
       // ---- GET /api/events ---- SSE stream
@@ -499,14 +566,14 @@ export async function startDashboardServer(
 
             // Send initial data immediately
             const data = getDashboardData();
-            const payload = `event: data\ndata: ${JSON.stringify(data)}\n\n`;
+            const payload = `event: data\ndata: ${JSON.stringify(buildLivePayload(data))}\n\n`;
             controller.enqueue(new TextEncoder().encode(payload));
 
             // Set up periodic updates every 5 seconds
             const interval = setInterval(() => {
               try {
                 const freshData = getDashboardData();
-                const msg = `event: data\ndata: ${JSON.stringify(freshData)}\n\n`;
+                const msg = `event: data\ndata: ${JSON.stringify(buildLivePayload(freshData))}\n\n`;
                 controller.enqueue(new TextEncoder().encode(msg));
               } catch {
                 clearInterval(interval);
@@ -549,8 +616,8 @@ export async function startDashboardServer(
             { status: 400, headers: corsHeaders() },
           );
         }
-        const args = ["--skill", body.skill, "--skill-path", body.skillPath];
-        const result = await runAction("watch", args);
+        const args = ["--skill", body.skill, "--skill-path", body.skillPath, "--sync-first"];
+        const result = await executeAction("watch", args);
         return Response.json(result, { headers: corsHeaders() });
       }
 
@@ -563,8 +630,8 @@ export async function startDashboardServer(
             { status: 400, headers: corsHeaders() },
           );
         }
-        const args = ["--skill", body.skill, "--skill-path", body.skillPath];
-        const result = await runAction("evolve", args);
+        const args = ["--skill", body.skill, "--skill-path", body.skillPath, "--sync-first"];
+        const result = await executeAction("evolve", args);
         return Response.json(result, { headers: corsHeaders() });
       }
 
@@ -589,7 +656,7 @@ export async function startDashboardServer(
           "--proposal-id",
           body.proposalId,
         ];
-        const result = await runAction("rollback", args);
+        const result = await executeAction("rollback", args);
         return Response.json(result, { headers: corsHeaders() });
       }
 
