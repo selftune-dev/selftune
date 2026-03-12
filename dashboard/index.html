@@ -1004,6 +1004,7 @@ const state = {
   evidence: [],    // EvolutionEvidenceEntry[]
   counts: null,    // Optional aggregated counts for live mode payloads
   computed: null,  // Pre-computed monitoring data (from CLI)
+  liveLoading: false,
 };
 
 const charts = {};
@@ -1252,8 +1253,9 @@ const CHART_COLORS = [
 function refreshAll() {
   const hasData = state.telemetry.length || state.skills.length ||
                   state.queries.length || state.evolution.length;
+  const isLoading = isLiveMode() && state.liveLoading && !hasData;
 
-  if (hasData) {
+  if (hasData || isLoading) {
     dropZone.classList.remove('visible');
     document.getElementById('healthSummary').style.display = 'block';
     document.getElementById('statusRow').style.display = 'grid';
@@ -1279,6 +1281,7 @@ function refreshAll() {
 // Header
 // ========================================================================
 function updateHeader() {
+  const isLoading = isLiveMode() && state.liveLoading;
   const parts = [];
   const telemetryCount = getCount('telemetry', state.telemetry);
   const skillCount = getCount('skills', state.skills);
@@ -1288,11 +1291,17 @@ function updateHeader() {
   if (skillCount) parts.push(`<span class="count">${skillCount}</span> skill events`);
   if (queryCount) parts.push(`<span class="count">${queryCount}</span> queries`);
   if (evolutionCount) parts.push(`<span class="count">${evolutionCount}</span> evolution actions`);
-  document.getElementById('headerStatus').innerHTML = parts.length ? parts.join(' &middot; ') : 'No embedded data found. Load log files to explore a local snapshot.';
+  document.getElementById('headerStatus').innerHTML = isLoading
+    ? 'Loading live dashboard data&hellip;'
+    : parts.length
+      ? parts.join(' &middot; ')
+      : 'No embedded data found. Load log files to explore a local snapshot.';
   document.getElementById('overviewMode').textContent = isLiveMode() ? 'Live dashboard' : 'Static export';
-  document.getElementById('overviewContext').textContent = parts.length
-    ? `${skillCount || 0} tracked skill events across your local logs`
-    : 'Open a built dashboard or run live mode for updates.';
+  document.getElementById('overviewContext').textContent = isLoading
+    ? 'Waiting for the first live payload from your local server.'
+    : parts.length
+      ? `${skillCount || 0} tracked skill events across your local logs`
+      : 'Open a built dashboard or run live mode for updates.';
 }
 
 // ========================================================================
@@ -1300,7 +1309,23 @@ function updateHeader() {
 // ========================================================================
 function updateHealthSummary() {
   const computed = state.computed;
-  if (!computed) return;
+  if (!computed) {
+    if (isLiveMode() && state.liveLoading) {
+      document.getElementById('kpi-skills-monitored').textContent = '—';
+      document.getElementById('kpi-skills-sub').textContent = 'loading live metrics';
+      document.getElementById('kpi-avg-pass-rate').textContent = '—';
+      document.getElementById('kpi-pass-rate-sub').textContent = 'waiting for summary';
+      document.getElementById('kpi-regressions').textContent = '—';
+      document.getElementById('kpi-regressions-sub').textContent = 'waiting for summary';
+      document.getElementById('kpi-unmatched').textContent = '—';
+      document.getElementById('kpi-unmatched-sub').textContent = 'waiting for summary';
+      document.getElementById('kpi-sessions').textContent = '—';
+      document.getElementById('kpi-sessions-sub').textContent = 'waiting for summary';
+      document.getElementById('kpi-pending').textContent = '—';
+      document.getElementById('kpi-pending-sub').textContent = 'waiting for summary';
+    }
+    return;
+  }
 
   const snapshots = computed.snapshots || {};
   const skillNames = Object.keys(snapshots);
@@ -1368,12 +1393,21 @@ function updateStatusSummary() {
 // ========================================================================
 function updateSkillHealthGrid() {
   const computed = state.computed;
-  if (!computed) return;
+  const grid = document.getElementById('skillHealthGrid');
+  if (!computed) {
+    if (isLiveMode() && state.liveLoading) {
+      grid.innerHTML = '<div class="empty-state">Loading live skill health…</div>';
+    }
+    return;
+  }
 
   const snapshots = computed.snapshots || {};
   const skillNames = Object.keys(snapshots);
 
-  if (!skillNames.length) return;
+  if (!skillNames.length) {
+    grid.innerHTML = '<div class="empty-state">No skill health data yet</div>';
+    return;
+  }
 
   // Sort worst-first
   const sorted = skillNames.sort((a, b) => {
@@ -1384,7 +1418,6 @@ function updateSkillHealthGrid() {
     return sa.pass_rate - sb.pass_rate;
   });
 
-  const grid = document.getElementById('skillHealthGrid');
   grid.innerHTML = sorted.map(name => {
     const snap = snapshots[name];
     const status = getSkillStatus(snap.pass_rate, snap.regression_detected, snap.skill_checks);
@@ -1800,10 +1833,12 @@ function startSSE() {
   sseSource.addEventListener('data', (e) => {
     try {
       const data = JSON.parse(e.data);
+      state.liveLoading = false;
       if (data.telemetry) state.telemetry = data.telemetry;
       if (data.skills) state.skills = data.skills;
       if (data.queries) state.queries = data.queries;
       if (data.evolution) state.evolution = data.evolution;
+      if (data.evidence) state.evidence = data.evidence;
       if (data.decisions) state.decisions = data.decisions;
       if (data.counts) state.counts = data.counts;
       if (data.computed) {
@@ -2057,6 +2092,8 @@ function initLiveMode() {
   if (!isLiveMode()) return;
   // Show live sections
   document.getElementById('actionsSection').style.display = 'block';
+  state.liveLoading = true;
+  refreshAll();
 
   startSSE();
   updateEvolutionTimeline();

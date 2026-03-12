@@ -117,6 +117,7 @@ describe("badge routes", () => {
       openBrowser: false,
       dataLoader: () => dashboardFixture,
       statusLoader: () => statusFixture,
+      evidenceLoader: () => dashboardFixture.evidence,
     });
   });
 

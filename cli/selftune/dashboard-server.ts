@@ -45,8 +45,11 @@ export interface DashboardServerOptions {
   openBrowser?: boolean;
   dataLoader?: () => DashboardData;
   statusLoader?: () => StatusResult;
+  evidenceLoader?: () => EvolutionEvidenceEntry[];
   actionRunner?: typeof runAction;
 }
+
+const LIVE_CACHE_TTL_MS = 30_000;
 
 interface DashboardData {
   telemetry: SessionTelemetryRecord[];
@@ -77,7 +80,7 @@ interface LiveDashboardPayload {
   >;
   queries: Array<Pick<QueryLogRecord, never>>;
   evolution: Array<Pick<EvolutionAuditEntry, "timestamp" | "proposal_id" | "action" | "details">>;
-  evidence: EvolutionEvidenceEntry[];
+  evidence: Array<Pick<EvolutionEvidenceEntry, never>>;
   decisions: DashboardData["decisions"];
   computed: DashboardData["computed"] & { unmatched_count: number };
   counts: {
@@ -203,7 +206,7 @@ function buildLivePayload(data: DashboardData): LiveDashboardPayload {
       action: record.action,
       details: record.details,
     })),
-    evidence: data.evidence,
+    evidence: [],
     decisions: data.decisions,
     computed: {
       ...data.computed,
@@ -529,9 +532,73 @@ export async function startDashboardServer(
   const openBrowser = options?.openBrowser ?? true;
   const getDashboardData = options?.dataLoader ?? collectData;
   const getStatusResult = options?.statusLoader ?? computeStatusFromLogs;
+  const getEvidenceEntries = options?.evidenceLoader ?? readEvidenceTrail;
   const executeAction = options?.actionRunner ?? runAction;
 
   const sseClients = new Set<ReadableStreamDefaultController>();
+  let cachedDashboardData: DashboardData | null = null;
+  let cachedLivePayload: LiveDashboardPayload | null = null;
+  let cachedStatusResult: StatusResult | null = null;
+  let lastDataCacheRefreshAt = 0;
+  let lastStatusCacheRefreshAt = 0;
+  let dataRefreshPromise: Promise<void> | null = null;
+  let statusRefreshPromise: Promise<void> | null = null;
+
+  async function refreshLiveCache(force = false): Promise<void> {
+    const cacheIsFresh =
+      cachedDashboardData !== null && Date.now() - lastDataCacheRefreshAt < LIVE_CACHE_TTL_MS;
+    if (!force && cacheIsFresh) return;
+    if (dataRefreshPromise) return dataRefreshPromise;
+
+    dataRefreshPromise = (async () => {
+      const data = getDashboardData();
+      cachedDashboardData = data;
+      cachedLivePayload = buildLivePayload(data);
+      lastDataCacheRefreshAt = Date.now();
+    })();
+
+    try {
+      await dataRefreshPromise;
+    } finally {
+      dataRefreshPromise = null;
+    }
+  }
+
+  async function refreshStatusCache(force = false): Promise<void> {
+    const cacheIsFresh =
+      cachedStatusResult !== null && Date.now() - lastStatusCacheRefreshAt < LIVE_CACHE_TTL_MS;
+    if (!force && cacheIsFresh) return;
+    if (statusRefreshPromise) return statusRefreshPromise;
+
+    statusRefreshPromise = (async () => {
+      cachedStatusResult = getStatusResult();
+      lastStatusCacheRefreshAt = Date.now();
+    })();
+
+    try {
+      await statusRefreshPromise;
+    } finally {
+      statusRefreshPromise = null;
+    }
+  }
+
+  async function getCachedLivePayload(): Promise<LiveDashboardPayload> {
+    if (!cachedLivePayload) {
+      await refreshLiveCache(true);
+    } else {
+      void refreshLiveCache(false);
+    }
+    return cachedLivePayload as LiveDashboardPayload;
+  }
+
+  async function getCachedStatusResult(): Promise<StatusResult> {
+    if (!cachedStatusResult) {
+      await refreshStatusCache(true);
+    } else {
+      void refreshStatusCache(false);
+    }
+    return cachedStatusResult as StatusResult;
+  }
 
   const server = Bun.serve({
     port,
@@ -554,26 +621,26 @@ export async function startDashboardServer(
 
       // ---- GET /api/data ---- JSON data endpoint
       if (url.pathname === "/api/data" && req.method === "GET") {
-        const data = getDashboardData();
-        return Response.json(buildLivePayload(data), { headers: corsHeaders() });
+        const payload = await getCachedLivePayload();
+        return Response.json(payload, { headers: corsHeaders() });
       }
 
       // ---- GET /api/events ---- SSE stream
       if (url.pathname === "/api/events" && req.method === "GET") {
         const stream = new ReadableStream({
-          start(controller) {
+          async start(controller) {
             sseClients.add(controller);
 
             // Send initial data immediately
-            const data = getDashboardData();
-            const payload = `event: data\ndata: ${JSON.stringify(buildLivePayload(data))}\n\n`;
+            const initialPayload = await getCachedLivePayload();
+            const payload = `event: data\ndata: ${JSON.stringify(initialPayload)}\n\n`;
             controller.enqueue(new TextEncoder().encode(payload));
 
             // Set up periodic updates every 5 seconds
-            const interval = setInterval(() => {
+            const interval = setInterval(async () => {
               try {
-                const freshData = getDashboardData();
-                const msg = `event: data\ndata: ${JSON.stringify(buildLivePayload(freshData))}\n\n`;
+                const freshPayload = await getCachedLivePayload();
+                const msg = `event: data\ndata: ${JSON.stringify(freshPayload)}\n\n`;
                 controller.enqueue(new TextEncoder().encode(msg));
               } catch {
                 clearInterval(interval);
@@ -668,7 +735,7 @@ export async function startDashboardServer(
         const format: BadgeFormat =
           formatParam && validFormats.has(formatParam) ? (formatParam as BadgeFormat) : "svg";
 
-        const statusResult = getStatusResult();
+        const statusResult = await getCachedStatusResult();
         const badgeData = findSkillBadgeData(statusResult, skillName);
 
         if (!badgeData) {
@@ -727,10 +794,11 @@ export async function startDashboardServer(
       // ---- GET /report/:skillName ---- Skill health report
       if (url.pathname.startsWith("/report/") && req.method === "GET") {
         const skillName = decodeURIComponent(url.pathname.slice("/report/".length));
-        const statusResult = getStatusResult();
-        const data = getDashboardData();
+        const statusResult = await getCachedStatusResult();
         const skill = statusResult.skills.find((s) => s.name === skillName);
-        const evidenceEntries = data.evidence.filter((entry) => entry.skill_name === skillName);
+        const evidenceEntries = getEvidenceEntries().filter(
+          (entry) => entry.skill_name === skillName,
+        );
 
         if (!skill) {
           return new Response("Skill not found", {

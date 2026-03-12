@@ -397,17 +397,86 @@ describe("live shell loading", () => {
   });
 
   it("serves / without eagerly loading dashboard data", async () => {
+    const callsBefore = dataLoaderCalls;
     const res = await fetch(`http://localhost:${server.port}/`);
     const html = await res.text();
     expect(res.status).toBe(200);
     expect(html).toContain("__SELFTUNE_LIVE__");
     expect(html).not.toContain('id="embedded-data"');
-    expect(dataLoaderCalls).toBe(0);
+    expect(dataLoaderCalls).toBe(callsBefore);
   });
 
   it("loads dashboard data only through /api/data", async () => {
     const res = await fetch(`http://localhost:${server.port}/api/data`);
     expect(res.status).toBe(200);
     expect(dataLoaderCalls).toBe(1);
+  });
+});
+
+describe("report loading", () => {
+  let server: { server: unknown; stop: () => void; port: number };
+  let dataLoaderCalls = 0;
+  let evidenceLoaderCalls = 0;
+
+  beforeAll(async () => {
+    dataLoaderCalls = 0;
+    evidenceLoaderCalls = 0;
+    server = await startDashboardServer({
+      port: 0,
+      host: "localhost",
+      openBrowser: false,
+      dataLoader: () => {
+        dataLoaderCalls++;
+        return {
+          telemetry: [],
+          skills: [],
+          queries: [],
+          evolution: [],
+          evidence: [],
+          decisions: [],
+          computed: {
+            snapshots: {},
+            unmatched: [],
+            pendingProposals: [],
+          },
+        };
+      },
+      statusLoader: () => ({
+        skills: [
+          {
+            name: "test-skill",
+            passRate: 1,
+            trend: "stable",
+            missedQueries: 0,
+            status: "HEALTHY",
+            snapshot: null,
+          },
+        ],
+        unmatchedQueries: 0,
+        pendingProposals: 0,
+        lastSession: null,
+        system: {
+          healthy: true,
+          pass: 0,
+          fail: 0,
+          warn: 0,
+        },
+      }),
+      evidenceLoader: () => {
+        evidenceLoaderCalls++;
+        return [];
+      },
+    });
+  });
+
+  afterAll(() => {
+    server?.stop();
+  });
+
+  it("loads report data without touching the full dashboard loader", async () => {
+    const res = await fetch(`http://localhost:${server.port}/report/test-skill`);
+    expect(res.status).toBe(200);
+    expect(dataLoaderCalls).toBe(0);
+    expect(evidenceLoaderCalls).toBe(1);
   });
 });
