@@ -17,7 +17,7 @@ import type { EvolveResult } from "./evolution/evolve.js";
 import { readGradingResultsForSkill } from "./grading/results.js";
 import type { WatchResult } from "./monitoring/watch.js";
 import { doctor } from "./observability.js";
-import type { StatusResult, SkillStatus } from "./status.js";
+import type { SkillStatus, StatusResult } from "./status.js";
 import { computeStatus } from "./status.js";
 import type { SyncResult } from "./sync.js";
 import { createDefaultSyncOptions, syncSources } from "./sync.js";
@@ -26,8 +26,8 @@ import { readJsonl } from "./utils/jsonl.js";
 import { detectAgent } from "./utils/llm-call.js";
 import {
   findInstalledSkillPath,
-  findRepositorySkillDirs,
   findRepositoryClaudeSkillDirs,
+  findRepositorySkillDirs,
 } from "./utils/skill-discovery.js";
 import { readEffectiveSkillUsageRecords } from "./utils/skill-log.js";
 
@@ -213,10 +213,12 @@ export async function orchestrate(
   const _computeStatus = deps.computeStatus ?? computeStatus;
   const _detectAgent = deps.detectAgent ?? detectAgent;
   const _doctor = deps.doctor ?? doctor;
-  const _readTelemetry = deps.readTelemetry ?? (() => readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG));
+  const _readTelemetry =
+    deps.readTelemetry ?? (() => readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG));
   const _readSkillRecords = deps.readSkillRecords ?? readEffectiveSkillUsageRecords;
   const _readQueryRecords = deps.readQueryRecords ?? (() => readJsonl<QueryLogRecord>(QUERY_LOG));
-  const _readAuditEntries = deps.readAuditEntries ?? (() => readJsonl<EvolutionAuditEntry>(EVOLUTION_AUDIT_LOG));
+  const _readAuditEntries =
+    deps.readAuditEntries ?? (() => readJsonl<EvolutionAuditEntry>(EVOLUTION_AUDIT_LOG));
   const _resolveSkillPath = deps.resolveSkillPath ?? defaultResolveSkillPath;
   const _readGradingResults = deps.readGradingResults ?? readGradingResultsForSkill;
 
@@ -228,13 +230,8 @@ export async function orchestrate(
   // Step 1: Sync source-truth telemetry (mandatory)
   // -------------------------------------------------------------------------
   console.error("[orchestrate] Syncing source-truth telemetry...");
-  const syncResult = _syncSources(
-    createDefaultSyncOptions({ force: options.syncForce }),
-  );
-  const sourceSynced = Object.values(syncResult.sources).reduce(
-    (sum, s) => sum + s.synced,
-    0,
-  );
+  const syncResult = _syncSources(createDefaultSyncOptions({ force: options.syncForce }));
+  const sourceSynced = Object.values(syncResult.sources).reduce((sum, s) => sum + s.synced, 0);
   console.error(
     `[orchestrate] Sync complete: ${sourceSynced} sessions synced, ${syncResult.repair.repaired_records} repaired`,
   );
@@ -281,9 +278,7 @@ export async function orchestrate(
   // -------------------------------------------------------------------------
   const agent = _detectAgent();
   if (!agent && evolveCandidates.length > 0) {
-    console.error(
-      "[orchestrate] WARNING: No agent CLI found in PATH. Evolve will be skipped.",
-    );
+    console.error("[orchestrate] WARNING: No agent CLI found in PATH. Evolve will be skipped.");
     for (const c of evolveCandidates) {
       c.action = "skip";
       c.reason = "no agent CLI available";
@@ -328,13 +323,9 @@ export async function orchestrate(
 
       if (evolveResult.deployed) {
         deployedCount++;
-        console.error(
-          `  ✓ ${candidate.skill}: deployed (${evolveResult.reason})`,
-        );
+        console.error(`  ✓ ${candidate.skill}: deployed (${evolveResult.reason})`);
       } else {
-        console.error(
-          `  ✗ ${candidate.skill}: not deployed (${evolveResult.reason})`,
-        );
+        console.error(`  ✗ ${candidate.skill}: not deployed (${evolveResult.reason})`);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -350,10 +341,7 @@ export async function orchestrate(
   // Re-read audit entries to capture any newly-deployed entries from the evolve loop above.
   // evolve() writes audit entries synchronously, so a fresh read is needed.
   const freshAuditEntries = _readAuditEntries();
-  const recentlyEvolved = findRecentlyEvolvedSkills(
-    freshAuditEntries,
-    options.recentWindowHours,
-  );
+  const recentlyEvolved = findRecentlyEvolvedSkills(freshAuditEntries, options.recentWindowHours);
 
   // O(1) lookup for skills already processed as evolve candidates
   const evolvedSkillNames = new Set(

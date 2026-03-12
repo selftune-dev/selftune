@@ -1,14 +1,13 @@
 import { describe, expect, test } from "bun:test";
-
-import type { SkillStatus, StatusResult } from "../cli/selftune/status.js";
-import type { SyncResult, SyncStepResult } from "../cli/selftune/sync.js";
-import type { DoctorResult } from "../cli/selftune/types.js";
 import {
-  type OrchestrateOptions,
   type OrchestrateDeps,
+  type OrchestrateOptions,
   orchestrate,
   selectCandidates,
 } from "../cli/selftune/orchestrate.js";
+import type { SkillStatus, StatusResult } from "../cli/selftune/status.js";
+import type { SyncResult, SyncStepResult } from "../cli/selftune/sync.js";
+import type { DoctorResult } from "../cli/selftune/types.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -37,7 +36,13 @@ function makeSyncResult(): SyncResult {
 }
 
 function makeDoctorResult(): DoctorResult {
-  return { command: "doctor", timestamp: new Date().toISOString(), checks: [], summary: { pass: 5, fail: 0, warn: 0, total: 5 }, healthy: true };
+  return {
+    command: "doctor",
+    timestamp: new Date().toISOString(),
+    checks: [],
+    summary: { pass: 5, fail: 0, warn: 0, total: 5 },
+    healthy: true,
+  };
 }
 
 function makeStatusResult(skills: SkillStatus[]): StatusResult {
@@ -110,7 +115,9 @@ function makeDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDeps {
 
 describe("selectCandidates", () => {
   test("selects CRITICAL skills for evolve", () => {
-    const skills = [makeSkill({ name: "Bad", status: "CRITICAL", passRate: 0.2, missedQueries: 5 })];
+    const skills = [
+      makeSkill({ name: "Bad", status: "CRITICAL", passRate: 0.2, missedQueries: 5 }),
+    ];
     const result = selectCandidates(skills, { maxSkills: 5 });
     expect(result).toHaveLength(1);
     expect(result[0].action).toBe("evolve");
@@ -118,19 +125,25 @@ describe("selectCandidates", () => {
   });
 
   test("selects WARNING skills for evolve", () => {
-    const skills = [makeSkill({ name: "Weak", status: "WARNING", passRate: 0.5, missedQueries: 3 })];
+    const skills = [
+      makeSkill({ name: "Weak", status: "WARNING", passRate: 0.5, missedQueries: 3 }),
+    ];
     const result = selectCandidates(skills, { maxSkills: 5 });
     expect(result[0].action).toBe("evolve");
   });
 
   test("selects UNGRADED skills with missed queries", () => {
-    const skills = [makeSkill({ name: "New", status: "UNGRADED", passRate: null, missedQueries: 2 })];
+    const skills = [
+      makeSkill({ name: "New", status: "UNGRADED", passRate: null, missedQueries: 2 }),
+    ];
     const result = selectCandidates(skills, { maxSkills: 5 });
     expect(result[0].action).toBe("evolve");
   });
 
   test("skips UNGRADED skills with 0 missed queries", () => {
-    const skills = [makeSkill({ name: "New", status: "UNGRADED", passRate: null, missedQueries: 0 })];
+    const skills = [
+      makeSkill({ name: "New", status: "UNGRADED", passRate: null, missedQueries: 0 }),
+    ];
     const result = selectCandidates(skills, { maxSkills: 5 });
     expect(result[0].action).toBe("skip");
     expect(result[0].reason).toContain("insufficient signal");
