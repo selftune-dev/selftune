@@ -3,30 +3,23 @@ import { ActivityPanel } from "@/components/ActivityTimeline"
 import { SectionCards } from "@/components/section-cards"
 import { SkillHealthGrid } from "@/components/skill-health-grid"
 import type { SkillCard, SkillHealthStatus, SkillSummary, OverviewResponse } from "@/types"
-import { deriveStatus } from "@/utils"
+import { deriveStatus, sortByPassRateAndChecks } from "@/utils"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { AlertCircleIcon, RefreshCwIcon } from "lucide-react"
 
 function deriveSkillCards(skills: SkillSummary[]): SkillCard[] {
-  const cards: SkillCard[] = skills.map((s) => ({
-    name: s.skill_name,
-    passRate: s.total_checks > 0 ? s.pass_rate : null,
-    checks: s.total_checks,
-    status: deriveStatus(s.pass_rate, s.total_checks),
-    hasEvidence: s.has_evidence,
-    uniqueSessions: s.unique_sessions,
-    lastSeen: s.last_seen,
-  }))
-
-  cards.sort((a, b) => {
-    const aRate = a.passRate ?? 1
-    const bRate = b.passRate ?? 1
-    if (aRate !== bRate) return aRate - bRate
-    return b.checks - a.checks
-  })
-
-  return cards
+  return sortByPassRateAndChecks(
+    skills.map((s) => ({
+      name: s.skill_name,
+      passRate: s.total_checks > 0 ? s.pass_rate : null,
+      checks: s.total_checks,
+      status: deriveStatus(s.pass_rate, s.total_checks),
+      hasEvidence: s.has_evidence,
+      uniqueSessions: s.unique_sessions,
+      lastSeen: s.last_seen,
+    }))
+  )
 }
 
 export function Overview({

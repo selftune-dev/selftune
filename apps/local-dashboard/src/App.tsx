@@ -9,7 +9,7 @@ import { Overview } from "@/pages/Overview"
 import { SkillReport } from "@/pages/SkillReport"
 import { useOverview } from "@/hooks/useOverview"
 import type { SkillHealthStatus, SkillSummary } from "@/types"
-import { deriveStatus } from "@/utils"
+import { deriveStatus, sortByPassRateAndChecks } from "@/utils"
 
 function SkillReportWithHeader() {
   const { name } = useParams<{ name: string }>()
@@ -29,19 +29,14 @@ function DashboardShell() {
 
   const skillNavItems = useMemo(() => {
     if (!data) return []
-    return data.skills
-      .map((s: SkillSummary) => ({
+    return sortByPassRateAndChecks(
+      data.skills.map((s: SkillSummary) => ({
         name: s.skill_name,
         status: deriveStatus(s.pass_rate, s.total_checks),
         passRate: s.total_checks > 0 ? s.pass_rate : null,
         checks: s.total_checks,
       }))
-      .sort((a, b) => {
-        const aRate = a.passRate ?? 1
-        const bRate = b.passRate ?? 1
-        if (aRate !== bRate) return aRate - bRate
-        return b.checks - a.checks
-      })
+    )
   }, [data])
 
   const filteredNavItems = useMemo(() => {

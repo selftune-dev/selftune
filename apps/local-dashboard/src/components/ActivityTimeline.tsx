@@ -64,7 +64,15 @@ export function ActivityPanel({
         <CardDescription>Recent evolution events and queries</CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue={pendingProposals.length > 0 ? "pending" : "timeline"}>
+        <Tabs
+          defaultValue={
+            pendingProposals.length > 0
+              ? "pending"
+              : evolution.length > 0
+                ? "timeline"
+                : "unmatched"
+          }
+        >
           <TabsList className="w-full">
             {pendingProposals.length > 0 && (
               <TabsTrigger value="pending" className="flex-1 gap-1.5">

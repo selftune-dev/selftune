@@ -230,7 +230,7 @@ export function SkillReport() {
                 </TableHeader>
                 <TableBody>
                   {recent_invocations.map((rec, i) => (
-                    <TableRow key={`${rec.session_id}-${i}`} className={rec.triggered ? "" : "bg-red-50/50"}>
+                    <TableRow key={`${rec.session_id}-${i}`} className={rec.triggered ? "" : "bg-red-50/50 dark:bg-red-950/30"}>
                       <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
                         {timeAgo(rec.timestamp)}
                       </TableCell>

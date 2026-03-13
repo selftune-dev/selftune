@@ -455,11 +455,6 @@ export function SkillHealthGrid({
     useSensor(KeyboardSensor, {})
   )
 
-  const dataIds = React.useMemo<UniqueIdentifier[]>(
-    () => data.map((d) => d.name),
-    [data]
-  )
-
   const table = useReactTable({
     data,
     columns,
@@ -485,6 +480,11 @@ export function SkillHealthGrid({
     getFacetedUniqueValues: getFacetedUniqueValues(),
   })
 
+  const dataIds = React.useMemo<UniqueIdentifier[]>(
+    () => table.getRowModel().rows.map((r) => r.id),
+    [table.getRowModel().rows]
+  )
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     if (active && over && active.id !== over.id) {
@@ -492,6 +492,7 @@ export function SkillHealthGrid({
         const ids = prev.map((d) => d.name)
         const oldIndex = ids.indexOf(active.id as string)
         const newIndex = ids.indexOf(over.id as string)
+        if (oldIndex === -1 || newIndex === -1) return prev
         return arrayMove(prev, oldIndex, newIndex)
       })
     }
@@ -694,10 +695,12 @@ export function SkillHealthGrid({
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex w-fit items-center justify-center text-sm font-medium">
-              Page {table.getState().pagination.pageIndex + 1} of{" "}
-              {table.getPageCount()}
-            </div>
+            {table.getRowModel().rows.length > 0 && (
+              <div className="flex w-fit items-center justify-center text-sm font-medium">
+                Page {table.getState().pagination.pageIndex + 1} of{" "}
+                {table.getPageCount()}
+              </div>
+            )}
             <div className="ml-auto flex items-center gap-2 lg:ml-0">
               <Button
                 variant="outline"

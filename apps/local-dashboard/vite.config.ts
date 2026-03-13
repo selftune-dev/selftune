@@ -24,13 +24,23 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes("node_modules/react/") || id.includes("node_modules/react-dom/") || id.includes("node_modules/react-router")) {
+          if (
+            id.includes("node_modules/react/") ||
+            id.includes("node_modules/react-dom/") ||
+            id.includes("node_modules/react-router")
+          ) {
             return "vendor-react";
           }
           if (id.includes("@tanstack/react-table") || id.includes("@dnd-kit/")) {
             return "vendor-table";
           }
-          if (id.includes("@base-ui/react") || id.includes("class-variance-authority") || id.includes("clsx") || id.includes("tailwind-merge") || id.includes("lucide-react")) {
+          if (
+            id.includes("@base-ui/react") ||
+            id.includes("class-variance-authority") ||
+            id.includes("clsx") ||
+            id.includes("tailwind-merge") ||
+            id.includes("lucide-react")
+          ) {
             return "vendor-ui";
           }
         },

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react"
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 
 type Theme = "dark" | "light" | "system"
 
@@ -21,7 +21,7 @@ export function ThemeProvider({
   children,
   defaultTheme = "dark",
 }: {
-  children: React.ReactNode
+  children: ReactNode
   defaultTheme?: Theme
 }) {
   const [theme, setTheme] = useState<Theme>(() => readStoredTheme(defaultTheme))
