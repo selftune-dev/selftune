@@ -208,6 +208,12 @@ selftune dashboard --port 8080
 To develop the React SPA locally:
 
 ```bash
+# From repo root
+bun run dev
+# → if 7888 is free, starts both the dashboard server and the SPA dev server
+# → if 7888 is already in use, reuses that dashboard server and starts only the SPA dev server on http://localhost:5199
+
+# Or run manually:
 # Terminal 1: Start the dashboard server
 selftune dashboard --port 7888
 

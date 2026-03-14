@@ -28,6 +28,12 @@ JSONL logs → materializeIncremental() → SQLite → getOverviewPayload() / ge
 ## How to run
 
 ```bash
+# From repo root
+bun run dev
+# → if 7888 is free, starts dashboard server on 7888 and SPA dev server on http://localhost:5199
+# → if 7888 is already in use, reuses that dashboard server and starts only the SPA dev server
+
+# Or run manually:
 # Terminal 1: Start the dashboard server
 selftune dashboard --port 7888
 
