@@ -156,14 +156,74 @@ export function SkillReport() {
   const uniqueBranches = [...new Set((session_metadata ?? []).map((s) => s.branch).filter(Boolean))]
 
   return (
-    <div className="@container/main flex flex-1 flex-col gap-6 p-4 lg:p-6">
-      {/* Skill Header — sticky */}
-      <div className="flex items-center gap-3 sticky top-0 z-20 bg-background py-2 -mt-2">
-        <h1 className="text-xl font-bold tracking-tight lg:text-2xl">{data.skill_name}</h1>
-        <Badge variant={config.variant} className="gap-1">
+    <Tabs defaultValue={evolution.length > 0 ? "evidence" : "invocations"}>
+    <div className="@container/main flex flex-1 flex-col gap-4 p-4 lg:px-6 lg:pb-6 lg:pt-0">
+      {/* Skill Header + Tab Bar — sticky, Linear-style compact */}
+      <div className="flex items-center gap-3 sticky top-0 z-30 bg-background py-1.5 border-b border-border/50">
+        <h1 className="text-base font-semibold tracking-tight lg:text-lg shrink-0">{data.skill_name}</h1>
+        <Badge variant={config.variant} className="gap-1 shrink-0 text-[10px]">
           {config.icon}
           {config.label}
         </Badge>
+        <TabsList variant="line" className="ml-auto">
+          {evolution.length > 0 && (
+            <TabsTrigger value="evidence">
+              <Tooltip>
+                <TooltipTrigger className="inline-flex items-center gap-1">
+                  Evidence
+                  {activeProposal && (
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      #{activeProposal.slice(0, 8)}
+                    </span>
+                  )}
+                </TooltipTrigger>
+                <TooltipContent>Change history and validation results</TooltipContent>
+              </Tooltip>
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="invocations">
+            <Tooltip>
+              <TooltipTrigger className="inline-flex items-center gap-1">
+                Invocations
+                <Badge variant="secondary" className="text-[10px]">{recent_invocations.length}</Badge>
+              </TooltipTrigger>
+              <TooltipContent>Recent skill triggers and their outcomes</TooltipContent>
+            </Tooltip>
+          </TabsTrigger>
+          {prompt_samples && prompt_samples.length > 0 && (
+            <TabsTrigger value="prompts">
+              <Tooltip>
+                <TooltipTrigger className="inline-flex items-center gap-1">
+                  Prompts
+                  <Badge variant="secondary" className="text-[10px]">{prompt_samples.length}</Badge>
+                </TooltipTrigger>
+                <TooltipContent>User inputs that matched this skill</TooltipContent>
+              </Tooltip>
+            </TabsTrigger>
+          )}
+          {session_metadata && session_metadata.length > 0 && (
+            <TabsTrigger value="sessions">
+              <Tooltip>
+                <TooltipTrigger className="inline-flex items-center gap-1">
+                  Sessions
+                  <Badge variant="secondary" className="text-[10px]">{session_metadata.length}</Badge>
+                </TooltipTrigger>
+                <TooltipContent>Environment and runtime information</TooltipContent>
+              </Tooltip>
+            </TabsTrigger>
+          )}
+          {pending_proposals.length > 0 && (
+            <TabsTrigger value="pending">
+              <Tooltip>
+                <TooltipTrigger className="inline-flex items-center gap-1">
+                  Pending
+                  <Badge variant="destructive" className="text-[10px]">{pending_proposals.length}</Badge>
+                </TooltipTrigger>
+                <TooltipContent>Proposals awaiting review</TooltipContent>
+              </Tooltip>
+            </TabsTrigger>
+          )}
+        </TabsList>
       </div>
 
       {/* KPIs — 2 rows of 4 */}
@@ -300,7 +360,7 @@ export function SkillReport() {
       <div className="flex gap-6">
         {/* Left sidebar: Evolution Timeline — sticky so it stays visible while scrolling */}
         {evolution.length > 0 && (
-          <aside className="w-[220px] shrink-0 border-r pr-4 sticky top-10 self-start max-h-[calc(100svh-2.5rem)] overflow-y-auto">
+          <aside className="w-[220px] shrink-0 border-r pr-4 sticky top-12 self-start max-h-[calc(100svh-3rem)] overflow-y-auto">
             <EvolutionTimeline
               entries={evolution}
               selectedProposalId={activeProposal}
@@ -311,67 +371,6 @@ export function SkillReport() {
 
         {/* Right content area */}
         <div className="flex-1 min-w-0">
-          <Tabs defaultValue={evolution.length > 0 ? "evidence" : "invocations"}>
-            <TabsList variant="line" className="sticky top-10 z-20 bg-background">
-              {evolution.length > 0 && (
-                <TabsTrigger value="evidence">
-                  <Tooltip>
-                    <TooltipTrigger className="inline-flex items-center gap-1">
-                      Evidence
-                      {activeProposal && (
-                        <span className="font-mono text-[10px] text-muted-foreground">
-                          #{activeProposal.slice(0, 8)}
-                        </span>
-                      )}
-                    </TooltipTrigger>
-                    <TooltipContent>Change history and validation results</TooltipContent>
-                  </Tooltip>
-                </TabsTrigger>
-              )}
-              <TabsTrigger value="invocations">
-                <Tooltip>
-                  <TooltipTrigger className="inline-flex items-center gap-1">
-                    Invocations
-                    <Badge variant="secondary" className="text-[10px]">{recent_invocations.length}</Badge>
-                  </TooltipTrigger>
-                  <TooltipContent>Recent skill triggers and their outcomes</TooltipContent>
-                </Tooltip>
-              </TabsTrigger>
-              {prompt_samples && prompt_samples.length > 0 && (
-                <TabsTrigger value="prompts">
-                  <Tooltip>
-                    <TooltipTrigger className="inline-flex items-center gap-1">
-                      Prompts
-                      <Badge variant="secondary" className="text-[10px]">{prompt_samples.length}</Badge>
-                    </TooltipTrigger>
-                    <TooltipContent>User inputs that matched this skill</TooltipContent>
-                  </Tooltip>
-                </TabsTrigger>
-              )}
-              {session_metadata && session_metadata.length > 0 && (
-                <TabsTrigger value="sessions">
-                  <Tooltip>
-                    <TooltipTrigger className="inline-flex items-center gap-1">
-                      Sessions
-                      <Badge variant="secondary" className="text-[10px]">{session_metadata.length}</Badge>
-                    </TooltipTrigger>
-                    <TooltipContent>Environment and runtime information</TooltipContent>
-                  </Tooltip>
-                </TabsTrigger>
-              )}
-              {pending_proposals.length > 0 && (
-                <TabsTrigger value="pending">
-                  <Tooltip>
-                    <TooltipTrigger className="inline-flex items-center gap-1">
-                      Pending
-                      <Badge variant="destructive" className="text-[10px]">{pending_proposals.length}</Badge>
-                    </TooltipTrigger>
-                    <TooltipContent>Proposals awaiting review</TooltipContent>
-                  </Tooltip>
-                </TabsTrigger>
-              )}
-            </TabsList>
-
             {/* Evidence tab */}
             {evolution.length > 0 && (
               <TabsContent value="evidence">
@@ -650,9 +649,9 @@ export function SkillReport() {
                 </Card>
               </TabsContent>
             )}
-          </Tabs>
         </div>
       </div>
     </div>
+    </Tabs>
   )
 }

@@ -1,5 +1,5 @@
 import * as React from "react"
-import { useNavigate } from "react-router-dom"
+import { Link } from "react-router-dom"
 import {
   closestCenter,
   DndContext,
@@ -36,20 +36,9 @@ import {
   type VisibilityState,
 } from "@tanstack/react-table"
 
-import { useIsMobile } from "@/hooks/use-mobile"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from "@/components/ui/drawer"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -91,11 +80,13 @@ import {
   ChevronRightIcon,
   ChevronsRightIcon,
   ClockIcon,
-  ExternalLinkIcon,
-  FlaskConicalIcon,
   LayersIcon,
-  ActivityIcon,
-  EyeIcon,
+  FilterIcon,
+  CheckCircleIcon,
+  AlertTriangleIcon,
+  XCircleIcon,
+  CircleDotIcon,
+  HelpCircleIcon,
 } from "lucide-react"
 
 // ---------- Drag handle ----------
@@ -116,95 +107,16 @@ function DragHandle({ id }: { id: string }) {
   )
 }
 
-// ---------- Drawer cell viewer ----------
+// ---------- Skill name link ----------
 
-function SkillCellViewer({ skill }: { skill: SkillCard }) {
-  const isMobile = useIsMobile()
-  const navigate = useNavigate()
-  const config = STATUS_CONFIG[skill.status]
-
+function SkillNameLink({ name }: { name: string }) {
   return (
-    <Drawer direction={isMobile ? "bottom" : "right"}>
-      <DrawerTrigger asChild>
-        <Button variant="link" className="w-fit px-0 text-left text-foreground">
-          {skill.name}
-        </Button>
-      </DrawerTrigger>
-      <DrawerContent>
-        <DrawerHeader className="gap-1">
-          <DrawerTitle className="flex items-center gap-2">
-            {skill.name}
-            <Badge variant={config.variant} className="gap-1 text-[10px]">
-              {config.icon}
-              {config.label}
-            </Badge>
-          </DrawerTitle>
-          <DrawerDescription>
-            Skill performance overview
-          </DrawerDescription>
-        </DrawerHeader>
-        <div className="flex flex-col gap-4 overflow-y-auto px-4 text-sm">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-lg border p-3">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <FlaskConicalIcon className="size-3" />
-                Pass Rate
-              </div>
-              <div className="mt-1 text-2xl font-bold tabular-nums">
-                {formatRate(skill.passRate)}
-              </div>
-            </div>
-            <div className="rounded-lg border p-3">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <LayersIcon className="size-3" />
-                Total Checks
-              </div>
-              <div className="mt-1 text-2xl font-bold tabular-nums">
-                {skill.checks}
-              </div>
-            </div>
-            <div className="rounded-lg border p-3">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <ActivityIcon className="size-3" />
-                Sessions
-              </div>
-              <div className="mt-1 text-2xl font-bold tabular-nums">
-                {skill.uniqueSessions}
-              </div>
-            </div>
-            <div className="rounded-lg border p-3">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <ClockIcon className="size-3" />
-                Last Seen
-              </div>
-              <div className="mt-1 text-lg font-semibold">
-                {skill.lastSeen ? timeAgo(skill.lastSeen) : "--"}
-              </div>
-            </div>
-          </div>
-          <div className="rounded-lg border p-3">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
-              <EyeIcon className="size-3" />
-              Evidence
-            </div>
-            <p className="text-muted-foreground">
-              {skill.hasEvidence
-                ? "This skill has evolution evidence collected. View the full report for details."
-                : "No evidence collected yet for this skill."}
-            </p>
-          </div>
-        </div>
-        <DrawerFooter>
-          <Button onClick={() => navigate(`/skills/${encodeURIComponent(skill.name)}`)}>
-            <ExternalLinkIcon className="size-3.5" />
-            View Full Report
-          </Button>
-          <DrawerClose asChild>
-            <Button variant="outline">Close</Button>
-          </DrawerClose>
-        </DrawerFooter>
-      </DrawerContent>
-    </Drawer>
+    <Link
+      to={`/skills/${encodeURIComponent(name)}`}
+      className="text-sm font-medium hover:underline"
+    >
+      {name}
+    </Link>
   )
 }
 
@@ -246,8 +158,21 @@ const columns: ColumnDef<SkillCard>[] = [
   {
     accessorKey: "name",
     header: "Skill",
-    cell: ({ row }) => <SkillCellViewer skill={row.original} />,
+    cell: ({ row }) => <SkillNameLink name={row.original.name} />,
     enableHiding: false,
+  },
+  {
+    accessorKey: "scope",
+    header: "Scope",
+    cell: ({ row }) => {
+      const scope = row.original.scope
+      if (!scope) return <span className="text-xs text-muted-foreground">--</span>
+      return (
+        <Badge variant="secondary" className="text-[10px] capitalize">
+          {scope}
+        </Badge>
+      )
+    },
   },
   {
     accessorKey: "status",
@@ -370,9 +295,13 @@ function DraggableRow({ row }: { row: Row<SkillCard> }) {
 export function SkillHealthGrid({
   cards,
   totalCount,
+  statusFilter,
+  onStatusFilterChange,
 }: {
   cards: SkillCard[]
   totalCount: number
+  statusFilter?: SkillHealthStatus | "ALL"
+  onStatusFilterChange?: (v: SkillHealthStatus | "ALL") => void
 }) {
   const [activeView, setActiveView] = React.useState("all")
   const [data, setData] = React.useState<SkillCard[]>([])
@@ -524,6 +453,36 @@ export function SkillHealthGrid({
         </TabsList>
 
         <div className="flex items-center gap-2">
+          {onStatusFilterChange && (
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+                <FilterIcon data-icon="inline-start" className="size-3.5" />
+                {statusFilter && statusFilter !== "ALL" ? statusFilter.charAt(0) + statusFilter.slice(1).toLowerCase() : "Status"}
+                <ChevronDownIcon data-icon="inline-end" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                {([
+                  { label: "All", value: "ALL" as const, icon: <LayersIcon className="size-3.5" /> },
+                  { label: "Healthy", value: "HEALTHY" as const, icon: <CheckCircleIcon className="size-3.5 text-emerald-600" /> },
+                  { label: "Warning", value: "WARNING" as const, icon: <AlertTriangleIcon className="size-3.5 text-amber-500" /> },
+                  { label: "Critical", value: "CRITICAL" as const, icon: <XCircleIcon className="size-3.5 text-red-500" /> },
+                  { label: "Ungraded", value: "UNGRADED" as const, icon: <CircleDotIcon className="size-3.5 text-muted-foreground" /> },
+                  { label: "Unknown", value: "UNKNOWN" as const, icon: <HelpCircleIcon className="size-3.5 text-muted-foreground/60" /> },
+                ] as const).map((f) => (
+                  <DropdownMenuCheckboxItem
+                    key={f.value}
+                    checked={statusFilter === f.value}
+                    onCheckedChange={() => onStatusFilterChange(f.value)}
+                  >
+                    <span className="flex items-center gap-2">
+                      {f.icon}
+                      {f.label}
+                    </span>
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
               <Columns3Icon data-icon="inline-start" />
@@ -547,7 +506,8 @@ export function SkillHealthGrid({
                       column.toggleVisibility(!!value)
                     }
                   >
-                    {column.id === "passRate" ? "Pass Rate"
+                    {column.id === "scope" ? "Scope"
+                      : column.id === "passRate" ? "Pass Rate"
                       : column.id === "uniqueSessions" ? "Sessions"
                       : column.id === "lastSeen" ? "Last Seen"
                       : column.id === "hasEvidence" ? "Evidence"

@@ -330,6 +330,7 @@ export function getSkillReportPayload(db: Database, skillName: string): SkillRep
 
 export interface SkillSummary {
   skill_name: string;
+  skill_scope: string | null;
   total_checks: number;
   triggered_count: number;
   pass_rate: number;
@@ -346,6 +347,9 @@ export function getSkillsList(db: Database): SkillSummary[] {
     .query(
       `SELECT
          su.skill_name,
+         (SELECT s2.skill_scope FROM skill_usage s2
+          WHERE s2.skill_name = su.skill_name AND s2.skill_scope IS NOT NULL
+          ORDER BY s2.timestamp DESC LIMIT 1) as skill_scope,
          COUNT(*) as total_checks,
          SUM(CASE WHEN su.triggered = 1 THEN 1 ELSE 0 END) as triggered_count,
          COUNT(DISTINCT su.session_id) as unique_sessions,
@@ -356,6 +360,7 @@ export function getSkillsList(db: Database): SkillSummary[] {
     )
     .all() as Array<{
     skill_name: string;
+    skill_scope: string | null;
     total_checks: number;
     triggered_count: number;
     unique_sessions: number;
@@ -373,6 +378,7 @@ export function getSkillsList(db: Database): SkillSummary[] {
 
   return rows.map((row) => ({
     skill_name: row.skill_name,
+    skill_scope: row.skill_scope,
     total_checks: row.total_checks,
     triggered_count: row.triggered_count,
     pass_rate: row.total_checks > 0 ? row.triggered_count / row.total_checks : 0,

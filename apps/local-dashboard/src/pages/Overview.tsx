@@ -12,6 +12,7 @@ function deriveSkillCards(skills: SkillSummary[]): SkillCard[] {
   return sortByPassRateAndChecks(
     skills.map((s) => ({
       name: s.skill_name,
+      scope: s.skill_scope,
       passRate: s.total_checks > 0 ? s.pass_rate : null,
       checks: s.total_checks,
       status: deriveStatus(s.pass_rate, s.total_checks),
@@ -109,10 +110,12 @@ function OnboardingBanner({ skillCount }: { skillCount: number }) {
 export function Overview({
   search,
   statusFilter,
+  onStatusFilterChange,
   overviewResult,
 }: {
   search: string
   statusFilter: SkillHealthStatus | "ALL"
+  onStatusFilterChange: (v: SkillHealthStatus | "ALL") => void
   overviewResult: { data: OverviewResponse | null; state: string; error: string | null; retry: () => void }
 }) {
   const { data, state, error, retry } = overviewResult
@@ -192,14 +195,18 @@ export function Overview({
         evidenceCount={overview.counts.evidence}
       />
 
-      <SkillHealthGrid cards={filteredCards} totalCount={cards.length} />
+      <div className="grid grid-cols-1 gap-6 @5xl/main:grid-cols-[1fr_320px]">
+        <SkillHealthGrid cards={filteredCards} totalCount={cards.length} statusFilter={statusFilter} onStatusFilterChange={onStatusFilterChange} />
 
-      <div className="px-4 lg:px-6">
-        <ActivityPanel
-          evolution={overview.evolution}
-          pendingProposals={overview.pending_proposals}
-          unmatchedQueries={overview.unmatched_queries}
-        />
+        <div className="px-4 lg:px-6 @5xl/main:px-0 @5xl/main:pr-4 lg:@5xl/main:pr-6">
+          <div className="sticky top-4">
+            <ActivityPanel
+              evolution={overview.evolution}
+              pendingProposals={overview.pending_proposals}
+              unmatchedQueries={overview.unmatched_queries}
+            />
+          </div>
+        </div>
       </div>
     </div>
   )

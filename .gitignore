@@ -1,5 +1,6 @@
 node_modules/
 bun.lock
+pnpm-lock.yaml
 *.tsbuildinfo
 .context/
 .claude/worktrees/

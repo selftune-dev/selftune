@@ -1,5 +1,11 @@
+import { useMemo } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import {
   Sidebar,
@@ -10,26 +16,30 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
 import {
   ActivityIcon,
   AlertTriangleIcon,
   CheckCircleIcon,
+  ChevronRightIcon,
   CircleDotIcon,
+  FolderIcon,
+  GlobeIcon,
   HelpCircleIcon,
-  LayoutDashboardIcon,
   SearchIcon,
   XCircleIcon,
-
 } from "lucide-react"
 import { formatRate } from "@/utils"
 import type { SkillHealthStatus } from "@/types"
 
 interface SkillNavItem {
   name: string
+  scope: string | null
   status: SkillHealthStatus
   passRate: number | null
   checks: number
@@ -43,34 +53,100 @@ const STATUS_ICON: Record<SkillHealthStatus, React.ReactNode> = {
   UNKNOWN: <HelpCircleIcon className="size-3.5 text-muted-foreground/60" />,
 }
 
-const STATUS_FILTERS: { label: string; value: SkillHealthStatus | "ALL"; icon: React.ReactNode }[] = [
-  { label: "All Skills", value: "ALL", icon: <LayoutDashboardIcon className="size-4" /> },
-  { label: "Healthy", value: "HEALTHY", icon: <CheckCircleIcon className="size-4 text-emerald-600" /> },
-  { label: "Warning", value: "WARNING", icon: <AlertTriangleIcon className="size-4 text-amber-500" /> },
-  { label: "Critical", value: "CRITICAL", icon: <XCircleIcon className="size-4 text-red-500" /> },
-  { label: "Ungraded", value: "UNGRADED", icon: <CircleDotIcon className="size-4 text-muted-foreground" /> },
-  { label: "Unknown", value: "UNKNOWN", icon: <HelpCircleIcon className="size-4 text-muted-foreground/60" /> },
-]
+const SCOPE_CONFIG: Record<string, { label: string; icon: React.ReactNode }> = {
+  project: { label: "Project", icon: <FolderIcon className="size-4" /> },
+  global: { label: "Global", icon: <GlobeIcon className="size-4" /> },
+  system: { label: "System", icon: <GlobeIcon className="size-4" /> },
+  admin: { label: "Admin", icon: <GlobeIcon className="size-4" /> },
+}
+
+function ScopeGroup({
+  scope,
+  skills,
+  pathname,
+  defaultOpen,
+}: {
+  scope: string
+  skills: SkillNavItem[]
+  pathname: string
+  defaultOpen: boolean
+}) {
+  const config = SCOPE_CONFIG[scope] ?? { label: scope, icon: <GlobeIcon className="size-4" /> }
+  const hasActive = skills.some((s) => pathname === `/skills/${encodeURIComponent(s.name)}`)
+
+  return (
+    <Collapsible defaultOpen={defaultOpen || hasActive} className="group/collapsible">
+      <SidebarMenuItem>
+        <CollapsibleTrigger render={<SidebarMenuButton tooltip={config.label} />}>
+          {config.icon}
+          <span>{config.label}</span>
+          <Badge variant="secondary" className="ml-auto h-4 px-1.5 text-[10px]">
+            {skills.length}
+          </Badge>
+          <ChevronRightIcon className="ml-1 size-4 shrink-0 transition-transform duration-200 group-data-[open]/collapsible:rotate-90" />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <SidebarMenuSub>
+            {skills.map((skill) => {
+              const isActive = pathname === `/skills/${encodeURIComponent(skill.name)}`
+              return (
+                <SidebarMenuSubItem key={skill.name}>
+                  <SidebarMenuSubButton
+                    isActive={isActive}
+                    render={<Link to={`/skills/${encodeURIComponent(skill.name)}`} />}
+                  >
+                    {STATUS_ICON[skill.status]}
+                    <span className="truncate">{skill.name}</span>
+                    <Badge
+                      variant={
+                        skill.status === "CRITICAL" ? "destructive"
+                        : skill.status === "HEALTHY" ? "outline"
+                        : "secondary"
+                      }
+                      className="ml-auto h-4 text-[10px] px-1.5 shrink-0"
+                    >
+                      {formatRate(skill.passRate)}
+                    </Badge>
+                  </SidebarMenuSubButton>
+                </SidebarMenuSubItem>
+              )
+            })}
+          </SidebarMenuSub>
+        </CollapsibleContent>
+      </SidebarMenuItem>
+    </Collapsible>
+  )
+}
 
 export function AppSidebar({
   skills,
   search,
   onSearchChange,
-  statusFilter,
-  onStatusFilterChange,
-  counts,
   version,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   skills: SkillNavItem[]
   search: string
   onSearchChange: (v: string) => void
-  statusFilter: SkillHealthStatus | "ALL"
-  onStatusFilterChange: (v: SkillHealthStatus | "ALL") => void
-  counts: Partial<Record<SkillHealthStatus, number>>
   version?: string
 }) {
   const location = useLocation()
+
+  const scopeGroups = useMemo(() => {
+    const groups: Record<string, SkillNavItem[]> = {}
+    for (const skill of skills) {
+      const key = skill.scope ?? "unknown"
+      if (!groups[key]) groups[key] = []
+      groups[key].push(skill)
+    }
+    // Sort: project first, then global, then others
+    const order = ["project", "global", "system", "admin", "unknown"]
+    return order
+      .filter((k) => groups[k]?.length)
+      .map((k) => ({ scope: k, skills: groups[k] }))
+  }, [skills])
+
+  const hasMultipleScopes = scopeGroups.length > 1
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
@@ -110,69 +186,51 @@ export function AppSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* Status Filters */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Status</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {STATUS_FILTERS.map((f) => {
-                const count = f.value === "ALL"
-                  ? Object.values(counts).reduce((s, n) => s + (n ?? 0), 0)
-                  : counts[f.value] ?? 0
-                const isActive = statusFilter === f.value
-                return (
-                  <SidebarMenuItem key={f.value}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      onClick={() => onStatusFilterChange(f.value)}
-                      tooltip={f.label}
-                    >
-                      {f.icon}
-                      <span>{f.label}</span>
-                    </SidebarMenuButton>
-                    <SidebarMenuBadge>{count}</SidebarMenuBadge>
-                  </SidebarMenuItem>
-                )
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        {/* Skills List */}
+        {/* Skills */}
         <SidebarGroup className="flex-1">
           <SidebarGroupLabel>Skills</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {skills.map((skill) => {
-                const isActive = location.pathname === `/skills/${encodeURIComponent(skill.name)}`
-                return (
-                  <SidebarMenuItem key={skill.name}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      tooltip={`${skill.name} — ${formatRate(skill.passRate)}`}
-                      render={<Link to={`/skills/${encodeURIComponent(skill.name)}`} />}
-                    >
-                      {STATUS_ICON[skill.status]}
-                      <span className="truncate">{skill.name}</span>
-                    </SidebarMenuButton>
-                    <SidebarMenuBadge>
-                      <Badge
-                        variant={
-                          skill.status === "CRITICAL" ? "destructive"
-                          : skill.status === "HEALTHY" ? "outline"
-                          : "secondary"
-                        }
-                        className="h-4 text-[10px] px-1.5"
+              {hasMultipleScopes ? (
+                scopeGroups.map(({ scope, skills: groupSkills }) => (
+                  <ScopeGroup
+                    key={scope}
+                    scope={scope}
+                    skills={groupSkills}
+                    pathname={location.pathname}
+                    defaultOpen={scope === "project"}
+                  />
+                ))
+              ) : (
+                skills.map((skill) => {
+                  const isActive = location.pathname === `/skills/${encodeURIComponent(skill.name)}`
+                  return (
+                    <SidebarMenuItem key={skill.name}>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        tooltip={`${skill.name} — ${formatRate(skill.passRate)}`}
+                        render={<Link to={`/skills/${encodeURIComponent(skill.name)}`} />}
                       >
-                        {formatRate(skill.passRate)}
-                      </Badge>
-                    </SidebarMenuBadge>
-                  </SidebarMenuItem>
-                )
-              })}
+                        {STATUS_ICON[skill.status]}
+                        <span className="truncate">{skill.name}</span>
+                        <Badge
+                          variant={
+                            skill.status === "CRITICAL" ? "destructive"
+                            : skill.status === "HEALTHY" ? "outline"
+                            : "secondary"
+                          }
+                          className="ml-auto h-4 text-[10px] px-1.5 shrink-0"
+                        >
+                          {formatRate(skill.passRate)}
+                        </Badge>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })
+              )}
               {skills.length === 0 && (
                 <div className="px-3 py-6 text-center text-xs text-muted-foreground">
-                  No skills match filters
+                  No skills match
                 </div>
               )}
             </SidebarMenu>

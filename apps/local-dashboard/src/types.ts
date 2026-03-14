@@ -55,6 +55,7 @@ export interface PendingProposal {
 
 export interface SkillSummary {
   skill_name: string;
+  skill_scope: string | null;
   total_checks: number;
   triggered_count: number;
   pass_rate: number;
@@ -169,6 +170,7 @@ export type SkillHealthStatus = "HEALTHY" | "WARNING" | "CRITICAL" | "UNGRADED" 
 
 export interface SkillCard {
   name: string;
+  scope: string | null;
   passRate: number | null;
   checks: number;
   status: SkillHealthStatus;

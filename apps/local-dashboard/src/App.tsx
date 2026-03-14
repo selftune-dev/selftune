@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { BrowserRouter, Route, Routes, useParams } from "react-router-dom"
+import { BrowserRouter, Route, Routes } from "react-router-dom"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { ThemeProvider } from "@/components/theme-provider"
@@ -12,10 +12,9 @@ import type { SkillHealthStatus, SkillSummary } from "@/types"
 import { deriveStatus, sortByPassRateAndChecks } from "@/utils"
 
 function SkillReportWithHeader() {
-  const { name } = useParams<{ name: string }>()
   return (
     <>
-      <SiteHeader skillName={name} />
+      <SiteHeader />
       <SkillReport />
     </>
   )
@@ -32,6 +31,7 @@ function DashboardShell() {
     return sortByPassRateAndChecks(
       data.skills.map((s: SkillSummary) => ({
         name: s.skill_name,
+        scope: s.skill_scope,
         status: deriveStatus(s.pass_rate, s.total_checks),
         passRate: s.total_checks > 0 ? s.pass_rate : null,
         checks: s.total_checks,
@@ -40,24 +40,10 @@ function DashboardShell() {
   }, [data])
 
   const filteredNavItems = useMemo(() => {
-    let result = skillNavItems
-    if (search) {
-      const q = search.toLowerCase()
-      result = result.filter((s) => s.name.toLowerCase().includes(q))
-    }
-    if (statusFilter !== "ALL") {
-      result = result.filter((s) => s.status === statusFilter)
-    }
-    return result
-  }, [skillNavItems, search, statusFilter])
-
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { HEALTHY: 0, WARNING: 0, CRITICAL: 0, UNGRADED: 0, UNKNOWN: 0 }
-    for (const s of skillNavItems) {
-      counts[s.status] = (counts[s.status] ?? 0) + 1
-    }
-    return counts
-  }, [skillNavItems])
+    if (!search) return skillNavItems
+    const q = search.toLowerCase()
+    return skillNavItems.filter((s) => s.name.toLowerCase().includes(q))
+  }, [skillNavItems, search])
 
   return (
     <SidebarProvider>
@@ -65,9 +51,6 @@ function DashboardShell() {
         skills={filteredNavItems}
         search={search}
         onSearchChange={setSearch}
-        statusFilter={statusFilter}
-        onStatusFilterChange={setStatusFilter}
-        counts={statusCounts}
         version={data?.version}
       />
       <SidebarInset>
@@ -77,7 +60,7 @@ function DashboardShell() {
             element={
               <>
                 <SiteHeader />
-                <Overview search={search} statusFilter={statusFilter} overviewResult={overviewResult} />
+                <Overview search={search} statusFilter={statusFilter} onStatusFilterChange={setStatusFilter} overviewResult={overviewResult} />
               </>
             }
           />
