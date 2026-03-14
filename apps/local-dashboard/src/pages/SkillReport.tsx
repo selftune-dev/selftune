@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -71,8 +71,13 @@ const ACTION_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
 
 export function SkillReport() {
   const { name } = useParams<{ name: string }>()
-  const { data, state, error, retry } = useSkillReport(name)
+  const { data, isPending, isError, error, refetch } = useSkillReport(name)
   const [selectedProposal, setSelectedProposal] = useState<string | null>(null)
+
+  // Reset local state when navigating between skills
+  useEffect(() => {
+    setSelectedProposal(null)
+  }, [name])
 
   if (!name) {
     return (
@@ -82,7 +87,7 @@ export function SkillReport() {
     )
   }
 
-  if (state === "loading") {
+  if (isPending) {
     return (
       <div className="@container/main flex flex-1 flex-col gap-6 p-4 lg:p-6">
         <Skeleton className="h-10 w-64" />
@@ -97,26 +102,14 @@ export function SkillReport() {
     )
   }
 
-  if (state === "error") {
+  if (isError) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 py-16">
         <AlertCircleIcon className="size-10 text-destructive" />
-        <p className="text-sm font-medium text-destructive">{error ?? "Unknown error"}</p>
-        <Button variant="outline" size="sm" onClick={retry}>
+        <p className="text-sm font-medium text-destructive">{error instanceof Error ? error.message : "Unknown error"}</p>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>
           <RefreshCwIcon className="mr-2 size-3.5" />
           Retry
-        </Button>
-      </div>
-    )
-  }
-
-  if (state === "not-found") {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 py-16">
-        <p className="text-sm text-muted-foreground">No data found for skill "{name}".</p>
-        <Button variant="outline" size="sm" render={<Link to="/" />}>
-          <ArrowLeftIcon className="mr-2 size-3.5" />
-          Back to Overview
         </Button>
       </div>
     )
@@ -126,6 +119,24 @@ export function SkillReport() {
     return (
       <div className="flex flex-1 items-center justify-center py-16">
         <p className="text-sm text-muted-foreground">No data yet</p>
+      </div>
+    )
+  }
+
+  const isNotFound =
+    data.usage.total_checks === 0 &&
+    data.evidence.length === 0 &&
+    data.evolution.length === 0 &&
+    data.pending_proposals.length === 0
+
+  if (isNotFound) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 py-16">
+        <p className="text-sm text-muted-foreground">No data found for skill "{name}".</p>
+        <Button variant="outline" size="sm" render={<Link to="/" />}>
+          <ArrowLeftIcon className="mr-2 size-3.5" />
+          Back to Overview
+        </Button>
       </div>
     )
   }

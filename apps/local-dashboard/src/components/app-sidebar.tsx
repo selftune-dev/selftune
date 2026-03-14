@@ -139,11 +139,16 @@ export function AppSidebar({
       if (!groups[key]) groups[key] = []
       groups[key].push(skill)
     }
-    // Sort: project first, then global, then others
+    // Sort: project first, then global, then known scopes, then any unexpected ones
     const order = ["project", "global", "system", "admin", "unknown"]
-    return order
+    const ordered = order
       .filter((k) => groups[k]?.length)
       .map((k) => ({ scope: k, skills: groups[k] }))
+    const remaining = Object.keys(groups)
+      .filter((k) => !order.includes(k))
+      .sort()
+      .map((k) => ({ scope: k, skills: groups[k] }))
+    return [...ordered, ...remaining]
   }, [skills])
 
   const hasMultipleScopes = scopeGroups.length > 1
@@ -177,6 +182,7 @@ export function AppSidebar({
             <div className="relative">
               <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
+                aria-label="Filter skills"
                 placeholder="Filter skills..."
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}

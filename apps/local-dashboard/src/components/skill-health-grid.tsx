@@ -43,6 +43,8 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
@@ -461,25 +463,26 @@ export function SkillHealthGrid({
                 <ChevronDownIcon data-icon="inline-end" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-40">
-                {([
-                  { label: "All", value: "ALL" as const, icon: <LayersIcon className="size-3.5" /> },
-                  { label: "Healthy", value: "HEALTHY" as const, icon: <CheckCircleIcon className="size-3.5 text-emerald-600" /> },
-                  { label: "Warning", value: "WARNING" as const, icon: <AlertTriangleIcon className="size-3.5 text-amber-500" /> },
-                  { label: "Critical", value: "CRITICAL" as const, icon: <XCircleIcon className="size-3.5 text-red-500" /> },
-                  { label: "Ungraded", value: "UNGRADED" as const, icon: <CircleDotIcon className="size-3.5 text-muted-foreground" /> },
-                  { label: "Unknown", value: "UNKNOWN" as const, icon: <HelpCircleIcon className="size-3.5 text-muted-foreground/60" /> },
-                ] as const).map((f) => (
-                  <DropdownMenuCheckboxItem
-                    key={f.value}
-                    checked={statusFilter === f.value}
-                    onCheckedChange={() => onStatusFilterChange(f.value)}
-                  >
-                    <span className="flex items-center gap-2">
-                      {f.icon}
-                      {f.label}
-                    </span>
-                  </DropdownMenuCheckboxItem>
-                ))}
+                <DropdownMenuRadioGroup
+                  value={statusFilter ?? "ALL"}
+                  onValueChange={(v) => onStatusFilterChange(v as SkillHealthStatus | "ALL")}
+                >
+                  {([
+                    { label: "All", value: "ALL" as const, icon: <LayersIcon className="size-3.5" /> },
+                    { label: "Healthy", value: "HEALTHY" as const, icon: <CheckCircleIcon className="size-3.5 text-emerald-600" /> },
+                    { label: "Warning", value: "WARNING" as const, icon: <AlertTriangleIcon className="size-3.5 text-amber-500" /> },
+                    { label: "Critical", value: "CRITICAL" as const, icon: <XCircleIcon className="size-3.5 text-red-500" /> },
+                    { label: "Ungraded", value: "UNGRADED" as const, icon: <CircleDotIcon className="size-3.5 text-muted-foreground" /> },
+                    { label: "Unknown", value: "UNKNOWN" as const, icon: <HelpCircleIcon className="size-3.5 text-muted-foreground/60" /> },
+                  ] as const).map((f) => (
+                    <DropdownMenuRadioItem key={f.value} value={f.value}>
+                      <span className="flex items-center gap-2">
+                        {f.icon}
+                        {f.label}
+                      </span>
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
