@@ -1,19 +1,22 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  buildInstallPlan,
   formatOutput,
   generateCrontab,
   generateLaunchd,
   generateSystemd,
+  installSchedule,
   SCHEDULE_ENTRIES,
+  selectInstallFormat,
 } from "../../cli/selftune/schedule.js";
 
 // ---------------------------------------------------------------------------
 // 1. SCHEDULE_ENTRIES structure
 // ---------------------------------------------------------------------------
 describe("SCHEDULE_ENTRIES", () => {
-  test("has exactly 4 entries", () => {
-    expect(SCHEDULE_ENTRIES).toHaveLength(4);
+  test("has exactly 3 entries", () => {
+    expect(SCHEDULE_ENTRIES).toHaveLength(3);
   });
 
   test("all entries have required fields", () => {
@@ -29,22 +32,16 @@ describe("SCHEDULE_ENTRIES", () => {
     }
   });
 
-  test("contains sync, status, evolve, and watch entries", () => {
+  test("contains sync, status, and orchestrate entries", () => {
     const names = SCHEDULE_ENTRIES.map((e) => e.name);
     expect(names).toContain("selftune-sync");
     expect(names).toContain("selftune-status");
-    expect(names).toContain("selftune-evolve");
-    expect(names).toContain("selftune-watch");
+    expect(names).toContain("selftune-orchestrate");
   });
 
-  test("evolve entry uses --sync-first", () => {
-    const evolve = SCHEDULE_ENTRIES.find((e) => e.name === "selftune-evolve");
-    expect(evolve?.command).toContain("--sync-first");
-  });
-
-  test("watch entry uses --sync-first", () => {
-    const watch = SCHEDULE_ENTRIES.find((e) => e.name === "selftune-watch");
-    expect(watch?.command).toContain("--sync-first");
+  test("orchestrate entry runs the autonomous loop", () => {
+    const orchestrate = SCHEDULE_ENTRIES.find((e) => e.name === "selftune-orchestrate");
+    expect(orchestrate?.command).toContain("selftune orchestrate");
   });
 
   test("derives from DEFAULT_CRON_JOBS (shared source of truth)", () => {
@@ -53,6 +50,8 @@ describe("SCHEDULE_ENTRIES", () => {
     expect(sync?.schedule).toBe("*/30 * * * *");
     const status = SCHEDULE_ENTRIES.find((e) => e.name === "selftune-status");
     expect(status?.schedule).toBe("0 8 * * *");
+    const orchestrate = SCHEDULE_ENTRIES.find((e) => e.name === "selftune-orchestrate");
+    expect(orchestrate?.schedule).toBe("0 */6 * * *");
   });
 });
 
@@ -114,8 +113,7 @@ describe("generateLaunchd", () => {
     const output = generateLaunchd();
     expect(output).toContain("com.selftune.sync");
     expect(output).toContain("com.selftune.status");
-    expect(output).toContain("com.selftune.evolve");
-    expect(output).toContain("com.selftune.watch");
+    expect(output).toContain("com.selftune.orchestrate");
   });
 });
 
@@ -149,8 +147,41 @@ describe("generateSystemd", () => {
     const output = generateSystemd();
     expect(output).toContain("selftune-sync.timer");
     expect(output).toContain("selftune-status.timer");
-    expect(output).toContain("selftune-evolve.timer");
-    expect(output).toContain("selftune-watch.timer");
+    expect(output).toContain("selftune-orchestrate.timer");
+  });
+});
+
+describe("install helpers", () => {
+  test("selectInstallFormat defaults by platform", () => {
+    expect(selectInstallFormat(undefined, "darwin")).toEqual({ ok: true, format: "launchd" });
+    expect(selectInstallFormat(undefined, "linux")).toEqual({ ok: true, format: "systemd" });
+    expect(selectInstallFormat(undefined, "win32")).toEqual({ ok: true, format: "cron" });
+  });
+
+  test("buildInstallPlan returns launchd artifacts and activation commands", () => {
+    const plan = buildInstallPlan("launchd", "/tmp/test-home");
+    expect(plan.artifacts.some((artifact) => artifact.path.includes("LaunchAgents"))).toBe(true);
+    expect(plan.activationCommands.some((command) => command.includes("launchctl load"))).toBe(
+      true,
+    );
+  });
+
+  test("installSchedule dry-run does not activate commands", () => {
+    let commandsRun = 0;
+    const result = installSchedule({
+      format: "cron",
+      dryRun: true,
+      homeDir: "/tmp/test-home",
+      runCommand: () => {
+        commandsRun++;
+        return 0;
+      },
+    });
+
+    expect(result.dryRun).toBe(true);
+    expect(result.activated).toBe(false);
+    expect(commandsRun).toBe(0);
+    expect(result.artifacts[0]?.path).toContain(".selftune/schedule/selftune.crontab");
   });
 });
 

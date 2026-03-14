@@ -300,6 +300,7 @@ describe("orchestrate", () => {
 
   test("watches recently evolved skills from audit log", async () => {
     let watchCalled = false;
+    let watchAutoRollback: boolean | undefined;
     const recentTimestamp = new Date().toISOString();
     const deps = makeDeps({
       readAuditEntries: () => [
@@ -311,8 +312,9 @@ describe("orchestrate", () => {
           skill_name: "RecentSkill",
         },
       ],
-      watch: async () => {
+      watch: async (opts) => {
         watchCalled = true;
+        watchAutoRollback = opts.autoRollback;
         return {
           snapshot: {
             timestamp: new Date().toISOString(),
@@ -339,6 +341,7 @@ describe("orchestrate", () => {
 
     const result = await orchestrate(baseOptions, deps);
     expect(watchCalled).toBe(true);
+    expect(watchAutoRollback).toBe(true);
     expect(result.summary.watched).toBe(1);
   });
 

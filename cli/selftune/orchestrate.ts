@@ -79,6 +79,14 @@ export interface OrchestrateResult {
 /** Candidate selection criteria. */
 const CANDIDATE_STATUSES = new Set(["CRITICAL", "WARNING", "UNGRADED"]);
 
+function candidatePriority(skill: SkillStatus): number {
+  const statusWeight =
+    skill.status === "CRITICAL" ? 300 : skill.status === "WARNING" ? 200 : 100;
+  const missedWeight = Math.min(skill.missedQueries, 50);
+  const passPenalty = skill.passRate === null ? 0 : Math.round((1 - skill.passRate) * 100);
+  return statusWeight + missedWeight + passPenalty;
+}
+
 /**
  * Injectable dependencies for orchestrate(). Pass overrides in tests.
  */
@@ -126,8 +134,9 @@ export function selectCandidates(
   options: Pick<OrchestrateOptions, "skillFilter" | "maxSkills">,
 ): SkillAction[] {
   const actions: SkillAction[] = [];
+  const orderedSkills = [...skills].sort((a, b) => candidatePriority(b) - candidatePriority(a));
 
-  for (const skill of skills) {
+  for (const skill of orderedSkills) {
     // Apply skill filter
     if (options.skillFilter && skill.name !== options.skillFilter) {
       actions.push({
@@ -370,7 +379,7 @@ export async function orchestrate(
         skillPath,
         windowSessions: 20,
         regressionThreshold: 0.1,
-        autoRollback: false,
+        autoRollback: true,
         syncFirst: false,
       });
 

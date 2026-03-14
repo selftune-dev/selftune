@@ -8,6 +8,7 @@
  *
  * Usage:
  *   selftune init [--agent <type>] [--cli-path <path>] [--force]
+ *   selftune init --enable-autonomy [--schedule-format cron|launchd|systemd]
  */
 
 import {
@@ -407,6 +408,8 @@ export async function cliMain(): Promise<void> {
       agent: { type: "string" },
       "cli-path": { type: "string" },
       force: { type: "boolean", default: false },
+      "enable-autonomy": { type: "boolean", default: false },
+      "schedule-format": { type: "string" },
     },
     strict: true,
   });
@@ -466,6 +469,22 @@ export async function cliMain(): Promise<void> {
       total: doctorResult.summary.total,
     }),
   );
+
+  if (values["enable-autonomy"]) {
+    const { installSchedule } = await import("./schedule.js");
+    const scheduleResult = installSchedule({
+      format: values["schedule-format"],
+    });
+    console.log(
+      JSON.stringify({
+        level: "info",
+        code: "autonomy_enabled",
+        format: scheduleResult.format,
+        activated: scheduleResult.activated,
+        files: scheduleResult.artifacts.map((artifact) => artifact.path),
+      }),
+    );
+  }
 }
 
 // Guard: only run when invoked directly
