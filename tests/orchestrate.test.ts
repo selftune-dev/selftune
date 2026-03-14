@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
+
 import {
+  formatOrchestrateReport,
   type OrchestrateDeps,
   type OrchestrateOptions,
+  type OrchestrateResult,
   orchestrate,
   selectCandidates,
 } from "../cli/selftune/orchestrate.js";
@@ -330,5 +333,190 @@ describe("orchestrate", () => {
     const candidate = result.candidates.find((c) => c.skill === "Skill1");
     expect(candidate?.action).toBe("skip");
     expect(candidate?.reason).toContain("no agent CLI");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatOrchestrateReport
+// ---------------------------------------------------------------------------
+
+function makeOrchestrateResult(overrides: Partial<OrchestrateResult> = {}): OrchestrateResult {
+  const step: SyncStepResult = { available: true, scanned: 10, synced: 2, skipped: 0 };
+  return {
+    syncResult: {
+      since: null,
+      dry_run: false,
+      sources: {
+        claude: step,
+        codex: { available: false, scanned: 0, synced: 0, skipped: 0 },
+        opencode: { available: true, scanned: 5, synced: 0, skipped: 0 },
+        openclaw: { available: false, scanned: 0, synced: 0, skipped: 0 },
+      },
+      repair: { ran: true, repaired_sessions: 3, repaired_records: 7, codex_repaired_records: 0 },
+      timings: [],
+      total_elapsed_ms: 500,
+    },
+    statusResult: makeStatusResult([
+      makeSkill({ name: "Research", status: "CRITICAL", passRate: 0.35, missedQueries: 8 }),
+      makeSkill({ name: "Browser", status: "WARNING", passRate: 0.55, missedQueries: 3 }),
+      makeSkill({ name: "Content", status: "HEALTHY", passRate: 0.9, missedQueries: 0 }),
+    ]),
+    candidates: [
+      { skill: "Research", action: "evolve", reason: "status=CRITICAL, passRate=35%, missed=8" },
+      { skill: "Browser", action: "evolve", reason: "status=WARNING, passRate=55%, missed=3" },
+      { skill: "Content", action: "skip", reason: "status=HEALTHY — no action needed" },
+    ],
+    summary: {
+      totalSkills: 3,
+      evaluated: 2,
+      evolved: 0,
+      deployed: 0,
+      watched: 0,
+      skipped: 1,
+      dryRun: true,
+      autoApprove: false,
+      elapsedMs: 1200,
+    },
+    ...overrides,
+  };
+}
+
+describe("formatOrchestrateReport", () => {
+  test("includes dry-run mode banner", () => {
+    const report = formatOrchestrateReport(makeOrchestrateResult());
+    expect(report).toContain("DRY RUN");
+    expect(report).toContain("--auto-approve");
+  });
+
+  test("includes auto-approve mode banner", () => {
+    const report = formatOrchestrateReport(
+      makeOrchestrateResult({
+        summary: {
+          ...makeOrchestrateResult().summary,
+          dryRun: false,
+          autoApprove: true,
+        },
+      }),
+    );
+    expect(report).toContain("AUTO-APPROVE");
+  });
+
+  test("shows sync sources with availability", () => {
+    const report = formatOrchestrateReport(makeOrchestrateResult());
+    expect(report).toContain("Claude");
+    expect(report).toContain("synced 2");
+    expect(report).toContain("Codex");
+    expect(report).toContain("not available");
+    expect(report).toContain("OpenCode");
+    expect(report).toContain("up to date");
+  });
+
+  test("shows repair info when records were repaired", () => {
+    const report = formatOrchestrateReport(makeOrchestrateResult());
+    expect(report).toContain("7 records across 3 sessions");
+  });
+
+  test("shows status breakdown by category", () => {
+    const report = formatOrchestrateReport(makeOrchestrateResult());
+    expect(report).toContain("1 CRITICAL");
+    expect(report).toContain("1 WARNING");
+    expect(report).toContain("1 HEALTHY");
+  });
+
+  test("lists each skill decision with action and reason", () => {
+    const report = formatOrchestrateReport(makeOrchestrateResult());
+    expect(report).toContain("Research");
+    expect(report).toContain("EVOLVE");
+    expect(report).toContain("status=CRITICAL");
+    expect(report).toContain("Content");
+    expect(report).toContain("SKIP");
+    expect(report).toContain("no action needed");
+  });
+
+  test("includes evolution results when evolve ran", () => {
+    const result = makeOrchestrateResult({
+      candidates: [
+        {
+          skill: "Research",
+          action: "evolve",
+          reason: "status=CRITICAL",
+          evolveResult: {
+            proposal: null,
+            validation: {
+              improved: true,
+              before_pass_rate: 0.35,
+              after_pass_rate: 0.7,
+              net_change: 0.35,
+              regressions: [],
+              new_passes: [],
+              per_entry_results: [],
+            },
+            deployed: true,
+            auditEntries: [],
+            reason: "Evolution deployed successfully",
+            llmCallCount: 5,
+            elapsedMs: 3000,
+          },
+        },
+      ],
+    });
+    const report = formatOrchestrateReport(result);
+    expect(report).toContain("Evolution Results");
+    expect(report).toContain("deployed");
+    expect(report).toContain("35%");
+    expect(report).toContain("70%");
+  });
+
+  test("includes watch results when skills were watched", () => {
+    const result = makeOrchestrateResult({
+      candidates: [
+        {
+          skill: "RecentSkill",
+          action: "watch",
+          reason: "stable",
+          watchResult: {
+            snapshot: {
+              timestamp: new Date().toISOString(),
+              skill_name: "RecentSkill",
+              window_sessions: 20,
+              skill_checks: 10,
+              pass_rate: 0.9,
+              false_negative_rate: 0.1,
+              by_invocation_type: {
+                explicit: { passed: 5, total: 5 },
+                implicit: { passed: 3, total: 5 },
+                contextual: { passed: 0, total: 0 },
+                negative: { passed: 0, total: 0 },
+              },
+              regression_detected: false,
+              baseline_pass_rate: 0.8,
+            },
+            alert: null,
+            rolledBack: false,
+            recommendation: "stable",
+          },
+        },
+      ],
+    });
+    const report = formatOrchestrateReport(result);
+    expect(report).toContain("Watch");
+    expect(report).toContain("RecentSkill");
+    expect(report).toContain("pass_rate=0.90");
+  });
+
+  test("shows summary counts", () => {
+    const report = formatOrchestrateReport(makeOrchestrateResult());
+    expect(report).toContain("Evaluated:    2 skills");
+    expect(report).toContain("Skipped:      1");
+    expect(report).toContain("Elapsed:      1.2s");
+  });
+
+  test("omits evolution and watch phases when empty", () => {
+    const result = makeOrchestrateResult({
+      candidates: [{ skill: "Content", action: "skip", reason: "status=HEALTHY" }],
+    });
+    const report = formatOrchestrateReport(result);
+    expect(report).not.toContain("Evolution Results");
+    expect(report).not.toContain("Phase 5: Watch");
   });
 });

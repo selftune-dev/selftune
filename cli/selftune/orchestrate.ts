@@ -75,6 +75,165 @@ export interface OrchestrateResult {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Human-readable decision report
+// ---------------------------------------------------------------------------
+
+function formatSyncPhase(syncResult: SyncResult): string[] {
+  const lines: string[] = ["Phase 1: Sync"];
+  const sources: [string, keyof SyncResult["sources"]][] = [
+    ["Claude", "claude"],
+    ["Codex", "codex"],
+    ["OpenCode", "opencode"],
+    ["OpenClaw", "openclaw"],
+  ];
+
+  for (const [label, key] of sources) {
+    const s = syncResult.sources[key];
+    if (!s.available) {
+      lines.push(`  ${label.padEnd(12)}not available`);
+    } else if (s.synced > 0) {
+      lines.push(`  ${label.padEnd(12)}scanned ${s.scanned}, synced ${s.synced}`);
+    } else {
+      lines.push(`  ${label.padEnd(12)}scanned ${s.scanned}, up to date`);
+    }
+  }
+
+  if (syncResult.repair.ran && syncResult.repair.repaired_records > 0) {
+    lines.push(
+      `  Repair      ${syncResult.repair.repaired_records} records across ${syncResult.repair.repaired_sessions} sessions`,
+    );
+  }
+
+  return lines;
+}
+
+function formatStatusPhase(statusResult: StatusResult): string[] {
+  const lines: string[] = ["Phase 2: Status"];
+  const byStatus: Record<string, number> = {};
+  for (const skill of statusResult.skills) {
+    byStatus[skill.status] = (byStatus[skill.status] ?? 0) + 1;
+  }
+  const healthLabel = statusResult.system.healthy ? "healthy" : "UNHEALTHY";
+  lines.push(`  ${statusResult.skills.length} skills found, system ${healthLabel}`);
+
+  const parts: string[] = [];
+  for (const s of ["CRITICAL", "WARNING", "HEALTHY", "UNGRADED", "UNKNOWN"]) {
+    if (byStatus[s]) parts.push(`${byStatus[s]} ${s}`);
+  }
+  if (parts.length > 0) lines.push(`  ${parts.join(", ")}`);
+
+  return lines;
+}
+
+function formatDecisionPhase(candidates: SkillAction[]): string[] {
+  const lines: string[] = ["Phase 3: Skill Decisions"];
+  if (candidates.length === 0) {
+    lines.push("  (no skills to evaluate)");
+    return lines;
+  }
+
+  for (const c of candidates) {
+    const icon = c.action === "skip" ? "\u2298" : c.action === "watch" ? "\u25cb" : "\u2192";
+    const actionLabel = c.action.toUpperCase().padEnd(7);
+    lines.push(`  ${icon} ${c.skill.padEnd(20)} ${actionLabel} ${c.reason}`);
+  }
+
+  return lines;
+}
+
+function formatEvolutionPhase(candidates: SkillAction[]): string[] {
+  const evolved = candidates.filter((c) => c.action === "evolve" && c.evolveResult !== undefined);
+  if (evolved.length === 0) return [];
+
+  const lines: string[] = ["Phase 4: Evolution Results"];
+  for (const c of evolved) {
+    const r = c.evolveResult;
+    if (!r) continue;
+    const status = r.deployed ? "deployed" : "not deployed";
+    const detail = r.reason;
+    const validation = r.validation
+      ? ` (${(r.validation.before_pass_rate * 100).toFixed(0)}% \u2192 ${(r.validation.after_pass_rate * 100).toFixed(0)}%)`
+      : "";
+    lines.push(`  ${c.skill.padEnd(20)} ${status}${validation}`);
+    lines.push(`  ${"".padEnd(20)} ${detail}`);
+  }
+
+  return lines;
+}
+
+function formatWatchPhase(candidates: SkillAction[]): string[] {
+  const watched = candidates.filter((c) => c.action === "watch");
+  if (watched.length === 0) return [];
+
+  const lines: string[] = ["Phase 5: Watch"];
+  for (const c of watched) {
+    const snap = c.watchResult?.snapshot;
+    const passInfo = snap ? `pass_rate=${snap.pass_rate.toFixed(2)}` : "";
+    const baseInfo = snap ? `, baseline=${snap.baseline_pass_rate.toFixed(2)}` : "";
+    const alertTag = c.watchResult?.alert ? " [ALERT]" : "";
+    lines.push(`  ${c.skill.padEnd(20)} ${c.reason}${alertTag} (${passInfo}${baseInfo})`);
+  }
+
+  return lines;
+}
+
+export function formatOrchestrateReport(result: OrchestrateResult): string {
+  const sep = "\u2550".repeat(48);
+  const lines: string[] = [];
+
+  lines.push(sep);
+  lines.push("selftune orchestrate \u2014 decision report");
+  lines.push(sep);
+  lines.push("");
+
+  // Mode banner
+  if (result.summary.dryRun) {
+    lines.push("Mode: DRY RUN (pass --auto-approve to deploy)");
+  } else if (result.summary.autoApprove) {
+    lines.push("Mode: AUTO-APPROVE (changes will be deployed)");
+  } else {
+    lines.push("Mode: LIVE (proposals validated but not deployed)");
+  }
+  lines.push("");
+
+  // Phase 1: Sync
+  lines.push(...formatSyncPhase(result.syncResult));
+  lines.push("");
+
+  // Phase 2: Status
+  lines.push(...formatStatusPhase(result.statusResult));
+  lines.push("");
+
+  // Phase 3: Skill decisions
+  lines.push(...formatDecisionPhase(result.candidates));
+  lines.push("");
+
+  // Phase 4: Evolution results (only if any evolve ran)
+  const evoLines = formatEvolutionPhase(result.candidates);
+  if (evoLines.length > 0) {
+    lines.push(...evoLines);
+    lines.push("");
+  }
+
+  // Phase 5: Watch (only if any watched)
+  const watchLines = formatWatchPhase(result.candidates);
+  if (watchLines.length > 0) {
+    lines.push(...watchLines);
+    lines.push("");
+  }
+
+  // Final summary
+  lines.push("Summary");
+  lines.push(`  Evaluated:    ${result.summary.evaluated} skills`);
+  lines.push(`  Deployed:     ${result.summary.deployed}`);
+  lines.push(`  Watched:      ${result.summary.watched}`);
+  lines.push(`  Skipped:      ${result.summary.skipped}`);
+  lines.push(`  Elapsed:      ${(result.summary.elapsedMs / 1000).toFixed(1)}s`);
+
+  return lines.join("\n");
+}
+
 /** Candidate selection criteria. */
 const CANDIDATE_STATUSES = new Set(["CRITICAL", "WARNING", "UNGRADED"]);
 
@@ -486,25 +645,37 @@ Examples:
     syncForce: values["sync-force"] ?? false,
   });
 
-  // Print JSON summary to stdout
-  console.log(JSON.stringify(result.summary, null, 2));
+  // JSON output: include candidates for machine consumption
+  const jsonOutput = {
+    ...result.summary,
+    decisions: result.candidates.map((c) => ({
+      skill: c.skill,
+      action: c.action,
+      reason: c.reason,
+      ...(c.evolveResult
+        ? {
+            deployed: c.evolveResult.deployed,
+            validation: c.evolveResult.validation
+              ? {
+                  before: c.evolveResult.validation.before_pass_rate,
+                  after: c.evolveResult.validation.after_pass_rate,
+                  improved: c.evolveResult.validation.improved,
+                }
+              : null,
+          }
+        : {}),
+      ...(c.watchResult
+        ? {
+            alert: c.watchResult.alert,
+            passRate: c.watchResult.snapshot.pass_rate,
+          }
+        : {}),
+    })),
+  };
+  console.log(JSON.stringify(jsonOutput, null, 2));
 
-  // Print human-readable recap to stderr
-  console.error(`\n${"═".repeat(40)}`);
-  console.error("selftune orchestrate — summary");
-  console.error("═".repeat(40));
-  console.error(`  Total skills:   ${result.summary.totalSkills}`);
-  console.error(`  Evaluated:      ${result.summary.evaluated}`);
-  console.error(`  Deployed:       ${result.summary.deployed}`);
-  console.error(`  Watched:        ${result.summary.watched}`);
-  console.error(`  Skipped:        ${result.summary.skipped}`);
-  console.error(`  Dry run:        ${result.summary.dryRun}`);
-  console.error(`  Auto-approve:   ${result.summary.autoApprove}`);
-  console.error(`  Elapsed:        ${(result.summary.elapsedMs / 1000).toFixed(1)}s`);
-
-  if (result.summary.dryRun && result.summary.evaluated > 0) {
-    console.error("\n  Pass --auto-approve to deploy validated changes.");
-  }
+  // Print human-readable decision report to stderr
+  console.error(`\n${formatOrchestrateReport(result)}`);
 
   process.exit(0);
 }
