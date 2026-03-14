@@ -93,12 +93,18 @@ import {
 
 // ---------- Drag handle ----------
 
-function DragHandle({ id }: { id: string }) {
-  const { attributes, listeners } = useSortable({ id })
+type SortableContextValue = Pick<ReturnType<typeof useSortable>, "attributes" | "listeners" | "setActivatorNodeRef">
+
+const SortableRowContext = React.createContext<SortableContextValue | null>(null)
+
+function DragHandle() {
+  const ctx = React.useContext(SortableRowContext)
+  if (!ctx) return null
   return (
     <Button
-      {...attributes}
-      {...listeners}
+      ref={ctx.setActivatorNodeRef}
+      {...ctx.attributes}
+      {...ctx.listeners}
       variant="ghost"
       size="icon"
       className="size-7 text-muted-foreground hover:bg-transparent"
@@ -128,7 +134,7 @@ const columns: ColumnDef<SkillCard>[] = [
   {
     id: "drag",
     header: () => null,
-    cell: ({ row }) => <DragHandle id={row.original.name} />,
+    cell: () => <DragHandle />,
   },
   {
     id: "select",
@@ -170,7 +176,7 @@ const columns: ColumnDef<SkillCard>[] = [
       const scope = row.original.scope
       if (!scope) return <span className="text-xs text-muted-foreground">--</span>
       return (
-        <Badge variant="secondary" className="text-[10px] capitalize">
+        <Badge variant="secondary" className="text-[10px]">
           {scope}
         </Badge>
       )
@@ -269,26 +275,32 @@ const columns: ColumnDef<SkillCard>[] = [
 // ---------- Draggable row ----------
 
 function DraggableRow({ row }: { row: Row<SkillCard> }) {
-  const { transform, transition, setNodeRef, isDragging } = useSortable({
+  const { transform, transition, setNodeRef, setActivatorNodeRef, isDragging, attributes, listeners } = useSortable({
     id: row.original.name,
   })
+  const sortableCtx = React.useMemo(
+    () => ({ attributes, listeners, setActivatorNodeRef }),
+    [attributes, listeners, setActivatorNodeRef],
+  )
   return (
-    <TableRow
-      data-state={row.getIsSelected() && "selected"}
-      data-dragging={isDragging}
-      ref={setNodeRef}
-      className="relative z-0 data-[dragging=true]:z-10 data-[dragging=true]:opacity-80"
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition: transition,
-      }}
-    >
-      {row.getVisibleCells().map((cell) => (
-        <TableCell key={cell.id}>
-          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-        </TableCell>
-      ))}
-    </TableRow>
+    <SortableRowContext.Provider value={sortableCtx}>
+      <TableRow
+        data-state={row.getIsSelected() && "selected"}
+        data-dragging={isDragging}
+        ref={setNodeRef}
+        className="relative z-0 data-[dragging=true]:z-10 data-[dragging=true]:opacity-80"
+        style={{
+          transform: CSS.Transform.toString(transform),
+          transition: transition,
+        }}
+      >
+        {row.getVisibleCells().map((cell) => (
+          <TableCell key={cell.id}>
+            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+          </TableCell>
+        ))}
+      </TableRow>
+    </SortableRowContext.Provider>
   )
 }
 

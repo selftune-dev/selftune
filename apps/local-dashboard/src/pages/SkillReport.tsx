@@ -125,9 +125,14 @@ export function SkillReport() {
 
   const isNotFound =
     data.usage.total_checks === 0 &&
+    data.usage.triggered_count === 0 &&
     data.evidence.length === 0 &&
     data.evolution.length === 0 &&
-    data.pending_proposals.length === 0
+    data.pending_proposals.length === 0 &&
+    data.recent_invocations.length === 0 &&
+    (data.canonical_invocations?.length ?? 0) === 0 &&
+    (data.prompt_samples?.length ?? 0) === 0 &&
+    (data.session_metadata?.length ?? 0) === 0
 
   if (isNotFound) {
     return (
@@ -178,61 +183,51 @@ export function SkillReport() {
         </Badge>
         <TabsList variant="line" className="ml-auto">
           {evolution.length > 0 && (
-            <TabsTrigger value="evidence">
-              <Tooltip>
-                <TooltipTrigger className="inline-flex items-center gap-1">
-                  Evidence
-                  {activeProposal && (
-                    <span className="font-mono text-[10px] text-muted-foreground">
-                      #{activeProposal.slice(0, 8)}
-                    </span>
-                  )}
-                </TooltipTrigger>
-                <TooltipContent>Change history and validation results</TooltipContent>
-              </Tooltip>
-            </TabsTrigger>
-          )}
-          <TabsTrigger value="invocations">
             <Tooltip>
-              <TooltipTrigger className="inline-flex items-center gap-1">
-                Invocations
-                <Badge variant="secondary" className="text-[10px]">{recent_invocations.length}</Badge>
+              <TooltipTrigger render={<TabsTrigger value="evidence" />}>
+                Evidence
+                {activeProposal && (
+                  <span className="font-mono text-[10px] text-muted-foreground">
+                    #{activeProposal.slice(0, 8)}
+                  </span>
+                )}
               </TooltipTrigger>
-              <TooltipContent>Recent skill triggers and their outcomes</TooltipContent>
+              <TooltipContent>Change history and validation results</TooltipContent>
             </Tooltip>
-          </TabsTrigger>
+          )}
+          <Tooltip>
+            <TooltipTrigger render={<TabsTrigger value="invocations" />}>
+              Invocations
+              <Badge variant="secondary" className="text-[10px]">{recent_invocations.length}</Badge>
+            </TooltipTrigger>
+            <TooltipContent>Recent skill triggers and their outcomes</TooltipContent>
+          </Tooltip>
           {prompt_samples && prompt_samples.length > 0 && (
-            <TabsTrigger value="prompts">
-              <Tooltip>
-                <TooltipTrigger className="inline-flex items-center gap-1">
-                  Prompts
-                  <Badge variant="secondary" className="text-[10px]">{prompt_samples.length}</Badge>
-                </TooltipTrigger>
-                <TooltipContent>User inputs that matched this skill</TooltipContent>
-              </Tooltip>
-            </TabsTrigger>
+            <Tooltip>
+              <TooltipTrigger render={<TabsTrigger value="prompts" />}>
+                Prompts
+                <Badge variant="secondary" className="text-[10px]">{prompt_samples.length}</Badge>
+              </TooltipTrigger>
+              <TooltipContent>User inputs that matched this skill</TooltipContent>
+            </Tooltip>
           )}
           {session_metadata && session_metadata.length > 0 && (
-            <TabsTrigger value="sessions">
-              <Tooltip>
-                <TooltipTrigger className="inline-flex items-center gap-1">
-                  Sessions
-                  <Badge variant="secondary" className="text-[10px]">{session_metadata.length}</Badge>
-                </TooltipTrigger>
-                <TooltipContent>Environment and runtime information</TooltipContent>
-              </Tooltip>
-            </TabsTrigger>
+            <Tooltip>
+              <TooltipTrigger render={<TabsTrigger value="sessions" />}>
+                Sessions
+                <Badge variant="secondary" className="text-[10px]">{session_metadata.length}</Badge>
+              </TooltipTrigger>
+              <TooltipContent>Environment and runtime information</TooltipContent>
+            </Tooltip>
           )}
           {pending_proposals.length > 0 && (
-            <TabsTrigger value="pending">
-              <Tooltip>
-                <TooltipTrigger className="inline-flex items-center gap-1">
-                  Pending
-                  <Badge variant="destructive" className="text-[10px]">{pending_proposals.length}</Badge>
-                </TooltipTrigger>
-                <TooltipContent>Proposals awaiting review</TooltipContent>
-              </Tooltip>
-            </TabsTrigger>
+            <Tooltip>
+              <TooltipTrigger render={<TabsTrigger value="pending" />}>
+                Pending
+                <Badge variant="destructive" className="text-[10px]">{pending_proposals.length}</Badge>
+              </TooltipTrigger>
+              <TooltipContent>Proposals awaiting review</TooltipContent>
+            </Tooltip>
           )}
         </TabsList>
       </div>

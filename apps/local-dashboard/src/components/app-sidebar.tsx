@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -73,9 +73,14 @@ function ScopeGroup({
 }) {
   const config = SCOPE_CONFIG[scope] ?? { label: scope, icon: <GlobeIcon className="size-4" /> }
   const hasActive = skills.some((s) => pathname === `/skills/${encodeURIComponent(s.name)}`)
+  const [open, setOpen] = useState(defaultOpen || hasActive)
+
+  useEffect(() => {
+    if (hasActive) setOpen(true)
+  }, [hasActive])
 
   return (
-    <Collapsible defaultOpen={defaultOpen || hasActive} className="group/collapsible">
+    <Collapsible open={open} onOpenChange={setOpen} className="group/collapsible">
       <SidebarMenuItem>
         <CollapsibleTrigger render={<SidebarMenuButton tooltip={config.label} />}>
           {config.icon}
