@@ -50,6 +50,7 @@ export interface OverviewPayload {
     action: string;
     timestamp: string;
     details: string;
+    skill_name: string;
   }>;
 }
 
