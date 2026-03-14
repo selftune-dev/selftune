@@ -389,7 +389,7 @@ export function getPendingProposals(db: Database, skillName?: string): PendingPr
     .query(
       `WITH latest AS (
          SELECT ea.proposal_id, ea.action, ea.timestamp, ea.details, ea.skill_name,
-                ROW_NUMBER() OVER (PARTITION BY ea.proposal_id ORDER BY ea.timestamp DESC) AS rn
+                ROW_NUMBER() OVER (PARTITION BY ea.proposal_id ORDER BY ea.timestamp DESC, ea.id DESC) AS rn
          FROM evolution_audit ea
          LEFT JOIN evolution_audit ea2
            ON ea2.proposal_id = ea.proposal_id

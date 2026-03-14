@@ -599,8 +599,15 @@ export async function startDashboardServer(
 
   // -- SQLite v2 data layer ---------------------------------------------------
   const db: Database = openDb();
-  materializeIncremental(db);
-  let lastV2MaterializedAt = Date.now();
+  let lastV2MaterializedAt = 0;
+  try {
+    materializeIncremental(db);
+    lastV2MaterializedAt = Date.now();
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Initial v2 materialization failed: ${message}`);
+    // Continue serving; refreshV2Data will retry on demand.
+  }
   const V2_MATERIALIZE_TTL_MS = 15_000;
 
   function refreshV2Data(): void {
@@ -965,7 +972,11 @@ export async function startDashboardServer(
         const skillName = decodeURIComponent(url.pathname.slice("/api/v2/skills/".length));
         refreshV2Data();
         const report = getSkillReportPayload(db, skillName);
-        if (report.usage.total_checks === 0 && report.recent_invocations.length === 0) {
+        const hasData =
+          report.usage.total_checks > 0 ||
+          report.recent_invocations.length > 0 ||
+          report.evidence.length > 0;
+        if (!hasData) {
           return Response.json(
             { error: "Skill not found" },
             { status: 404, headers: corsHeaders() },
