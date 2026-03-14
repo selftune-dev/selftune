@@ -136,6 +136,42 @@ Paperclip should accelerate iteration, not become the product priority.
 
 ## Current Recommendations
 
+## Remaining Product Gaps
+
+These are the highest-confidence gaps still blocking adoption and confident shipping:
+
+### 1. The local UX is still not good enough
+
+The old dashboard path remains too slow and awkward, and the SQLite + SPA path is not yet the obvious default experience.
+
+### 2. The autonomous loop is not yet obvious and trustworthy
+
+The orchestrator exists, but the product does not yet feel like a safe, comprehensible “turn this on and it improves my skills” system.
+
+### 3. Evolution is still under-triggering in practice
+
+We can prove skill usage and at least one real successful evolution, but the system still does not yet feel like it consistently turns real usage into useful proposed improvements across many skills.
+
+### 4. Query and environment pollution still distort the signal
+
+Polluted host environments still make status and unmatched-query outputs harder to trust than they should be.
+
+### 5. Local/cloud product contracts are not fully stabilized
+
+We proved OSS export -> cloud ingest, but the actual user-facing payload contracts for overview/report views still need to be made explicit and aligned.
+
+### 6. The default story is still too broad
+
+The product still presents too much surface area for a first-time user instead of one tight loop.
+
+### 7. The release path still needs one clean published-package proof
+
+Branch code has been proven on a real machine; the final “published install behaves the same way” proof still needs to happen.
+
+---
+
+## Current Recommendations
+
 ### 1. Make the SPA the real default dashboard path
 
 Once the SQLite-backed local app is credible, stop treating it as sidecar UI.
