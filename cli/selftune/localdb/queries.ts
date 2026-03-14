@@ -161,24 +161,7 @@ export function getOverviewPayload(db: Database): OverviewPayload {
     .all() as Array<{ timestamp: string; session_id: string; query: string }>;
 
   // Pending proposals: created/validated but no terminal action (deduped in SQL)
-  const pending_proposals = db
-    .query(
-      `SELECT ea.proposal_id, ea.action, ea.timestamp, ea.details
-       FROM evolution_audit ea
-       LEFT JOIN evolution_audit ea2
-         ON ea2.proposal_id = ea.proposal_id
-         AND ea2.action IN ('deployed', 'rejected', 'rolled_back')
-       WHERE ea.action IN ('created', 'validated')
-         AND ea2.id IS NULL
-       GROUP BY ea.proposal_id
-       ORDER BY ea.timestamp DESC`,
-    )
-    .all() as Array<{
-    proposal_id: string;
-    action: string;
-    timestamp: string;
-    details: string;
-  }>;
+  const pending_proposals = getPendingProposals(db);
 
   return {
     telemetry,
@@ -380,6 +363,38 @@ export function getSkillsList(db: Database): SkillSummary[] {
     last_seen: row.last_seen,
     has_evidence: evidenceSkills.has(row.skill_name),
   }));
+}
+
+// -- Shared query helpers -----------------------------------------------------
+
+export interface PendingProposal {
+  proposal_id: string;
+  action: string;
+  timestamp: string;
+  details: string;
+  skill_name: string;
+}
+
+/**
+ * Get pending proposals (created/validated with no terminal action).
+ * Optionally filtered by skill_name.
+ */
+export function getPendingProposals(db: Database, skillName?: string): PendingProposal[] {
+  const whereClause = skillName ? "WHERE ea.skill_name = ? AND" : "WHERE";
+  const params = skillName ? [skillName] : [];
+  return db
+    .query(
+      `SELECT ea.proposal_id, ea.action, ea.timestamp, ea.details, ea.skill_name
+       FROM evolution_audit ea
+       LEFT JOIN evolution_audit ea2
+         ON ea2.proposal_id = ea.proposal_id
+         AND ea2.action IN ('deployed', 'rejected', 'rolled_back')
+       ${whereClause} ea.action IN ('created', 'validated')
+         AND ea2.id IS NULL
+       GROUP BY ea.proposal_id
+       ORDER BY ea.timestamp DESC`,
+    )
+    .all(...params) as PendingProposal[];
 }
 
 // -- Helpers ------------------------------------------------------------------

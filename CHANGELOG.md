@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - Collapsible sidebar navigation listing all skills by health status
   - shadcn/ui component library with dark/light theme toggle and selftune branding
   - TanStack Query for data fetching with smart caching, background refetch, and instant back-navigation
-  - 15-second polling against SQLite-backed v2 API endpoints via `refetchInterval`
+  - 15-second background polling against SQLite-backed v2 API endpoints via TanStack Query `refetchInterval` (SSE was removed — SQLite reads are cheap enough for polling)
   - New components: `EvidenceViewer`, `EvolutionTimeline`, `ActivityTimeline`, `SkillHealthGrid`, `SectionCards`, `InfoTip`
   - Glossary tooltips on all metric labels (overview KPI cards, skill report KPI cards) explaining what each metric measures
   - Tab description tooltips on skill report tabs (Evidence, Invocations, Prompts, Sessions, Pending)

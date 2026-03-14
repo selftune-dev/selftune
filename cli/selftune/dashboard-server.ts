@@ -25,7 +25,7 @@ import { getLastDeployedProposal } from "./evolution/audit.js";
 import { readEvidenceTrail } from "./evolution/evidence.js";
 import { openDb } from "./localdb/db.js";
 import { materializeIncremental } from "./localdb/materialize.js";
-import { getOverviewPayload, getSkillReportPayload, getSkillsList } from "./localdb/queries.js";
+import { getOverviewPayload, getPendingProposals, getSkillReportPayload, getSkillsList } from "./localdb/queries.js";
 import { readDecisions } from "./memory/writer.js";
 import { computeMonitoringSnapshot } from "./monitoring/watch.js";
 import { doctor } from "./observability.js";
@@ -990,27 +990,8 @@ export async function startDashboardServer(
           eval_snapshot_json: undefined,
         }));
 
-        // 2. Pending proposals (LEFT JOIN + GROUP BY replaces NOT IN + JS dedup)
-        const pending_proposals = db
-          .query(
-            `SELECT ea.proposal_id, ea.action, ea.timestamp, ea.details, ea.skill_name
-             FROM evolution_audit ea
-             LEFT JOIN evolution_audit ea2
-               ON ea2.proposal_id = ea.proposal_id
-               AND ea2.action IN ('deployed', 'rejected', 'rolled_back')
-             WHERE ea.skill_name = ?
-               AND ea.action IN ('created', 'validated')
-               AND ea2.id IS NULL
-             GROUP BY ea.proposal_id
-             ORDER BY ea.timestamp DESC`,
-          )
-          .all(skillName) as Array<{
-          proposal_id: string;
-          action: string;
-          timestamp: string;
-          details: string;
-          skill_name: string;
-        }>;
+        // 2. Pending proposals (shared helper from queries.ts)
+        const pending_proposals = getPendingProposals(db, skillName);
 
         // Materialize session IDs once to avoid repeating the subquery
         const sessionIds = db
