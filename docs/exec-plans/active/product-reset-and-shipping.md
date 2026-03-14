@@ -136,8 +136,6 @@ Paperclip should accelerate iteration, not become the product priority.
 
 ---
 
-## Current Recommendations
-
 ## Remaining Product Gaps
 
 These are the highest-confidence gaps still blocking adoption and confident shipping:

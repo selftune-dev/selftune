@@ -1,6 +1,6 @@
 # Telemetry Source-to-Canonical Field Map
 
-<!-- Verified: 2026-03-10 -->
+<!-- Verified: 2026-03-14 -->
 
 **Status:** Reference
 **Purpose:** Define the canonical telemetry contract that all platform adapters must emit before any downstream projection or analytics.

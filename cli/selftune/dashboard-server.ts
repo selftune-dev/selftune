@@ -4,6 +4,7 @@
  *
  * Endpoints:
  *   GET  /                     — Serve dashboard SPA shell
+ *   GET  /api/health           — Dashboard server health probe
  *   GET  /api/v2/overview      — SQLite-backed overview payload
  *   GET  /api/v2/skills/:name  — SQLite-backed per-skill report
  *   POST /api/actions/watch    — Trigger `selftune watch` for a skill
@@ -46,6 +47,7 @@ import { readEffectiveSkillUsageRecords } from "./utils/skill-log.js";
 export interface DashboardServerOptions {
   port?: number;
   host?: string;
+  spaDir?: string;
   openBrowser?: boolean;
   statusLoader?: () => StatusResult;
   evidenceLoader?: () => EvolutionEvidenceEntry[];
@@ -73,6 +75,14 @@ function findSpaDir(): string | null {
     if (existsSync(join(c, "index.html"))) return c;
   }
   return null;
+}
+
+function decodePathSegment(segment: string): string | null {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
 }
 
 const MIME_TYPES: Record<string, string> = {
@@ -412,7 +422,7 @@ export async function startDashboardServer(
   const executeAction = options?.actionRunner ?? runAction;
 
   // -- SPA serving -------------------------------------------------------------
-  const spaDir = findSpaDir();
+  const spaDir = options?.spaDir ?? findSpaDir();
   if (spaDir) {
     console.log(`SPA found at ${spaDir}, serving as default dashboard`);
   } else {
@@ -497,6 +507,19 @@ export async function startDashboardServer(
       // Handle CORS preflight
       if (req.method === "OPTIONS") {
         return new Response(null, { status: 204, headers: corsHeaders() });
+      }
+
+      if (url.pathname === "/api/health" && req.method === "GET") {
+        return Response.json(
+          {
+            ok: true,
+            service: "selftune-dashboard",
+            version: selftuneVersion,
+            spa: Boolean(spaDir),
+            v2_data_available: Boolean(getOverviewResponse || db),
+          },
+          { headers: corsHeaders() },
+        );
       }
 
       // ---- SPA static assets ---- Serve from dist/assets/
@@ -590,7 +613,13 @@ export async function startDashboardServer(
 
       // ---- GET /badge/:skillName ---- Badge SVG
       if (url.pathname.startsWith("/badge/") && req.method === "GET") {
-        const skillName = decodeURIComponent(url.pathname.slice("/badge/".length));
+        const skillName = decodePathSegment(url.pathname.slice("/badge/".length));
+        if (skillName === null) {
+          return Response.json(
+            { error: "Malformed skill name" },
+            { status: 400, headers: corsHeaders() },
+          );
+        }
         const formatParam = url.searchParams.get("format");
         const validFormats = new Set(["svg", "markdown", "url"]);
         const format: BadgeFormat =
@@ -654,7 +683,13 @@ export async function startDashboardServer(
 
       // ---- GET /report/:skillName ---- Skill health report
       if (url.pathname.startsWith("/report/") && req.method === "GET") {
-        const skillName = decodeURIComponent(url.pathname.slice("/report/".length));
+        const skillName = decodePathSegment(url.pathname.slice("/report/".length));
+        if (skillName === null) {
+          return Response.json(
+            { error: "Malformed skill name" },
+            { status: 400, headers: corsHeaders() },
+          );
+        }
         const statusResult = await getCachedStatusResult();
         const skill = statusResult.skills.find((s) => s.name === skillName);
         const evidenceEntries = getEvidenceEntries().filter(
@@ -700,7 +735,13 @@ export async function startDashboardServer(
 
       // ---- GET /api/v2/skills/:name ---- SQLite-backed skill report
       if (url.pathname.startsWith("/api/v2/skills/") && req.method === "GET") {
-        const skillName = decodeURIComponent(url.pathname.slice("/api/v2/skills/".length));
+        const skillName = decodePathSegment(url.pathname.slice("/api/v2/skills/".length));
+        if (skillName === null) {
+          return Response.json(
+            { error: "Malformed skill name" },
+            { status: 400, headers: corsHeaders() },
+          );
+        }
         if (getSkillReportResponse) {
           const report = getSkillReportResponse(skillName);
           if (!report) {

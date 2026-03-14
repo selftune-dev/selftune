@@ -1,10 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type {
   OverviewResponse,
   SkillReportResponse,
 } from "../../cli/selftune/dashboard-contract.js";
 
 let startDashboardServer: typeof import("../../cli/selftune/dashboard-server.js").startDashboardServer;
+let testSpaDir: string;
 
 const overviewFixture: OverviewResponse = {
   overview: {
@@ -93,16 +97,24 @@ const skillReportFixture: SkillReportResponse = {
 beforeAll(async () => {
   const mod = await import("../../cli/selftune/dashboard-server.js");
   startDashboardServer = mod.startDashboardServer;
+  testSpaDir = mkdtempSync(join(tmpdir(), "selftune-dashboard-test-"));
+  mkdirSync(join(testSpaDir, "assets"), { recursive: true });
+  writeFileSync(
+    join(testSpaDir, "index.html"),
+    `<!DOCTYPE html><html lang="en"><body><div id="root"></div><script type="module" src="/assets/app.js"></script></body></html>`,
+  );
+  writeFileSync(join(testSpaDir, "assets", "app.js"), "console.log('selftune test spa');\n");
 });
 
 describe("dashboard-server", () => {
-  let serverPromise: Promise<{ server: unknown; stop: () => void; port: number }> | null = null;
+  let serverPromise: ReturnType<typeof startDashboardServer> | null = null;
 
-  async function getServer(): Promise<{ server: unknown; stop: () => void; port: number }> {
+  async function getServer(): Promise<Awaited<ReturnType<typeof startDashboardServer>>> {
     if (!serverPromise) {
       serverPromise = startDashboardServer({
         port: 0,
         host: "127.0.0.1",
+        spaDir: testSpaDir,
         openBrowser: false,
         overviewLoader: () => overviewFixture,
         skillReportLoader: (skillName) => (skillName === "test-skill" ? skillReportFixture : null),
@@ -224,6 +236,12 @@ describe("dashboard-server", () => {
       );
       expect(res.status).toBe(404);
     });
+
+    it("returns 400 for malformed skill-name encoding", async () => {
+      const server = await getServer();
+      const res = await fetch(`http://127.0.0.1:${server.port}/api/v2/skills/%E0%A4%A`);
+      expect(res.status).toBe(400);
+    });
   });
 
   describe("POST /api/actions/*", () => {
@@ -292,6 +310,7 @@ describe("server lifecycle", () => {
     const s = await startDashboardServer({
       port: 0,
       host: "127.0.0.1",
+      spaDir: testSpaDir,
       openBrowser: false,
       overviewLoader: () => overviewFixture,
       skillReportLoader: () => null,
@@ -306,6 +325,7 @@ describe("server lifecycle", () => {
     const s = await startDashboardServer({
       port: 0,
       host: "127.0.0.1",
+      spaDir: testSpaDir,
       openBrowser: false,
       overviewLoader: () => overviewFixture,
       skillReportLoader: () => null,
@@ -323,6 +343,7 @@ describe("SPA shell loading", () => {
     const server = await startDashboardServer({
       port: 0,
       host: "127.0.0.1",
+      spaDir: testSpaDir,
       openBrowser: false,
       overviewLoader: () => {
         overviewLoaderCalls++;
@@ -367,6 +388,7 @@ describe("report loading", () => {
     const server = await startDashboardServer({
       port: 0,
       host: "127.0.0.1",
+      spaDir: testSpaDir,
       openBrowser: false,
       overviewLoader: () => overviewFixture,
       skillReportLoader: () => {
@@ -409,4 +431,8 @@ describe("report loading", () => {
       server.stop();
     }
   });
+});
+
+afterAll(() => {
+  rmSync(testSpaDir, { recursive: true, force: true });
 });
