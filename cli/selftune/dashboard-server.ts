@@ -1,16 +1,22 @@
 /**
- * selftune dashboard server — Live Bun.serve HTTP server with SSE, data API,
- * and action endpoints for the interactive dashboard.
+ * selftune dashboard server — Live Bun.serve HTTP server for the React SPA
+ * dashboard backed by SQLite materialized queries.
  *
- * Endpoints:
- *   GET  /              — Serve dashboard HTML shell + live mode flag
- *   GET  /api/data      — JSON endpoint returning current telemetry data
- *   GET  /api/events    — SSE stream sending data updates every 5 seconds
+ * Primary endpoints (SPA + v2 API):
+ *   GET  /                     — Serve React SPA (default dashboard)
+ *   GET  /api/v2/overview      — SQLite-backed overview payload
+ *   GET  /api/v2/skills/:name  — SQLite-backed per-skill report
  *   POST /api/actions/watch    — Trigger `selftune watch` for a skill
  *   POST /api/actions/evolve   — Trigger `selftune evolve` for a skill
  *   POST /api/actions/rollback — Trigger `selftune rollback` for a skill
- *   GET  /api/v2/overview     — SQLite-backed overview payload
- *   GET  /api/v2/skills/:name — SQLite-backed per-skill report
+ *
+ * Legacy/compatibility endpoints:
+ *   GET  /legacy/         — Serve old HTML dashboard
+ *   GET  /api/data        — Legacy JSON endpoint (JSONL-based)
+ *   GET  /api/events      — Legacy SSE stream
+ *   GET  /api/evaluations/:name — Legacy per-skill evaluations
+ *   GET  /badge/:name     — Skill health badge SVG
+ *   GET  /report/:name    — Per-skill HTML report
  */
 
 import type { Database } from "bun:sqlite";
@@ -590,11 +596,37 @@ export async function startDashboardServer(
   const executeAction = options?.actionRunner ?? runAction;
 
   // -- SPA serving -------------------------------------------------------------
-  const spaDir = findSpaDir();
+  let spaDir = findSpaDir();
+  if (!spaDir) {
+    // Attempt auto-build if the SPA source exists
+    const repoRoot = resolve(dirname(import.meta.dir), "..");
+    const spaSource = join(repoRoot, "apps", "local-dashboard", "package.json");
+    if (existsSync(spaSource)) {
+      console.log("SPA build not found, attempting auto-build...");
+      try {
+        const proc = Bun.spawnSync(["bun", "run", "build:dashboard"], {
+          cwd: repoRoot,
+          stdout: "ignore",
+          stderr: "pipe",
+        });
+        if (proc.exitCode === 0) {
+          spaDir = findSpaDir();
+        } else {
+          const stderr = new TextDecoder().decode(proc.stderr);
+          console.error(`SPA auto-build failed: ${stderr.slice(0, 200)}`);
+        }
+      } catch (err) {
+        console.error("SPA auto-build failed:", err);
+      }
+    }
+  }
   if (spaDir) {
-    console.log(`SPA found at ${spaDir}, serving as default dashboard`);
+    console.log(`SPA dashboard serving from ${spaDir}`);
   } else {
-    console.log("SPA build not found, serving legacy dashboard at /");
+    console.log(
+      "SPA build not found — falling back to legacy dashboard at /\n" +
+        "  To build the SPA: bun run build:dashboard",
+    );
   }
 
   // -- SQLite v2 data layer ---------------------------------------------------

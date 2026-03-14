@@ -1,16 +1,14 @@
 /**
- * selftune dashboard — Exports JSONL data into a standalone HTML viewer.
+ * selftune dashboard — Live React SPA backed by SQLite materialized queries.
  *
  * Usage:
- *   selftune dashboard              — Open dashboard in default browser
- *   selftune dashboard --export     — Export data-embedded HTML to stdout
- *   selftune dashboard --out FILE   — Write data-embedded HTML to FILE
- *   selftune dashboard --serve      — Start live dashboard server (default port 3141)
- *   selftune dashboard --serve --port 8080 — Start on custom port
+ *   selftune dashboard                       — Start live dashboard server (SPA, default)
+ *   selftune dashboard --port 8080           — Start on custom port
+ *   selftune dashboard --export              — Export legacy data-embedded HTML to stdout
+ *   selftune dashboard --out FILE            — Write legacy data-embedded HTML to FILE
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { EVOLUTION_AUDIT_LOG, QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "./constants.js";
 import { getLastDeployedProposal, readAuditTrail } from "./evolution/audit.js";
@@ -135,48 +133,21 @@ export async function cliMain(): Promise<void> {
   const args = process.argv.slice(2);
 
   if (args.includes("--help") || args.includes("-h")) {
-    console.log(`selftune dashboard — Visual data dashboard
+    console.log(`selftune dashboard — Live React SPA dashboard
 
 Usage:
-  selftune dashboard                        Open dashboard in default browser
-  selftune dashboard --export               Export data-embedded HTML to stdout
-  selftune dashboard --out FILE             Write data-embedded HTML to FILE
-  selftune dashboard --serve                Start live dashboard server (port 3141)
-  selftune dashboard --serve --port 8080    Start on custom port`);
+  selftune dashboard                        Start live dashboard server (default)
+  selftune dashboard --port 8080            Start on custom port
+  selftune dashboard --export               Export legacy data-embedded HTML to stdout
+  selftune dashboard --out FILE             Write legacy data-embedded HTML to FILE
+
+The default starts a live server with the React SPA at / backed by
+SQLite materialized queries. The legacy HTML dashboard is available
+at /legacy/ on the live server, or via --export / --out.`);
     process.exit(0);
   }
 
-  if (args.includes("--serve")) {
-    const portIdx = args.indexOf("--port");
-    let port: number | undefined;
-    if (portIdx !== -1) {
-      const parsed = Number.parseInt(args[portIdx + 1], 10);
-      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
-        console.error(
-          `Invalid port "${args[portIdx + 1]}": must be an integer between 1 and 65535.`,
-        );
-        process.exit(1);
-      }
-      port = parsed;
-    }
-    const { startDashboardServer } = await import("./dashboard-server.js");
-    const { stop } = await startDashboardServer({ port, openBrowser: true });
-    await new Promise<void>((resolve) => {
-      let closed = false;
-      const keepAlive = setInterval(() => {}, 1 << 30);
-      const shutdown = () => {
-        if (closed) return;
-        closed = true;
-        clearInterval(keepAlive);
-        stop();
-        resolve();
-      };
-      process.on("SIGINT", shutdown);
-      process.on("SIGTERM", shutdown);
-    });
-    return;
-  }
-
+  // Legacy static export modes
   if (args.includes("--export")) {
     process.stdout.write(buildEmbeddedHTML());
     return;
@@ -195,27 +166,33 @@ Usage:
     return;
   }
 
-  // Default: write to temp file and open in browser
-  const tmpDir = join(homedir(), ".selftune");
-  if (!existsSync(tmpDir)) {
-    mkdirSync(tmpDir, { recursive: true });
+  // Default: start live dashboard server with SPA
+  // (--serve is accepted for backwards compatibility but is now the default)
+  const portIdx = args.indexOf("--port");
+  let port: number | undefined;
+  if (portIdx !== -1) {
+    const parsed = Number.parseInt(args[portIdx + 1], 10);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+      console.error(
+        `Invalid port "${args[portIdx + 1]}": must be an integer between 1 and 65535.`,
+      );
+      process.exit(1);
+    }
+    port = parsed;
   }
-  const tmpPath = join(tmpDir, "dashboard.html");
-  const html = buildEmbeddedHTML();
-  writeFileSync(tmpPath, html, "utf-8");
-
-  console.log(`Dashboard saved to ${tmpPath}`);
-  console.log("Opening in browser...");
-
-  try {
-    const platform = process.platform;
-    const cmd = platform === "darwin" ? "open" : platform === "linux" ? "xdg-open" : null;
-    if (!cmd) throw new Error("Unsupported platform");
-    const proc = Bun.spawn([cmd, tmpPath], { stdio: ["ignore", "ignore", "ignore"] });
-    await proc.exited;
-    if (proc.exitCode !== 0) throw new Error(`Failed to launch ${cmd}`);
-  } catch {
-    console.log(`Open manually: file://${tmpPath}`);
-  }
-  process.exit(0);
+  const { startDashboardServer } = await import("./dashboard-server.js");
+  const { stop } = await startDashboardServer({ port, openBrowser: true });
+  await new Promise<void>((resolve) => {
+    let closed = false;
+    const keepAlive = setInterval(() => {}, 1 << 30);
+    const shutdown = () => {
+      if (closed) return;
+      closed = true;
+      clearInterval(keepAlive);
+      stop();
+      resolve();
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+  });
 }

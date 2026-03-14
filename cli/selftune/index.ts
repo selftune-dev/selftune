@@ -21,7 +21,7 @@
  *   selftune doctor                   — Run health checks
  *   selftune status                   — Show skill health summary
  *   selftune last                     — Show last session details
- *   selftune dashboard [options]      — Open visual data dashboard
+ *   selftune dashboard [options]      — Start live SPA dashboard server
  *   selftune schedule [options]       — Generate scheduling examples (cron, launchd, systemd)
  *   selftune cron [options]           — OpenClaw cron integration (setup, list, remove)
  *   selftune baseline [options]      — Measure skill value vs. no-skill baseline
@@ -63,7 +63,7 @@ Commands:
   doctor             Run health checks
   status             Show skill health summary
   last               Show last session details
-  dashboard          Open visual data dashboard
+  dashboard          Start live SPA dashboard (--export for legacy HTML)
   schedule           Generate scheduling examples (cron, launchd, systemd)
   cron               OpenClaw cron integration (setup, list, remove)
   badge              Generate skill health badges for READMEs
