@@ -15,6 +15,7 @@ import { restrictToVerticalAxis } from "@dnd-kit/modifiers"
 import {
   arrayMove,
   SortableContext,
+  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
@@ -414,7 +415,9 @@ export function SkillHealthGrid({
   const sensors = useSensors(
     useSensor(MouseSensor, {}),
     useSensor(TouchSensor, {}),
-    useSensor(KeyboardSensor, {})
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
   )
 
   const table = useReactTable({
