@@ -171,7 +171,7 @@ from any package directory.
 Tell the user what to do next based on their goals:
 
 - **"I want to see how my skills are doing"** — run `selftune status`
-- **"I want to improve a skill"** — run `selftune eval generate --skill <name>` then `selftune evolve`
+- **"I want to improve a skill"** — run `selftune eval generate --skill <name>` then `selftune evolve --skill <name>`
 - **"I want to grade a session"** — run `selftune grade --skill <name>`
 
 ## Commands

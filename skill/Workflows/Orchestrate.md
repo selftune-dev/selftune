@@ -129,7 +129,7 @@ Guard rails:
 
 In autonomous mode, orchestrate calls sub-workflows in this fixed order:
 
-1. **Sync** — refresh source-truth telemetry (`selftune ingest claude`)
+1. **Sync** — refresh source-truth telemetry across all supported agents (`selftune sync`)
 2. **Status** — compute skill health using existing grade results (reads `grading.json` outputs from previous sessions)
 3. **Evolve** — run evolution on selected candidates (pre-flight is skipped, cheap-loop mode enabled, defaults used)
 4. **Watch** — monitor recently evolved skills (auto-rollback enabled by default, `--recent-window` hours lookback)

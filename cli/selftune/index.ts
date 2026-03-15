@@ -63,7 +63,6 @@ if (!command) {
   // Show status by default — same as `selftune status`
   const { cliMain: statusMain } = await import("./status.js");
   statusMain();
-  process.exit(0);
 }
 
 // Route to the appropriate subcommand module.
@@ -280,12 +279,12 @@ Run 'selftune eval <action> --help' for action-specific options.`);
         }
         const logPath = values["telemetry-log"] ?? TELEMETRY_LOG;
         const telemetry = readJsonl(logPath);
-        const windowSize =
-          values.window === undefined ? undefined : Number.parseInt(values.window as string, 10);
-        if (windowSize !== undefined && (!Number.isInteger(windowSize) || windowSize <= 0)) {
+        const rawWindow = values.window as string | undefined;
+        if (rawWindow !== undefined && !/^[1-9]\d*$/.test(rawWindow)) {
           console.error("Invalid --window value. Use a positive integer number of days.");
           process.exit(1);
         }
+        const windowSize = rawWindow === undefined ? undefined : Number(rawWindow);
         const report = analyzeComposability(values.skill, telemetry, windowSize);
         console.log(JSON.stringify(report, null, 2));
         break;

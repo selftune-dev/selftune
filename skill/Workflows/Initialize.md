@@ -85,7 +85,8 @@ merges selftune hook entries from `skill/settings_snippet.json` into
 hooks are already present, they are skipped (no duplicates).
 
 The init output will report what was installed, e.g.:
-```
+
+```text
 [INFO] Installed 4 selftune hook(s) into ~/.claude/settings.json: UserPromptSubmit, PreToolUse, PostToolUse, Stop
 ```
 

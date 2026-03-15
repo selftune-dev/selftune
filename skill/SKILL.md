@@ -147,7 +147,7 @@ These read-only or simple workflows run immediately without prompting:
 
 ## The Feedback Loop
 
-```
+```text
 Observe --> Detect --> Diagnose --> Propose --> Validate --> Audit --> Deploy --> Watch --> Rollback
    |                                                                    |
    +--------------------------------------------------------------------+

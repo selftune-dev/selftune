@@ -180,9 +180,13 @@ Present the following options inline in your response:
    - a) Log-based — build evals from real usage logs (recommended if logs exist)
    - b) Synthetic — generate evals from SKILL.md via LLM (for new skills with no data)
 
-2. **Max Entries:** 50 (default — how many eval entries to generate)
+2. **Skill Path** (synthetic mode only)
+   - Provide absolute or relative path to the target SKILL.md
+   - Example: `./skills/pptx/SKILL.md`
 
-3. **Model** (synthetic mode only)
+3. **Max Entries:** 50 (default — how many eval entries to generate)
+
+4. **Model** (synthetic mode only)
    - a) Fast (haiku) — quick generation
    - b) Balanced (sonnet) — better query diversity (recommended)
    - c) Best (opus) — highest quality synthetic queries
@@ -198,7 +202,7 @@ After the user responds, parse their selections and map each choice to the corre
 | 1a (log-based) | _(no flag, default)_ |
 | 1b (synthetic) | `--synthetic --skill-path <path>` |
 | Custom max entries | `--max <value>` |
-| 3a (haiku) | `--model haiku` |
+| 3a (haiku) | `--model haiku` (resolved internally by selftune) |
 | 3b (sonnet) | `--model sonnet` |
 | 3c (opus) | `--model opus` |
 | Custom output path | `--out <path>` |

@@ -11,12 +11,8 @@ Investigate why a specific skill is underperforming. Analyze telemetry logs,
 grading results, and session transcripts to identify root causes and recommend
 targeted fixes.
 
-**Activate when the user says:**
-- "diagnose skill issues"
-- "why is skill X underperforming"
-- "what's wrong with this skill"
-- "skill failure analysis"
-- "debug skill performance"
+**Activation policy:** This is a subagent-only role, spawned by the main agent.
+If a user asks for diagnosis directly, the main agent should route to this subagent.
 
 ## Connection to Workflows
 

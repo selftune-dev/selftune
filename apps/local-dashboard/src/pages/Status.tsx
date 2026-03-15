@@ -89,7 +89,11 @@ function CheckCard({ check }: { check: HealthCheck }) {
     description: "",
     icon: <HardDriveIcon className="size-4 text-muted-foreground" />,
   }
-  const display = STATUS_DISPLAY[check.status]
+  const display = STATUS_DISPLAY[check.status] ?? {
+    icon: <AlertCircleIcon className="size-4 text-muted-foreground" />,
+    variant: "outline" as const,
+    label: check.status,
+  }
 
   return (
     <Card>

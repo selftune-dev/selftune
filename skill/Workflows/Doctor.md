@@ -174,9 +174,12 @@ recurring failures that basic fixes do not resolve — spawn the
 > `~/.claude/settings.json` point to actual files.
 
 **No telemetry data available**
-> Run `selftune doctor`. If log files are missing, route to the Initialize
-> workflow to install hooks. Inform the user that at least one session must
-> run after hooks are installed to generate data.
+> Run `selftune doctor`. Route fixes by platform:
+> - **Claude Code** — route to the Initialize workflow to install hooks
+> - **Codex** — run `selftune ingest codex` or `selftune ingest wrap-codex`
+> - **OpenCode** — run `selftune ingest opencode`
+> - **OpenClaw** — run `selftune ingest openclaw`
+> At least one session must complete after setup to generate telemetry.
 
 **User asks to check selftune health**
 > Run `selftune doctor`. Parse `.healthy` and `.summary`. If `healthy: true`,

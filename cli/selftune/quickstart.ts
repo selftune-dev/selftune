@@ -98,7 +98,7 @@ export async function quickstart(): Promise<void> {
   const hasSkills = skillRecords.length > 0;
 
   if (!hasSessions) {
-    console.log("[2/3] No sessions found. Checking for skills from hooks...");
+    console.log("      No sessions found. Checking for skills from hooks...");
     if (hasSkills) {
       const skillNames = [...new Set(skillRecords.map((r) => r.skill_name))].sort();
       console.log(`      Found ${skillNames.length} skill(s) from hooks: ${skillNames.join(", ")}`);

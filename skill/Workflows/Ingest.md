@@ -224,7 +224,9 @@ stream for telemetry; it does not modify Codex behavior.
 4. Verify with `selftune doctor` after first use
 
 If telemetry capture fails, check that the codex binary is accessible and that
-the target working directory exists. Run `selftune doctor` to verify hook health.
+the target working directory exists. Inspect the wrapper's stderr output for
+error details — `wrap-codex` captures telemetry through the Codex wrapper, not
+through hooks.
 
 ---
 
