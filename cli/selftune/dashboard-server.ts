@@ -5,6 +5,7 @@
  * Endpoints:
  *   GET  /                     — Serve dashboard SPA shell
  *   GET  /api/health           — Dashboard server health probe
+ *   GET  /api/v2/doctor        — System health diagnostics (config, logs, hooks, evolution)
  *   GET  /api/v2/overview      — SQLite-backed overview payload
  *   GET  /api/v2/skills/:name  — SQLite-backed per-skill report
  *   POST /api/actions/watch    — Trigger `selftune watch` for a skill
@@ -528,6 +529,12 @@ export async function startDashboardServer(
         );
       }
 
+      // ---- GET /api/v2/doctor ---- System health diagnostics
+      if (url.pathname === "/api/v2/doctor" && req.method === "GET") {
+        const result = doctor();
+        return Response.json(result, { headers: corsHeaders() });
+      }
+
       // ---- SPA static assets ---- Serve from dist/assets/
       if (spaDir && req.method === "GET" && url.pathname.startsWith("/assets/")) {
         const filePath = resolve(spaDir, `.${url.pathname}`);
@@ -817,17 +824,46 @@ export async function startDashboardServer(
             SELECT DISTINCT session_id FROM skill_usage WHERE skill_name = ?
           )`;
 
-        // 3. Token usage aggregated from sessions that used this skill
-        const tokenUsage = db
+        // 3. Selftune resource usage from orchestrate runs that touched this skill
+        const orchestrateRows = db
           .query(
-            `${skillSessionsCte}
-             SELECT
-               COALESCE(SUM(st.input_tokens), 0) as total_input_tokens,
-               COALESCE(SUM(st.output_tokens), 0) as total_output_tokens
-             FROM session_telemetry st
-             WHERE st.session_id IN (SELECT session_id FROM skill_sessions)`,
+            `SELECT skill_actions_json FROM orchestrate_runs
+             WHERE skill_actions_json LIKE ? ESCAPE '\\'`,
           )
-          .get(skillName) as { total_input_tokens: number; total_output_tokens: number };
+          .all(
+            `%${skillName.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")}%`,
+          ) as Array<{
+          skill_actions_json: string;
+        }>;
+
+        let totalLlmCalls = 0;
+        let totalSelftunElapsedMs = 0;
+        let selftuneRunCount = 0;
+        for (const row of orchestrateRows) {
+          try {
+            const actions = JSON.parse(row.skill_actions_json) as Array<{
+              skill: string;
+              action?: string;
+              elapsed_ms?: number;
+              llm_calls?: number;
+            }>;
+            for (const a of actions) {
+              if (a.skill !== skillName || a.action === "skip" || a.action === "watch") continue;
+              if (a.elapsed_ms === undefined && a.llm_calls === undefined) continue;
+              totalSelftunElapsedMs += a.elapsed_ms ?? 0;
+              totalLlmCalls += a.llm_calls ?? 0;
+              selftuneRunCount++;
+            }
+          } catch {
+            // skip malformed JSON
+          }
+        }
+        const selftuneStats = {
+          total_llm_calls: totalLlmCalls,
+          total_elapsed_ms: totalSelftunElapsedMs,
+          avg_elapsed_ms: selftuneRunCount > 0 ? totalSelftunElapsedMs / selftuneRunCount : 0,
+          run_count: selftuneRunCount,
+        };
 
         // 4. Skill invocations with confidence scores
         const invocationsWithConfidence = db
@@ -864,15 +900,17 @@ export async function startDashboardServer(
           );
         }
 
-        // 5. Duration stats from execution_facts for sessions using this skill
-        const durationStats = db
+        // 5. Duration/error stats from execution_facts (session-level metrics)
+        const executionRow = db
           .query(
             `${skillSessionsCte}
              SELECT
-               COALESCE(AVG(ef.duration_ms), 0) as avg_duration_ms,
-               COALESCE(SUM(ef.duration_ms), 0) as total_duration_ms,
-               COUNT(*) as execution_count,
-               COALESCE(SUM(ef.errors_encountered), 0) as total_errors
+               COALESCE(AVG(ef.duration_ms), 0) AS avg_duration_ms,
+               COALESCE(SUM(ef.duration_ms), 0) AS total_duration_ms,
+               COUNT(ef.duration_ms) AS execution_count,
+               COALESCE(SUM(ef.errors_encountered), 0) AS total_errors,
+               COALESCE(SUM(ef.input_tokens), 0) AS total_input_tokens,
+               COALESCE(SUM(ef.output_tokens), 0) AS total_output_tokens
              FROM execution_facts ef
              WHERE ef.session_id IN (SELECT session_id FROM skill_sessions)`,
           )
@@ -881,7 +919,9 @@ export async function startDashboardServer(
           total_duration_ms: number;
           execution_count: number;
           total_errors: number;
-        };
+          total_input_tokens: number;
+          total_output_tokens: number;
+        } | null;
 
         // 6. Prompt texts from sessions that invoked this skill
         const promptSamples = db
@@ -931,12 +971,21 @@ export async function startDashboardServer(
             ...report,
             evolution: evolutionWithSnapshot,
             pending_proposals,
-            token_usage: tokenUsage,
+            token_usage: {
+              total_input_tokens: executionRow?.total_input_tokens ?? 0,
+              total_output_tokens: executionRow?.total_output_tokens ?? 0,
+            },
             canonical_invocations: invocationsWithConfidence.map((i) => ({
               ...i,
               triggered: i.triggered === 1,
             })),
-            duration_stats: durationStats,
+            duration_stats: {
+              avg_duration_ms: executionRow?.avg_duration_ms ?? 0,
+              total_duration_ms: executionRow?.total_duration_ms ?? 0,
+              execution_count: executionRow?.execution_count ?? 0,
+              total_errors: executionRow?.total_errors ?? 0,
+            },
+            selftune_stats: selftuneStats,
             prompt_samples: promptSamples.map((p) => ({
               ...p,
               is_actionable: p.is_actionable === 1,

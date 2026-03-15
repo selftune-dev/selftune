@@ -109,7 +109,7 @@ This reuse validates the pure-function design: no side effects, fully determinis
 
 The monitoring pipeline feeds into the auto-activation system to close the loop between regression detection and user action:
 
-1. **Regression triggers activation.** When `watch` detects a regression (pass rate below threshold), the `WatchResult` is available to the auto-activation hook. The `regression-detected` activation rule picks this up and suggests `selftune rollback` to the user on their next prompt.
+1. **Regression triggers activation.** When `watch` detects a regression (pass rate below threshold), the `WatchResult` is available to the auto-activation hook. The `regression-detected` activation rule picks this up and suggests `selftune evolve rollback` to the user on their next prompt.
 
 2. **Memory writer records regression.** The memory writer appends the regression event to `~/.selftune/memory/context.md`, preserving the snapshot details (pass rate, baseline, threshold) so that subsequent sessions have full context about what went wrong.
 

@@ -31,19 +31,19 @@ the repo root so hook paths and telemetry cover the whole workspace.
 ## Codex-Only
 
 - Install the CLI and run `selftune init --agent codex`
-- Use `selftune wrap-codex -- <args>` for real-time capture or
-  `selftune ingest-codex` for batch ingestion
+- Use `selftune ingest wrap-codex -- <args>` for real-time capture or
+  `selftune ingest codex` for batch ingestion
 - Use `selftune doctor` to verify the shared logs are healthy
 
 ## OpenCode-Only
 
 - Run `selftune init --agent opencode`
-- Use `selftune ingest-opencode` to backfill session data into the shared logs
+- Use `selftune ingest opencode` to backfill session data into the shared logs
 
 ## OpenClaw-Only
 
 - Run `selftune init --agent openclaw`
-- Use `selftune ingest-openclaw` for ingestion
+- Use `selftune ingest openclaw` for ingestion
 - Use `selftune doctor` to verify the shared logs are healthy
 - Use `selftune cron setup` if the user specifically wants OpenClaw-managed recurring runs
 

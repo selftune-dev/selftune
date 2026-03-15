@@ -9,44 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **Local Dashboard SPA** — React + Vite + TypeScript SPA replacing the legacy embedded-HTML dashboard as the default view
-  - Overview page with KPI cards, skill health grid with status filters, evolution feed, unmatched queries
-  - Per-skill drilldown with usage stats, invocation records, evidence viewer, evolution timeline, pending proposals
-  - Collapsible sidebar navigation listing all skills by health status
-  - shadcn/ui component library with dark/light theme toggle and selftune branding
-  - TanStack Query for data fetching with smart caching, background refetch, and instant back-navigation
-  - 15-second background polling against SQLite-backed v2 API endpoints via TanStack Query `refetchInterval` (SSE was removed — SQLite reads are cheap enough for polling)
-  - New components: `EvidenceViewer`, `EvolutionTimeline`, `ActivityTimeline`, `SkillHealthGrid`, `SectionCards`, `InfoTip`
-  - Glossary tooltips on all metric labels (overview KPI cards, skill report KPI cards) explaining what each metric measures
-  - Tab description tooltips on skill report tabs (Evidence, Invocations, Prompts, Sessions, Pending)
-  - Collapsible lifecycle legend in evolution timeline explaining proposal stages (Created, Validated, Deployed, Rejected, Rolled Back)
-  - Evidence context banner explaining the evidence trail concept
-  - Renamed "Per-Entry Results" to "Individual Test Cases" for clarity
-  - Onboarding flow: full empty-state guide for first-time users (3-step setup), dismissible welcome banner for returning users (localStorage-persisted)
-- **SQLite v2 API endpoints** — `GET /api/v2/overview` and `GET /api/v2/skills/:name` backed by materialized SQLite queries (`getOverviewPayload()`, `getSkillReportPayload()`, `getSkillsList()`)
-- **SQL query optimizations** — Replaced `NOT IN` subqueries with `LEFT JOIN + IS NULL`, moved JS-side dedup to SQL `GROUP BY`, added `LIMIT 200` to unbounded evidence queries
-- **SPA serving from dashboard server** — Built SPA served at `/` as the supported local dashboard experience
-- **Orchestrate decision report** — `selftune orchestrate` now prints a 5-phase human-readable decision report (sync, status, decisions, evolution results, watch) to stderr, and enriched JSON with a per-skill `decisions` array to stdout
-- **Source-truth-driven pipeline** — Transcripts and rollouts are now the authoritative source; `sync` rebuilds repaired overlays from source data rather than relying solely on hook-time capture
-- **Telemetry contract package** — `@selftune/telemetry-contract` workspace package with canonical schema types, validators, versioning, metadata, and golden fixture tests
-- **Test split** — `make test-fast` / `make test-slow` and `bun run test:fast` / `bun run test:slow` for faster development feedback loop
-
-## [0.2.1] — 2026-03-10
-
-### Changed
-
-- Updated package metadata to point to the new `selftune-dev/selftune` GitHub org and repository URLs.
-- Organizational move follow-up release so npm metadata resolves to the new public repo.
+- **Real-time improvement signal detection** — `prompt-log` hook detects user corrections ("why didn't you use X?") and explicit skill requests via pure regex patterns. Signals are logged to `~/.claude/improvement_signals.jsonl` with skill name extraction from installed skills.
+- **Signal-reactive orchestration** — `session-stop` hook checks for pending improvement signals and spawns a focused `selftune orchestrate --max-skills 2` run in the background. Respects a 30-minute lockfile to prevent concurrent runs.
+- **Signal-aware candidate selection** — Orchestrator reads pending signals and boosts priority for mentioned skills (+150 per signal, capped at +450). Signaled skills bypass the minimum evidence gate and the "UNGRADED with 0 missed queries" gate.
+- **Orchestrate lockfile** — `acquireLock()`/`releaseLock()` with PID+timestamp in `~/.claude/.orchestrate.lock`. 30-minute stale threshold prevents deadlocks from crashed runs.
+- **Signal consumption** — After an orchestrate run completes, consumed signals are marked with `consumed: true`, `consumed_at`, and `consumed_by_run` so they don't affect subsequent runs.
 
 ## [0.2.0] — 2026-03-08
 
 ### Added
 
 - **Full skill body evolution** — Teacher-student model for evolving routing tables and complete skill bodies with 3-gate validation (structural, trigger, quality)
-- **Synthetic eval generation** — `selftune evals --synthetic --skill <name> --skill-path <path>` generates eval sets from SKILL.md via LLM without needing real session logs. Solves cold-start for new skills.
+- **Synthetic eval generation** — `selftune eval generate --synthetic --skill <name> --skill-path <path>` generates eval sets from SKILL.md via LLM without needing real session logs. Solves cold-start for new skills.
 - **Batch trigger validation** — `validateProposalBatched()` batches 10 queries per LLM call (configurable via `TRIGGER_CHECK_BATCH_SIZE`). ~10x faster evolution loops. Sequential `validateProposalSequential()` kept for backward compat.
 - **Cheap-loop evolution mode** — `selftune evolve --cheap-loop` uses haiku for proposal generation and validation, sonnet only for the final deployment gate. New `--gate-model` and `--proposal-model` flags for manual per-stage control.
-- **Validation model selection** — `--validation-model` flag on `evolve` and `evolve-body` commands (default: `haiku`).
+- **Validation model selection** — `--validation-model` flag on `evolve` and `evolve body` commands (default: `haiku`).
 - **Proposal model selection** — `--proposal-model` flag on `evolve`, passed through to `generateProposal()` and `generateMultipleProposals()`.
 - **Gate validation dependency injection** — `gateValidateProposal` added to `EvolveDeps` for testability.
 - **Auto-activation system** — `auto-activate.ts` UserPromptSubmit hook detects when selftune should run and outputs formatted suggestions; session state tracking prevents repeated nags; PAI coexistence support
@@ -78,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `selftune status` — CLI skill health summary with pass rates, trends, and system health
 - `selftune last` — Quick insight from the most recent session
 - `selftune dashboard` — Skill-health-centric HTML dashboard with grid view and drill-down
-- `selftune replay` — Claude Code transcript replay for retroactive log backfill
+- `selftune ingest claude` — Claude Code transcript replay for retroactive log backfill
 - `selftune contribute` — Opt-in anonymized data export for community contribution
 - CI/CD workflows: publish, auto-bump, CodeQL, scorecard
 - FOSS governance: LICENSE (MIT), CODE_OF_CONDUCT, CONTRIBUTING, SECURITY
@@ -88,7 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- CLI entry point with 10 commands: `init`, `evals`, `grade`, `evolve`, `rollback`, `watch`, `doctor`, `ingest-codex`, `ingest-opencode`, `wrap-codex`
+- CLI entry point with 10 commands: `init`, `eval generate`, `grade`, `evolve`, `evolve rollback`, `watch`, `doctor`, `ingest codex`, `ingest opencode`, `ingest wrap-codex`
 - Agent auto-detection for Claude Code, Codex, and OpenCode
 - Telemetry hooks for Claude Code (`prompt-log`, `skill-eval`, `session-stop`)
 - Codex wrapper and batch ingestor for rollout logs

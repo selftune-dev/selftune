@@ -503,10 +503,10 @@ export async function cliMain(): Promise<void> {
   });
 
   if (values.help) {
-    console.log(`selftune evolve-body — Evolve a skill body or routing table
+    console.log(`selftune evolve body — Evolve a skill body or routing table
 
 Usage:
-  selftune evolve-body --skill <name> --skill-path <path> [options]
+  selftune evolve body --skill <name> --skill-path <path> [options]
 
 Options:
   --skill             Skill name (required)

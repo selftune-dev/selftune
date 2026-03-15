@@ -30,6 +30,7 @@ import {
   CircleDotIcon,
   FolderIcon,
   GlobeIcon,
+  HeartPulseIcon,
   HelpCircleIcon,
   SearchIcon,
   XCircleIcon,
@@ -250,6 +251,18 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              isActive={location.pathname === "/status"}
+              tooltip="System Status"
+              render={<Link to="/status" />}
+            >
+              <HeartPulseIcon className="size-4" />
+              <span>System Status</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
         <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
           <ActivityIcon className="size-3" />
           <span>selftune{version ? ` v${version}` : ""}</span>

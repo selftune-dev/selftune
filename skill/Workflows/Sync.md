@@ -6,10 +6,10 @@ from real transcripts/rollouts instead of stale hook data.
 
 ## When to Use
 
-- Before trusting `status`, `dashboard`, `watch`, or `evolve`
-- After running a lot of Claude Code, Codex, OpenCode, or OpenClaw sessions
-- When host logs are polluted and you need the repaired/source-first view
-- Before export to cloud ingest
+- Before running `status`, `dashboard`, `watch`, or `evolve` when data may be stale
+- The user has run many Claude Code, Codex, OpenCode, or OpenClaw sessions since last sync
+- The agent detects host logs may be polluted and needs the repaired/source-first view
+- Before exporting data to cloud ingest
 
 ## Default Command
 
@@ -41,26 +41,48 @@ Writes/refreshed data:
 
 ## Steps
 
-1. Run `selftune sync --dry-run` to preview source counts
-2. Run `selftune sync`
-3. Inspect the JSON summary for source counts and repaired-record totals
-4. Then run `selftune status`, `selftune dashboard`, `selftune watch --sync-first`, or `selftune evolve --sync-first`
+### 1. Preview Sync
+
+Run `selftune sync --dry-run`. The output includes per-source `scanned`
+counts. Report the preview summary to the user.
+
+### 2. Run Sync
+
+Run `selftune sync`. The output includes:
+- Per-source `scanned`, `synced`, and `skipped` counts
+- Repaired overlay totals
+- Any errors or warnings
+
+### 3. Verify Results
+
+Verify there are no sync errors and that per-source counters are internally
+consistent (`scanned`, `synced`, `skipped`). `synced=0` is valid when no
+new sessions exist since the last sync. Run `selftune doctor` only when
+sync reports source/hook failures or expected active sources are missing.
+
+### 4. Continue to Next Workflow
+
+After sync completes, proceed with the user's intended workflow:
+`selftune status`, `selftune dashboard`, `selftune watch --sync-first`,
+or `selftune evolve --sync-first`.
 
 ## Common Patterns
 
-**"Refresh everything from source truth"**
-> Run `selftune sync`
+**User wants to refresh telemetry data**
+> Run `selftune sync`. Report per-source `scanned`, `synced`, and `skipped` counts.
 
-**"Only rescan recent sessions"**
-> Run `selftune sync --since 2026-03-01`
+**User wants to sync only recent sessions**
+> Run `selftune sync --since <date>` with the user's specified date.
 
-**"Start from scratch"**
-> Run `selftune sync --force`
+**User wants a full rescan from scratch**
+> Run `selftune sync --force`. This ignores per-source markers and rescans
+> all sessions.
 
-**"How do I know it worked?"**
-> The command prints a JSON summary with per-source `scanned`, `synced`, and
-> `skipped` counts plus repaired overlay totals.
+**Agent needs to verify sync worked**
+> Check per-source `scanned`, `synced`, and `skipped` counts. `synced=0`
+> is normal when data is already up-to-date. Verify `scanned > 0` for
+> expected sources to confirm sync ran successfully.
 
-**"What should scheduled monitoring/evolution call?"**
-> Use `selftune watch --sync-first ...` and `selftune evolve --sync-first ...`
-> so the command refreshes source truth before making decisions.
+**Agent is chaining into monitoring or evolution**
+> Use `selftune watch --sync-first` or `selftune evolve --sync-first` to
+> refresh source truth automatically before making decisions.

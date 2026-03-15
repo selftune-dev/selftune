@@ -18,6 +18,19 @@ vs. new descriptions, and provides an approve/reject verdict with reasoning.
 - "review pending changes"
 - "should I deploy this evolution"
 
+## Connection to Workflows
+
+This agent is spawned by the main agent as a subagent to provide a safety
+review before deploying an evolution.
+
+**Connected workflows:**
+- **Evolve** — in the review-before-deploy step, spawn this agent to evaluate the proposal for regressions, scope creep, and eval set quality
+- **EvolveBody** — same role for full-body and routing-table evolutions
+
+**Mode behavior:**
+- **Interactive mode** — spawn this agent before deploying an evolution to get a human-readable safety review with an approve/reject verdict
+- **Autonomous mode** — the orchestrator handles validation internally using regression thresholds and auto-rollback; this agent is for interactive safety reviews only
+
 ## Context
 
 You need access to:
@@ -114,7 +127,7 @@ Issue an approve or reject decision with full reasoning.
 | Command | Purpose |
 |---------|---------|
 | `selftune evolve --skill <name> --skill-path <path> --dry-run` | Generate proposal without deploying |
-| `selftune evals --skill <name>` | Check eval set used for validation |
+| Read eval file from evolve output or audit log | Inspect the exact eval set used for validation |
 | `selftune watch --skill <name> --skill-path <path>` | Check current performance baseline |
 | `selftune status` | Overall skill health context |
 

@@ -122,7 +122,7 @@ Decompose the monolithic SKILL.md into the target directory structure.
 | A6 | Create `Workflows/Rollback.md` from rollback section | — |
 | A7 | Create `Workflows/Watch.md` from watch section | — |
 | A8 | Create `Workflows/Doctor.md` from doctor section | — |
-| A9 | Create `Workflows/Ingest.md` combining ingest-codex + ingest-opencode + wrap-codex | — |
+| A9 | Create `Workflows/Ingest.md` combining ingest codex + ingest opencode + ingest wrap-codex | — |
 | A10 | Create `Workflows/Initialize.md` (references Track B output format) | B1 |
 | A11 | Rewrite SKILL.md as slim routing table | A3-A10 |
 

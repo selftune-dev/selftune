@@ -1,9 +1,9 @@
 /**
- * selftune quickstart — Guided onboarding that runs init, replay, and status.
+ * selftune quickstart — Guided onboarding that runs init, ingest, and status.
  *
  * Steps:
  *  1. Run `init` if config doesn't exist
- *  2. Run `replay` if marker file doesn't exist
+ *  2. Run `ingest claude` if marker file doesn't exist
  *  3. Run `status` to display current state
  *  4. Suggest top 3 skills to evolve
  */
@@ -56,11 +56,11 @@ export async function quickstart(): Promise<void> {
     }
   }
 
-  // Step 2: Replay if marker doesn't exist
+  // Step 2: Ingest if marker doesn't exist
   if (existsSync(CLAUDE_CODE_MARKER)) {
-    console.log("[2/3] Replay marker exists, skipping replay.");
+    console.log("[2/3] Ingest marker exists, skipping ingestion.");
   } else {
-    console.log("[2/3] Running replay...");
+    console.log("[2/3] Running ingest claude...");
     try {
       const transcriptFiles = findTranscriptFiles(CLAUDE_CODE_PROJECTS_DIR);
       if (transcriptFiles.length === 0) {
@@ -85,9 +85,28 @@ export async function quickstart(): Promise<void> {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`      Replay failed: ${msg}`);
-      console.log("      You can run `selftune replay` manually to troubleshoot.");
+      console.error(`      Ingest failed: ${msg}`);
+      console.log("      You can run `selftune ingest claude` manually to troubleshoot.");
     }
+  }
+
+  // Check if any telemetry was produced after ingest
+  const telemetry = readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG);
+  const skillRecords = readEffectiveSkillUsageRecords();
+  const queryRecords = readJsonl<QueryLogRecord>(QUERY_LOG);
+  const hasSessions = telemetry.length > 0 || queryRecords.length > 0;
+  const hasSkills = skillRecords.length > 0;
+
+  if (!hasSessions) {
+    console.log("      No sessions found. Checking for skills from hooks...");
+    if (hasSkills) {
+      const skillNames = [...new Set(skillRecords.map((r) => r.skill_name))].sort();
+      console.log(`      Found ${skillNames.length} skill(s) from hooks: ${skillNames.join(", ")}`);
+    } else {
+      console.log("      No skills detected yet. Use your agent normally, then run");
+      console.log("      `selftune status` to see health scores.");
+    }
+    console.log("");
   }
 
   // Step 3: Status
@@ -95,9 +114,6 @@ export async function quickstart(): Promise<void> {
   console.log("");
 
   try {
-    const telemetry = readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG);
-    const skillRecords = readEffectiveSkillUsageRecords();
-    const queryRecords = readJsonl<QueryLogRecord>(QUERY_LOG);
     const auditEntries = readJsonl<EvolutionAuditEntry>(EVOLUTION_AUDIT_LOG);
     const doctorResult = doctor();
 
@@ -177,7 +193,7 @@ Usage:
 
 Steps:
   1. Runs init if ~/.selftune/config.json doesn't exist
-  2. Runs replay if session marker doesn't exist
+  2. Runs ingest claude if session marker doesn't exist
   3. Shows current status
   4. Suggests top skills to evolve`);
     process.exit(0);

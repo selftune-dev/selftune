@@ -19,8 +19,6 @@ selftune watch --skill <name> --skill-path <path> [options]
 | `--threshold <n>` | Regression threshold (drop from baseline) | 0.1 |
 | `--baseline <n>` | Explicit baseline pass rate (0-1) | Auto-detected from last deploy |
 | `--auto-rollback` | Automatically rollback on detected regression | Off |
-| `--sync-first` | Refresh source-truth telemetry before reading watch inputs | Off |
-| `--sync-force` | Force a full source rescan during `--sync-first` | Off |
 
 ## Output Format
 
@@ -69,37 +67,26 @@ selftune watch --skill <name> --skill-path <path> [options]
 
 ### 0. Read Evolution Context
 
-Before starting, read `~/.selftune/memory/context.md` for session context:
+Read `~/.selftune/memory/context.md` for session context:
 - Active evolutions and their current status
 - Known issues and regression history
 - Last update timestamp
 
-This provides continuity across context resets. If the file doesn't exist,
-proceed normally -- it will be created after the first watch.
+If the file does not exist, proceed normally -- it will be created after
+the first watch.
 
 The evolution-guard hook prevents conflicting SKILL.md edits while watch is
 evaluating the skill. The auto-activation system uses watch results to
 adjust suggestion confidence -- skills showing regressions get flagged for
 attention in subsequent prompts.
 
-### 1. Refresh Source Truth (Recommended)
-
-When monitoring after a burst of activity, or on hosts with extra wrappers
-like PAI/Paperclip, prefer:
-
-```bash
-selftune watch --skill pptx --skill-path /path/to/SKILL.md --sync-first
-```
-
-This rebuilds the authoritative repaired overlay before watch reads logs.
-
-### 2. Run Watch
+### 1. Run Watch
 
 ```bash
 selftune watch --skill pptx --skill-path /path/to/SKILL.md
 ```
 
-### 3. Check Regression Status
+### 2. Check Regression Status
 
 Parse the JSON output. Key decision points:
 
@@ -110,17 +97,17 @@ Parse the JSON output. Key decision points:
 | `regression` | Investigate. Consider rollback. |
 | `insufficient_data` | Wait for more sessions before evaluating. |
 
-### 4. Decide Action
+### 3. Decide Action
 
 If regression is detected:
 - Review recent session transcripts to understand what changed
 - Check if the eval set is still representative
-- Run `rollback` if the regression is confirmed (see `Workflows/Rollback.md`)
+- Run `evolve rollback` if the regression is confirmed (see `Workflows/Rollback.md`)
 
 If `--auto-rollback` was set, the command automatically restores the
 previous description and logs a `rolled_back` entry.
 
-### 5. Report
+### 4. Report
 
 Summarize the snapshot for the user:
 - Current pass rate vs baseline
@@ -128,7 +115,7 @@ Summarize the snapshot for the user:
 - Whether regression was detected
 - Recommended action
 
-### 6. Update Memory
+### 5. Update Memory
 
 After watch completes, the memory writer updates
 `~/.selftune/memory/context.md` with the current regression status,
@@ -154,3 +141,13 @@ context window resets before the user acts on the results.
 **"Set a custom baseline"**
 > Use `--baseline 0.85` to override auto-detection. Useful when the
 > auto-detected baseline is from an older evolution.
+
+## Autonomous Mode
+
+When called by `selftune orchestrate`, watch runs automatically on recently
+evolved skills:
+
+- Checks all skills evolved in the last --recent-window hours (default 24)
+- Auto-rollback is enabled by default
+- Results are included in the orchestrate run report
+- No user notification — regressions are handled silently via rollback

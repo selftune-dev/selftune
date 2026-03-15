@@ -16,10 +16,10 @@ selftune currently evolves only the description block in SKILL.md — the text b
 |-------|------|------|-----------|------|
 | 1 | `foundation` | Engineer | Foundation types + shared utils | Prereqs for all |
 | 2 | `body-evolve` | Engineer | Skill body evolution pipeline | 1, 6, 8 |
-| 3 | `baseline` | Engineer | Baseline comparison system | 2, 9 |
+| 3 | `grade baseline` | Engineer | Baseline comparison system | 2, 9 |
 | 4 | `token-pareto` | Engineer | Token efficiency + Pareto expansion | 3 |
-| 5 | `unit-tests` | Engineer | Skill-level unit test framework | 5 |
-| 6 | `composability` | Engineer | Multi-skill composability analysis | 7 |
+| 5 | `eval unit-test` | Engineer | Skill-level unit test framework | 5 |
+| 6 | `eval composability` | Engineer | Multi-skill composability analysis | 7 |
 | 7 | `skillsbench` | Engineer | SkillsBench task corpus importer | 10 |
 
 Agent 1 (`foundation`) runs first and unblocks agents 2-7. Agents 2-7 run in parallel after foundation completes.
@@ -185,7 +185,7 @@ export interface SkillsBenchTask {
 ### 1f. Update architecture linter
 
 **File:** `lint-architecture.ts` (modify)
-- Add `EVAL_FILES` set with new eval modules: `baseline.ts`, `composability.ts`, `unit-test.ts`, `import-skillsbench.ts`
+- Add `EVAL_FILES` set with new eval modules: `baseline.ts`, `composability.ts`, `unit-test.ts`, `import.ts`
 - Add `EVAL_FORBIDDEN` list: same as `CONTRIBUTE_FORBIDDEN` (no hooks/ingestors/grading/evolution/monitoring imports)
 - Add new evolution files to `EVOLUTION_FILES`: `propose-routing.ts`, `propose-body.ts`, `validate-body.ts`, `validate-routing.ts`, `refine-body.ts`, `evolve-body.ts`
 
@@ -238,7 +238,7 @@ export interface SkillsBenchTask {
 
 ### 2f. Body evolution orchestrator
 
-**File:** `cli/selftune/evolution/evolve-body.ts` (new)
+**File:** `cli/selftune/evolution/evolve-body.ts` (new, CLI command: `evolve body`)
 - `EvolveBodyDeps` interface (dependency injection matching `evolve.ts` pattern)
 - `EvolveBodyOptions` with `target`, `teacherAgent`, `studentAgent`, `taskDescription`, `fewShotPaths`
 - Orchestrator loop:
@@ -256,7 +256,7 @@ export interface SkillsBenchTask {
 ### 2g. CLI command routing
 
 **File:** `cli/selftune/index.ts` (modify)
-- Add `case "evolve-body"` routing to `evolve-body.ts`
+- Add `case "evolve body"` routing to `evolve-body.ts`
 - Flags: `--skill`, `--skill-path`, `--target routing_table|full_body`, `--teacher-agent`, `--student-agent`, `--teacher-model`, `--student-model`, `--dry-run`, `--task-description`, `--few-shot`
 
 ### 2h. Tests
@@ -270,7 +270,7 @@ export interface SkillsBenchTask {
 
 ---
 
-## Workstream 3: Baseline Comparison (Agent `baseline`) — Recs 2, 9
+## Workstream 3: Baseline Comparison (Agent `grade baseline`) — Recs 2, 9
 
 **Depends on:** Workstream 1 (trigger-check extraction + types)
 
@@ -295,8 +295,8 @@ export interface SkillsBenchTask {
 ### 3c. Standalone baseline CLI command
 
 **File:** `cli/selftune/index.ts` (modify)
-- Add `case "baseline"` routing
-- `selftune baseline --skill <name> --skill-path <path> [--agent claude]`
+- Add `case "grade baseline"` routing
+- `selftune grade baseline --skill <name> --skill-path <path> [--agent claude]`
 
 ### 3d. Tests
 
@@ -339,7 +339,7 @@ export interface SkillsBenchTask {
 
 ---
 
-## Workstream 5: Skill Unit Tests (Agent `unit-tests`) — Rec 5
+## Workstream 5: Skill Unit Tests (Agent `eval unit-test`) — Rec 5
 
 **Depends on:** Workstream 1 (trigger-check extraction + types)
 
@@ -365,7 +365,7 @@ export interface SkillsBenchTask {
 ### 5c. CLI command
 
 **File:** `cli/selftune/index.ts` (modify)
-- `selftune unit-test --skill <name> --tests <path> [--run-agent] [--generate]`
+- `selftune eval unit-test --skill <name> --tests <path> [--run-agent] [--generate]`
 - `--generate` flag creates tests from skill content; without it, runs existing tests
 
 ### 5d. Tests
@@ -375,7 +375,7 @@ export interface SkillsBenchTask {
 
 ---
 
-## Workstream 6: Composability Analysis (Agent `composability`) — Rec 7
+## Workstream 6: Composability Analysis (Agent `eval composability`) — Rec 7
 
 **Depends on:** Workstream 1 (types only)
 
@@ -392,7 +392,7 @@ export interface SkillsBenchTask {
 ### 6b. CLI command
 
 **File:** `cli/selftune/index.ts` (modify)
-- `selftune composability --skill <name> [--window N]`
+- `selftune eval composability --skill <name> [--window N]`
 - Reads `session_telemetry_log.jsonl`, calls `analyzeComposability()`, prints report
 
 ### 6c. Tests
@@ -419,7 +419,7 @@ export interface SkillsBenchTask {
 ### 7b. CLI command
 
 **File:** `cli/selftune/index.ts` (modify)
-- `selftune import-skillsbench --dir <path> --skill <name> --output <path> [--match-strategy exact|fuzzy]`
+- `selftune eval import --dir <path> --skill <name> --output <path> [--match-strategy exact|fuzzy]`
 
 ### 7c. Tests
 
@@ -437,7 +437,7 @@ Phase 2 (all parallel):
   Agent 2: body-evolve    ← largest workstream
   Agent 3: baseline
   Agent 4: token-pareto
-  Agent 5: unit-tests
+  Agent 5: eval unit-test
   Agent 6: composability
   Agent 7: skillsbench
 ```
@@ -485,9 +485,9 @@ After all agents complete:
 2. **Unit tests:** `make test` — all existing + new tests pass
 3. **Sandbox (Layer 1):** `make sandbox` — read-only CLI smoke test still passes
 4. **Manual smoke test for each new command:**
-   - `selftune baseline --skill Research --skill-path ~/.claude/skills/Research/SKILL.md`
-   - `selftune unit-test --skill Research --generate`
-   - `selftune composability --skill Research`
-   - `selftune evolve-body --skill Research --skill-path ~/.claude/skills/Research/SKILL.md --target routing_table --dry-run`
+   - `selftune grade baseline --skill Research --skill-path ~/.claude/skills/Research/SKILL.md`
+   - `selftune eval unit-test --skill Research --generate`
+   - `selftune eval composability --skill Research`
+   - `selftune evolve body --skill Research --skill-path ~/.claude/skills/Research/SKILL.md --target routing_table --dry-run`
    - `selftune evolve --with-baseline --skill Research --skill-path ~/.claude/skills/Research/SKILL.md --dry-run`
-5. **Integration test:** Run full `evolve-body --target full_body --dry-run` against a real skill — verify 3-gate validation produces reasonable scores
+5. **Integration test:** Run full `evolve body --target full_body --dry-run` against a real skill — verify 3-gate validation produces reasonable scores

@@ -42,20 +42,25 @@ Use `--review-required` only when you want a stricter policy for a specific run.
 
 ## Common Patterns
 
-**"Run the full loop now"**
-> Run `selftune orchestrate`.
+**User asks to improve skills or run the full loop**
+> Run `selftune orchestrate`. Parse the JSON output from stdout and the
+> phased report from stderr. Report the summary to the user.
 
-**"Show me what would change first"**
-> Run `selftune orchestrate --dry-run`.
+**User wants to preview changes before deploying**
+> Run `selftune orchestrate --dry-run`. Report the planned actions without
+> making any changes.
 
-**"Only work on one skill"**
-> Run `selftune orchestrate --skill selftune`.
+**User wants to focus on a single skill**
+> Run `selftune orchestrate --skill <name>`. This limits the loop to the
+> specified skill only.
 
-**"Keep review in the loop for this run"**
-> Run `selftune orchestrate --review-required`.
+**User wants manual review before deployment**
+> Run `selftune orchestrate --review-required`. Validated changes stay in
+> review mode instead of auto-deploying.
 
-**"Force a full replay before acting"**
-> Run `selftune orchestrate --sync-force`.
+**Agent needs fresh source data before orchestrating**
+> Run `selftune orchestrate --sync-force`. This forces a full source replay
+> before candidate selection.
 
 ## Output
 
@@ -81,3 +86,54 @@ Machine-readable JSON with the summary fields plus a `decisions` array containin
 - `alert`, `rolledBack`, `passRate`, `recommendation` — when watched
 
 This is the recommended runtime for recurring autonomous scheduling.
+
+## Two Execution Contexts
+
+`selftune orchestrate` runs in two contexts with different callers:
+
+| Context | Caller | Token cost | When |
+|---------|--------|------------|------|
+| **Interactive** | Agent (user says "improve my skills") | Uses agent subscription | On demand |
+| **Automated (cron)** | OS scheduler (cron/launchd/systemd) | No agent session; LLM cost only if evolution triggers | Every 6 hours |
+| **Automated (loop)** | `selftune orchestrate --loop` | No agent session; LLM cost only if evolution triggers | Configurable interval |
+
+In automated mode, the OS calls the CLI binary directly. No agent session
+is created. LLM calls only happen during the evolution step (proposing and
+validating description changes), which uses the configured model tier.
+The orchestrate logic itself (sync, status, candidate selection) is pure
+data processing with zero token cost.
+
+**Cron mode:** Install OS-level scheduling with `selftune cron setup`.
+Runs as separate invocations on a schedule (default: every 6 hours).
+
+**Loop mode:** Run `selftune orchestrate --loop` for a long-running process
+that cycles continuously. Use `--loop-interval <seconds>` to set the pause
+between cycles (default: 3600s / 1 hour, minimum: 60s). Stop with Ctrl+C
+or SIGTERM — the current cycle finishes before exit.
+
+### Signal-Reactive Trigger
+
+When improvement signals are detected during a session (corrections, explicit
+requests, manual invocations), the `session-stop` hook automatically spawns a
+focused `selftune orchestrate --max-skills 2` run in the background. This
+reactive path complements the scheduled cron/loop modes by responding to signals
+immediately after the session that produced them.
+
+Guard rails:
+- Only spawns if unconsumed signals exist in `improvement_signals.jsonl`
+- Respects the orchestrate lock file — skips if another run started within 30 minutes
+- Fire-and-forget: the hook exits immediately, orchestrate runs independently
+- Silent failure: any error is swallowed so the hook never blocks Claude
+
+### Internal Workflow Chain (Autonomous Mode)
+
+In autonomous mode, orchestrate calls sub-workflows in this fixed order:
+
+1. **Sync** — refresh source-truth telemetry across all supported agents (`selftune sync`)
+2. **Status** — compute skill health using existing grade results (reads `grading.json` outputs from previous sessions)
+3. **Evolve** — run evolution on selected candidates (pre-flight is skipped, cheap-loop mode enabled, defaults used)
+4. **Watch** — monitor recently evolved skills (auto-rollback enabled by default, `--recent-window` hours lookback)
+
+All sub-workflows run with defaults and no user interaction. The safety
+model relies on regression thresholds, automatic rollback, and SKILL.md
+backups rather than human confirmation.

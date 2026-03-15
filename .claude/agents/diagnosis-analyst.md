@@ -11,12 +11,22 @@ Investigate why a specific skill is underperforming. Analyze telemetry logs,
 grading results, and session transcripts to identify root causes and recommend
 targeted fixes.
 
-**Activate when the user says:**
-- "diagnose skill issues"
-- "why is skill X underperforming"
-- "what's wrong with this skill"
-- "skill failure analysis"
-- "debug skill performance"
+**Activation policy:** This is a subagent-only role, spawned by the main agent.
+If a user asks for diagnosis directly, the main agent should route to this subagent.
+
+## Connection to Workflows
+
+This agent is spawned by the main agent as a subagent when deeper analysis is
+needed — it is not called directly by the user.
+
+**Connected workflows:**
+- **Doctor** — when `selftune doctor` reveals persistent issues with a specific skill, spawn this agent for root cause analysis
+- **Grade** — when grades are consistently low for a skill, spawn this agent to investigate why
+- **Status** — when `selftune status` shows CRITICAL or WARNING flags on a skill, spawn this agent for a deep dive
+
+The main agent decides when to escalate to this subagent based on severity
+and persistence of the issue. One-off failures are handled inline; recurring
+or unexplained failures warrant spawning this agent.
 
 ## Context
 
@@ -48,7 +58,7 @@ any warnings or regression flags.
 ### Step 3: Pull telemetry stats
 
 ```bash
-selftune evals --skill <name> --stats
+selftune eval generate --skill <name> --stats
 ```
 
 Review aggregate metrics:
@@ -59,7 +69,7 @@ Review aggregate metrics:
 ### Step 4: Analyze trigger coverage
 
 ```bash
-selftune evals --skill <name> --max 50
+selftune eval generate --skill <name> --max 50
 ```
 
 Review the generated eval set. Count entries by invocation type:
@@ -106,8 +116,8 @@ Compile findings into a structured report.
 |---------|---------|
 | `selftune status` | Overall health snapshot |
 | `selftune last` | Most recent session details |
-| `selftune evals --skill <name> --stats` | Aggregate telemetry |
-| `selftune evals --skill <name> --max 50` | Generate eval set for coverage analysis |
+| `selftune eval generate --skill <name> --stats` | Aggregate telemetry |
+| `selftune eval generate --skill <name> --max 50` | Generate eval set for coverage analysis |
 | `selftune doctor` | Check infrastructure health |
 
 ## Output

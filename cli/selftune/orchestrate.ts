@@ -9,11 +9,19 @@
  * explicit dry-run and review-required modes for human-in-the-loop operation.
  */
 
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 
-import { EVOLUTION_AUDIT_LOG, ORCHESTRATE_RUN_LOG, QUERY_LOG, TELEMETRY_LOG } from "./constants.js";
+import {
+  EVOLUTION_AUDIT_LOG,
+  ORCHESTRATE_LOCK,
+  ORCHESTRATE_RUN_LOG,
+  QUERY_LOG,
+  SIGNAL_LOG,
+  TELEMETRY_LOG,
+} from "./constants.js";
 import type { OrchestrateRunReport, OrchestrateRunSkillAction } from "./dashboard-contract.js";
 import type { EvolveResult } from "./evolution/evolve.js";
 import { readGradingResultsForSkill } from "./grading/results.js";
@@ -23,7 +31,12 @@ import type { SkillStatus, StatusResult } from "./status.js";
 import { computeStatus } from "./status.js";
 import type { SyncResult } from "./sync.js";
 import { createDefaultSyncOptions, syncSources } from "./sync.js";
-import type { EvolutionAuditEntry, QueryLogRecord, SessionTelemetryRecord } from "./types.js";
+import type {
+  EvolutionAuditEntry,
+  ImprovementSignalRecord,
+  QueryLogRecord,
+  SessionTelemetryRecord,
+} from "./types.js";
 import { appendJsonl, readJsonl } from "./utils/jsonl.js";
 import { detectAgent } from "./utils/llm-call.js";
 import {
@@ -32,6 +45,114 @@ import {
   findRepositorySkillDirs,
 } from "./utils/skill-discovery.js";
 import { readEffectiveSkillUsageRecords } from "./utils/skill-log.js";
+
+// ---------------------------------------------------------------------------
+// Lockfile management
+// ---------------------------------------------------------------------------
+
+interface LockInfo {
+  pid: number;
+  timestamp: string;
+}
+
+const LOCK_STALE_MS = 30 * 60 * 1000; // 30 minutes
+
+export function acquireLock(lockPath: string = ORCHESTRATE_LOCK): boolean {
+  try {
+    if (existsSync(lockPath)) {
+      try {
+        const raw = readFileSync(lockPath, "utf-8");
+        const info: LockInfo = JSON.parse(raw);
+        const lockAge = Date.now() - Date.parse(info.timestamp);
+        if (lockAge < LOCK_STALE_MS) {
+          return false; // lock is fresh, cannot acquire
+        }
+        // Lock is stale, fall through to overwrite
+      } catch {
+        // Corrupted lock file, treat as stale and overwrite
+      }
+    }
+    const lock: LockInfo = { pid: process.pid, timestamp: new Date().toISOString() };
+    writeFileSync(lockPath, JSON.stringify(lock));
+    return true;
+  } catch {
+    // Fail-open: if we can't check/write, allow the run
+    return true;
+  }
+}
+
+export function releaseLock(lockPath: string = ORCHESTRATE_LOCK): void {
+  try {
+    unlinkSync(lockPath);
+  } catch {
+    // Silent on errors (file may not exist)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Signal reading helpers
+// ---------------------------------------------------------------------------
+
+function readPendingSignals(reader?: () => ImprovementSignalRecord[]): ImprovementSignalRecord[] {
+  const _read = reader ?? (() => readJsonl<ImprovementSignalRecord>(SIGNAL_LOG));
+  try {
+    return _read().filter((s) => !s.consumed);
+  } catch {
+    return [];
+  }
+}
+
+export function groupSignalsBySkill(signals: ImprovementSignalRecord[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const s of signals) {
+    if (s.mentioned_skill) {
+      const key = s.mentioned_skill.toLowerCase();
+      map.set(key, (map.get(key) ?? 0) + 1);
+    }
+  }
+  return map;
+}
+
+export function markSignalsConsumed(
+  signals: ImprovementSignalRecord[],
+  runId: string,
+  signalLogPath: string = SIGNAL_LOG,
+): void {
+  try {
+    if (signals.length === 0) return;
+    if (!existsSync(signalLogPath)) return;
+
+    // Build lookup set for matching pending signals
+    const pendingKeys = new Set(signals.map((s) => `${s.timestamp}|${s.session_id}`));
+
+    const allRecords = readJsonl<ImprovementSignalRecord>(signalLogPath);
+    const now = new Date().toISOString();
+    const updated = allRecords.map((record) => {
+      const key = `${record.timestamp}|${record.session_id}`;
+      if (pendingKeys.has(key) && !record.consumed) {
+        return {
+          ...record,
+          consumed: true,
+          consumed_at: now,
+          consumed_by_run: runId,
+        };
+      }
+      return record;
+    });
+
+    // Re-read to capture any signals appended between our read and write
+    const freshRecords = readJsonl<ImprovementSignalRecord>(signalLogPath);
+    const existingKeys = new Set(updated.map((r) => `${r.timestamp}|${r.session_id}`));
+    const newlyAppended = freshRecords.filter(
+      (r) => !existingKeys.has(`${r.timestamp}|${r.session_id}`),
+    );
+    const merged = [...updated, ...newlyAppended];
+
+    writeFileSync(signalLogPath, `${merged.map((r) => JSON.stringify(r)).join("\n")}\n`);
+  } catch {
+    // Silent on errors
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -254,12 +375,13 @@ export const MIN_CANDIDATE_EVIDENCE = 3;
 /** Default cooldown hours after a deploy before re-evolving the same skill. */
 export const DEFAULT_COOLDOWN_HOURS = 24;
 
-function candidatePriority(skill: SkillStatus): number {
+function candidatePriority(skill: SkillStatus, signalCount = 0): number {
   const statusWeight = skill.status === "CRITICAL" ? 300 : skill.status === "WARNING" ? 200 : 100;
   const missedWeight = Math.min(skill.missedQueries, 50);
   const passPenalty = skill.passRate === null ? 0 : Math.round((1 - skill.passRate) * 100);
   const trendBoost = skill.trend === "down" ? 30 : 0;
-  return statusWeight + missedWeight + passPenalty + trendBoost;
+  const signalBoost = Math.min(signalCount * 150, 450);
+  return statusWeight + missedWeight + passPenalty + trendBoost + signalBoost;
 }
 
 /**
@@ -278,6 +400,7 @@ export interface OrchestrateDeps {
   readAuditEntries?: () => EvolutionAuditEntry[];
   resolveSkillPath?: (skillName: string) => string | undefined;
   readGradingResults?: (skillName: string) => ReturnType<typeof readGradingResultsForSkill>;
+  readSignals?: () => ImprovementSignalRecord[];
 }
 
 // ---------------------------------------------------------------------------
@@ -311,16 +434,24 @@ export interface CandidateContext {
   auditEntries?: EvolutionAuditEntry[];
   /** Hours since last deploy before a skill can be re-evolved. */
   cooldownHours?: number;
+  /** Skill name (lowercase) to improvement signal count. */
+  signaledSkills?: Map<string, number>;
 }
 
 export function selectCandidates(skills: SkillStatus[], options: CandidateContext): SkillAction[] {
   const actions: SkillAction[] = [];
-  const orderedSkills = [...skills].sort((a, b) => candidatePriority(b) - candidatePriority(a));
+  const orderedSkills = [...skills].sort((a, b) => {
+    const aSignals = options.signaledSkills?.get(a.name.toLowerCase()) ?? 0;
+    const bSignals = options.signaledSkills?.get(b.name.toLowerCase()) ?? 0;
+    return candidatePriority(b, bSignals) - candidatePriority(a, aSignals);
+  });
 
   const cooldownHours = options.cooldownHours ?? DEFAULT_COOLDOWN_HOURS;
   const recentlyDeployed = findRecentlyDeployedSkills(options.auditEntries ?? [], cooldownHours);
 
   for (const skill of orderedSkills) {
+    const signalCount = options.signaledSkills?.get(skill.name.toLowerCase()) ?? 0;
+
     // Apply skill filter
     if (options.skillFilter && skill.name !== options.skillFilter) {
       actions.push({
@@ -352,8 +483,9 @@ export function selectCandidates(skills: SkillStatus[], options: CandidateContex
     }
 
     // Gate: insufficient evidence — need enough data points for autonomous action
+    // Bypass if there are improvement signals for this skill
     const skillChecks = skill.snapshot?.skill_checks ?? 0;
-    if (skillChecks < MIN_CANDIDATE_EVIDENCE && skill.status !== "UNGRADED") {
+    if (skillChecks < MIN_CANDIDATE_EVIDENCE && skill.status !== "UNGRADED" && signalCount === 0) {
       actions.push({
         skill: skill.name,
         action: "skip",
@@ -363,7 +495,8 @@ export function selectCandidates(skills: SkillStatus[], options: CandidateContex
     }
 
     // UNGRADED: only evolve if there are missed queries (some signal)
-    if (skill.status === "UNGRADED" && skill.missedQueries === 0) {
+    // Bypass if there are improvement signals for this skill
+    if (skill.status === "UNGRADED" && skill.missedQueries === 0 && signalCount === 0) {
       actions.push({
         skill: skill.name,
         action: "skip",
@@ -405,8 +538,9 @@ export function selectCandidates(skills: SkillStatus[], options: CandidateContex
 }
 
 /**
- * Find skills that were deployed within the given window.
- * Used for cooldown gating — don't re-evolve a skill that just shipped.
+ * Find skills deployed within the given window.
+ * Used for both cooldown gating (don't re-evolve) and watch targeting
+ * (monitor recently deployed skills for regressions).
  */
 function findRecentlyDeployedSkills(
   auditEntries: EvolutionAuditEntry[],
@@ -429,32 +563,6 @@ function findRecentlyDeployedSkills(
 }
 
 // ---------------------------------------------------------------------------
-// Recently evolved detection
-// ---------------------------------------------------------------------------
-
-function findRecentlyEvolvedSkills(
-  auditEntries: EvolutionAuditEntry[],
-  windowHours: number,
-): Set<string> {
-  const cutoffMs = Date.now() - windowHours * 60 * 60 * 1000;
-  const names = new Set<string>();
-
-  for (const entry of auditEntries) {
-    const deployedAtMs = Date.parse(entry.timestamp);
-    if (
-      entry.action === "deployed" &&
-      entry.skill_name &&
-      Number.isFinite(deployedAtMs) &&
-      deployedAtMs >= cutoffMs
-    ) {
-      names.add(entry.skill_name);
-    }
-  }
-
-  return names;
-}
-
-// ---------------------------------------------------------------------------
 // Main orchestrator
 // ---------------------------------------------------------------------------
 
@@ -462,252 +570,321 @@ export async function orchestrate(
   options: OrchestrateOptions,
   deps: OrchestrateDeps = {},
 ): Promise<OrchestrateResult> {
-  const startTime = Date.now();
-
-  const _syncSources = deps.syncSources ?? syncSources;
-  const _computeStatus = deps.computeStatus ?? computeStatus;
-  const _detectAgent = deps.detectAgent ?? detectAgent;
-  const _doctor = deps.doctor ?? doctor;
-  const _readTelemetry =
-    deps.readTelemetry ?? (() => readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG));
-  const _readSkillRecords = deps.readSkillRecords ?? readEffectiveSkillUsageRecords;
-  const _readQueryRecords = deps.readQueryRecords ?? (() => readJsonl<QueryLogRecord>(QUERY_LOG));
-  const _readAuditEntries =
-    deps.readAuditEntries ?? (() => readJsonl<EvolutionAuditEntry>(EVOLUTION_AUDIT_LOG));
-  const _resolveSkillPath = deps.resolveSkillPath ?? defaultResolveSkillPath;
-  const _readGradingResults = deps.readGradingResults ?? readGradingResultsForSkill;
-
-  // Lazy-load evolve and watch to avoid circular imports
-  const _evolve = deps.evolve ?? (await import("./evolution/evolve.js")).evolve;
-  const _watch = deps.watch ?? (await import("./monitoring/watch.js")).watch;
-
-  // -------------------------------------------------------------------------
-  // Step 1: Sync source-truth telemetry (mandatory)
-  // -------------------------------------------------------------------------
-  console.error("[orchestrate] Syncing source-truth telemetry...");
-  const syncResult = _syncSources(createDefaultSyncOptions({ force: options.syncForce }));
-  const sourceSynced = Object.values(syncResult.sources).reduce((sum, s) => sum + s.synced, 0);
-  console.error(
-    `[orchestrate] Sync complete: ${sourceSynced} sessions synced, ${syncResult.repair.repaired_records} repaired`,
-  );
-
-  // -------------------------------------------------------------------------
-  // Step 2: Compute status
-  // -------------------------------------------------------------------------
-  console.error("[orchestrate] Computing skill status...");
-  const telemetry = _readTelemetry();
-  const skillRecords = _readSkillRecords();
-  const queryRecords = _readQueryRecords();
-  const auditEntries = _readAuditEntries();
-  const doctorResult = _doctor();
-
-  const statusResult = _computeStatus(
-    telemetry,
-    skillRecords,
-    queryRecords,
-    auditEntries,
-    doctorResult,
-  );
-  console.error(
-    `[orchestrate] Status: ${statusResult.skills.length} skills, system=${statusResult.system.healthy ? "healthy" : "unhealthy"}`,
-  );
-
-  // -------------------------------------------------------------------------
-  // Step 3: Select candidates
-  // -------------------------------------------------------------------------
-  const candidates = selectCandidates(statusResult.skills, {
-    skillFilter: options.skillFilter,
-    maxSkills: options.maxSkills,
-    auditEntries,
-  });
-
-  const evolveCandidates = candidates.filter((c) => c.action === "evolve");
-  const skipCount = candidates.filter((c) => c.action === "skip").length;
-  console.error(
-    `[orchestrate] Candidates: ${evolveCandidates.length} to evolve, ${skipCount} skipped`,
-  );
-
-  // Log each decision
-  for (const c of candidates) {
-    console.error(`  ${c.action === "skip" ? "⊘" : "→"} ${c.skill}: ${c.reason}`);
+  if (!acquireLock()) {
+    // Another orchestrate run is in progress
+    console.error("[orchestrate] Another run is in progress (lock held). Exiting.");
+    return {
+      syncResult: {
+        since: null,
+        dry_run: options.dryRun,
+        sources: {
+          claude: { available: false, scanned: 0, synced: 0, skipped: 0 },
+          codex: { available: false, scanned: 0, synced: 0, skipped: 0 },
+          opencode: { available: false, scanned: 0, synced: 0, skipped: 0 },
+          openclaw: { available: false, scanned: 0, synced: 0, skipped: 0 },
+        },
+        repair: {
+          ran: false,
+          repaired_sessions: 0,
+          repaired_records: 0,
+          codex_repaired_records: 0,
+        },
+        timings: [],
+        total_elapsed_ms: 0,
+      },
+      statusResult: {
+        skills: [],
+        unmatchedQueries: 0,
+        pendingProposals: 0,
+        lastSession: null,
+        system: { healthy: true, pass: 0, fail: 0, warn: 0 },
+      },
+      candidates: [],
+      summary: {
+        totalSkills: 0,
+        evaluated: 0,
+        evolved: 0,
+        deployed: 0,
+        watched: 0,
+        skipped: 0,
+        dryRun: options.dryRun,
+        approvalMode: options.approvalMode,
+        elapsedMs: 0,
+      },
+    };
   }
-
-  // -------------------------------------------------------------------------
-  // Step 4: Detect agent
-  // -------------------------------------------------------------------------
-  const agent = _detectAgent();
-  if (!agent && evolveCandidates.length > 0) {
-    console.error("[orchestrate] WARNING: No agent CLI found in PATH. Evolve will be skipped.");
-    for (const c of evolveCandidates) {
-      c.action = "skip";
-      c.reason = "no agent CLI available";
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Step 5: Evolve candidates
-  // -------------------------------------------------------------------------
-  let deployedCount = 0;
-
-  for (const candidate of evolveCandidates) {
-    // Skip if agent detection marked this candidate as skip
-    if (candidate.action === "skip") continue;
-
-    const skillPath = _resolveSkillPath(candidate.skill);
-    if (!skillPath) {
-      candidate.action = "skip";
-      candidate.reason = `SKILL.md not found for "${candidate.skill}"`;
-      console.error(`  ⊘ ${candidate.skill}: ${candidate.reason}`);
-      continue;
-    }
-
-    const effectiveDryRun = options.dryRun || options.approvalMode === "review";
-    console.error(
-      `[orchestrate] Evolving "${candidate.skill}"${effectiveDryRun ? " (dry-run)" : ""}...`,
-    );
-
-    try {
-      const evolveResult = await _evolve({
-        skillName: candidate.skill,
-        skillPath,
-        agent: agent as string,
-        dryRun: effectiveDryRun,
-        confidenceThreshold: 0.6,
-        maxIterations: 3,
-        gradingResults: _readGradingResults(candidate.skill),
-        syncFirst: false, // We already synced
-      });
-
-      candidate.evolveResult = evolveResult;
-
-      if (evolveResult.deployed) {
-        deployedCount++;
-        console.error(`  ✓ ${candidate.skill}: deployed (${evolveResult.reason})`);
-      } else {
-        console.error(`  ✗ ${candidate.skill}: not deployed (${evolveResult.reason})`);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      candidate.action = "skip";
-      candidate.reason = `evolve error: ${msg}`;
-      console.error(`  ✗ ${candidate.skill}: error — ${msg}`);
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Step 6: Watch recently evolved skills
-  // -------------------------------------------------------------------------
-  // Re-read audit entries to capture any newly-deployed entries from the evolve loop above.
-  // evolve() writes audit entries synchronously, so a fresh read is needed.
-  const freshAuditEntries = _readAuditEntries();
-  const recentlyEvolved = findRecentlyEvolvedSkills(freshAuditEntries, options.recentWindowHours);
-
-  // O(1) lookup for skills already processed as evolve candidates
-  const evolvedSkillNames = new Set(
-    candidates.filter((c) => c.action === "evolve").map((c) => c.skill),
-  );
-
-  let watchedCount = 0;
-  for (const skillName of recentlyEvolved) {
-    // Skip if already processed in this run as evolve candidate
-    if (evolvedSkillNames.has(skillName)) {
-      continue;
-    }
-
-    // Apply skill filter
-    if (options.skillFilter && skillName !== options.skillFilter) continue;
-
-    const skillPath = _resolveSkillPath(skillName);
-    if (!skillPath) continue;
-
-    console.error(`[orchestrate] Watching "${skillName}" (recently evolved)...`);
-
-    try {
-      const watchResult = await _watch({
-        skillName,
-        skillPath,
-        windowSessions: 20,
-        regressionThreshold: 0.1,
-        autoRollback: true,
-        syncFirst: false,
-      });
-
-      candidates.push({
-        skill: skillName,
-        action: "watch",
-        reason: watchResult.alert ?? "stable",
-        watchResult,
-      });
-
-      watchedCount++;
-      console.error(
-        `  ${watchResult.alert ? "⚠" : "✓"} ${skillName}: ${watchResult.recommendation}`,
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`  ✗ ${skillName}: watch error — ${msg}`);
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // Step 7: Build summary (single source of truth for both CLI and dashboard)
-  // -------------------------------------------------------------------------
-  const finalTotals = {
-    totalSkills: statusResult.skills.length,
-    evaluated: candidates.filter((c) => c.action === "evolve").length,
-    evolved: candidates.filter((c) => c.action === "evolve" && c.evolveResult !== undefined).length,
-    deployed: candidates.filter((c) => c.evolveResult?.deployed).length,
-    watched: candidates.filter((c) => c.action === "watch").length,
-    skipped: candidates.filter((c) => c.action === "skip").length,
-  };
-
-  const result: OrchestrateResult = {
-    syncResult,
-    statusResult,
-    candidates,
-    summary: {
-      ...finalTotals,
-      dryRun: options.dryRun,
-      approvalMode: options.approvalMode,
-      elapsedMs: Date.now() - startTime,
-    },
-  };
-
-  // -------------------------------------------------------------------------
-  // Step 8: Persist run report
-  // -------------------------------------------------------------------------
-  const runReport: OrchestrateRunReport = {
-    run_id: `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    timestamp: new Date().toISOString(),
-    elapsed_ms: result.summary.elapsedMs,
-    dry_run: result.summary.dryRun,
-    approval_mode: result.summary.approvalMode,
-    total_skills: finalTotals.totalSkills,
-    evaluated: finalTotals.evaluated,
-    evolved: finalTotals.evolved,
-    deployed: finalTotals.deployed,
-    watched: finalTotals.watched,
-    skipped: finalTotals.skipped,
-    skill_actions: candidates.map(
-      (c): OrchestrateRunSkillAction => ({
-        skill: c.skill,
-        action: c.action,
-        reason: c.reason,
-        deployed: c.evolveResult?.deployed,
-        rolledBack: c.watchResult?.rolledBack,
-        alert: c.watchResult?.alert,
-      }),
-    ),
-  };
 
   try {
-    appendJsonl(ORCHESTRATE_RUN_LOG, runReport);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`[orchestrate] Warning: failed to persist run report: ${message}`);
-  }
+    const startTime = Date.now();
 
-  return result;
+    const _syncSources = deps.syncSources ?? syncSources;
+    const _computeStatus = deps.computeStatus ?? computeStatus;
+    const _detectAgent = deps.detectAgent ?? detectAgent;
+    const _doctor = deps.doctor ?? doctor;
+    const _readTelemetry =
+      deps.readTelemetry ?? (() => readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG));
+    const _readSkillRecords = deps.readSkillRecords ?? readEffectiveSkillUsageRecords;
+    const _readQueryRecords = deps.readQueryRecords ?? (() => readJsonl<QueryLogRecord>(QUERY_LOG));
+    const _readAuditEntries =
+      deps.readAuditEntries ?? (() => readJsonl<EvolutionAuditEntry>(EVOLUTION_AUDIT_LOG));
+    const _resolveSkillPath = deps.resolveSkillPath ?? defaultResolveSkillPath;
+    const _readGradingResults = deps.readGradingResults ?? readGradingResultsForSkill;
+
+    // Lazy-load evolve and watch to avoid circular imports
+    const _evolve = deps.evolve ?? (await import("./evolution/evolve.js")).evolve;
+    const _watch = deps.watch ?? (await import("./monitoring/watch.js")).watch;
+
+    // -------------------------------------------------------------------------
+    // Step 1: Sync source-truth telemetry (mandatory)
+    // -------------------------------------------------------------------------
+    console.error("[orchestrate] Syncing source-truth telemetry...");
+    const syncResult = _syncSources(createDefaultSyncOptions({ force: options.syncForce }));
+    const sourceSynced = Object.values(syncResult.sources).reduce((sum, s) => sum + s.synced, 0);
+    console.error(
+      `[orchestrate] Sync complete: ${sourceSynced} sessions synced, ${syncResult.repair.repaired_records} repaired`,
+    );
+
+    // -------------------------------------------------------------------------
+    // Step 2: Compute status
+    // -------------------------------------------------------------------------
+    console.error("[orchestrate] Computing skill status...");
+    const telemetry = _readTelemetry();
+    const skillRecords = _readSkillRecords();
+    const queryRecords = _readQueryRecords();
+    const auditEntries = _readAuditEntries();
+    const doctorResult = _doctor();
+
+    const statusResult = _computeStatus(
+      telemetry,
+      skillRecords,
+      queryRecords,
+      auditEntries,
+      doctorResult,
+    );
+    console.error(
+      `[orchestrate] Status: ${statusResult.skills.length} skills, system=${statusResult.system.healthy ? "healthy" : "unhealthy"}`,
+    );
+
+    // -------------------------------------------------------------------------
+    // Step 2b: Read pending improvement signals
+    // -------------------------------------------------------------------------
+    const pendingSignals = readPendingSignals(deps.readSignals);
+    const signaledSkills = groupSignalsBySkill(pendingSignals);
+    if (signaledSkills.size > 0) {
+      console.error(
+        `[orchestrate] Improvement signals: ${pendingSignals.length} pending for ${signaledSkills.size} skill(s)`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 3: Select candidates
+    // -------------------------------------------------------------------------
+    const candidates = selectCandidates(statusResult.skills, {
+      skillFilter: options.skillFilter,
+      maxSkills: options.maxSkills,
+      auditEntries,
+      signaledSkills,
+    });
+
+    const evolveCandidates = candidates.filter((c) => c.action === "evolve");
+    const skipCount = candidates.filter((c) => c.action === "skip").length;
+    console.error(
+      `[orchestrate] Candidates: ${evolveCandidates.length} to evolve, ${skipCount} skipped`,
+    );
+
+    // Log each decision
+    for (const c of candidates) {
+      console.error(`  ${c.action === "skip" ? "⊘" : "→"} ${c.skill}: ${c.reason}`);
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 4: Detect agent
+    // -------------------------------------------------------------------------
+    const agent = _detectAgent();
+    if (!agent && evolveCandidates.length > 0) {
+      console.error("[orchestrate] WARNING: No agent CLI found in PATH. Evolve will be skipped.");
+      for (const c of evolveCandidates) {
+        c.action = "skip";
+        c.reason = "no agent CLI available";
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 5: Evolve candidates
+    // -------------------------------------------------------------------------
+    for (const candidate of evolveCandidates) {
+      // Skip if agent detection marked this candidate as skip
+      if (candidate.action === "skip") continue;
+
+      const skillPath = _resolveSkillPath(candidate.skill);
+      if (!skillPath) {
+        candidate.action = "skip";
+        candidate.reason = `SKILL.md not found for "${candidate.skill}"`;
+        console.error(`  ⊘ ${candidate.skill}: ${candidate.reason}`);
+        continue;
+      }
+
+      const effectiveDryRun = options.dryRun || options.approvalMode === "review";
+      console.error(
+        `[orchestrate] Evolving "${candidate.skill}"${effectiveDryRun ? " (dry-run)" : ""}...`,
+      );
+
+      try {
+        const evolveResult = await _evolve({
+          skillName: candidate.skill,
+          skillPath,
+          agent: agent as string,
+          dryRun: effectiveDryRun,
+          confidenceThreshold: 0.6,
+          maxIterations: 3,
+          gradingResults: _readGradingResults(candidate.skill),
+          syncFirst: false, // We already synced
+        });
+
+        candidate.evolveResult = evolveResult;
+
+        if (evolveResult.deployed) {
+          console.error(`  ✓ ${candidate.skill}: deployed (${evolveResult.reason})`);
+        } else {
+          console.error(`  ✗ ${candidate.skill}: not deployed (${evolveResult.reason})`);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        candidate.action = "skip";
+        candidate.reason = `evolve error: ${msg}`;
+        console.error(`  ✗ ${candidate.skill}: error — ${msg}`);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 6: Watch recently evolved skills
+    // -------------------------------------------------------------------------
+    // Re-read audit entries to capture any newly-deployed entries from the evolve loop above.
+    // evolve() writes audit entries synchronously, so a fresh read is needed.
+    const freshAuditEntries = _readAuditEntries();
+    const recentlyEvolved = findRecentlyDeployedSkills(
+      freshAuditEntries,
+      options.recentWindowHours,
+    );
+
+    // O(1) lookup for skills already processed as evolve candidates
+    const evolvedSkillNames = new Set(
+      candidates.filter((c) => c.action === "evolve").map((c) => c.skill),
+    );
+
+    for (const skillName of recentlyEvolved) {
+      // Skip if already processed in this run as evolve candidate
+      if (evolvedSkillNames.has(skillName)) {
+        continue;
+      }
+
+      // Apply skill filter
+      if (options.skillFilter && skillName !== options.skillFilter) continue;
+
+      const skillPath = _resolveSkillPath(skillName);
+      if (!skillPath) continue;
+
+      console.error(`[orchestrate] Watching "${skillName}" (recently evolved)...`);
+
+      try {
+        const watchResult = await _watch({
+          skillName,
+          skillPath,
+          windowSessions: 20,
+          regressionThreshold: 0.1,
+          autoRollback: true,
+          syncFirst: false,
+        });
+
+        candidates.push({
+          skill: skillName,
+          action: "watch",
+          reason: watchResult.alert ?? "stable",
+          watchResult,
+        });
+
+        console.error(
+          `  ${watchResult.alert ? "⚠" : "✓"} ${skillName}: ${watchResult.recommendation}`,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`  ✗ ${skillName}: watch error — ${msg}`);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 7: Build summary (single source of truth for both CLI and dashboard)
+    // -------------------------------------------------------------------------
+    const finalTotals = {
+      totalSkills: statusResult.skills.length,
+      evaluated: candidates.filter((c) => c.action === "evolve").length,
+      evolved: candidates.filter((c) => c.action === "evolve" && c.evolveResult !== undefined)
+        .length,
+      deployed: candidates.filter((c) => c.evolveResult?.deployed).length,
+      watched: candidates.filter((c) => c.action === "watch").length,
+      skipped: candidates.filter((c) => c.action === "skip").length,
+    };
+
+    const result: OrchestrateResult = {
+      syncResult,
+      statusResult,
+      candidates,
+      summary: {
+        ...finalTotals,
+        dryRun: options.dryRun,
+        approvalMode: options.approvalMode,
+        elapsedMs: Date.now() - startTime,
+      },
+    };
+
+    // -------------------------------------------------------------------------
+    // Step 7b: Mark consumed signals
+    // -------------------------------------------------------------------------
+    const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    if (pendingSignals.length > 0) {
+      markSignalsConsumed(pendingSignals, runId);
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 8: Persist run report
+    // -------------------------------------------------------------------------
+    const runReport: OrchestrateRunReport = {
+      run_id: runId,
+      timestamp: new Date().toISOString(),
+      elapsed_ms: result.summary.elapsedMs,
+      dry_run: result.summary.dryRun,
+      approval_mode: result.summary.approvalMode,
+      total_skills: finalTotals.totalSkills,
+      evaluated: finalTotals.evaluated,
+      evolved: finalTotals.evolved,
+      deployed: finalTotals.deployed,
+      watched: finalTotals.watched,
+      skipped: finalTotals.skipped,
+      skill_actions: candidates.map(
+        (c): OrchestrateRunSkillAction => ({
+          skill: c.skill,
+          action: c.action,
+          reason: c.reason,
+          deployed: c.evolveResult?.deployed,
+          rolledBack: c.watchResult?.rolledBack,
+          alert: c.watchResult?.alert,
+          elapsed_ms: c.evolveResult?.elapsedMs,
+          llm_calls: c.evolveResult?.llmCallCount,
+        }),
+      ),
+    };
+
+    try {
+      appendJsonl(ORCHESTRATE_RUN_LOG, runReport);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[orchestrate] Warning: failed to persist run report: ${message}`);
+    }
+
+    return result;
+  } finally {
+    releaseLock();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -724,6 +901,8 @@ export async function cliMain(): Promise<void> {
       "max-skills": { type: "string", default: "5" },
       "recent-window": { type: "string", default: "48" },
       "sync-force": { type: "boolean", default: false },
+      loop: { type: "boolean", default: false },
+      "loop-interval": { type: "string", default: "3600" },
       help: { type: "boolean", short: "h", default: false },
     },
     strict: true,
@@ -745,6 +924,8 @@ Options:
   --max-skills <n>      Cap skills processed per run (default: 5)
   --recent-window <hrs> Hours to look back for watch targets (default: 48)
   --sync-force          Force full rescan during sync
+  --loop                Run in continuous loop mode (never stops)
+  --loop-interval <s>   Seconds between iterations (default: 3600, min: 60)
   -h, --help            Show this help message
 
 Safety:
@@ -758,7 +939,9 @@ Examples:
   selftune orchestrate --review-required        # validate but do not deploy
   selftune orchestrate --dry-run                # preview only
   selftune orchestrate --skill Research         # single skill
-  selftune orchestrate --max-skills 3           # limit scope`);
+  selftune orchestrate --max-skills 3           # limit scope
+  selftune orchestrate --loop                         # continuous loop (hourly)
+  selftune orchestrate --loop --loop-interval 600     # every 10 minutes`);
     process.exit(0);
   }
 
@@ -774,6 +957,12 @@ Examples:
     process.exit(1);
   }
 
+  const loopInterval = Number.parseInt(values["loop-interval"] ?? "3600", 10);
+  if (values.loop && (Number.isNaN(loopInterval) || loopInterval < 60)) {
+    console.error("[ERROR] --loop-interval must be an integer >= 60 (seconds)");
+    process.exit(1);
+  }
+
   const autoApprove = values["auto-approve"] ?? false;
   if (autoApprove) {
     console.error(
@@ -785,49 +974,92 @@ Examples:
   const dryRun = values["dry-run"] ?? false;
   const approvalMode: "auto" | "review" = reviewRequired ? "review" : "auto";
 
-  const result = await orchestrate({
-    dryRun,
-    approvalMode,
-    skillFilter: values.skill,
-    maxSkills,
-    recentWindowHours: recentWindow,
-    syncForce: values["sync-force"] ?? false,
-  });
+  const isLoop = values.loop ?? false;
+  let stopRequested = false;
+  let sleepTimer: ReturnType<typeof setTimeout> | null = null;
+  let sleepResolve: (() => void) | null = null;
 
-  // JSON output: include per-skill decisions for machine consumption
-  const jsonOutput = {
-    ...result.summary,
-    decisions: result.candidates.map((c) => ({
-      skill: c.skill,
-      action: c.action,
-      reason: c.reason,
-      ...(c.evolveResult
-        ? {
-            deployed: c.evolveResult.deployed,
-            evolveReason: c.evolveResult.reason,
-            validation: c.evolveResult.validation
-              ? {
-                  before: c.evolveResult.validation.before_pass_rate,
-                  after: c.evolveResult.validation.after_pass_rate,
-                  improved: c.evolveResult.validation.improved,
-                }
-              : null,
-          }
-        : {}),
-      ...(c.watchResult
-        ? {
-            alert: c.watchResult.alert,
-            rolledBack: c.watchResult.rolledBack,
-            passRate: c.watchResult.snapshot?.pass_rate ?? null,
-            recommendation: c.watchResult.recommendation,
-          }
-        : {}),
-    })),
-  };
-  console.log(JSON.stringify(jsonOutput, null, 2));
+  if (isLoop) {
+    const requestStop = () => {
+      stopRequested = true;
+      if (sleepTimer) {
+        clearTimeout(sleepTimer);
+        sleepTimer = null;
+      }
+      if (sleepResolve) {
+        sleepResolve();
+        sleepResolve = null;
+      }
+      console.error("\n[orchestrate] Loop interrupted. Finishing current cycle...");
+    };
+    process.on("SIGINT", requestStop);
+    process.on("SIGTERM", requestStop);
+  }
 
-  // Print human-readable decision report to stderr
-  console.error(`\n${formatOrchestrateReport(result)}`);
+  let iteration = 0;
+  do {
+    iteration++;
+    if (isLoop && iteration > 1) {
+      console.error(`\n[orchestrate] === Loop iteration ${iteration} ===`);
+    }
+
+    const result = await orchestrate({
+      dryRun,
+      approvalMode,
+      skillFilter: values.skill,
+      maxSkills,
+      recentWindowHours: recentWindow,
+      syncForce: values["sync-force"] ?? false,
+    });
+
+    // JSON output: include per-skill decisions for machine consumption
+    const jsonOutput = {
+      ...result.summary,
+      decisions: result.candidates.map((c) => ({
+        skill: c.skill,
+        action: c.action,
+        reason: c.reason,
+        ...(c.evolveResult
+          ? {
+              deployed: c.evolveResult.deployed,
+              evolveReason: c.evolveResult.reason,
+              validation: c.evolveResult.validation
+                ? {
+                    before: c.evolveResult.validation.before_pass_rate,
+                    after: c.evolveResult.validation.after_pass_rate,
+                    improved: c.evolveResult.validation.improved,
+                  }
+                : null,
+            }
+          : {}),
+        ...(c.watchResult
+          ? {
+              alert: c.watchResult.alert,
+              rolledBack: c.watchResult.rolledBack,
+              passRate: c.watchResult.snapshot?.pass_rate ?? null,
+              recommendation: c.watchResult.recommendation,
+            }
+          : {}),
+      })),
+    };
+    console.log(JSON.stringify(jsonOutput, null, 2));
+
+    // Print human-readable decision report to stderr
+    console.error(`\n${formatOrchestrateReport(result)}`);
+
+    if (!isLoop || stopRequested) break;
+
+    const nextMinutes = Math.round(loopInterval / 60);
+    console.error(`\n[orchestrate] Next cycle in ${nextMinutes} minute(s)... (Ctrl+C to stop)`);
+    await new Promise<void>((resolve) => {
+      sleepResolve = resolve;
+      sleepTimer = setTimeout(() => {
+        sleepTimer = null;
+        sleepResolve = null;
+        resolve();
+      }, loopInterval * 1000);
+    });
+  } while (isLoop && !stopRequested);
 
   process.exit(0);
 }

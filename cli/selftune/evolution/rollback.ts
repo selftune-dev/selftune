@@ -223,10 +223,10 @@ export async function cliMain(): Promise<void> {
   });
 
   if (values.help) {
-    console.log(`selftune rollback — Rollback a skill to its pre-evolution state
+    console.log(`selftune evolve rollback — Rollback a skill to its pre-evolution state
 
 Usage:
-  selftune rollback --skill <name> --skill-path <path> [options]
+  selftune evolve rollback --skill <name> --skill-path <path> [options]
 
 Options:
   --skill             Skill name (required)

@@ -2,9 +2,12 @@
 
 export type {
   CanonicalInvocation,
+  DoctorResult,
   EvalSnapshot,
   EvidenceEntry,
   EvolutionEntry,
+  HealthCheck,
+  HealthStatus,
   OrchestrateRunReport,
   OrchestrateRunSkillAction,
   OrchestrateRunsResponse,
