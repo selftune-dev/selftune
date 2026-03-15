@@ -117,6 +117,29 @@ describe("findTranscriptFiles", () => {
     expect(files[0]).toContain("aaa111");
     expect(files[1]).toContain("zzz999");
   });
+
+  test("finds nested subagent transcripts recursively", () => {
+    const projectsDir = join(tmpDir, "projects");
+    createTranscriptFile(
+      projectsDir,
+      "base123",
+      "top-level",
+      '{"role":"user","content":"top level session"}\n',
+    );
+
+    const subagentDir = join(projectsDir, "base123", "subagents");
+    mkdirSync(subagentDir, { recursive: true });
+    writeFileSync(
+      join(subagentDir, "agent-1.jsonl"),
+      '{"role":"user","content":"nested subagent session"}\n',
+      "utf-8",
+    );
+
+    const files = findTranscriptFiles(projectsDir);
+    expect(files).toHaveLength(2);
+    expect(files.some((f) => f.endsWith("top-level.jsonl"))).toBe(true);
+    expect(files.some((f) => f.endsWith("subagents/agent-1.jsonl"))).toBe(true);
+  });
 });
 
 describe("extractAllUserQueries", () => {
@@ -267,6 +290,20 @@ describe("parseSession", () => {
     const session = parseSession(path);
     expect(session).toBeNull();
   });
+
+  test("drops meta payloads when deriving last_user_query", () => {
+    const projectsDir = join(tmpDir, "projects");
+    const content = [
+      '{"role":"user","content":"review the reins repo"}',
+      '{"role":"user","content":"<local-command-stdout> tool output"}',
+      '{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"reins"}}]}',
+    ].join("\n");
+    const path = createTranscriptFile(projectsDir, "hash-meta", "session-meta", content);
+
+    const session = parseSession(path);
+    expect(session).not.toBeNull();
+    expect(session?.metrics.last_user_query).toBe("review the reins repo");
+  });
 });
 
 describe("writeSession", () => {
@@ -274,6 +311,7 @@ describe("writeSession", () => {
     const queryLog = join(tmpDir, "queries.jsonl");
     const telemetryLog = join(tmpDir, "telemetry.jsonl");
     const skillLog = join(tmpDir, "skills.jsonl");
+    const canonicalLog = join(tmpDir, "canonical.jsonl");
 
     const session = {
       transcript_path: "/path/to/transcript.jsonl",
@@ -295,9 +333,9 @@ describe("writeSession", () => {
       ],
     };
 
-    writeSession(session, false, queryLog, telemetryLog, skillLog);
+    writeSession(session, false, queryLog, telemetryLog, skillLog, canonicalLog);
 
-    // Should have TWO query records (one per user message)
+    // Raw logs should stay raw.
     const queryLines = readFileSync(queryLog, "utf-8").trim().split("\n");
     expect(queryLines).toHaveLength(2);
     const q1 = JSON.parse(queryLines[0]);
@@ -308,7 +346,6 @@ describe("writeSession", () => {
     expect(q2.query).toBe("second question");
     expect(q2.source).toBe("claude_code_replay");
 
-    // Should have ONE telemetry record
     const telemetryLines = readFileSync(telemetryLog, "utf-8").trim().split("\n");
     expect(telemetryLines).toHaveLength(1);
     const t = JSON.parse(telemetryLines[0]);
@@ -316,18 +353,73 @@ describe("writeSession", () => {
     expect(t.assistant_turns).toBe(3);
     expect(t.source).toBe("claude_code_replay");
 
-    // Should have ONE skill record
     const skillLines = readFileSync(skillLog, "utf-8").trim().split("\n");
     expect(skillLines).toHaveLength(1);
     const s = JSON.parse(skillLines[0]);
     expect(s.skill_name).toBe("MySkill");
     expect(s.source).toBe("claude_code_replay");
+
+    const canonicalLines = readFileSync(canonicalLog, "utf-8").trim().split("\n");
+    const canonicalRecords = canonicalLines.map((line: string) => JSON.parse(line));
+    expect(
+      canonicalRecords.filter((record: Record<string, unknown>) => record.record_kind === "prompt"),
+    ).toHaveLength(2);
+    const canonicalInvocation = canonicalRecords.find(
+      (record: Record<string, unknown>) => record.record_kind === "skill_invocation",
+    );
+    expect(canonicalInvocation?.matched_prompt_id).toBe("sess-write-test:p1");
+  });
+
+  test("skips polluted skill rows when last_user_query is not actionable", () => {
+    const queryLog = join(tmpDir, "queries-meta.jsonl");
+    const telemetryLog = join(tmpDir, "telemetry-meta.jsonl");
+    const skillLog = join(tmpDir, "skills-meta.jsonl");
+    const canonicalLog = join(tmpDir, "canonical-meta.jsonl");
+
+    const session = {
+      transcript_path: "/path/to/transcript.jsonl",
+      session_id: "sess-meta",
+      timestamp: "2026-03-15T00:00:00.000Z",
+      metrics: {
+        tool_calls: { Read: 1 },
+        total_tool_calls: 1,
+        bash_commands: [],
+        skills_triggered: ["Reins"],
+        skills_invoked: ["Reins"],
+        assistant_turns: 1,
+        errors_encountered: 0,
+        transcript_chars: 100,
+        last_user_query: "<local-command-stdout> tool output",
+      },
+      user_queries: [{ query: "review the reins repo", timestamp: "2026-03-15T00:00:00.000Z" }],
+    };
+
+    writeSession(session, false, queryLog, telemetryLog, skillLog, canonicalLog);
+
+    expect(existsSync(queryLog)).toBe(true);
+    expect(existsSync(telemetryLog)).toBe(true);
+    const skillLines = readFileSync(skillLog, "utf-8").trim().split("\n");
+    const rawSkillRecord = JSON.parse(skillLines[0]);
+    expect(rawSkillRecord.query).toBe("review the reins repo");
+    expect(rawSkillRecord.triggered).toBe(true);
+
+    const canonicalLines = readFileSync(canonicalLog, "utf-8").trim().split("\n");
+    const canonicalRecords = canonicalLines.map((line: string) => JSON.parse(line));
+    const prompt = canonicalRecords.find(
+      (record: Record<string, unknown>) => record.record_kind === "prompt",
+    );
+    const invocation = canonicalRecords.find(
+      (record: Record<string, unknown>) => record.record_kind === "skill_invocation",
+    );
+    expect(prompt?.prompt_text).toBe("review the reins repo");
+    expect(invocation?.matched_prompt_id).toBe(prompt?.prompt_id);
   });
 
   test("dry-run produces no files", () => {
     const queryLog = join(tmpDir, "queries.jsonl");
     const telemetryLog = join(tmpDir, "telemetry.jsonl");
     const skillLog = join(tmpDir, "skills.jsonl");
+    const canonicalLog = join(tmpDir, "canonical.jsonl");
 
     const session = {
       transcript_path: "/path/to/transcript.jsonl",
@@ -346,17 +438,19 @@ describe("writeSession", () => {
       user_queries: [{ query: "dry run test", timestamp: "" }],
     };
 
-    writeSession(session, true, queryLog, telemetryLog, skillLog);
+    writeSession(session, true, queryLog, telemetryLog, skillLog, canonicalLog);
 
     expect(existsSync(queryLog)).toBe(false);
     expect(existsSync(telemetryLog)).toBe(false);
     expect(existsSync(skillLog)).toBe(false);
+    expect(existsSync(canonicalLog)).toBe(false);
   });
 
   test("writes multiple skill records for multiple skills", () => {
     const queryLog = join(tmpDir, "queries.jsonl");
     const telemetryLog = join(tmpDir, "telemetry.jsonl");
     const skillLog = join(tmpDir, "skills.jsonl");
+    const canonicalLog = join(tmpDir, "canonical.jsonl");
 
     const session = {
       transcript_path: "/path/to/transcript.jsonl",
@@ -375,7 +469,7 @@ describe("writeSession", () => {
       user_queries: [{ query: "test multi skills", timestamp: "" }],
     };
 
-    writeSession(session, false, queryLog, telemetryLog, skillLog);
+    writeSession(session, false, queryLog, telemetryLog, skillLog, canonicalLog);
 
     const skillLines = readFileSync(skillLog, "utf-8").trim().split("\n");
     expect(skillLines).toHaveLength(2);

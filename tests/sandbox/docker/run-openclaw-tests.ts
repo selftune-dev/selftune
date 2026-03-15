@@ -155,8 +155,8 @@ async function testCronList(): Promise<unknown> {
     throw new Error(`cron list exited ${exitCode}: ${stderr.slice(0, 500)}`);
   }
 
-  if (!stdout.includes("selftune-ingest")) {
-    throw new Error(`Expected selftune-ingest in stdout, got: ${stdout.slice(0, 200)}`);
+  if (!stdout.includes("selftune-sync")) {
+    throw new Error(`Expected selftune-sync in stdout, got: ${stdout.slice(0, 200)}`);
   }
 
   console.log(`  [cron list] ${stdout.trim().split("\n")[0]}`);

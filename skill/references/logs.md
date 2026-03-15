@@ -1,7 +1,8 @@
 # Log Format Reference
 
-selftune writes to four log files. This reference describes each format
-in detail for the skill to use when parsing sessions and audit trails.
+selftune writes raw legacy logs plus a canonical event log. This reference
+describes each format in detail for the skill to use when parsing sessions,
+audit trails, and cloud-ingest exports.
 
 ---
 
@@ -54,11 +55,29 @@ One record per skill trigger event. Populated by skill-eval.ts (PostToolUse hook
   "session_id": "abc123",
   "skill_name": "pptx",
   "skill_path": "/mnt/skills/public/pptx/SKILL.md",
+  "skill_scope": "project",
+  "skill_project_root": "/home/user/projects/myapp",
+  "skill_registry_dir": "/home/user/projects/myapp/.agents/skills",
+  "skill_path_resolution_source": "raw_log",
   "query": "Make me a slide deck for the board meeting",
   "triggered": true,
   "source": "claude_code"
 }
 ```
+
+Optional provenance fields:
+- `skill_scope`: `project | global | admin | system | unknown`
+- `skill_project_root`: resolved repo/worktree root when the skill came from a project-local registry
+- `skill_registry_dir`: the registry directory where the resolved `SKILL.md` came from
+- `skill_path_resolution_source`: `raw_log | installed_scope | launcher_base_dir | fallback`
+
+The repaired overlay at `~/.claude/skill_usage_repaired.jsonl` uses the same
+record shape, but is rebuilt from source-truth transcripts/rollouts rather than
+hooks alone.
+
+Notes:
+- `launcher_base_dir` means selftune recovered Claude's `Base directory for this skill:` launcher metadata. If that recovered `SKILL.md` path points into a stable registry like `~/.agents/skills`, `~/.claude/skills`, `/etc/codex/skills`, or a real project checkout, selftune now reclassifies the invocation into the matching `skill_scope`. Ephemeral temp launcher directories still remain `unknown`.
+- `fallback` means selftune confirmed a skill invocation but could not yet resolve a concrete `SKILL.md` path.
 
 ---
 
@@ -74,6 +93,149 @@ Every user query, whether or not it triggered a skill. Populated by prompt-log.t
   "source": "claude_code"
 }
 ```
+
+---
+
+## ~/.claude/canonical_telemetry_log.jsonl
+
+Canonical append-only event stream. This is the normalization boundary for local
+and cloud ingestion. Raw legacy logs remain unchanged; canonical events are
+written separately. Parse it as JSONL: UTF-8 text, one canonical JSON object
+per line, newline-delimited, with parsers reading line-by-line and allowing a
+final trailing newline.
+
+Observed record kinds:
+
+- `session`
+- `prompt`
+- `skill_invocation`
+- `execution_fact`
+- `normalization_run` (reserved for future normalization job summaries)
+
+Example prompt record:
+
+```json
+{
+  "record_kind": "prompt",
+  "schema_version": "2.0",
+  "normalizer_version": "1.0.0",
+  "normalized_at": "2026-03-10T10:00:00.000Z",
+  "platform": "claude_code",
+  "capture_mode": "hook",
+  "source_session_kind": "interactive",
+  "session_id": "abc123",
+  "raw_source_ref": {
+    "event_type": "UserPromptSubmit"
+  },
+  "prompt_id": "abc123:p0",
+  "occurred_at": "2026-03-10T10:00:00.000Z",
+  "prompt_text": "Make me a slide deck for the board meeting",
+  "prompt_hash": "4d6c5c0b1a2f7a40",
+  "prompt_kind": "user",
+  "is_actionable": true,
+  "prompt_index": 0
+}
+```
+
+Example skill invocation record:
+
+```json
+{
+  "record_kind": "skill_invocation",
+  "schema_version": "2.0",
+  "normalizer_version": "1.0.0",
+  "normalized_at": "2026-03-10T10:00:05.000Z",
+  "platform": "claude_code",
+  "capture_mode": "hook",
+  "source_session_kind": "interactive",
+  "session_id": "abc123",
+  "raw_source_ref": {
+    "path": "/home/user/.claude/projects/.../abc123.jsonl",
+    "event_type": "PostToolUse"
+  },
+  "skill_invocation_id": "abc123:s:pptx:0",
+  "occurred_at": "2026-03-10T10:00:05.000Z",
+  "matched_prompt_id": "abc123:p0",
+  "skill_name": "pptx",
+  "skill_path": "/mnt/skills/public/pptx/SKILL.md",
+  "invocation_mode": "explicit",
+  "triggered": true,
+  "confidence": 1
+}
+```
+
+Run `selftune export-canonical --out ~/.claude/canonical_telemetry_log.jsonl`
+to write a canonical JSONL telemetry export ready for downstream cloud
+ingestion.
+
+---
+
+## ~/.selftune/canonical-session-state-<session>.json
+
+Per-session helper state used only to preserve deterministic canonical prompt IDs
+for live Claude hooks. `<session>` is the `session_id` with every character
+outside `[A-Za-z0-9_-]` replaced by `_`, so `user:abc/123` becomes
+`canonical-session-state-user_abc_123.json`.
+
+```json
+{
+  "session_id": "abc123",
+  "next_prompt_index": 2,
+  "last_prompt_id": "abc123:p1",
+  "last_actionable_prompt_id": "abc123:p1",
+  "updated_at": "2026-03-10T10:00:05.000Z"
+}
+```
+
+This is operational state, not an analytics source of truth.
+
+---
+
+## ~/.claude/improvement_signals.jsonl
+
+One record per detected improvement signal. Written by `prompt-log.ts` when a
+user correction or explicit skill request is detected. Read by the orchestrator
+for signal-aware candidate selection, and by `session-stop.ts` to decide whether
+to spawn a reactive orchestrate run.
+
+```json
+{
+  "timestamp": "2026-03-15T14:00:00.000Z",
+  "session_id": "abc123",
+  "query": "why didn't you use the commit skill?",
+  "signal_type": "correction",
+  "mentioned_skill": "commit",
+  "consumed": false
+}
+```
+
+Signal records are append-only. When an orchestrate run processes a signal,
+the original record remains unchanged and the orchestrator rewrites the file
+with `consumed: true` set on processed entries. This is the one exception
+to strict append-only semantics in the log system — the rewrite is atomic
+and race-protected by the orchestrate lockfile.
+
+Consumed signal example:
+
+```json
+{
+  "timestamp": "2026-03-15T14:00:00.000Z",
+  "session_id": "abc123",
+  "query": "why didn't you use the commit skill?",
+  "signal_type": "correction",
+  "mentioned_skill": "commit",
+  "consumed": true,
+  "consumed_at": "2026-03-15T14:05:00.000Z",
+  "consumed_by_run": "run_1710511500000_a1b2c3"
+}
+```
+
+**signal_type values:**
+- `correction` — User pointing out a missed skill ("why didn't you use X?", "you should have used X", "next time use X")
+- `explicit_request` — User asking to use a skill ("please use the X skill", "use the commit skill")
+- `manual_invocation` — Direct `/skill` invocation detected
+
+**Detection:** Pure regex in `prompt-log.ts`, no LLM calls. Skill names are matched against installed skills in `~/.claude/skills/`.
 
 ---
 

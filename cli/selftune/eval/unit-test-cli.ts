@@ -2,7 +2,7 @@
  * CLI entrypoint for skill unit tests.
  *
  * Usage:
- *   selftune unit-test --skill <name> --tests <path> [--run-agent] [--generate]
+ *   selftune eval unit-test --skill <name> --tests <path> [--run-agent] [--generate]
  *
  *   --skill <name>    Skill name (required)
  *   --tests <path>    Path to unit test JSON file (default: ~/.selftune/unit-tests/<skill>.json)

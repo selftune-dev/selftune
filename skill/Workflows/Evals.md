@@ -4,10 +4,19 @@ Generate eval sets from hook logs. Detects false negatives (queries that
 should have triggered a skill but did not) and annotates each entry with
 its invocation type.
 
+## When to Invoke
+
+Invoke this workflow when the user requests any of the following:
+- Generating eval sets or test data for a skill
+- Checking which skills are undertriggering
+- Viewing skill telemetry or usage stats
+- Preparing data before running the Evolve workflow
+- Any request containing "evals", "eval set", "test queries", or "skill stats"
+
 ## Default Command
 
 ```bash
-selftune evals --skill <name> [options]
+selftune eval generate --skill <name> [options]
 ```
 
 ## Options
@@ -101,10 +110,10 @@ selftune evals --skill <name> [options]
 Discover which skills have telemetry data and how many queries each has.
 
 ```bash
-selftune evals --list-skills
+selftune eval generate --list-skills
 ```
 
-Use this first to identify which skills have enough data for eval generation.
+Run this first to identify which skills have enough data for eval generation.
 
 ### Generate Synthetic Evals (Cold Start)
 
@@ -112,7 +121,7 @@ When a skill has no telemetry data yet, use `--synthetic` to generate eval
 queries directly from the SKILL.md content via an LLM.
 
 ```bash
-selftune evals --skill pptx --synthetic --skill-path /path/to/skills/pptx/SKILL.md
+selftune eval generate --skill pptx --synthetic --skill-path /path/to/skills/pptx/SKILL.md
 ```
 
 The command:
@@ -125,7 +134,7 @@ The command:
 Use `--model` to override the default LLM model:
 
 ```bash
-selftune evals --skill pptx --synthetic --skill-path ./skills/pptx/SKILL.md --model claude-sonnet-4-5-20250514
+selftune eval generate --skill pptx --synthetic --skill-path ./skills/pptx/SKILL.md --model claude-sonnet-4-5-20250514
 ```
 
 ### Generate Evals (Log-Based)
@@ -135,7 +144,7 @@ Cross-reference `skill_usage_log.jsonl` (positive triggers) against
 an eval set annotated with invocation types.
 
 ```bash
-selftune evals --skill pptx --max 50 --out evals-pptx.json
+selftune eval generate --skill pptx --max 50 --out evals-pptx.json
 ```
 
 The command:
@@ -152,40 +161,53 @@ View aggregate telemetry for a skill: average turns, tool call breakdown,
 error rates, and common bash command patterns.
 
 ```bash
-selftune evals --skill pptx --stats
+selftune eval generate --skill pptx --stats
 ```
 
 ## Steps
 
 ### 0. Pre-Flight Configuration
 
-Before generating evals, present configuration options to the user.
-If the user says "use defaults" or similar, skip to step 1 with recommended defaults.
+Before generating evals, present numbered configuration options to the user inline in your response, then wait for the user's answer before proceeding.
 
-For `--list-skills` or `--stats` requests, skip pre-flight entirely (read-only).
+If the user responds with "use defaults", "just do it", or similar shorthand, skip to step 1 using the recommended defaults.
 
-Present these options:
+For `--list-skills` or `--stats` requests, skip pre-flight entirely — these are read-only operations.
 
-```text
-selftune evals — Pre-Flight Configuration
+Present the following options inline in your response:
 
-1. Generation Mode
-   a) Log-based — build evals from real usage logs (recommended if logs exist)
-   b) Synthetic — generate evals from SKILL.md via LLM (for new skills with no data)
+1. **Generation Mode**
+   - a) Log-based — build evals from real usage logs (recommended if logs exist)
+   - b) Synthetic — generate evals from SKILL.md via LLM (for new skills with no data)
 
-2. Max Entries: [50] (default — how many eval entries to generate)
+2. **Skill Path** (synthetic mode only)
+   - Provide absolute or relative path to the target SKILL.md
+   - Example: `./skills/pptx/SKILL.md`
 
-3. Model (synthetic mode only)
-   a) Fast (haiku) — quick generation
-   b) Balanced (sonnet) — better query diversity (recommended)
-   c) Best (opus) — highest quality synthetic queries
+3. **Max Entries:** 50 (default — how many eval entries to generate)
 
-4. Output Path: [evals-<skill>.json] (default)
+4. **Model** (synthetic mode only)
+   - a) Fast (haiku) — quick generation
+   - b) Balanced (sonnet) — better query diversity (recommended)
+   - c) Best (opus) — highest quality synthetic queries
 
-→ Reply with your choices or "use defaults" for recommended settings.
-```
+5. **Output Path:** `evals-<skill>.json` (default)
 
-After the user responds, show a confirmation summary:
+Ask: "Reply with your choices or 'use defaults' for recommended settings."
+
+After the user responds, parse their selections and map each choice to the corresponding CLI flags:
+
+| Selection | CLI Flag |
+|-----------|----------|
+| 1a (log-based) | _(no flag, default)_ |
+| 1b (synthetic) | `--synthetic --skill-path <path>` |
+| Custom max entries | `--max <value>` |
+| 4a (haiku) | `--model haiku` (resolved internally by selftune) |
+| 4b (sonnet) | `--model sonnet` |
+| 4c (opus) | `--model opus` |
+| Custom output path | `--out <path>` |
+
+Show a confirmation summary to the user:
 
 ```text
 Configuration Summary:
@@ -196,15 +218,17 @@ Configuration Summary:
 Proceeding...
 ```
 
+Build the CLI command string with all selected flags and continue to step 1.
+
 ### 1. List Available Skills
 
-Run `selftune evals --list-skills` to see what skills have telemetry data. If the target
+Run `selftune eval generate --list-skills` to see what skills have telemetry data. If the target
 skill has zero or very few queries, more sessions are needed before
 eval generation is useful.
 
 ### 2. Generate the Eval Set
 
-Run with `--skill <name>`. Review the output file for:
+Run with `--skill <name>`. Parse the JSON output and review for:
 - Balance between positive and negative entries
 - Coverage of all three positive invocation types (explicit, implicit, contextual)
 - Reasonable negative examples (keyword overlap but wrong intent)
@@ -233,20 +257,20 @@ beyond trigger coverage.
 
 ## Common Patterns
 
-**"What skills are undertriggering?"**
-> Run `selftune evals --list-skills`, then for each skill with significant query counts,
-> generate evals and check for missed implicit/contextual queries.
+**User asks which skills are undertriggering:**
+Run `selftune eval generate --list-skills`, then for each skill with significant query counts,
+generate evals and check for missed implicit/contextual queries.
 
-**"Generate evals for pptx"**
-> Run `selftune evals --skill pptx`. Review the invocation type distribution.
-> Feed the output to `evolve` if coverage gaps exist.
+**User asks to generate evals for a specific skill:**
+Run `selftune eval generate --skill <name>`. Parse the JSON output and review the invocation type distribution.
+Feed the output to the Evolve workflow if coverage gaps exist.
 
-**"Show me skill stats"**
-> Run `selftune evals --skill <name> --stats` for aggregate telemetry.
+**User asks for skill telemetry or stats:**
+Run `selftune eval generate --skill <name> --stats` for aggregate telemetry.
 
-**"I have a new skill with no usage data"**
-> Use `selftune evals --skill <name> --synthetic --skill-path /path/to/SKILL.md`.
-> This generates eval queries from the skill description without needing session logs.
+**User has a new skill with no usage data:**
+Use `selftune eval generate --skill <name> --synthetic --skill-path /path/to/SKILL.md`.
+This generates eval queries from the skill description without needing session logs.
 
-**"I want reproducible evals"**
-> Use `--seed <n>` to fix the random sampling of negative examples.
+**User wants reproducible evals:**
+Add `--seed <n>` to fix the random sampling of negative examples.

@@ -4,6 +4,14 @@ Improve a skill's description based on real usage signal. Analyzes failure
 patterns from eval sets and proposes description changes that catch more
 natural-language queries without breaking existing triggers.
 
+## When to Invoke
+
+Invoke this workflow when the user requests any of the following:
+- Improving or evolving a skill's trigger coverage
+- Fixing undertriggering or missed queries for a skill
+- Optimizing a skill description based on usage data
+- Any request containing "evolve", "improve triggers", or "fix skill matching"
+
 ## Default Command
 
 ```bash
@@ -25,6 +33,8 @@ selftune evolve --skill <name> --skill-path <path> [options]
 | `--cheap-loop` | Use cheap models for loop, expensive for final gate | Off |
 | `--gate-model <model>` | Model for final gate validation | `sonnet` (when `--cheap-loop`) |
 | `--proposal-model <model>` | Model for proposal generation LLM calls | None |
+| `--sync-first` | Refresh source-truth telemetry before generating evals/failure patterns | Off |
+| `--sync-force` | Force a full source rescan during `--sync-first` | Off |
 
 ## Output Format
 
@@ -79,41 +89,51 @@ The evolution process writes multiple audit entries:
 
 ### 0. Pre-Flight Configuration
 
-Before running the evolve command, present configuration options to the user.
-If the user says "use defaults", "just run it", or similar, skip to step 1
-with the recommended defaults marked below.
+Before running the evolve command, present numbered configuration options to the user inline in your response, then wait for the user's answer before proceeding.
 
-Present these options (use AskUserQuestion or inline prompt):
+If the user responds with "use defaults", "just run it", or similar shorthand, skip to step 1 using the recommended defaults marked below.
 
-```
-selftune evolve — Pre-Flight Configuration
+Present the following options inline in your response:
 
-1. Execution Mode
-   a) Dry run — preview proposal without deploying (recommended for first run)
-   b) Live — validate and deploy if improved
+1. **Execution Mode**
+   - a) Dry run — preview proposal without deploying (recommended for first run)
+   - b) Live — validate and deploy if improved
 
-2. Model Tier (see SKILL.md Model Tier Reference)
-   a) Fast (haiku) — cheapest, ~2s/call (recommended with cheap-loop)
-   b) Balanced (sonnet) — good quality, ~5s/call
-   c) Best (opus) — highest quality, ~10s/call
+2. **Model Tier** (see SKILL.md Model Tier Reference)
+   - a) Fast (haiku) — cheapest, ~2s/call (recommended with cheap-loop)
+   - b) Balanced (sonnet) — good quality, ~5s/call
+   - c) Best (opus) — highest quality, ~10s/call
 
-3. Cost Optimization
-   a) Cheap loop — haiku for iteration, sonnet for final gate (recommended)
-   b) Single model — use one model throughout
+3. **Cost Optimization**
+   - a) Cheap loop — haiku for iteration, sonnet for final gate (recommended)
+   - b) Single model — use one model throughout
 
-4. Confidence Threshold: [0.6] (default, higher = stricter)
+4. **Confidence Threshold:** 0.6 (default, higher = stricter)
 
-5. Max Iterations: [3] (default, more = longer but better results)
+5. **Max Iterations:** 3 (default, more = longer but better results)
 
-6. Multi-Candidate Selection
-   a) Single candidate — one proposal per iteration (recommended)
-   b) Pareto mode — generate multiple candidates, pick best on frontier
+6. **Multi-Candidate Selection**
+   - a) Single candidate — one proposal per iteration (recommended)
+   - b) Pareto mode — generate multiple candidates, pick best on frontier
 
-→ Reply with your choices (e.g., "1a, 2a, 3a, defaults for rest")
-  or "use defaults" for recommended settings.
-```
+Ask: "Reply with your choices (e.g., '1a, 2a, 3a, defaults for rest') or 'use defaults' for recommended settings."
 
-After the user responds, show a confirmation summary:
+After the user responds, parse their selections and map each choice to the corresponding CLI flags:
+
+| Selection | CLI Flag |
+|-----------|----------|
+| 1a (dry run) | `--dry-run` |
+| 1b (live) | _(no flag)_ |
+| 2a (haiku) | `--validation-model haiku` |
+| 2b (sonnet) | `--validation-model sonnet` |
+| 2c (opus) | `--validation-model opus` |
+| 3a (cheap loop) | `--cheap-loop` |
+| 3b (single model) | _(no flag)_ |
+| Custom confidence | `--confidence <value>` |
+| Custom iterations | `--max-iterations <value>` |
+| 6b (pareto) | `--pareto` |
+
+Show a confirmation summary to the user:
 
 ```
 Configuration Summary:
@@ -126,7 +146,7 @@ Configuration Summary:
 Proceeding...
 ```
 
-Then build the CLI command with the selected flags and continue to step 1.
+Build the CLI command string with all selected flags and continue to step 1.
 
 ### 1. Read Evolution Context
 
@@ -143,7 +163,20 @@ edits on monitored skills during active evolution. This prevents conflicting
 changes while the evolve process is running. The guard is automatically
 engaged when evolve starts and released when it completes.
 
-### 2. Load or Generate Eval Set
+### 2. Refresh Source Truth (Recommended)
+
+If the host has accumulated significant agent activity or is known to be
+polluted, prefer:
+
+```bash
+selftune evolve --skill <name> --skill-path <path> --sync-first
+```
+
+`--sync-first` runs the authoritative transcript/rollout sync before eval-set
+generation and failure-pattern extraction. Use `--sync-force` when you need
+to ignore markers and rescan everything.
+
+### 3. Load or Generate Eval Set
 
 If `--eval-set` is provided, use it directly. Otherwise, the command
 generates one from logs (equivalent to running `evals --skill <name>`).
@@ -151,7 +184,7 @@ generates one from logs (equivalent to running `evals --skill <name>`).
 An eval set is required for validation. Without enough telemetry data,
 evolution cannot reliably measure improvement.
 
-### 3. Extract Failure Patterns
+### 4. Extract Failure Patterns
 
 The command groups missed queries by invocation type:
 - Missed explicit: description is broken (rare, high priority)
@@ -160,7 +193,7 @@ The command groups missed queries by invocation type:
 
 See `references/invocation-taxonomy.md` for the taxonomy.
 
-### 4. Propose Description Changes
+### 5. Propose Description Changes
 
 An LLM generates a candidate description that would catch the missed
 queries. The candidate:
@@ -168,7 +201,7 @@ queries. The candidate:
 - Adds new phrases covering missed patterns
 - Maintains the description's structure and tone
 
-### 5. Validate Against Eval Set
+### 6. Validate Against Eval Set
 
 The candidate is tested against the full eval set:
 - Must improve overall pass rate
@@ -178,7 +211,7 @@ The candidate is tested against the full eval set:
 If validation fails, the command retries up to `--max-iterations` times
 with adjusted proposals.
 
-### 6. Deploy (or Preview)
+### 7. Deploy (or Preview)
 
 If `--dry-run`, the proposal is printed but not deployed. The audit log
 still records `created` and `validated` entries for review.
@@ -188,7 +221,7 @@ If deploying:
 2. The updated description is written to SKILL.md
 3. A `deployed` entry is logged to the evolution audit
 
-### 7. Update Memory
+### 8. Update Memory
 
 After evolution completes (deploy or dry-run), the memory writer updates:
 - `~/.selftune/memory/context.md` -- records the evolution outcome and current state
@@ -237,22 +270,44 @@ selftune evolve --skill X --skill-path Y --proposal-model haiku --validation-mod
 
 ## Common Patterns
 
-**"Evolve the pptx skill"**
-> Need `--skill pptx` and `--skill-path /path/to/pptx/SKILL.md`.
-> If the user hasn't specified the path, search for the SKILL.md file
-> in the workspace or ask.
+**User asks to evolve a specific skill (e.g., "evolve the pptx skill"):**
+Requires `--skill pptx` and `--skill-path /path/to/pptx/SKILL.md`.
+If the user has not specified the path, search for the SKILL.md file
+in the workspace. If not found, ask the user for the path.
 
-**"Just show me what would change"**
-> Use `--dry-run` to preview proposals without deploying.
+**User wants a preview without deployment (e.g., "just show me what would change"):**
+Add `--dry-run` to preview proposals without deploying.
 
-**"The evolution didn't help enough"**
-> Check the eval set quality. Missing contextual examples will limit
-> what evolution can learn. Generate a richer eval set first.
+**Evolution results are insufficient:**
+Check the eval set quality. Missing contextual examples limit
+what evolution can learn. Generate a richer eval set first using the Evals workflow.
 
-**"Evolution keeps failing validation"**
-> Lower `--confidence` slightly or increase `--max-iterations`.
-> Also check if the eval set has contradictory expectations.
+**Evolution keeps failing validation:**
+Lower `--confidence` slightly or increase `--max-iterations`.
+Also check if the eval set has contradictory expectations.
 
-**"Which agent is being used?"**
-> The evolve command auto-detects your installed agent CLI.
-> Use `--agent <name>` to override (claude, codex, opencode).
+**Agent CLI override needed:**
+The evolve command auto-detects the installed agent CLI.
+Use `--agent <name>` to override (claude, codex, opencode).
+
+## Subagent Escalation
+
+For high-stakes evolutions, consider spawning the `evolution-reviewer` agent
+as a subagent to review the proposal before deploying. This is especially
+valuable when the skill has a history of regressions, the evolution touches
+many trigger phrases, or the confidence score is near the threshold.
+
+## Autonomous Mode
+
+When called by `selftune orchestrate` (via cron or --loop), evolution runs
+without user interaction:
+
+- Pre-flight is skipped entirely — defaults are used
+- The orchestrator selects candidate skills based on health scores
+- Evolution uses cheap-loop mode (Haiku) by default
+- Validation runs automatically against the eval set
+- Deploy happens if validation passes the regression threshold
+- Results are logged to orchestrate-runs.jsonl
+
+No user confirmation is needed. The safety controls (regression threshold,
+auto-rollback via watch, SKILL.md backup) provide the guardrails.

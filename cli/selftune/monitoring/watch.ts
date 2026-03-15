@@ -12,6 +12,7 @@ import { QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
 import { classifyInvocation } from "../eval/hooks-to-evals.js";
 import { getLastDeployedProposal } from "../evolution/audit.js";
 import { updateContextAfterWatch } from "../memory/writer.js";
+import type { SyncResult } from "../sync.js";
 import type {
   InvocationType,
   MonitoringSnapshot,
@@ -20,6 +21,11 @@ import type {
   SkillUsageRecord,
 } from "../types.js";
 import { readJsonl } from "../utils/jsonl.js";
+import {
+  filterActionableQueryRecords,
+  filterActionableSkillUsageRecords,
+} from "../utils/query-filter.js";
+import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
 
 // ---------------------------------------------------------------------------
 // Public interfaces
@@ -42,6 +48,10 @@ export interface WatchOptions {
     skillPath: string;
     proposalId?: string;
   }) => Promise<{ rolledBack: boolean; restoredDescription: string; reason: string }>;
+  /** Source-truth refresh before reading logs. */
+  syncFirst?: boolean;
+  syncForce?: boolean;
+  _syncFn?: typeof import("../sync.js").syncSources;
 }
 
 export interface WatchResult {
@@ -49,6 +59,7 @@ export interface WatchResult {
   alert: string | null;
   rolledBack: boolean;
   recommendation: string;
+  sync_result?: SyncResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -57,6 +68,7 @@ export interface WatchResult {
 
 const DEFAULT_BASELINE_PASS_RATE = 0.5;
 const DEFAULT_REGRESSION_THRESHOLD = 0.1;
+export const MIN_MONITORING_SKILL_CHECKS = 3;
 
 // ---------------------------------------------------------------------------
 // computeMonitoringSnapshot - pure function
@@ -66,9 +78,9 @@ const DEFAULT_REGRESSION_THRESHOLD = 0.1;
  * Compute a monitoring snapshot from raw log records.
  *
  * The function windows telemetry to the last `windowSessions` entries, then
- * scopes skill and query records to those sessions. If telemetry is empty or
- * no records match the windowed session IDs, all provided skill/query records
- * are used directly (unfiltered by session).
+ * scopes skill and actionable query records to those sessions. If telemetry is
+ * empty or no records match the windowed session IDs, all provided skill/query
+ * records are used directly (unfiltered by session).
  *
  * @param skillName        - The skill to monitor
  * @param telemetry        - All session telemetry records
@@ -88,33 +100,33 @@ export function computeMonitoringSnapshot(
   regressionThreshold: number = DEFAULT_REGRESSION_THRESHOLD,
 ): MonitoringSnapshot {
   // 1. Window the telemetry to the last N sessions (by array order, assumed chronological)
+  const actionableSkillRecords = filterActionableSkillUsageRecords(skillRecords);
+  const actionableQueryRecords = filterActionableQueryRecords(queryRecords);
   const windowedTelemetry = telemetry.slice(-windowSessions);
   const windowedSessionIds = new Set(windowedTelemetry.map((t) => t.session_id));
 
   // 2. Filter skill records by skill name first
-  const skillNameFiltered = skillRecords.filter((r) => r.skill_name === skillName);
+  const skillNameFiltered = actionableSkillRecords.filter((r) => r.skill_name === skillName);
 
   // 3. Apply session ID windowing only if telemetry is present and overlaps
   const hasSessionOverlap =
     windowedSessionIds.size > 0 &&
     (skillNameFiltered.some((r) => windowedSessionIds.has(r.session_id)) ||
-      queryRecords.some((r) => windowedSessionIds.has(r.session_id)));
+      actionableQueryRecords.some((r) => windowedSessionIds.has(r.session_id)));
 
   const filteredSkillRecords = hasSessionOverlap
     ? skillNameFiltered.filter((r) => windowedSessionIds.has(r.session_id))
     : skillNameFiltered;
-
   const filteredQueryRecords = hasSessionOverlap
-    ? queryRecords.filter((r) => windowedSessionIds.has(r.session_id))
-    : queryRecords;
+    ? actionableQueryRecords.filter((r) => windowedSessionIds.has(r.session_id))
+    : actionableQueryRecords;
 
-  // 4. Compute pass rate: triggered_count / total_query_count
+  // 4. Compute pass rate from explicit skill checks, not from all queries.
   const triggeredCount = filteredSkillRecords.filter((r) => r.triggered).length;
-  const totalQueries = filteredQueryRecords.length;
-  const passRate = totalQueries === 0 ? 1.0 : triggeredCount / totalQueries;
+  const totalSkillChecks = filteredSkillRecords.length;
+  const passRate = totalSkillChecks === 0 ? 0 : triggeredCount / totalSkillChecks;
 
   // 5. Compute false negative rate from skill usage records
-  const totalSkillChecks = filteredSkillRecords.length;
   const falseNegatives = filteredSkillRecords.filter((r) => !r.triggered).length;
   const falseNegativeRate = totalSkillChecks === 0 ? 0 : falseNegatives / totalSkillChecks;
 
@@ -126,7 +138,10 @@ export function computeMonitoringSnapshot(
     negative: { passed: 0, total: 0 },
   };
   for (const record of filteredSkillRecords) {
-    const invType = classifyInvocation(record.query, skillName);
+    const invType = classifyInvocation(
+      typeof record.query === "string" ? record.query : "",
+      skillName,
+    );
     byInvocationType[invType].total++;
     if (record.triggered) {
       byInvocationType[invType].passed++;
@@ -139,12 +154,16 @@ export function computeMonitoringSnapshot(
   const adjustedThreshold =
     Math.round((baselinePassRate - regressionThreshold) * precision) / precision;
   const roundedPassRate = Math.round(passRate * precision) / precision;
-  const regressionDetected = roundedPassRate < adjustedThreshold;
+  const hasEnoughSignalForRegression =
+    totalSkillChecks >= MIN_MONITORING_SKILL_CHECKS ||
+    (totalSkillChecks === 0 && filteredQueryRecords.length >= MIN_MONITORING_SKILL_CHECKS);
+  const regressionDetected = hasEnoughSignalForRegression && roundedPassRate < adjustedThreshold;
 
   return {
     timestamp: new Date().toISOString(),
     skill_name: skillName,
     window_sessions: windowSessions,
+    skill_checks: totalSkillChecks,
     pass_rate: passRate,
     false_negative_rate: falseNegativeRate,
     by_invocation_type: byInvocationType,
@@ -172,11 +191,28 @@ export async function watch(options: WatchOptions): Promise<WatchResult> {
     _queryLogPath = QUERY_LOG,
     _auditLogPath,
     _rollbackFn,
+    syncFirst = false,
+    syncForce = false,
+    _syncFn,
   } = options;
+
+  let syncResult: SyncResult | undefined;
+  if (syncFirst) {
+    const { createDefaultSyncOptions, syncSources: realSyncSources } = await import("../sync.js");
+    const syncRunner = _syncFn ?? realSyncSources;
+    syncResult = syncRunner(
+      createDefaultSyncOptions({
+        force: syncForce,
+      }),
+    );
+  }
 
   // 1. Read log files
   const telemetry = readJsonl<SessionTelemetryRecord>(_telemetryLogPath);
-  const skillRecords = readJsonl<SkillUsageRecord>(_skillLogPath);
+  const skillRecords =
+    _skillLogPath === SKILL_LOG
+      ? readEffectiveSkillUsageRecords()
+      : readJsonl<SkillUsageRecord>(_skillLogPath);
   const queryRecords = readJsonl<QueryLogRecord>(_queryLogPath);
 
   // 2. Determine baseline pass rate from last deployed audit entry
@@ -217,6 +253,10 @@ export async function watch(options: WatchOptions): Promise<WatchResult> {
     recommendation = rolledBack
       ? `Rolled back "${skillName}" to previous version. Monitor to confirm recovery.`
       : `Consider running: selftune rollback --skill "${skillName}" --skill-path "${skillPath}"`;
+  } else if (snapshot.skill_checks < MIN_MONITORING_SKILL_CHECKS) {
+    recommendation =
+      `Skill "${skillName}" has only ${snapshot.skill_checks} actionable check(s) in the current window. ` +
+      `Need at least ${MIN_MONITORING_SKILL_CHECKS} before calling it stable.`;
   } else {
     recommendation = `Skill "${skillName}" is stable. Pass rate ${snapshot.pass_rate.toFixed(2)} is within acceptable range of baseline ${baselinePassRate.toFixed(2)}.`;
   }
@@ -240,6 +280,7 @@ export async function watch(options: WatchOptions): Promise<WatchResult> {
     alert,
     rolledBack,
     recommendation,
+    ...(syncResult ? { sync_result: syncResult } : {}),
   };
 }
 
@@ -283,6 +324,8 @@ export async function cliMain(): Promise<void> {
       window: { type: "string", default: "20" },
       threshold: { type: "string", default: "0.1" },
       "auto-rollback": { type: "boolean", default: false },
+      "sync-first": { type: "boolean", default: false },
+      "sync-force": { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
     strict: true,
@@ -300,12 +343,18 @@ Options:
   --window            Number of recent sessions to consider (default: 20)
   --threshold         Regression threshold below baseline (default: 0.1)
   --auto-rollback     Automatically rollback on regression detection
+  --sync-first        Refresh source-truth telemetry before reading watch inputs
+  --sync-force        Force a full rescan during --sync-first
   --help              Show this help message`);
     process.exit(0);
   }
 
   if (!values.skill || !values["skill-path"]) {
     console.error("[ERROR] --skill and --skill-path are required");
+    process.exit(1);
+  }
+  if ((values["sync-force"] ?? false) && !(values["sync-first"] ?? false)) {
+    console.error("[ERROR] --sync-force requires --sync-first");
     process.exit(1);
   }
 
@@ -337,6 +386,8 @@ Options:
     windowSessions,
     regressionThreshold,
     autoRollback: values["auto-rollback"] ?? false,
+    syncFirst: values["sync-first"] ?? false,
+    syncForce: values["sync-force"] ?? false,
   });
 
   console.log(JSON.stringify(result, null, 2));

@@ -105,8 +105,8 @@ Doctor validates these areas:
 
 | Check | What it validates |
 |-------|-------------------|
-| Agent directory exists | `.claude/agents/` directory is present |
-| Agent files present | Expected agent files exist: `diagnosis-analyst.md`, `pattern-analyst.md`, `evolution-reviewer.md`, `integration-guide.md` |
+| Optional agent directory exists | If `.claude/agents/` is present, it is readable |
+| Optional agent files present | If the repo bundles helper agents, the expected files are present |
 
 ### Dashboard Checks (optional)
 
@@ -147,28 +147,41 @@ For each failed check, take the appropriate action:
 | Evolution guard missing | Add `hooks/evolution-guard.ts` to `PreToolUse` in settings. |
 | Memory directory missing | Run `mkdir -p ~/.selftune/memory`. |
 | Memory files invalid | Delete and let the memory writer recreate them on next evolve/watch. |
-| Activation rules missing | Copy `templates/activation-rules-default.json` to `~/.selftune/activation-rules.json`. |
+| Activation rules missing | Copy `assets/activation-rules-default.json` to `~/.selftune/activation-rules.json`. |
 | Activation rules invalid | Validate JSON syntax. Re-copy from template if corrupted. |
-| Agent files missing | Copy agents from the selftune repo `.claude/agents/` directory. |
+| Agent files missing | If your repo uses optional helper agents, restore them in `.claude/agents/`. Otherwise ignore this advisory. |
 | Audit log invalid | Remove corrupted entries. Future operations will append clean entries. |
 
 ### 4. Re-run Doctor
 
 After fixes, run doctor again to verify all checks pass.
 
+## Subagent Escalation
+
+If doctor reveals persistent issues with a specific skill — especially
+recurring failures that basic fixes do not resolve — spawn the
+`diagnosis-analyst` agent as a subagent for root cause analysis.
+
 ## Common Patterns
 
-**"Something seems broken"**
-> Run doctor first. Report any failing checks with their detail messages.
+**User reports something seems broken**
+> Run `selftune doctor`. Parse the JSON output for failed checks. Report
+> each failure's `name` and `detail` to the user with the recommended fix.
 
-**"Are my hooks working?"**
-> Doctor checks hook installation. If hooks pass but no data appears,
-> verify the hook script paths point to actual files.
+**User asks if hooks are working**
+> Run `selftune doctor`. Parse `.checks[]` for hook-related entries. If
+> hooks pass but no data appears, verify hook script paths in
+> `~/.claude/settings.json` point to actual files.
 
-**"No telemetry available"**
-> Doctor will report missing log files. Install hooks using the
-> `settings_snippet.json` in the skill directory, then run a session.
+**No telemetry data available**
+> Run `selftune doctor`. Route fixes by platform:
+> - **Claude Code** — route to the Initialize workflow to install hooks
+> - **Codex** — run `selftune ingest codex` or `selftune ingest wrap-codex`
+> - **OpenCode** — run `selftune ingest opencode`
+> - **OpenClaw** — run `selftune ingest openclaw`
+> At least one session must complete after setup to generate telemetry.
 
-**"Check selftune health"**
-> Run doctor and report the summary. A clean bill of health means
-> all checks pass and selftune is ready to grade/evolve/watch.
+**User asks to check selftune health**
+> Run `selftune doctor`. Parse `.healthy` and `.summary`. If `healthy: true`,
+> report that selftune is fully operational. If false, report failed checks
+> and recommended fixes.

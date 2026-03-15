@@ -67,7 +67,7 @@ Runs `selftune watch --skill find-skills` — pure computation, no LLM. Computes
 - **pass_rate:** 0.2 (6 triggers out of 30 total queries)
 - **baseline_pass_rate:** 0.5 (from evolution audit log)
 - **regression_detected:** true (0.20 is below 0.50 minus the 0.10 threshold)
-- Recommends `selftune rollback --skill "find-skills"`
+- Recommends `selftune evolve rollback --skill "find-skills"`
 
 This correctly detects the regression scenario encoded in the fixture data (~30ms).
 
@@ -87,9 +87,9 @@ This correctly detects the regression scenario encoded in the fixture data (~30m
 |-----|-----|
 | All 3 skills graded | Only `find-skills` session-001 is graded (cost control) |
 | Actual skill rewriting | `evolve --dry-run` never modifies SKILL.md |
-| Rollback after regression | `watch` detects regression but doesn't test `rollback` |
+| Rollback after regression | `watch` detects regression but doesn't test `evolve rollback` |
 | Multi-session grading | Only 1 of 15 sessions is graded |
-| `ai-image-generation` in Layer 2 | Only exercised in Layer 1 via `evals` |
+| `ai-image-generation` in Layer 2 | Only exercised in Layer 1 via `eval generate` |
 
 These are candidates for future test expansion.
 
@@ -117,5 +117,5 @@ make check
 
 ## Future Work
 
-- Add `replay` command testing with simulated `~/.claude/projects/` transcripts
+- Add `ingest claude` command testing with simulated `~/.claude/projects/` transcripts
 - Add `init` command testing with mocked `Bun.which()` for agent detection

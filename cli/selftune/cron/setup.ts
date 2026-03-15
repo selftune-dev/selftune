@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * selftune cron — Manage OpenClaw cron jobs for selftune automation.
+ * selftune cron — OpenClaw cron integration for selftune automation.
  *
  * Subcommands:
  *   setup    Register default selftune cron jobs with OpenClaw
@@ -31,29 +31,25 @@ export interface CronJobConfig {
 
 export const DEFAULT_CRON_JOBS: CronJobConfig[] = [
   {
-    name: "selftune-ingest",
+    name: "selftune-sync",
     cron: "*/30 * * * *",
-    message: "Run selftune ingest-openclaw to capture any new sessions.",
-    description: "Ingest new sessions every 30 minutes",
+    message:
+      "Run selftune sync to replay and ingest new Claude Code, Codex, OpenCode, and OpenClaw source data, then rebuild the repaired skill-usage overlay.",
+    description: "Sync source-truth telemetry every 30 minutes",
   },
   {
     name: "selftune-status",
     cron: "0 8 * * *",
-    message: "Run selftune status --json and report any skills with pass rate below 80%.",
-    description: "Daily health check at 8am",
-  },
-  {
-    name: "selftune-evolve",
-    cron: "0 3 * * 0",
     message:
-      "Run the full selftune evolution pipeline: ingest new sessions, check status, evolve any undertriggering skills, and report results.",
-    description: "Weekly evolution at 3am Sunday",
+      "Run selftune sync first, then run selftune status --json and report any skills with pass rate below 80% or still ungraded due to sparse recent checks.",
+    description: "Daily health check after source sync",
   },
   {
-    name: "selftune-watch",
+    name: "selftune-orchestrate",
     cron: "0 */6 * * *",
-    message: "Run selftune watch on all recently evolved skills to detect regressions.",
-    description: "Monitor regressions every 6 hours",
+    message:
+      "Run selftune orchestrate --max-skills 3. This performs source-truth sync, selects candidate skills, evolves validated low-risk descriptions autonomously, and watches recent deployments for regressions.",
+    description: "Autonomous improvement loop every 6 hours",
   },
 ];
 
@@ -120,7 +116,7 @@ export function loadCronJobs(jobsPath: string): CronJobConfig[] {
 /** Register default cron jobs with OpenClaw. */
 export async function setupCronJobs(tz: string, dryRun: boolean): Promise<void> {
   const openclawPath = Bun.which("openclaw");
-  if (!openclawPath) {
+  if (!dryRun && !openclawPath) {
     console.error("Error: openclaw is not installed or not in PATH.");
     console.error("");
     console.error("Install OpenClaw:");
@@ -246,7 +242,11 @@ export async function cliMain(): Promise<void> {
       await removeCronJobs(values["dry-run"] ?? false);
       break;
     default:
-      console.log(`selftune cron — Manage OpenClaw cron jobs
+      console.log(`selftune cron — OpenClaw cron integration
+
+Registers selftune automation jobs with OpenClaw's Gateway Scheduler.
+This is an optional convenience for OpenClaw users. For generic scheduling
+with system cron, launchd, or systemd, see: selftune schedule
 
 Usage:
   selftune cron setup [--dry-run] [--tz <timezone>]

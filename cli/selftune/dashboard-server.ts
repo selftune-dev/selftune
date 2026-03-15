@@ -1,155 +1,177 @@
 /**
- * selftune dashboard server — Live Bun.serve HTTP server with SSE, data API,
- * and action endpoints for the interactive dashboard.
+ * selftune dashboard server — Bun.serve HTTP server for the SPA dashboard,
+ * skill report HTML, badges, and action endpoints.
  *
  * Endpoints:
- *   GET  /              — Serve dashboard HTML with embedded data + live mode flag
- *   GET  /api/data      — JSON endpoint returning current telemetry data
- *   GET  /api/events    — SSE stream sending data updates every 5 seconds
+ *   GET  /                     — Serve dashboard SPA shell
+ *   GET  /api/health           — Dashboard server health probe
+ *   GET  /api/v2/doctor        — System health diagnostics (config, logs, hooks, evolution)
+ *   GET  /api/v2/overview      — SQLite-backed overview payload
+ *   GET  /api/v2/skills/:name  — SQLite-backed per-skill report
  *   POST /api/actions/watch    — Trigger `selftune watch` for a skill
  *   POST /api/actions/evolve   — Trigger `selftune evolve` for a skill
  *   POST /api/actions/rollback — Trigger `selftune rollback` for a skill
+ *   GET  /badge/:name          — Skill health badge
+ *   GET  /report/:name         — Skill health report HTML
  */
 
+import type { Database } from "bun:sqlite";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { BadgeData } from "./badge/badge-data.js";
 import { findSkillBadgeData } from "./badge/badge-data.js";
 import type { BadgeFormat } from "./badge/badge-svg.js";
 import { formatBadgeOutput, renderBadgeSvg } from "./badge/badge-svg.js";
-import { EVOLUTION_AUDIT_LOG, QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "./constants.js";
-import { getLastDeployedProposal } from "./evolution/audit.js";
-import { readDecisions } from "./memory/writer.js";
-import { computeMonitoringSnapshot } from "./monitoring/watch.js";
+import { EVOLUTION_AUDIT_LOG, QUERY_LOG, TELEMETRY_LOG } from "./constants.js";
+import type { OverviewResponse, SkillReportResponse } from "./dashboard-contract.js";
+import { readEvidenceTrail } from "./evolution/evidence.js";
+import { openDb } from "./localdb/db.js";
+import { materializeIncremental } from "./localdb/materialize.js";
+import {
+  getOrchestrateRuns,
+  getOverviewPayload,
+  getPendingProposals,
+  getSkillReportPayload,
+  getSkillsList,
+} from "./localdb/queries.js";
 import { doctor } from "./observability.js";
 import type { StatusResult } from "./status.js";
 import { computeStatus } from "./status.js";
 import type {
   EvolutionAuditEntry,
+  EvolutionEvidenceEntry,
   QueryLogRecord,
   SessionTelemetryRecord,
-  SkillUsageRecord,
 } from "./types.js";
 import { readJsonl } from "./utils/jsonl.js";
+import { readEffectiveSkillUsageRecords } from "./utils/skill-log.js";
 
 export interface DashboardServerOptions {
   port?: number;
   host?: string;
+  spaDir?: string;
   openBrowser?: boolean;
+  statusLoader?: () => StatusResult;
+  evidenceLoader?: () => EvolutionEvidenceEntry[];
+  overviewLoader?: () => OverviewResponse;
+  skillReportLoader?: (skillName: string) => SkillReportResponse | null;
+  actionRunner?: typeof runAction;
 }
 
-interface DashboardData {
-  telemetry: SessionTelemetryRecord[];
-  skills: SkillUsageRecord[];
-  queries: QueryLogRecord[];
-  evolution: EvolutionAuditEntry[];
-  decisions: import("./types.js").DecisionRecord[];
-  computed: {
-    snapshots: Record<string, ReturnType<typeof computeMonitoringSnapshot>>;
-    unmatched: Array<{ timestamp: string; session_id: string; query: string }>;
-    pendingProposals: EvolutionAuditEntry[];
-  };
+/** Read selftune version from package.json once at startup */
+let selftuneVersion = "unknown";
+try {
+  const pkgPath = join(import.meta.dir, "..", "..", "package.json");
+  selftuneVersion = JSON.parse(readFileSync(pkgPath, "utf-8")).version;
+} catch {
+  // fallback already set
 }
 
-function findViewerHTML(): string {
+function findSpaDir(): string | null {
   const candidates = [
-    join(dirname(import.meta.dir), "..", "dashboard", "index.html"),
-    join(dirname(import.meta.dir), "dashboard", "index.html"),
-    resolve("dashboard", "index.html"),
+    join(dirname(import.meta.dir), "..", "apps", "local-dashboard", "dist"),
+    join(dirname(import.meta.dir), "apps", "local-dashboard", "dist"),
+    resolve("apps", "local-dashboard", "dist"),
   ];
   for (const c of candidates) {
-    if (existsSync(c)) return c;
+    if (existsSync(join(c, "index.html"))) return c;
   }
-  throw new Error("Could not find dashboard/index.html. Ensure it exists in the selftune repo.");
+  return null;
 }
 
-function collectData(): DashboardData {
-  const telemetry = readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG);
-  const skills = readJsonl<SkillUsageRecord>(SKILL_LOG);
-  const queries = readJsonl<QueryLogRecord>(QUERY_LOG);
-  const evolution = readJsonl<EvolutionAuditEntry>(EVOLUTION_AUDIT_LOG);
-  const decisions = readDecisions();
-
-  // Compute per-skill monitoring snapshots
-  const skillNames = [...new Set(skills.map((r) => r.skill_name))];
-  const snapshots: Record<string, ReturnType<typeof computeMonitoringSnapshot>> = {};
-  for (const name of skillNames) {
-    const lastDeployed = getLastDeployedProposal(name);
-    const baselinePassRate = lastDeployed?.eval_snapshot?.pass_rate ?? 0.5;
-    snapshots[name] = computeMonitoringSnapshot(
-      name,
-      telemetry,
-      skills,
-      queries,
-      telemetry.length,
-      baselinePassRate,
-    );
+function decodePathSegment(segment: string): string | null {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
   }
-
-  // Compute unmatched queries
-  const triggeredQueries = new Set(
-    skills.filter((r) => r.triggered).map((r) => r.query.toLowerCase().trim()),
-  );
-  const unmatched = queries
-    .filter((q) => !triggeredQueries.has(q.query.toLowerCase().trim()))
-    .map((q) => ({
-      timestamp: q.timestamp,
-      session_id: q.session_id,
-      query: q.query,
-    }));
-
-  // Compute pending proposals (reuse already-loaded evolution entries)
-  const proposalStatus: Record<string, string[]> = {};
-  for (const e of evolution) {
-    if (!proposalStatus[e.proposal_id]) proposalStatus[e.proposal_id] = [];
-    proposalStatus[e.proposal_id].push(e.action);
-  }
-  const terminalActions = new Set(["deployed", "rejected", "rolled_back"]);
-  const seenProposals = new Set<string>();
-  const pendingProposals = evolution.filter((e) => {
-    if (e.action !== "created" && e.action !== "validated") return false;
-    if (seenProposals.has(e.proposal_id)) return false;
-    const actions = proposalStatus[e.proposal_id] || [];
-    const isPending = !actions.some((a: string) => terminalActions.has(a));
-    if (isPending) seenProposals.add(e.proposal_id);
-    return isPending;
-  });
-
-  return {
-    telemetry,
-    skills,
-    queries,
-    evolution,
-    decisions,
-    computed: { snapshots, unmatched, pendingProposals },
-  };
 }
+
+const MIME_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".woff2": "font/woff2",
+  ".woff": "font/woff",
+  ".ttf": "font/ttf",
+  ".ico": "image/x-icon",
+};
 
 function computeStatusFromLogs(): StatusResult {
   const telemetry = readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG);
-  const skillRecords = readJsonl<SkillUsageRecord>(SKILL_LOG);
+  const skillRecords = readEffectiveSkillUsageRecords();
   const queryRecords = readJsonl<QueryLogRecord>(QUERY_LOG);
   const auditEntries = readJsonl<EvolutionAuditEntry>(EVOLUTION_AUDIT_LOG);
   const doctorResult = doctor();
   return computeStatus(telemetry, skillRecords, queryRecords, auditEntries, doctorResult);
 }
 
-function buildLiveHTML(data: DashboardData): string {
-  const template = readFileSync(findViewerHTML(), "utf-8");
+interface MergedEvidenceEntry {
+  proposal_id: string;
+  target: string;
+  rationale: string;
+  confidence?: number;
+  original_text: string;
+  proposed_text: string;
+  eval_set: import("./types.js").EvalEntry[];
+  validation: import("./types.js").EvolutionEvidenceValidation | null;
+  stages: Array<{ stage: string; timestamp: string; details: string }>;
+  latest_timestamp: string;
+}
 
-  // Escape </script> sequences to prevent XSS via embedded JSON
-  const safeJson = JSON.stringify(data).replace(/<\/script>/gi, "<\\/script>");
-  const liveFlag = "<script>window.__SELFTUNE_LIVE__ = true;</script>";
-  const dataScript = `<script id="embedded-data" type="application/json">${safeJson}</script>`;
+function mergeEvidenceEntries(entries: EvolutionEvidenceEntry[]): MergedEvidenceEntry[] {
+  const merged = new Map<string, MergedEvidenceEntry>();
+  const sorted = [...entries].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
-  return template.replace("</body>", `${liveFlag}\n${dataScript}\n</body>`);
+  for (const entry of sorted) {
+    if (!merged.has(entry.proposal_id)) {
+      merged.set(entry.proposal_id, {
+        proposal_id: entry.proposal_id,
+        target: entry.target,
+        rationale: entry.rationale ?? "",
+        confidence: entry.confidence,
+        original_text: entry.original_text ?? "",
+        proposed_text: entry.proposed_text ?? "",
+        eval_set: entry.eval_set ?? [],
+        validation: entry.validation ?? null,
+        stages: [],
+        latest_timestamp: entry.timestamp,
+      });
+    }
+
+    const current = merged.get(entry.proposal_id);
+    if (!current) continue;
+    current.stages.push({
+      stage: entry.stage,
+      timestamp: entry.timestamp,
+      details: entry.details ?? "",
+    });
+    if (!current.rationale && entry.rationale) current.rationale = entry.rationale;
+    if (current.confidence === undefined && entry.confidence !== undefined) {
+      current.confidence = entry.confidence;
+    }
+    if (!current.original_text && entry.original_text) current.original_text = entry.original_text;
+    if (!current.proposed_text && entry.proposed_text) current.proposed_text = entry.proposed_text;
+    if (current.eval_set.length === 0 && entry.eval_set) current.eval_set = entry.eval_set;
+    if (!current.validation && entry.validation) current.validation = entry.validation;
+  }
+
+  return [...merged.values()].sort((a, b) => b.latest_timestamp.localeCompare(a.latest_timestamp));
 }
 
 function buildReportHTML(
   skillName: string,
   skill: import("./status.js").SkillStatus,
   statusResult: StatusResult,
+  evidenceEntries: EvolutionEvidenceEntry[],
 ): string {
+  const mergedEvidence = mergeEvidenceEntries(evidenceEntries);
+  const latestValidation = mergedEvidence.find(
+    (entry) => entry.validation?.per_entry_results?.length,
+  );
   const passRateDisplay =
     skill.passRate !== null ? `${Math.round(skill.passRate * 100)}%` : "No data";
   const trendArrows: Record<string, string> = {
@@ -175,7 +197,7 @@ function buildReportHTML(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>selftune report: ${escapeHtml(skillName)}</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; color: #333; background: #fafafa; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 1100px; margin: 40px auto; padding: 0 20px; color: #333; background: #fafafa; }
     h1 { font-size: 1.5rem; margin-bottom: 8px; }
     .badge { margin: 16px 0; }
     .card { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin: 16px 0; }
@@ -189,6 +211,17 @@ function buildReportHTML(
     a { color: #0366d6; text-decoration: none; }
     a:hover { text-decoration: underline; }
     .status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; color: #fff; font-size: 0.85rem; font-weight: 600; }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .muted { color: #666; font-size: 0.9rem; }
+    .chip { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; border: 1px solid #e2e8f0; background: #f8fafc; color: #475569; font-size: 0.75rem; margin-right: 6px; margin-bottom: 6px; }
+    .artifact { border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-top: 12px; background: #f8fafc; }
+    .artifact pre { white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; line-height: 1.5; margin: 0; }
+    .diff { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 12px; }
+    .empty { color: #666; font-size: 0.9rem; }
+    @media (max-width: 800px) {
+      .grid, .diff { grid-template-columns: 1fr; }
+      .stat { display: block; margin-right: 0; margin-bottom: 16px; }
+    }
   </style>
 </head>
 <body>
@@ -244,6 +277,86 @@ function buildReportHTML(
       <tr><td>Last Session</td><td>${escapeHtml(statusResult.lastSession ?? "\u2014")}</td></tr>
     </table>
   </div>
+
+  <div class="card">
+    <h2>Description Versions</h2>
+    ${
+      mergedEvidence.length === 0
+        ? '<p class="empty">No proposal evidence recorded for this skill yet.</p>'
+        : mergedEvidence
+            .slice(0, 6)
+            .map((entry) => {
+              const before = entry.validation?.before_pass_rate;
+              const after = entry.validation?.after_pass_rate;
+              const net = entry.validation?.net_change;
+              return `<div class="artifact">
+                <div><strong>${escapeHtml(entry.proposal_id)}</strong></div>
+                <div class="muted" style="margin-top:6px;">${escapeHtml(
+                  entry.stages
+                    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+                    .map(
+                      (stage) =>
+                        `${stage.stage} ${new Date(stage.timestamp).toLocaleString("en-US")}`,
+                    )
+                    .join(" · "),
+                )}</div>
+                <div style="margin-top:10px;">
+                  <span class="chip">${escapeHtml(entry.target)}</span>
+                  ${
+                    entry.confidence !== undefined
+                      ? `<span class="chip">conf ${entry.confidence.toFixed(2)}</span>`
+                      : ""
+                  }
+                  <span class="chip">before ${before !== undefined ? `${(before * 100).toFixed(1)}%` : "—"}</span>
+                  <span class="chip">after ${after !== undefined ? `${(after * 100).toFixed(1)}%` : "—"}</span>
+                  <span class="chip">net ${net !== undefined ? `${net >= 0 ? "+" : ""}${(net * 100).toFixed(1)}pp` : "—"}</span>
+                </div>
+                <p class="muted" style="margin-top:10px;">${escapeHtml(entry.rationale || "No rationale recorded")}</p>
+                <div class="diff">
+                  <div>
+                    <h3 style="font-size:0.8rem;text-transform:uppercase;color:#666;">Original</h3>
+                    <pre>${escapeHtml(entry.original_text || "No original text recorded")}</pre>
+                  </div>
+                  <div>
+                    <h3 style="font-size:0.8rem;text-transform:uppercase;color:#666;">Proposed</h3>
+                    <pre>${escapeHtml(entry.proposed_text || "No proposed text recorded")}</pre>
+                  </div>
+                </div>
+              </div>`;
+            })
+            .join("")
+    }
+  </div>
+
+  <div class="card">
+    <h2>Validation Evidence</h2>
+    ${
+      latestValidation?.validation?.per_entry_results?.length
+        ? `<p class="muted">Latest proposal with per-entry validation: ${escapeHtml(latestValidation.proposal_id)}</p>
+           <table>
+             <tr><th>Query</th><th>Expected</th><th>Before</th><th>After</th><th>Delta</th></tr>
+             ${latestValidation.validation.per_entry_results
+               .slice(0, 100)
+               .map((result) => {
+                 const delta =
+                   result.before_pass === result.after_pass
+                     ? "Unchanged"
+                     : result.after_pass
+                       ? "New pass"
+                       : "Regression";
+                 return `<tr>
+                   <td>${escapeHtml(result.entry.query)}</td>
+                   <td>${result.entry.should_trigger ? "Yes" : "No"}</td>
+                   <td>${result.before_pass ? "Yes" : "No"}</td>
+                   <td>${result.after_pass ? "Yes" : "No"}</td>
+                   <td>${delta}</td>
+                 </tr>`;
+               })
+               .join("")}
+           </table>`
+        : '<p class="empty">No per-entry validation evidence recorded for this skill yet.</p>'
+    }
+  </div>
 </body>
 </html>`;
 }
@@ -254,6 +367,15 @@ function escapeHtml(text: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function safeParseJson(json: string | null): Record<string, unknown> | null {
+  if (!json) return null;
+  try {
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
 }
 
 function corsHeaders(): Record<string, string> {
@@ -295,8 +417,93 @@ export async function startDashboardServer(
   const port = options?.port ?? 3141;
   const hostname = options?.host ?? "localhost";
   const openBrowser = options?.openBrowser ?? true;
+  const getStatusResult = options?.statusLoader ?? computeStatusFromLogs;
+  const getEvidenceEntries = options?.evidenceLoader ?? readEvidenceTrail;
+  const getOverviewResponse = options?.overviewLoader;
+  const getSkillReportResponse = options?.skillReportLoader;
+  const executeAction = options?.actionRunner ?? runAction;
 
-  const sseClients = new Set<ReadableStreamDefaultController>();
+  // -- SPA serving -------------------------------------------------------------
+  const requestedSpaDir = options?.spaDir ?? findSpaDir();
+  const spaDir =
+    requestedSpaDir && existsSync(join(requestedSpaDir, "index.html")) ? requestedSpaDir : null;
+  if (spaDir) {
+    console.log(`SPA found at ${spaDir}, serving as default dashboard`);
+  } else {
+    if (options?.spaDir) {
+      console.warn(`Configured spaDir is missing index.html: ${options.spaDir}`);
+    }
+    console.warn(
+      "SPA build not found. Run `bun run build:dashboard` before using `selftune dashboard`.",
+    );
+  }
+
+  // -- SQLite v2 data layer ---------------------------------------------------
+  let db: Database | null = null;
+  let lastV2MaterializedAt = 0;
+  let lastV2RefreshAttemptAt = 0;
+  const needsDb = !getOverviewResponse || !getSkillReportResponse;
+  if (needsDb) {
+    try {
+      db = openDb();
+      materializeIncremental(db);
+      lastV2MaterializedAt = Date.now();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`V2 dashboard data unavailable: ${message}`);
+      // Continue serving; refreshV2Data will retry on demand.
+    }
+  }
+  const V2_MATERIALIZE_TTL_MS = 15_000;
+
+  function refreshV2Data(): void {
+    if (!db) return;
+    const now = Date.now();
+    if (now - Math.max(lastV2MaterializedAt, lastV2RefreshAttemptAt) < V2_MATERIALIZE_TTL_MS) {
+      return;
+    }
+    lastV2RefreshAttemptAt = now;
+    try {
+      materializeIncremental(db);
+      lastV2MaterializedAt = now;
+    } catch (error: unknown) {
+      console.error("Failed to refresh v2 dashboard data", error);
+      // Keep serving the last successful materialization.
+    }
+  }
+
+  let cachedStatusResult: StatusResult | null = null;
+  let lastStatusCacheRefreshAt = 0;
+  let statusRefreshPromise: Promise<void> | null = null;
+
+  const STATUS_CACHE_TTL_MS = 30_000;
+
+  async function refreshStatusCache(force = false): Promise<void> {
+    const cacheIsFresh =
+      cachedStatusResult !== null && Date.now() - lastStatusCacheRefreshAt < STATUS_CACHE_TTL_MS;
+    if (!force && cacheIsFresh) return;
+    if (statusRefreshPromise) return statusRefreshPromise;
+
+    statusRefreshPromise = (async () => {
+      cachedStatusResult = getStatusResult();
+      lastStatusCacheRefreshAt = Date.now();
+    })();
+
+    try {
+      await statusRefreshPromise;
+    } finally {
+      statusRefreshPromise = null;
+    }
+  }
+
+  async function getCachedStatusResult(): Promise<StatusResult> {
+    if (!cachedStatusResult) {
+      await refreshStatusCache(true);
+    } else {
+      void refreshStatusCache(false);
+    }
+    return cachedStatusResult as StatusResult;
+  }
 
   const server = Bun.serve({
     port,
@@ -309,67 +516,58 @@ export async function startDashboardServer(
         return new Response(null, { status: 204, headers: corsHeaders() });
       }
 
-      // ---- GET / ---- Serve dashboard HTML
+      if (url.pathname === "/api/health" && req.method === "GET") {
+        return Response.json(
+          {
+            ok: true,
+            service: "selftune-dashboard",
+            version: selftuneVersion,
+            spa: Boolean(spaDir),
+            v2_data_available: Boolean(getOverviewResponse || db),
+          },
+          { headers: corsHeaders() },
+        );
+      }
+
+      // ---- GET /api/v2/doctor ---- System health diagnostics
+      if (url.pathname === "/api/v2/doctor" && req.method === "GET") {
+        const result = doctor();
+        return Response.json(result, { headers: corsHeaders() });
+      }
+
+      // ---- SPA static assets ---- Serve from dist/assets/
+      if (spaDir && req.method === "GET" && url.pathname.startsWith("/assets/")) {
+        const filePath = resolve(spaDir, `.${url.pathname}`);
+        const rel = relative(spaDir, filePath);
+        if (rel.startsWith("..") || isAbsolute(rel)) {
+          return new Response("Not Found", { status: 404, headers: corsHeaders() });
+        }
+        const bunFile = Bun.file(filePath);
+        if (await bunFile.exists()) {
+          const ext = extname(filePath);
+          const contentType = MIME_TYPES[ext] ?? "application/octet-stream";
+          return new Response(bunFile, {
+            headers: {
+              "Content-Type": contentType,
+              "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=31536000, immutable",
+              ...corsHeaders(),
+            },
+          });
+        }
+        return new Response("Not Found", { status: 404, headers: corsHeaders() });
+      }
+
+      // ---- GET / ---- Serve SPA shell
       if (url.pathname === "/" && req.method === "GET") {
-        const data = collectData();
-        const html = buildLiveHTML(data);
-        return new Response(html, {
-          headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders() },
-        });
-      }
-
-      // ---- GET /api/data ---- JSON data endpoint
-      if (url.pathname === "/api/data" && req.method === "GET") {
-        const data = collectData();
-        return Response.json(data, { headers: corsHeaders() });
-      }
-
-      // ---- GET /api/events ---- SSE stream
-      if (url.pathname === "/api/events" && req.method === "GET") {
-        const stream = new ReadableStream({
-          start(controller) {
-            sseClients.add(controller);
-
-            // Send initial data immediately
-            const data = collectData();
-            const payload = `event: data\ndata: ${JSON.stringify(data)}\n\n`;
-            controller.enqueue(new TextEncoder().encode(payload));
-
-            // Set up periodic updates every 5 seconds
-            const interval = setInterval(() => {
-              try {
-                const freshData = collectData();
-                const msg = `event: data\ndata: ${JSON.stringify(freshData)}\n\n`;
-                controller.enqueue(new TextEncoder().encode(msg));
-              } catch {
-                clearInterval(interval);
-                sseClients.delete(controller);
-              }
-            }, 5000);
-
-            // Clean up when client disconnects
-            req.signal.addEventListener("abort", () => {
-              clearInterval(interval);
-              sseClients.delete(controller);
-              try {
-                controller.close();
-              } catch {
-                // already closed
-              }
-            });
-          },
-          cancel() {
-            // Stream cancelled by client
-          },
-        });
-
-        return new Response(stream, {
-          headers: {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            Connection: "keep-alive",
-            ...corsHeaders(),
-          },
+        if (spaDir) {
+          const html = await Bun.file(join(spaDir, "index.html")).text();
+          return new Response(html, {
+            headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders() },
+          });
+        }
+        return new Response("Dashboard build not found. Run `bun run build:dashboard` first.", {
+          status: 503,
+          headers: { "Content-Type": "text/plain; charset=utf-8", ...corsHeaders() },
         });
       }
 
@@ -382,8 +580,8 @@ export async function startDashboardServer(
             { status: 400, headers: corsHeaders() },
           );
         }
-        const args = ["--skill", body.skill, "--skill-path", body.skillPath];
-        const result = await runAction("watch", args);
+        const args = ["--skill", body.skill, "--skill-path", body.skillPath, "--sync-first"];
+        const result = await executeAction("watch", args);
         return Response.json(result, { headers: corsHeaders() });
       }
 
@@ -396,8 +594,8 @@ export async function startDashboardServer(
             { status: 400, headers: corsHeaders() },
           );
         }
-        const args = ["--skill", body.skill, "--skill-path", body.skillPath];
-        const result = await runAction("evolve", args);
+        const args = ["--skill", body.skill, "--skill-path", body.skillPath, "--sync-first"];
+        const result = await executeAction("evolve", args);
         return Response.json(result, { headers: corsHeaders() });
       }
 
@@ -422,19 +620,25 @@ export async function startDashboardServer(
           "--proposal-id",
           body.proposalId,
         ];
-        const result = await runAction("rollback", args);
+        const result = await executeAction("rollback", args);
         return Response.json(result, { headers: corsHeaders() });
       }
 
       // ---- GET /badge/:skillName ---- Badge SVG
       if (url.pathname.startsWith("/badge/") && req.method === "GET") {
-        const skillName = decodeURIComponent(url.pathname.slice("/badge/".length));
+        const skillName = decodePathSegment(url.pathname.slice("/badge/".length));
+        if (skillName === null) {
+          return Response.json(
+            { error: "Malformed skill name" },
+            { status: 400, headers: corsHeaders() },
+          );
+        }
         const formatParam = url.searchParams.get("format");
         const validFormats = new Set(["svg", "markdown", "url"]);
         const format: BadgeFormat =
           formatParam && validFormats.has(formatParam) ? (formatParam as BadgeFormat) : "svg";
 
-        const statusResult = computeStatusFromLogs();
+        const statusResult = await getCachedStatusResult();
         const badgeData = findSkillBadgeData(statusResult, skillName);
 
         if (!badgeData) {
@@ -492,9 +696,18 @@ export async function startDashboardServer(
 
       // ---- GET /report/:skillName ---- Skill health report
       if (url.pathname.startsWith("/report/") && req.method === "GET") {
-        const skillName = decodeURIComponent(url.pathname.slice("/report/".length));
-        const statusResult = computeStatusFromLogs();
+        const skillName = decodePathSegment(url.pathname.slice("/report/".length));
+        if (skillName === null) {
+          return Response.json(
+            { error: "Malformed skill name" },
+            { status: 400, headers: corsHeaders() },
+          );
+        }
+        const statusResult = await getCachedStatusResult();
         const skill = statusResult.skills.find((s) => s.name === skillName);
+        const evidenceEntries = getEvidenceEntries().filter(
+          (entry) => entry.skill_name === skillName,
+        );
 
         if (!skill) {
           return new Response("Skill not found", {
@@ -503,7 +716,7 @@ export async function startDashboardServer(
           });
         }
 
-        const html = buildReportHTML(skillName, skill, statusResult);
+        const html = buildReportHTML(skillName, skill, statusResult, evidenceEntries);
         return new Response(html, {
           headers: {
             "Content-Type": "text/html; charset=utf-8",
@@ -513,21 +726,282 @@ export async function startDashboardServer(
         });
       }
 
-      // ---- GET /api/evaluations/:skillName ----
-      if (url.pathname.startsWith("/api/evaluations/") && req.method === "GET") {
-        const skillName = decodeURIComponent(url.pathname.slice("/api/evaluations/".length));
-        const skills = readJsonl<SkillUsageRecord>(SKILL_LOG);
-        const filtered = skills
-          .filter((r) => r.skill_name === skillName)
-          .map((r) => ({
-            timestamp: r.timestamp,
-            session_id: r.session_id,
-            query: r.query,
-            skill_name: r.skill_name,
-            triggered: r.triggered,
-            source: r.source ?? null,
-          }));
-        return Response.json(filtered, { headers: corsHeaders() });
+      // ---- GET /api/v2/overview ---- SQLite-backed overview
+      if (url.pathname === "/api/v2/overview" && req.method === "GET") {
+        if (getOverviewResponse) {
+          return Response.json(getOverviewResponse(), { headers: corsHeaders() });
+        }
+        if (!db) {
+          return Response.json(
+            { error: "V2 data unavailable" },
+            { status: 503, headers: corsHeaders() },
+          );
+        }
+        refreshV2Data();
+        const overview = getOverviewPayload(db);
+        const skills = getSkillsList(db);
+        return Response.json(
+          { overview, skills, version: selftuneVersion },
+          { headers: corsHeaders() },
+        );
+      }
+
+      // ---- GET /api/v2/orchestrate-runs ---- Recent orchestrate run reports
+      if (url.pathname === "/api/v2/orchestrate-runs" && req.method === "GET") {
+        if (!db) {
+          return Response.json(
+            { error: "V2 data unavailable" },
+            { status: 503, headers: corsHeaders() },
+          );
+        }
+        refreshV2Data();
+        const limitParam = url.searchParams.get("limit");
+        const parsedLimit = limitParam === null ? null : Number.parseInt(limitParam, 10);
+        if (parsedLimit !== null && Number.isNaN(parsedLimit)) {
+          return Response.json({ error: "Invalid limit" }, { status: 400, headers: corsHeaders() });
+        }
+        const limit = parsedLimit === null ? 20 : Math.min(Math.max(parsedLimit, 1), 100);
+        const runs = getOrchestrateRuns(db, limit);
+        return Response.json({ runs }, { headers: corsHeaders() });
+      }
+
+      // ---- GET /api/v2/skills/:name ---- SQLite-backed skill report
+      if (url.pathname.startsWith("/api/v2/skills/") && req.method === "GET") {
+        const skillName = decodePathSegment(url.pathname.slice("/api/v2/skills/".length));
+        if (skillName === null) {
+          return Response.json(
+            { error: "Malformed skill name" },
+            { status: 400, headers: corsHeaders() },
+          );
+        }
+        if (getSkillReportResponse) {
+          const report = getSkillReportResponse(skillName);
+          if (!report) {
+            return Response.json(
+              { error: "Skill not found" },
+              { status: 404, headers: corsHeaders() },
+            );
+          }
+          return Response.json(report, { headers: corsHeaders() });
+        }
+        if (!db) {
+          return Response.json(
+            { error: "V2 data unavailable" },
+            { status: 503, headers: corsHeaders() },
+          );
+        }
+        refreshV2Data();
+        const report = getSkillReportPayload(db, skillName);
+
+        // 1. Evolution audit with eval_snapshot
+        const evolution = db
+          .query(
+            `SELECT timestamp, proposal_id, action, details, eval_snapshot_json
+             FROM evolution_audit
+             WHERE skill_name = ?
+             ORDER BY timestamp DESC
+             LIMIT 100`,
+          )
+          .all(skillName) as Array<{
+          timestamp: string;
+          proposal_id: string;
+          action: string;
+          details: string;
+          eval_snapshot_json: string | null;
+        }>;
+        const evolutionWithSnapshot = evolution.map((e) => ({
+          ...e,
+          eval_snapshot: e.eval_snapshot_json ? safeParseJson(e.eval_snapshot_json) : null,
+          eval_snapshot_json: undefined,
+        }));
+
+        // 2. Pending proposals (shared helper from queries.ts)
+        const pending_proposals = getPendingProposals(db, skillName);
+
+        // CTE subquery for session IDs — avoids expanding bind parameters
+        const skillSessionsCte = `
+          WITH skill_sessions AS (
+            SELECT DISTINCT session_id FROM skill_usage WHERE skill_name = ?
+          )`;
+
+        // 3. Selftune resource usage from orchestrate runs that touched this skill
+        const orchestrateRows = db
+          .query(
+            `SELECT skill_actions_json FROM orchestrate_runs
+             WHERE skill_actions_json LIKE ? ESCAPE '\\'`,
+          )
+          .all(
+            `%${skillName.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")}%`,
+          ) as Array<{
+          skill_actions_json: string;
+        }>;
+
+        let totalLlmCalls = 0;
+        let totalSelftunElapsedMs = 0;
+        let selftuneRunCount = 0;
+        for (const row of orchestrateRows) {
+          try {
+            const actions = JSON.parse(row.skill_actions_json) as Array<{
+              skill: string;
+              action?: string;
+              elapsed_ms?: number;
+              llm_calls?: number;
+            }>;
+            for (const a of actions) {
+              if (a.skill !== skillName || a.action === "skip" || a.action === "watch") continue;
+              if (a.elapsed_ms === undefined && a.llm_calls === undefined) continue;
+              totalSelftunElapsedMs += a.elapsed_ms ?? 0;
+              totalLlmCalls += a.llm_calls ?? 0;
+              selftuneRunCount++;
+            }
+          } catch {
+            // skip malformed JSON
+          }
+        }
+        const selftuneStats = {
+          total_llm_calls: totalLlmCalls,
+          total_elapsed_ms: totalSelftunElapsedMs,
+          avg_elapsed_ms: selftuneRunCount > 0 ? totalSelftunElapsedMs / selftuneRunCount : 0,
+          run_count: selftuneRunCount,
+        };
+
+        // 4. Skill invocations with confidence scores
+        const invocationsWithConfidence = db
+          .query(
+            `SELECT si.occurred_at as timestamp, si.session_id, si.skill_name,
+                    si.invocation_mode, si.triggered, si.confidence, si.tool_name
+             FROM skill_invocations si
+             WHERE si.skill_name = ?
+             ORDER BY si.occurred_at DESC
+             LIMIT 100`,
+          )
+          .all(skillName) as Array<{
+          timestamp: string;
+          session_id: string;
+          skill_name: string;
+          invocation_mode: string | null;
+          triggered: number;
+          confidence: number | null;
+          tool_name: string | null;
+        }>;
+
+        // Not-found check — after all enrichment queries so evidence-only skills aren't 404'd
+        const hasData =
+          report.usage.total_checks > 0 ||
+          report.recent_invocations.length > 0 ||
+          report.evidence.length > 0 ||
+          evolution.length > 0 ||
+          pending_proposals.length > 0 ||
+          invocationsWithConfidence.length > 0;
+        if (!hasData) {
+          return Response.json(
+            { error: "Skill not found" },
+            { status: 404, headers: corsHeaders() },
+          );
+        }
+
+        // 5. Duration/error stats from execution_facts (session-level metrics)
+        const executionRow = db
+          .query(
+            `${skillSessionsCte}
+             SELECT
+               COALESCE(AVG(ef.duration_ms), 0) AS avg_duration_ms,
+               COALESCE(SUM(ef.duration_ms), 0) AS total_duration_ms,
+               COUNT(ef.duration_ms) AS execution_count,
+               COALESCE(SUM(ef.errors_encountered), 0) AS total_errors,
+               COALESCE(SUM(ef.input_tokens), 0) AS total_input_tokens,
+               COALESCE(SUM(ef.output_tokens), 0) AS total_output_tokens
+             FROM execution_facts ef
+             WHERE ef.session_id IN (SELECT session_id FROM skill_sessions)`,
+          )
+          .get(skillName) as {
+          avg_duration_ms: number;
+          total_duration_ms: number;
+          execution_count: number;
+          total_errors: number;
+          total_input_tokens: number;
+          total_output_tokens: number;
+        } | null;
+
+        // 6. Prompt texts from sessions that invoked this skill
+        const promptSamples = db
+          .query(
+            `${skillSessionsCte}
+             SELECT p.prompt_text, p.prompt_kind, p.is_actionable, p.occurred_at, p.session_id
+             FROM prompts p
+             WHERE p.session_id IN (SELECT session_id FROM skill_sessions)
+               AND p.prompt_text IS NOT NULL
+               AND p.prompt_text != ''
+             ORDER BY p.occurred_at DESC
+             LIMIT 50`,
+          )
+          .all(skillName) as Array<{
+          prompt_text: string;
+          prompt_kind: string | null;
+          is_actionable: number;
+          occurred_at: string;
+          session_id: string;
+        }>;
+
+        // 7. Session metadata for sessions that used this skill
+        const sessionMeta = db
+          .query(
+            `${skillSessionsCte}
+             SELECT s.session_id, s.platform, s.model, s.agent_cli, s.branch,
+                    s.workspace_path, s.started_at, s.ended_at, s.completion_status
+             FROM sessions s
+             WHERE s.session_id IN (SELECT session_id FROM skill_sessions)
+             ORDER BY s.started_at DESC
+             LIMIT 50`,
+          )
+          .all(skillName) as Array<{
+          session_id: string;
+          platform: string | null;
+          model: string | null;
+          agent_cli: string | null;
+          branch: string | null;
+          workspace_path: string | null;
+          started_at: string | null;
+          ended_at: string | null;
+          completion_status: string | null;
+        }>;
+
+        return Response.json(
+          {
+            ...report,
+            evolution: evolutionWithSnapshot,
+            pending_proposals,
+            token_usage: {
+              total_input_tokens: executionRow?.total_input_tokens ?? 0,
+              total_output_tokens: executionRow?.total_output_tokens ?? 0,
+            },
+            canonical_invocations: invocationsWithConfidence.map((i) => ({
+              ...i,
+              triggered: i.triggered === 1,
+            })),
+            duration_stats: {
+              avg_duration_ms: executionRow?.avg_duration_ms ?? 0,
+              total_duration_ms: executionRow?.total_duration_ms ?? 0,
+              execution_count: executionRow?.execution_count ?? 0,
+              total_errors: executionRow?.total_errors ?? 0,
+            },
+            selftune_stats: selftuneStats,
+            prompt_samples: promptSamples.map((p) => ({
+              ...p,
+              is_actionable: p.is_actionable === 1,
+            })),
+            session_metadata: sessionMeta,
+          },
+          { headers: corsHeaders() },
+        );
+      }
+
+      // ---- SPA fallback ---- Serve index.html for client-side routes
+      if (spaDir && req.method === "GET" && !url.pathname.startsWith("/api/")) {
+        const html = await Bun.file(join(spaDir, "index.html")).text();
+        return new Response(html, {
+          headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders() },
+        });
       }
 
       // ---- 404 ----
@@ -556,14 +1030,7 @@ export async function startDashboardServer(
 
   // Graceful shutdown
   const shutdownHandler = () => {
-    for (const client of sseClients) {
-      try {
-        client.close();
-      } catch {
-        // already closed
-      }
-    }
-    sseClients.clear();
+    db?.close();
     server.stop();
   };
 

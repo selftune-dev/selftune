@@ -27,7 +27,13 @@ import type {
 } from "../types.js";
 import { readJsonl } from "../utils/jsonl.js";
 import { detectAgent } from "../utils/llm-call.js";
+import {
+  filterActionableQueryRecords,
+  filterActionableSkillUsageRecords,
+} from "../utils/query-filter.js";
 import { seededShuffle } from "../utils/seeded-random.js";
+import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
+import { isHighConfidencePositiveSkillRecord } from "../utils/skill-usage-confidence.js";
 import { generateSyntheticEvals } from "./synthetic-evals.js";
 
 // ---------------------------------------------------------------------------
@@ -116,14 +122,16 @@ export function buildEvalSet(
   seed = 42,
   annotateTaxonomy = true,
 ): EvalEntry[] {
+  const actionableSkillRecords = filterActionableSkillUsageRecords(skillRecords);
+  const actionableQueryRecords = filterActionableQueryRecords(queryRecords);
   const effectiveMaxPerSide = Number.isNaN(maxPerSide) || maxPerSide <= 0 ? 50 : maxPerSide;
   const effectiveSeed = Number.isNaN(seed) ? 42 : seed;
 
   // Build set of positive query texts (for exclusion from negatives)
   const positiveQueries = new Set<string>();
-  for (const r of skillRecords) {
+  for (const r of actionableSkillRecords) {
     if (!r || typeof r.skill_name !== "string" || typeof r.query !== "string") continue;
-    if (r.skill_name === skillName) {
+    if (isHighConfidencePositiveSkillRecord(r, skillName)) {
       const q = (r.query ?? "").trim();
       if (q && q !== "(query not found)") {
         positiveQueries.add(q);
@@ -134,9 +142,9 @@ export function buildEvalSet(
   // Build deduplicated positives with taxonomy classification
   const seen = new Set<string>();
   const positives: EvalEntry[] = [];
-  for (const r of skillRecords) {
+  for (const r of actionableSkillRecords) {
     if (!r || typeof r.skill_name !== "string" || typeof r.query !== "string") continue;
-    if (r.skill_name !== skillName) continue;
+    if (!isHighConfidencePositiveSkillRecord(r, skillName)) continue;
     const q = (r.query ?? "").trim();
     if (!q || q === "(query not found)" || seen.has(q)) continue;
     seen.add(q);
@@ -153,7 +161,7 @@ export function buildEvalSet(
   if (includeNegatives) {
     const negCandidates: string[] = [];
     const negSeen = new Set<string>();
-    for (const r of queryRecords) {
+    for (const r of actionableQueryRecords) {
       if (!r || typeof r.query !== "string") continue;
       const q = (r.query ?? "").trim();
       if (!q || positiveQueries.has(q) || negSeen.has(q)) continue;
@@ -198,13 +206,17 @@ export function listSkills(
   queryRecords: QueryLogRecord[],
   telemetryRecords: SessionTelemetryRecord[],
 ): void {
+  const actionableSkillRecords = filterActionableSkillUsageRecords(skillRecords);
+  const actionableQueryRecords = filterActionableQueryRecords(queryRecords);
   const counts = new Map<string, number>();
-  for (const r of skillRecords) {
+  for (const r of actionableSkillRecords) {
     const name = r.skill_name ?? "unknown";
     counts.set(name, (counts.get(name) ?? 0) + 1);
   }
 
-  console.log(`Skill triggers in skill_usage_log (${skillRecords.length} total records):`);
+  console.log(
+    `Skill triggers in skill_usage_log (${actionableSkillRecords.length} actionable records):`,
+  );
   if (counts.size > 0) {
     const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
     for (const [name, count] of sorted) {
@@ -214,8 +226,8 @@ export function listSkills(
     console.log("  (none yet -- trigger some skills in Claude Code to populate)");
   }
 
-  console.log(`\nAll queries in all_queries_log: ${queryRecords.length}`);
-  if (queryRecords.length === 0) {
+  console.log(`\nActionable queries in all_queries_log: ${actionableQueryRecords.length}`);
+  if (actionableQueryRecords.length === 0) {
     console.log("  (none yet -- make sure prompt_log_hook is installed)");
   }
 
@@ -303,14 +315,16 @@ export function printEvalStats(
 ): void {
   const pos = evalSet.filter((e) => e.should_trigger);
   const neg = evalSet.filter((e) => !e.should_trigger);
-  const totalTriggers = skillRecords.filter((r) => r.skill_name === skillName).length;
+  const actionableSkillRecords = filterActionableSkillUsageRecords(skillRecords);
+  const actionableQueryRecords = filterActionableQueryRecords(queryRecords);
+  const totalTriggers = actionableSkillRecords.filter((r) => r.skill_name === skillName).length;
 
   console.log(`Wrote ${evalSet.length} eval entries to ${outputPath}`);
   console.log(
     `  Positives (should_trigger=true) : ${pos.length}  (from ${totalTriggers} logged triggers)`,
   );
   console.log(
-    `  Negatives (should_trigger=false): ${neg.length}  (from ${queryRecords.length} total logged queries)`,
+    `  Negatives (should_trigger=false): ${neg.length}  (from ${actionableQueryRecords.length} actionable logged queries)`,
   );
 
   if (annotateTaxonomy && pos.length > 0) {
@@ -336,7 +350,7 @@ export function printEvalStats(
   console.log();
   if (pos.length === 0) {
     console.log(`[WARN] No positives for skill '${skillName}'.`);
-    const names = [...new Set(skillRecords.map((r) => r.skill_name))].sort();
+    const names = [...new Set(actionableSkillRecords.map((r) => r.skill_name))].sort();
     if (names.length > 0) {
       console.log(`       Known skills: ${names.join(", ")}`);
     }
@@ -366,6 +380,7 @@ export async function cliMain(): Promise<void> {
     options: {
       skill: { type: "string" },
       output: { type: "string" },
+      out: { type: "string" },
       max: { type: "string", default: "50" },
       seed: { type: "string", default: "42" },
       "list-skills": { type: "boolean", default: false },
@@ -409,7 +424,7 @@ export async function cliMain(): Promise<void> {
       modelFlag: values.model,
     });
 
-    const outputPath = values.output ?? `${values.skill}_trigger_eval.json`;
+    const outputPath = values.output ?? values.out ?? `${values.skill}_trigger_eval.json`;
     writeFileSync(outputPath, JSON.stringify(evalSet, null, 2), "utf-8");
 
     const pos = evalSet.filter((e) => e.should_trigger);
@@ -440,7 +455,11 @@ export async function cliMain(): Promise<void> {
   }
 
   // --- Log-based mode (original behavior) ---
-  const skillRecords = readJsonl<SkillUsageRecord>(values["skill-log"] ?? SKILL_LOG);
+  const skillLogPath = values["skill-log"] ?? SKILL_LOG;
+  const skillRecords =
+    skillLogPath === SKILL_LOG
+      ? readEffectiveSkillUsageRecords()
+      : readJsonl<SkillUsageRecord>(skillLogPath);
   const queryRecords = readJsonl<QueryLogRecord>(values["query-log"] ?? QUERY_LOG);
   const telemetryRecords = readJsonl<SessionTelemetryRecord>(
     values["telemetry-log"] ?? TELEMETRY_LOG,
@@ -475,7 +494,7 @@ export async function cliMain(): Promise<void> {
     annotateTaxonomy,
   );
 
-  const outputPath = values.output ?? `${values.skill}_trigger_eval.json`;
+  const outputPath = values.output ?? values.out ?? `${values.skill}_trigger_eval.json`;
   writeFileSync(outputPath, JSON.stringify(evalSet, null, 2), "utf-8");
   printEvalStats(evalSet, values.skill, outputPath, skillRecords, queryRecords, annotateTaxonomy);
 }

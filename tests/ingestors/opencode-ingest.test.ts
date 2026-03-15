@@ -134,6 +134,40 @@ describe("readSessionsFromSqlite", () => {
     expect(s.bash_commands).toEqual(["echo hello"]);
     // Skill detection from reading SKILL.md
     expect(s.skills_triggered).toContain("Deploy");
+    expect(s.skill_detections).toEqual([{ skill_name: "Deploy", has_skill_md_read: true }]);
+  });
+
+  test("uses whole-word matching for text-only skill mentions", () => {
+    const dbPath = join(tmpDir, "opencode.db");
+    const db = createTestDb(dbPath);
+
+    const created = Date.now();
+    db.run("INSERT INTO session (id, title, created, updated) VALUES (?, ?, ?, ?)", [
+      "sess-mention",
+      "Mention test",
+      created,
+      created,
+    ]);
+
+    db.run("INSERT INTO message (id, session_id, role, content, created) VALUES (?, ?, ?, ?, ?)", [
+      "msg-1",
+      "sess-mention",
+      "user",
+      JSON.stringify([{ type: "text", text: "Plan the deploy" }]),
+      created,
+    ]);
+    db.run("INSERT INTO message (id, session_id, role, content, created) VALUES (?, ?, ?, ?, ?)", [
+      "msg-2",
+      "sess-mention",
+      "assistant",
+      JSON.stringify([{ type: "text", text: "DeploySkill can help here." }]),
+      created + 1,
+    ]);
+    db.close();
+
+    const sessions = readSessionsFromSqlite(dbPath, null, new Set(["Deploy"]));
+    expect(sessions[0].skills_triggered).toEqual([]);
+    expect(sessions[0].skill_detections).toEqual([]);
   });
 
   test("handles OpenAI tool_calls format", () => {
@@ -360,6 +394,7 @@ describe("writeSession", () => {
     const queryLog = join(tmpDir, "queries.jsonl");
     const telemetryLog = join(tmpDir, "telemetry.jsonl");
     const skillLog = join(tmpDir, "skills.jsonl");
+    const canonicalLog = join(tmpDir, "canonical.jsonl");
 
     const session = {
       timestamp: "2026-03-15T00:00:00.000Z",
@@ -373,26 +408,40 @@ describe("writeSession", () => {
       total_tool_calls: 2,
       bash_commands: ["npm init", "npm test"],
       skills_triggered: ["RestAPI"],
+      skill_detections: [{ skill_name: "RestAPI", has_skill_md_read: false }],
       assistant_turns: 3,
       errors_encountered: 0,
       transcript_chars: 1000,
     };
 
-    writeSession(session, false, queryLog, telemetryLog, skillLog);
+    writeSession(session, false, queryLog, telemetryLog, skillLog, canonicalLog);
 
-    const queryContent = readFileSync(queryLog, "utf-8").trim();
-    const queryRecord = JSON.parse(queryContent);
+    const queryLines = readFileSync(queryLog, "utf-8").trim().split("\n");
+    const queryRecord = JSON.parse(queryLines[0]);
     expect(queryRecord.query).toBe("Build an API");
     expect(queryRecord.source).toBe("opencode");
 
-    const telemetryContent = readFileSync(telemetryLog, "utf-8").trim();
-    const telemetryRecord = JSON.parse(telemetryContent);
+    const telemetryLines = readFileSync(telemetryLog, "utf-8").trim().split("\n");
+    const telemetryRecord = JSON.parse(telemetryLines[0]);
     expect(telemetryRecord.session_id).toBe("sess-oc-1");
+    expect(telemetryRecord.skill_detections).toBeUndefined();
+    expect(telemetryRecord.is_metadata_only).toBeUndefined();
 
-    const skillContent = readFileSync(skillLog, "utf-8").trim();
-    const skillRecord = JSON.parse(skillContent);
+    const skillLines = readFileSync(skillLog, "utf-8").trim().split("\n");
+    const skillRecord = JSON.parse(skillLines[0]);
     expect(skillRecord.skill_name).toBe("RestAPI");
     expect(skillRecord.skill_path).toBe("(opencode:RestAPI)");
+
+    const canonicalLines = readFileSync(canonicalLog, "utf-8").trim().split("\n");
+    expect(
+      canonicalLines
+        .map((line: string) => JSON.parse(line))
+        .some((record: Record<string, unknown>) => record.record_kind === "session"),
+    ).toBe(true);
+    const canonicalInvocation = canonicalLines
+      .map((line: string) => JSON.parse(line))
+      .find((record: Record<string, unknown>) => record.record_kind === "skill_invocation");
+    expect(canonicalInvocation?.invocation_mode).toBe("inferred");
   });
 });
 

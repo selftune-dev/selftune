@@ -101,9 +101,9 @@ make check
 
 | Test Name | Command | Verification |
 |-----------|---------|-------------|
-| `ingest-openclaw` | `ingest-openclaw --agents-dir <sandbox>` | Exit 0 + openclaw records in logs |
-| `ingest-openclaw --dry-run` | `ingest-openclaw --agents-dir <sandbox> --dry-run` | Exit 0 + no new log records |
-| `ingest-openclaw (idempotent)` | Run ingest twice | Second run: "0 not yet ingested" |
+| `ingest openclaw` | `ingest openclaw --agents-dir <sandbox>` | Exit 0 + openclaw records in logs |
+| `ingest openclaw --dry-run` | `ingest openclaw --agents-dir <sandbox> --dry-run` | Exit 0 + no new log records |
+| `ingest openclaw (idempotent)` | Run ingest twice | Second run: "0 not yet ingested" |
 | `cron list` | `cron list` | Exit 0 + shows selftune-ingest |
 | `cron setup --dry-run` | `cron setup --dry-run --tz UTC` | Exit 0 + shows [DRY RUN] |
 
@@ -123,7 +123,7 @@ make check
 | Test Name | What It Does | Verification |
 |-----------|-------------|-------------|
 | `gateway-health` | Curl gateway /healthz | HTTP 200 |
-| `ingest-openclaw` | Run ingestion against gateway data | Exit 0 + log records |
+| `ingest openclaw` | Run ingestion against gateway data | Exit 0 + log records |
 | `cron setup --dry-run` | Register cron jobs (dry-run) | Exit 0 + dry-run output |
 | `cron list` | List registered jobs | Exit 0 + shows jobs |
 | `status` | Show skill health post-ingestion | Exit 0 + output |
@@ -153,7 +153,7 @@ make sandbox-openclaw-clean
 
 ## Future Work
 
-- Add `replay` command testing with simulated `~/.claude/projects/` transcripts
+- Add `ingest claude` command testing with simulated `~/.claude/projects/` transcripts
 - Add `init` command testing with mocked `Bun.which()` for agent detection
 - CI integration: Run Layer 1 on every PR, Layer 2 on release branches
 - Fixture expansion: Add codex and opencode skill profiles

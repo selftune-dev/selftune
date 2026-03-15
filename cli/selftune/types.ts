@@ -31,6 +31,10 @@ export interface SkillUsageRecord {
   session_id: string;
   skill_name: string;
   skill_path: string;
+  skill_scope?: "project" | "global" | "admin" | "system" | "unknown";
+  skill_project_root?: string;
+  skill_registry_dir?: string;
+  skill_path_resolution_source?: "raw_log" | "installed_scope" | "launcher_base_dir" | "fallback";
   query: string;
   triggered: boolean;
   source?: string;
@@ -45,6 +49,7 @@ export interface SessionTelemetryRecord {
   total_tool_calls: number;
   bash_commands: string[];
   skills_triggered: string[];
+  skills_invoked?: string[];
   assistant_turns: number;
   errors_encountered: number;
   transcript_chars: number;
@@ -56,6 +61,49 @@ export interface SessionTelemetryRecord {
   rollout_path?: string;
 }
 
+export interface ImprovementSignalRecord {
+  timestamp: string;
+  session_id: string;
+  query: string;
+  signal_type: "correction" | "explicit_request" | "manual_invocation";
+  mentioned_skill?: string;
+  consumed: boolean;
+  consumed_at?: string;
+  consumed_by_run?: string;
+}
+
+export type {
+  CanonicalCaptureMode,
+  CanonicalCompletionStatus,
+  CanonicalExecutionFactRecord,
+  CanonicalInvocationMode,
+  CanonicalNormalizationRunRecord,
+  CanonicalPlatform,
+  CanonicalPromptKind,
+  CanonicalPromptRecord,
+  CanonicalRawSourceRef,
+  CanonicalRecord,
+  CanonicalRecordBase,
+  CanonicalRecordKind,
+  CanonicalSchemaVersion,
+  CanonicalSessionRecord,
+  CanonicalSkillInvocationRecord,
+  CanonicalSourceSessionKind,
+} from "@selftune/telemetry-contract";
+// ---------------------------------------------------------------------------
+// Canonical normalization types (local + cloud projection layer)
+// ---------------------------------------------------------------------------
+export {
+  CANONICAL_CAPTURE_MODES,
+  CANONICAL_COMPLETION_STATUSES,
+  CANONICAL_INVOCATION_MODES,
+  CANONICAL_PLATFORMS,
+  CANONICAL_PROMPT_KINDS,
+  CANONICAL_RECORD_KINDS,
+  CANONICAL_SCHEMA_VERSION,
+  CANONICAL_SOURCE_SESSION_KINDS,
+} from "@selftune/telemetry-contract";
+
 // ---------------------------------------------------------------------------
 // Transcript parsing
 // ---------------------------------------------------------------------------
@@ -65,10 +113,14 @@ export interface TranscriptMetrics {
   total_tool_calls: number;
   bash_commands: string[];
   skills_triggered: string[];
+  skills_invoked: string[];
   assistant_turns: number;
   errors_encountered: number;
   transcript_chars: number;
   last_user_query: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  duration_ms?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -250,6 +302,35 @@ export interface EvolutionAuditEntry {
   eval_snapshot?: EvalPassRate;
 }
 
+export interface EvolutionEvidenceValidation {
+  improved?: boolean;
+  before_pass_rate?: number;
+  after_pass_rate?: number;
+  net_change?: number;
+  regressions?: EvalEntry[] | string[];
+  new_passes?: EvalEntry[];
+  per_entry_results?: Array<{ entry: EvalEntry; before_pass: boolean; after_pass: boolean }>;
+  gates_passed?: number;
+  gates_total?: number;
+  gate_results?: Array<{ gate: ValidationGate; passed: boolean; reason: string }>;
+}
+
+export interface EvolutionEvidenceEntry {
+  timestamp: string;
+  proposal_id: string;
+  skill_name: string;
+  skill_path: string;
+  target: EvolutionTarget;
+  stage: "created" | "validated" | "deployed" | "rejected" | "rolled_back";
+  rationale?: string;
+  confidence?: number;
+  details?: string;
+  original_text?: string;
+  proposed_text?: string;
+  eval_set?: EvalEntry[];
+  validation?: EvolutionEvidenceValidation;
+}
+
 export interface EvolutionConfig {
   min_sessions: number;
   min_improvement: number; // e.g., 0.10 = 10 percentage points
@@ -328,6 +409,7 @@ export interface MonitoringSnapshot {
   timestamp: string;
   skill_name: string;
   window_sessions: number;
+  skill_checks: number;
   pass_rate: number;
   false_negative_rate: number;
   by_invocation_type: Record<InvocationType, { passed: number; total: number }>;
@@ -624,4 +706,70 @@ export interface SkillsBenchTask {
   expected_tools?: string[];
   difficulty: "easy" | "medium" | "hard";
   tags?: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Composability V2 types (synergy + sequence detection)
+// ---------------------------------------------------------------------------
+
+/** Extended pair with synergy detection */
+export interface CoOccurrencePairV2 extends CoOccurrencePair {
+  synergy_score: number;
+  avg_errors_together: number;
+  avg_errors_alone: number;
+  workflow_candidate: boolean;
+}
+
+/** Ordered skill sequence detected from timestamps */
+export interface SkillSequence {
+  skills: string[];
+  occurrence_count: number;
+  synergy_score: number;
+  representative_query: string;
+  sequence_consistency: number;
+}
+
+/** Extended report with synergy and sequence detection */
+export interface ComposabilityReportV2 extends ComposabilityReport {
+  pairs: CoOccurrencePairV2[];
+  sequences: SkillSequence[];
+  workflow_candidates: CoOccurrencePairV2[];
+  synergy_count: number;
+}
+
+// ---------------------------------------------------------------------------
+// Workflow Support types
+// ---------------------------------------------------------------------------
+
+export interface DiscoveredWorkflow {
+  workflow_id: string; // deterministic hash: skills.join("→")
+  skills: string[]; // ordered skill sequence
+  occurrence_count: number;
+  avg_errors: number;
+  avg_errors_individual: number;
+  synergy_score: number; // clamp((individual - together) / (individual + 1), -1, 1)
+  representative_query: string;
+  sequence_consistency: number; // [0,1]
+  completion_rate: number; // % sessions where all skills fired
+  first_seen: string;
+  last_seen: string;
+  session_ids: string[]; // sessions that contributed to this workflow
+}
+
+export interface CodifiedWorkflow {
+  name: string;
+  skills: string[];
+  description?: string;
+  source: "discovered" | "authored";
+  discovered_from?: {
+    workflow_id: string;
+    occurrence_count: number;
+    synergy_score: number;
+  };
+}
+
+export interface WorkflowDiscoveryReport {
+  workflows: DiscoveredWorkflow[];
+  total_sessions_analyzed: number;
+  generated_at: string;
 }

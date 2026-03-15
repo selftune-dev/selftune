@@ -95,8 +95,8 @@ Add per-agent tests to the local sandbox.
 
 | Step | Description | Depends On |
 |------|-------------|------------|
-| C1 | Add Codex ingestor test (`ingest-codex --dry-run`) | B3 |
-| C2 | Add OpenCode ingestor test (`ingest-opencode --dry-run`) | B4 |
+| C1 | Add Codex ingestor test (`ingest codex --dry-run`) | B3 |
+| C2 | Add OpenCode ingestor test (`ingest opencode --dry-run`) | B4 |
 | C3 | Make hook tests conditional on `agent_type === "claude_code"` | B5 |
 | C4 | Add Makefile targets: `sandbox-codex`, `sandbox-opencode`, `sandbox-all` | C1, C2 |
 

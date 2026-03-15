@@ -17,16 +17,16 @@ import {
 describe("buildCronAddArgs", () => {
   test("generates correct openclaw cron add arguments", () => {
     const job: CronJobConfig = {
-      name: "selftune-ingest",
+      name: "selftune-sync",
       cron: "*/30 * * * *",
-      message: "Run selftune ingest-openclaw to capture any new sessions.",
-      description: "Ingest new sessions every 30 minutes",
+      message: "Run selftune sync to rebuild source-truth telemetry.",
+      description: "Sync source-truth telemetry every 30 minutes",
     };
     const tz = "America/New_York";
     const args = buildCronAddArgs(job, tz);
 
     expect(args).toContain("--name");
-    expect(args).toContain("selftune-ingest");
+    expect(args).toContain("selftune-sync");
     expect(args).toContain("--cron");
     expect(args).toContain("*/30 * * * *");
     expect(args).toContain("--tz");
@@ -34,7 +34,7 @@ describe("buildCronAddArgs", () => {
     expect(args).toContain("--session");
     expect(args).toContain("isolated");
     expect(args).toContain("--message");
-    expect(args).toContain("Run selftune ingest-openclaw to capture any new sessions.");
+    expect(args).toContain("Run selftune sync to rebuild source-truth telemetry.");
   });
 
   test("uses provided timezone in args", () => {
@@ -55,8 +55,8 @@ describe("buildCronAddArgs", () => {
 // 2. DEFAULT_CRON_JOBS has expected structure
 // ---------------------------------------------------------------------------
 describe("DEFAULT_CRON_JOBS", () => {
-  test("has exactly 4 jobs", () => {
-    expect(DEFAULT_CRON_JOBS).toHaveLength(4);
+  test("has exactly 3 jobs", () => {
+    expect(DEFAULT_CRON_JOBS).toHaveLength(3);
   });
 
   test("all jobs have required fields", () => {
@@ -80,10 +80,9 @@ describe("DEFAULT_CRON_JOBS", () => {
 
   test("contains expected job names", () => {
     const names = DEFAULT_CRON_JOBS.map((j) => j.name);
-    expect(names).toContain("selftune-ingest");
+    expect(names).toContain("selftune-sync");
     expect(names).toContain("selftune-status");
-    expect(names).toContain("selftune-evolve");
-    expect(names).toContain("selftune-watch");
+    expect(names).toContain("selftune-orchestrate");
   });
 });
 
@@ -122,7 +121,7 @@ describe("loadCronJobs", () => {
 
   test("loads and filters selftune jobs from jobs.json", () => {
     const jobsData = [
-      { name: "selftune-ingest", cron: "*/30 * * * *", message: "ingest", description: "Ingest" },
+      { name: "selftune-sync", cron: "*/30 * * * *", message: "sync", description: "Sync" },
       { name: "selftune-status", cron: "0 8 * * *", message: "status", description: "Status" },
       { name: "other-job", cron: "0 0 * * *", message: "other", description: "Other" },
     ];

@@ -19,6 +19,19 @@ opportunities, and identify systemic issues affecting multiple skills.
 - "skill trigger conflicts"
 - "optimize my skills"
 
+## Connection to Workflows
+
+This agent is spawned by the main agent as a subagent for deep cross-skill
+analysis.
+
+**Connected workflows:**
+- **Composability** — when `selftune eval composability` identifies conflict candidates, spawn this agent for deeper investigation of trigger overlaps and resolution strategies
+- **Evals** — when analyzing cross-skill patterns or systemwide undertriggering, spawn this agent to find optimization opportunities
+
+**When to spawn:** when the user asks about conflicts between skills,
+cross-skill optimization, or when composability scores indicate moderate-to-severe
+conflicts (score > 0.3).
+
 ## Context
 
 You need access to:
@@ -33,7 +46,7 @@ You need access to:
 ### Step 1: Inventory all skills
 
 ```bash
-selftune evals --list-skills
+selftune eval generate --list-skills
 ```
 
 Parse the JSON output to get a complete list of skills with their query
@@ -77,7 +90,7 @@ Read `skill_usage_log.jsonl` and group by query text. Look for:
 For each skill, pull stats:
 
 ```bash
-selftune evals --skill <name> --stats
+selftune eval generate --skill <name> --stats
 ```
 
 Compare across skills:
@@ -100,10 +113,10 @@ Compile a cross-skill analysis report.
 
 | Command | Purpose |
 |---------|---------|
-| `selftune evals --list-skills` | Inventory all skills with query counts |
+| `selftune eval generate --list-skills` | Inventory all skills with query counts |
 | `selftune status` | Health snapshot across all skills |
-| `selftune evals --skill <name> --stats` | Per-skill aggregate telemetry |
-| `selftune evals --skill <name> --max 50` | Generate eval set per skill |
+| `selftune eval generate --skill <name> --stats` | Per-skill aggregate telemetry |
+| `selftune eval generate --skill <name> --max 50` | Generate eval set per skill |
 
 ## Output
 

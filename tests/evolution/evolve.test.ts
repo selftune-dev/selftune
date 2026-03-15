@@ -11,6 +11,7 @@ import type { ValidationResult } from "../../cli/selftune/evolution/validate-pro
 import type {
   EvalEntry,
   EvolutionAuditEntry,
+  EvolutionEvidenceEntry,
   EvolutionProposal,
   FailurePattern,
   QueryLogRecord,
@@ -114,6 +115,7 @@ const mockGateValidateProposal = mock(
 );
 
 const mockAppendAuditEntry = mock((_entry: EvolutionAuditEntry, _logPath?: string) => {});
+const mockAppendEvidenceEntry = mock((_entry: EvolutionEvidenceEntry, _logPath?: string) => {});
 
 const mockBuildEvalSet = mock(
   (_skillRecords: SkillUsageRecord[], _queryRecords: QueryLogRecord[], _skillName: string) => {
@@ -135,7 +137,9 @@ function makeDeps(): EvolveDeps {
     validateProposal: mockValidateProposal,
     gateValidateProposal: mockGateValidateProposal,
     appendAuditEntry: mockAppendAuditEntry,
+    appendEvidenceEntry: mockAppendEvidenceEntry,
     buildEvalSet: mockBuildEvalSet,
+    readSkillUsageLog: () => [],
   };
 }
 
@@ -193,6 +197,9 @@ afterEach(() => {
   mockAppendAuditEntry.mockReset();
   mockAppendAuditEntry.mockImplementation(() => {});
 
+  mockAppendEvidenceEntry.mockReset();
+  mockAppendEvidenceEntry.mockImplementation(() => {});
+
   mockBuildEvalSet.mockReset();
   mockBuildEvalSet.mockImplementation(() => [
     { query: "test query", should_trigger: true },
@@ -249,9 +256,46 @@ describe("evolve orchestrator", () => {
     expect(deployedCalls.length).toBe(0);
   });
 
-  // 2. No failure patterns -> early exit with clear reason
+  test("sync-first refreshes source truth before building evals", async () => {
+    const syncMock = mock(() => ({
+      since: null,
+      dry_run: false,
+      sources: {
+        claude: { available: true, scanned: 4, synced: 2, skipped: 0 },
+        codex: { available: true, scanned: 1, synced: 1, skipped: 0 },
+        opencode: { available: false, scanned: 0, synced: 0, skipped: 0 },
+        openclaw: { available: false, scanned: 0, synced: 0, skipped: 0 },
+      },
+      repair: {
+        ran: true,
+        repaired_sessions: 2,
+        repaired_records: 7,
+        codex_repaired_records: 1,
+      },
+    }));
+
+    const opts = makeOptions({ dryRun: true, syncFirst: true, syncForce: true });
+    const result = await evolve(opts, {
+      ...makeDeps(),
+      syncSources: syncMock,
+    });
+
+    expect(syncMock).toHaveBeenCalledTimes(1);
+    expect(syncMock.mock.calls[0]?.[0]).toMatchObject({
+      force: true,
+      dryRun: false,
+      syncClaude: true,
+      syncCodex: true,
+      rebuildSkillUsage: true,
+    });
+    expect(result.sync_result?.repair.repaired_records).toBe(7);
+  });
+
+  // 2. No failure patterns and no positive evals -> early exit with clear reason
   test("no failure patterns returns early with clear reason", async () => {
     mockExtractFailurePatterns.mockImplementation(() => []);
+    // Use an eval set with only negatives so cold-start bootstrap doesn't apply
+    mockBuildEvalSet.mockImplementation(() => [{ query: "unrelated", should_trigger: false }]);
 
     const opts = makeOptions();
     const result = await evolve(opts, makeDeps());
@@ -262,6 +306,46 @@ describe("evolve orchestrator", () => {
     expect(result.reason.toLowerCase()).toContain("no failure patterns");
 
     // generateProposal should NOT have been called
+    expect(mockGenerateProposal.mock.calls.length).toBe(0);
+  });
+
+  // 2b. Cold-start bootstrap: no failure patterns + no usage history + positive evals -> proposal
+  test("cold-start bootstrap uses positive evals as missed queries only for unused skills", async () => {
+    mockExtractFailurePatterns.mockImplementation(() => []);
+
+    const opts = makeOptions({ dryRun: true });
+    const result = await evolve(opts, makeDeps());
+
+    // Should proceed to proposal generation instead of early exit
+    expect(result.proposal).not.toBeNull();
+    expect(result.validation).not.toBeNull();
+    expect(result.deployed).toBe(false);
+    expect(result.reason.toLowerCase()).toContain("dry");
+  });
+
+  test("does not cold-start bootstrap when the skill already has usage history", async () => {
+    mockExtractFailurePatterns.mockImplementation(() => []);
+
+    const opts = makeOptions();
+    const result = await evolve(opts, {
+      ...makeDeps(),
+      readSkillUsageLog: () => [
+        {
+          timestamp: new Date().toISOString(),
+          session_id: "sess-existing",
+          skill_name: "test-skill",
+          skill_path: opts.skillPath,
+          query: "test query",
+          triggered: true,
+          source: "test",
+        },
+      ],
+    });
+
+    expect(result.proposal).toBeNull();
+    expect(result.validation).toBeNull();
+    expect(result.deployed).toBe(false);
+    expect(result.reason).toBe("No failure patterns found");
     expect(mockGenerateProposal.mock.calls.length).toBe(0);
   });
 
@@ -325,6 +409,22 @@ describe("evolve orchestrator", () => {
       (call: unknown[]) => (call[0] as EvolutionAuditEntry).action === "deployed",
     );
     expect(deployedCalls.length).toBe(1);
+
+    const evidenceStages = mockAppendEvidenceEntry.mock.calls.map(
+      (call: unknown[]) => (call[0] as EvolutionEvidenceEntry).stage,
+    );
+    expect(evidenceStages).toContain("created");
+    expect(evidenceStages).toContain("validated");
+    expect(evidenceStages).toContain("deployed");
+
+    const createdAudit = mockAppendAuditEntry.mock.calls.find(
+      (call: unknown[]) => (call[0] as EvolutionAuditEntry).action === "created",
+    );
+    expect(
+      (createdAudit?.[0] as EvolutionAuditEntry | undefined)?.details.startsWith(
+        "original_description:",
+      ),
+    ).toBe(true);
   });
 
   // 6. Retry loop terminates at maxIterations

@@ -1,29 +1,31 @@
 # selftune Ingest Workflow
 
+> **Note:** Claude Code is the fully supported platform. Codex, OpenCode, and OpenClaw adapters are experimental and may have gaps.
+
 Import sessions from agent platforms into the shared selftune log format.
-Covers five sub-commands: `replay`, `ingest-codex`, `ingest-opencode`,
-`ingest-openclaw`, and `wrap-codex`.
+Covers five sub-commands: `ingest claude`, `ingest codex`, `ingest opencode`,
+`ingest openclaw`, and `ingest wrap-codex`.
 
 ## When to Use Each
 
 | Sub-command | Platform | Mode | When |
 |-------------|----------|------|------|
-| `replay` | Claude Code | Batch | Backfill logs from existing Claude Code transcripts |
-| `ingest-codex` | Codex | Batch | Import existing Codex rollout logs |
-| `ingest-opencode` | OpenCode | Batch | Import existing OpenCode sessions |
-| `ingest-openclaw` | OpenClaw | Batch | Import existing OpenClaw agent sessions |
-| `wrap-codex` | Codex | Real-time | Wrap `codex exec` to capture telemetry live |
+| `ingest claude` | Claude Code | Batch | Backfill logs from existing Claude Code transcripts |
+| `ingest codex` | Codex | Batch | Import existing Codex rollout logs |
+| `ingest opencode` | OpenCode | Batch | Import existing OpenCode sessions |
+| `ingest openclaw` | OpenClaw | Batch | Import existing OpenClaw agent sessions |
+| `ingest wrap-codex` | Codex | Real-time | Wrap `codex exec` to capture telemetry live |
 
 ---
 
-## replay
+## ingest claude
 
 Batch ingest existing Claude Code session transcripts into the shared JSONL schema.
 
 ### Default Command
 
 ```bash
-selftune replay
+selftune ingest claude
 ```
 
 ### Options
@@ -50,10 +52,10 @@ Writes to:
 
 ### Steps
 
-1. Run `selftune replay --dry-run` to preview what would be ingested
-2. Run `selftune replay` to ingest all sessions
+1. Run `selftune ingest claude --dry-run` to preview what would be ingested
+2. Run `selftune ingest claude` to ingest all sessions
 3. Run `selftune doctor` to confirm logs are healthy
-4. Run `selftune evals --list-skills` to see if the ingested sessions appear
+4. Run `selftune eval generate --list-skills` to see if the ingested sessions appear
 
 ### Notes
 
@@ -64,14 +66,14 @@ Writes to:
 
 ---
 
-## ingest-codex
+## ingest codex
 
 Batch ingest Codex rollout logs into the shared JSONL schema.
 
 ### Default Command
 
 ```bash
-selftune ingest-codex
+selftune ingest codex
 ```
 
 ### Options
@@ -92,20 +94,20 @@ Writes to:
 ### Steps
 
 1. Verify `$CODEX_HOME/sessions/` directory exists and contains session files
-2. Run `selftune ingest-codex`
+2. Run `selftune ingest codex`
 3. Verify entries were written by checking log file line counts
 4. Run `selftune doctor` to confirm logs are healthy
 
 ---
 
-## ingest-opencode
+## ingest opencode
 
 Ingest OpenCode sessions from the SQLite database.
 
 ### Default Command
 
 ```bash
-selftune ingest-opencode
+selftune ingest opencode
 ```
 
 ### Options
@@ -128,13 +130,13 @@ Writes to:
 ### Steps
 
 1. Verify the OpenCode database exists at the expected path
-2. Run `selftune ingest-opencode`
+2. Run `selftune ingest opencode`
 3. Verify entries were written by checking log file line counts
 4. Run `selftune doctor` to confirm logs are healthy
 
 ---
 
-## ingest-openclaw
+## ingest openclaw
 
 Batch ingest OpenClaw agent session histories into the shared JSONL schema.
 Supports multiple agents and auto-discovers session files across all agent directories.
@@ -142,7 +144,7 @@ Supports multiple agents and auto-discovers session files across all agent direc
 ### Default Command
 
 ```bash
-selftune ingest-openclaw
+selftune ingest openclaw
 ```
 
 ### Options
@@ -170,10 +172,10 @@ Writes to:
 
 ### Steps
 
-1. Run `selftune ingest-openclaw --dry-run` to preview what would be ingested
-2. Run `selftune ingest-openclaw` to ingest all sessions
+1. Run `selftune ingest openclaw --dry-run` to preview what would be ingested
+2. Run `selftune ingest openclaw` to ingest all sessions
 3. Run `selftune doctor` to confirm logs are healthy
-4. Run `selftune evals --list-skills` to see if the ingested sessions appear
+4. Run `selftune eval generate --list-skills` to see if the ingested sessions appear
 
 ### Notes
 
@@ -186,7 +188,7 @@ Writes to:
 
 ---
 
-## wrap-codex
+## ingest wrap-codex
 
 Wrap `codex exec` with real-time telemetry capture. Drop-in replacement
 that tees the JSONL stream while passing through to Codex.
@@ -194,7 +196,7 @@ that tees the JSONL stream while passing through to Codex.
 ### Default Command
 
 ```bash
-selftune wrap-codex -- <your codex args>
+selftune ingest wrap-codex -- <your codex args>
 ```
 
 ### Usage
@@ -202,7 +204,7 @@ selftune wrap-codex -- <your codex args>
 Everything after `--` is passed directly to `codex exec`:
 
 ```bash
-selftune wrap-codex -- --model o3 "Fix the failing tests"
+selftune ingest wrap-codex -- --model o3 "Fix the failing tests"
 ```
 
 ### Output
@@ -221,35 +223,40 @@ stream for telemetry; it does not modify Codex behavior.
 3. Session telemetry is captured automatically
 4. Verify with `selftune doctor` after first use
 
+If telemetry capture fails, check that the codex binary is accessible and that
+the target working directory exists. Inspect the wrapper's stderr output for
+error details — `wrap-codex` captures telemetry through the Codex wrapper, not
+through hooks.
+
 ---
 
 ## Common Patterns
 
 **"Backfill Claude Code sessions"**
-> Run `selftune replay`. No options needed. Reads from `~/.claude/projects/`.
+> Run `selftune ingest claude`. No options needed. Reads from `~/.claude/projects/`.
 
 **"Replay only recent Claude Code sessions"**
-> Run `selftune replay --since 2026-02-01` with an appropriate date.
+> Run `selftune ingest claude --since 2026-02-01` with an appropriate date.
 
 **"Ingest codex logs"**
-> Run `selftune ingest-codex`. No options needed. Reads from `$CODEX_HOME/sessions/`.
+> Run `selftune ingest codex`. No options needed. Reads from `$CODEX_HOME/sessions/`.
 
 **"Import opencode sessions"**
-> Run `selftune ingest-opencode`. Reads from the SQLite database automatically.
+> Run `selftune ingest opencode`. Reads from the SQLite database automatically.
 
 **"Ingest OpenClaw sessions"**
-> Run `selftune ingest-openclaw`. Reads from `~/.openclaw/agents/` automatically.
+> Run `selftune ingest openclaw`. Reads from `~/.openclaw/agents/` automatically.
 
 **"Import only recent OpenClaw sessions"**
-> Run `selftune ingest-openclaw --since 2026-02-01` with an appropriate date.
+> Run `selftune ingest openclaw --since 2026-02-01` with an appropriate date.
 
 **"Run codex through selftune"**
-> Use `selftune wrap-codex -- <codex args>` instead of `codex exec <args>` directly.
+> Use `selftune ingest wrap-codex -- <codex args>` instead of `codex exec <args>` directly.
 
 **"Batch ingest vs real-time"**
-> Use `selftune ingest-codex` or `selftune ingest-opencode` for historical sessions.
-> Use `selftune wrap-codex` for ongoing sessions. Both produce the same log format.
+> Use `selftune ingest codex` or `selftune ingest opencode` for historical sessions.
+> Use `selftune ingest wrap-codex` for ongoing sessions. Both produce the same log format.
 
 **"How do I know it worked?"**
 > Run `selftune doctor` after ingestion. Check that log files exist and are parseable.
-> Run `selftune evals --list-skills` to see if the ingested sessions appear.
+> Run `selftune eval generate --list-skills` to see if the ingested sessions appear.

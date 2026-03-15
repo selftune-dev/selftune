@@ -8,25 +8,34 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   assembleResult,
+  buildDefaultGradingOutputPath,
   buildExecutionMetrics,
   buildGradingPrompt,
   buildGraduatedSummary,
+  deriveExpectationsFromSkill,
   detectAgent,
   findSession,
   GRADER_SYSTEM,
   latestSessionForSkill,
+  latestSkillUsageForSkill,
   loadExpectationsFromEvalsJson,
   MAX_TRANSCRIPT_LENGTH,
+  resolveLatestSessionForSkill,
+  resolveSessionById,
   stripMarkdownFences,
 } from "../../cli/selftune/grading/grade-session.js";
 
-import type { GraderOutput, SessionTelemetryRecord } from "../../cli/selftune/types.js";
+import type {
+  GraderOutput,
+  SessionTelemetryRecord,
+  SkillUsageRecord,
+} from "../../cli/selftune/types.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -738,5 +747,272 @@ describe("assembleResult with failure_feedback", () => {
       "/tmp/t.jsonl",
     );
     expect(result.failure_feedback).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deriveExpectationsFromSkill
+// ---------------------------------------------------------------------------
+
+describe("deriveExpectationsFromSkill", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "derive-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns generic expectations when no skill path provided and no log", () => {
+    const result = deriveExpectationsFromSkill("nonexistent-skill");
+    expect(result.derived).toBe(false);
+    expect(result.expectations.length).toBeGreaterThanOrEqual(3);
+    expect(result.expectations[0]).toContain("skill was triggered");
+  });
+
+  it("returns generic expectations when skill path does not exist", () => {
+    const result = deriveExpectationsFromSkill("test-skill", "/tmp/nonexistent/SKILL.md");
+    expect(result.derived).toBe(false);
+    expect(result.source).toContain("not found");
+  });
+
+  it("derives expectations from a valid SKILL.md", () => {
+    const skillPath = join(tmpDir, "SKILL.md");
+    writeFileSync(
+      skillPath,
+      `# PowerPoint Generator
+
+Generates .pptx presentation files from user descriptions.
+
+## When to Use
+
+- User asks to create a presentation
+- User requests slides or a deck
+- User needs a PowerPoint file
+
+## Implementation
+
+Uses python-pptx library.
+`,
+    );
+
+    const result = deriveExpectationsFromSkill("pptx", skillPath);
+    expect(result.derived).toBe(true);
+    expect(result.source).toBe(skillPath);
+    expect(result.expectations.length).toBeGreaterThanOrEqual(3);
+    expect(result.expectations.length).toBeLessThanOrEqual(5);
+    // Should include skill-specific expectation
+    expect(result.expectations[0]).toContain("pptx");
+    // Should include description-based expectation
+    expect(result.expectations.some((e) => e.includes("purpose"))).toBe(true);
+    // Should include quality expectations
+    expect(result.expectations.some((e) => e.includes("successfully"))).toBe(true);
+  });
+
+  it("caps expectations at 5", () => {
+    const skillPath = join(tmpDir, "SKILL.md");
+    writeFileSync(
+      skillPath,
+      `# Big Skill
+
+A skill that does many things and has a very long detailed description.
+
+## When to Use
+
+- Trigger A with lots of context
+- Trigger B for another reason
+- Trigger C with even more text
+- Trigger D for yet another reason
+- Trigger E one more trigger
+`,
+    );
+
+    const result = deriveExpectationsFromSkill("big-skill", skillPath);
+    expect(result.expectations.length).toBeLessThanOrEqual(5);
+  });
+
+  it("handles SKILL.md with only a title", () => {
+    const skillPath = join(tmpDir, "SKILL.md");
+    writeFileSync(skillPath, "# Minimal Skill\n");
+
+    const result = deriveExpectationsFromSkill("minimal", skillPath);
+    expect(result.derived).toBe(true);
+    expect(result.expectations.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// latestSessionForSkill — skills_invoked preference
+// ---------------------------------------------------------------------------
+
+describe("latestSessionForSkill with skills_invoked", () => {
+  it("prefers skills_invoked over skills_triggered", () => {
+    const records = [
+      makeTelemetryRecord({
+        session_id: "sess-triggered",
+        skills_triggered: ["pptx"],
+        skills_invoked: undefined,
+        timestamp: "2025-01-03T00:00:00Z",
+      }),
+      makeTelemetryRecord({
+        session_id: "sess-invoked",
+        skills_triggered: [],
+        skills_invoked: ["pptx"],
+        timestamp: "2025-01-02T00:00:00Z",
+      }),
+    ];
+
+    const found = latestSessionForSkill(records, "pptx");
+    expect(found).not.toBeNull();
+    expect(found?.session_id).toBe("sess-invoked");
+  });
+
+  it("falls back to skills_triggered when no skills_invoked match", () => {
+    const records = [
+      makeTelemetryRecord({
+        session_id: "sess-triggered",
+        skills_triggered: ["pptx"],
+        skills_invoked: undefined,
+        timestamp: "2025-01-01T00:00:00Z",
+      }),
+    ];
+
+    const found = latestSessionForSkill(records, "pptx");
+    expect(found).not.toBeNull();
+    expect(found?.session_id).toBe("sess-triggered");
+  });
+
+  it("returns most recent skills_invoked match", () => {
+    const records = [
+      makeTelemetryRecord({
+        session_id: "sess-old-invoked",
+        skills_invoked: ["pptx"],
+        timestamp: "2025-01-01T00:00:00Z",
+      }),
+      makeTelemetryRecord({
+        session_id: "sess-new-invoked",
+        skills_invoked: ["pptx"],
+        timestamp: "2025-01-02T00:00:00Z",
+      }),
+    ];
+
+    const found = latestSessionForSkill(records, "pptx");
+    expect(found?.session_id).toBe("sess-new-invoked");
+  });
+
+  it("returns null when neither skills_invoked nor skills_triggered match", () => {
+    const records = [
+      makeTelemetryRecord({
+        session_id: "sess-1",
+        skills_triggered: ["csv"],
+        skills_invoked: ["csv"],
+      }),
+    ];
+    expect(latestSessionForSkill(records, "pptx")).toBeNull();
+  });
+});
+
+describe("latestSkillUsageForSkill", () => {
+  it("returns the most recent triggered skill usage record", () => {
+    const records: SkillUsageRecord[] = [
+      {
+        timestamp: "2025-01-01T00:00:00Z",
+        session_id: "sess-old",
+        skill_name: "paperclip",
+        skill_path: "/tmp/paperclip/SKILL.md",
+        query: "old query",
+        triggered: true,
+      },
+      {
+        timestamp: "2025-01-02T00:00:00Z",
+        session_id: "sess-new",
+        skill_name: "paperclip",
+        skill_path: "/tmp/paperclip/SKILL.md",
+        query: "new query",
+        triggered: true,
+      },
+    ];
+
+    expect(latestSkillUsageForSkill(records, "paperclip")?.session_id).toBe("sess-new");
+  });
+});
+
+describe("resolveSessionById / resolveLatestSessionForSkill", () => {
+  it("falls back to transcript-derived telemetry by session id", () => {
+    const localTmpDir = mkdtempSync(join(tmpdir(), "grade-session-resolve-"));
+    try {
+      const projectRoot = join(localTmpDir, "projects");
+      const sessionDir = join(projectRoot, "hash");
+      mkdirSync(sessionDir, { recursive: true });
+      const transcriptPath = join(sessionDir, "sess-fallback.jsonl");
+      writeFileSync(
+        transcriptPath,
+        `${JSON.stringify({ role: "user", content: "review the paperclip repo", timestamp: "2026-03-01T10:00:00Z" })}\n${JSON.stringify(
+          {
+            role: "assistant",
+            content: [{ type: "tool_use", name: "Bash", input: { command: "git status" } }],
+          },
+        )}\n`,
+      );
+
+      const resolved = resolveSessionById([], "sess-fallback", projectRoot);
+      expect(resolved).not.toBeNull();
+      expect(resolved?.source).toBe("transcript_fallback");
+      expect(resolved?.telemetry.last_user_query).toBe("review the paperclip repo");
+    } finally {
+      rmSync(localTmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to repaired skill usage when telemetry is missing", () => {
+    const localTmpDir = mkdtempSync(join(tmpdir(), "grade-session-resolve-"));
+    try {
+      const projectRoot = join(localTmpDir, "projects");
+      const nestedDir = join(projectRoot, "hash", "subagents");
+      mkdirSync(nestedDir, { recursive: true });
+      const transcriptPath = join(nestedDir, "sess-paperclip.jsonl");
+      writeFileSync(
+        transcriptPath,
+        `${JSON.stringify({ role: "user", content: "continue your Paperclip work", timestamp: "2026-03-01T10:00:00Z" })}\n${JSON.stringify(
+          {
+            role: "assistant",
+            content: [
+              { type: "tool_use", name: "Read", input: { file_path: "/tmp/paperclip/SKILL.md" } },
+            ],
+          },
+        )}\n`,
+      );
+
+      const skillUsage: SkillUsageRecord[] = [
+        {
+          timestamp: "2026-03-01T10:00:00Z",
+          session_id: "sess-paperclip",
+          skill_name: "paperclip",
+          skill_path: "/tmp/paperclip/SKILL.md",
+          query: "continue your Paperclip work",
+          triggered: true,
+          source: "claude_code_repair",
+        },
+      ];
+
+      const resolved = resolveLatestSessionForSkill([], skillUsage, "paperclip", projectRoot);
+      expect(resolved).not.toBeNull();
+      expect(resolved?.source).toBe("transcript_fallback");
+      expect(resolved?.telemetry.session_id).toBe("sess-paperclip");
+      expect(resolved?.telemetry.skills_triggered).toContain("paperclip");
+      expect(resolved?.transcriptPath).toBe(transcriptPath);
+    } finally {
+      rmSync(localTmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("buildDefaultGradingOutputPath", () => {
+  it("writes grading results into the selftune grading directory by default", () => {
+    expect(buildDefaultGradingOutputPath("sess:123")).toContain(
+      ".selftune/grading/result-sess_123.json",
+    );
   });
 });

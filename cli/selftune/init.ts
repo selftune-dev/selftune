@@ -8,16 +8,25 @@
  *
  * Usage:
  *   selftune init [--agent <type>] [--cli-path <path>] [--force]
+ *   selftune init --enable-autonomy [--schedule-format cron|launchd|systemd]
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-import { SELFTUNE_CONFIG_DIR, SELFTUNE_CONFIG_PATH } from "./constants.js";
+import { CLAUDE_CODE_HOOK_KEYS, SELFTUNE_CONFIG_DIR, SELFTUNE_CONFIG_PATH } from "./constants.js";
 import type { SelftuneConfig } from "./types.js";
+import { hookKeyHasSelftuneEntry } from "./utils/hooks.js";
 import { detectAgent } from "./utils/llm-call.js";
 
 // ---------------------------------------------------------------------------
@@ -124,8 +133,6 @@ export function determineLlmMode(agentCli: string | null): {
 // Hook detection (Claude Code only)
 // ---------------------------------------------------------------------------
 
-const REQUIRED_HOOK_KEYS = ["prompt-submit", "post-tool-use", "session-stop"] as const;
-
 /**
  * Check if the selftune hooks are configured in Claude Code settings.
  */
@@ -138,21 +145,165 @@ export function checkClaudeCodeHooks(settingsPath: string): boolean {
     const hooks = settings?.hooks;
     if (!hooks || typeof hooks !== "object") return false;
 
-    for (const key of REQUIRED_HOOK_KEYS) {
-      const entries = hooks[key];
-      if (!Array.isArray(entries) || entries.length === 0) return false;
-      // Check that at least one entry references selftune
-      const hasSelftune = entries.some(
-        (e: { command?: string }) =>
-          typeof e.command === "string" && e.command.includes("selftune"),
-      );
-      if (!hasSelftune) return false;
+    for (const key of CLAUDE_CODE_HOOK_KEYS) {
+      if (!hookKeyHasSelftuneEntry(hooks, key)) {
+        return false;
+      }
     }
 
     return true;
   } catch {
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Hook installation (Claude Code only)
+// ---------------------------------------------------------------------------
+
+/** Bundled settings snippet (ships with the npm package). */
+const SETTINGS_SNIPPET_PATH = resolve(
+  dirname(import.meta.path),
+  "..",
+  "..",
+  "skill",
+  "settings_snippet.json",
+);
+
+/**
+ * Install selftune hooks into ~/.claude/settings.json by merging entries
+ * from the bundled settings_snippet.json.
+ *
+ * - Creates settings.json if it does not exist
+ * - Creates the hooks section if it does not exist
+ * - Only adds hook entries for keys that don't already have a selftune entry
+ * - Never overwrites existing user hooks
+ *
+ * Returns the list of hook keys that were added.
+ */
+export function installClaudeCodeHooks(options?: {
+  settingsPath?: string;
+  snippetPath?: string;
+  cliPath?: string;
+}): string[] {
+  const settingsPath = options?.settingsPath ?? join(homedir(), ".claude", "settings.json");
+  const snippetPath = options?.snippetPath ?? SETTINGS_SNIPPET_PATH;
+
+  // Read the snippet
+  if (!existsSync(snippetPath)) {
+    console.error(`[WARN] Hook snippet not found at ${snippetPath}, skipping hook installation`);
+    return [];
+  }
+
+  let snippet: Record<string, unknown>;
+  try {
+    snippet = JSON.parse(readFileSync(snippetPath, "utf-8"));
+  } catch {
+    console.error(`[WARN] Failed to parse hook snippet at ${snippetPath}`);
+    return [];
+  }
+
+  const snippetHooks = snippet.hooks as Record<string, unknown[]> | undefined;
+  if (!snippetHooks || typeof snippetHooks !== "object") {
+    console.error("[WARN] Hook snippet has no 'hooks' section");
+    return [];
+  }
+
+  // Read existing settings (or start with empty object)
+  let settings: Record<string, unknown> = {};
+  if (existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    } catch {
+      console.error(`[WARN] Failed to parse ${settingsPath}, starting with empty settings`);
+      settings = {};
+    }
+  }
+
+  // Ensure hooks section exists
+  if (!settings.hooks || typeof settings.hooks !== "object") {
+    settings.hooks = {};
+  }
+  const existingHooks = settings.hooks as Record<string, unknown[]>;
+
+  // Resolve the CLI hooks directory for path substitution
+  const cliPath = options?.cliPath;
+  const hooksDir = cliPath ? `${dirname(cliPath)}/hooks` : null;
+
+  const addedKeys: string[] = [];
+
+  for (const key of Object.keys(snippetHooks)) {
+    // Skip if this key already has a selftune entry
+    if (hookKeyHasSelftuneEntry(existingHooks, key)) {
+      continue;
+    }
+
+    // Get the snippet entries for this key, replacing /PATH/TO/ with actual path
+    let entries = snippetHooks[key];
+    if (hooksDir) {
+      // Deep clone and substitute paths
+      const raw = JSON.stringify(entries).replace(/\/PATH\/TO\/cli\/selftune\/hooks/g, hooksDir);
+      entries = JSON.parse(raw);
+    }
+
+    // Merge: append to existing array or create new one
+    if (Array.isArray(existingHooks[key])) {
+      existingHooks[key] = [...existingHooks[key], ...entries];
+    } else {
+      existingHooks[key] = entries;
+    }
+
+    addedKeys.push(key);
+  }
+
+  if (addedKeys.length > 0) {
+    // Ensure ~/.claude/ directory exists
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
+  }
+
+  return addedKeys;
+}
+
+// ---------------------------------------------------------------------------
+// Agent file installation
+// ---------------------------------------------------------------------------
+
+/** Bundled agent files directory (ships with the npm package). */
+const BUNDLED_AGENTS_DIR = resolve(dirname(import.meta.path), "..", "..", ".claude", "agents");
+
+/**
+ * Copy bundled agent markdown files to ~/.claude/agents/.
+ * Returns a list of file names that were copied (skips files that already exist
+ * unless `force` is true).
+ */
+export function installAgentFiles(options?: { homeDir?: string; force?: boolean }): string[] {
+  const home = options?.homeDir ?? homedir();
+  const force = options?.force ?? false;
+  const targetDir = join(home, ".claude", "agents");
+
+  if (!existsSync(BUNDLED_AGENTS_DIR)) return [];
+
+  let sourceFiles: string[];
+  try {
+    sourceFiles = readdirSync(BUNDLED_AGENTS_DIR).filter((f) => f.endsWith(".md"));
+  } catch {
+    return [];
+  }
+
+  if (sourceFiles.length === 0) return [];
+
+  mkdirSync(targetDir, { recursive: true });
+
+  const copied: string[] = [];
+  for (const file of sourceFiles) {
+    const dest = join(targetDir, file);
+    if (!force && existsSync(dest)) continue;
+    copyFileSync(join(BUNDLED_AGENTS_DIR, file), dest);
+    copied.push(file);
+  }
+
+  return copied;
 }
 
 // ---------------------------------------------------------------------------
@@ -346,6 +497,34 @@ export function runInit(opts: InitOptions): SelftuneConfig {
   mkdirSync(configDir, { recursive: true });
   writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 
+  // Install agent files to ~/.claude/agents/
+  const copiedAgents = installAgentFiles({ homeDir: home, force });
+  if (copiedAgents.length > 0) {
+    console.error(`[INFO] Installed agent files: ${copiedAgents.join(", ")}`);
+  }
+
+  // Auto-install hooks into ~/.claude/settings.json (Claude Code only)
+  if (agentType === "claude_code") {
+    const addedHookKeys = installClaudeCodeHooks({
+      settingsPath,
+      cliPath,
+    });
+    if (addedHookKeys.length > 0) {
+      config.hooks_installed = true;
+      // Re-write config with updated hooks_installed flag
+      writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+      console.error(
+        `[INFO] Installed ${addedHookKeys.length} selftune hook(s) into ${settingsPath}: ${addedHookKeys.join(", ")}`,
+      );
+    } else if (!config.hooks_installed) {
+      // Re-check in case hooks were already present
+      config.hooks_installed = checkClaudeCodeHooks(settingsPath);
+      if (config.hooks_installed) {
+        writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+      }
+    }
+  }
+
   return config;
 }
 
@@ -359,6 +538,8 @@ export async function cliMain(): Promise<void> {
       agent: { type: "string" },
       "cli-path": { type: "string" },
       force: { type: "boolean", default: false },
+      "enable-autonomy": { type: "boolean", default: false },
+      "schedule-format": { type: "string" },
     },
     strict: true,
   });
@@ -366,9 +547,10 @@ export async function cliMain(): Promise<void> {
   const configDir = SELFTUNE_CONFIG_DIR;
   const configPath = SELFTUNE_CONFIG_PATH;
   const force = values.force ?? false;
+  const enableAutonomy = values["enable-autonomy"] ?? false;
 
   // Check for existing config without force
-  if (!force && existsSync(configPath)) {
+  if (!force && !enableAutonomy && existsSync(configPath)) {
     try {
       const raw = readFileSync(configPath, "utf-8");
       const existing = JSON.parse(raw) as SelftuneConfig;
@@ -418,6 +600,37 @@ export async function cliMain(): Promise<void> {
       total: doctorResult.summary.total,
     }),
   );
+
+  if (enableAutonomy) {
+    try {
+      const { installSchedule } = await import("./schedule.js");
+      const scheduleResult = installSchedule({
+        format: values["schedule-format"],
+      });
+
+      if (!scheduleResult.activated) {
+        console.error(
+          "Failed to activate the autonomous scheduler. Re-run with --schedule-format or use `selftune schedule --install --dry-run` to inspect the generated artifacts first.",
+        );
+        process.exit(1);
+      }
+
+      console.log(
+        JSON.stringify({
+          level: "info",
+          code: "autonomy_enabled",
+          format: scheduleResult.format,
+          activated: scheduleResult.activated,
+          files: scheduleResult.artifacts.map((artifact) => artifact.path),
+        }),
+      );
+    } catch (err) {
+      console.error(
+        `Failed to enable autonomy: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      process.exit(1);
+    }
+  }
 }
 
 // Guard: only run when invoked directly

@@ -25,36 +25,62 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { parseArgs } from "node:util";
-import { QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
-import type { QueryLogRecord, SessionTelemetryRecord, SkillUsageRecord } from "../types.js";
+import { CANONICAL_LOG, QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
+import {
+  appendCanonicalRecords,
+  buildCanonicalExecutionFact,
+  buildCanonicalPrompt,
+  buildCanonicalSession,
+  buildCanonicalSkillInvocation,
+  type CanonicalBaseInput,
+  deriveInvocationMode,
+  derivePromptId,
+  deriveSkillInvocationId,
+} from "../normalization.js";
+import type {
+  CanonicalRecord,
+  QueryLogRecord,
+  SessionTelemetryRecord,
+  SkillUsageRecord,
+} from "../types.js";
 import { appendJsonl, loadMarker, saveMarker } from "../utils/jsonl.js";
+import { extractActionableQueryText } from "../utils/query-filter.js";
+import {
+  classifySkillPath,
+  containsWholeSkillMention,
+  extractExplicitSkillMentions,
+  extractSkillNamesFromInstructions,
+  extractSkillNamesFromPathReferences,
+  findInstalledSkillNames,
+  findInstalledSkillPath,
+  findRepositorySkillDirs,
+} from "../utils/skill-discovery.js";
 
 const MARKER_FILE = join(homedir(), ".claude", "codex_ingested_rollouts.json");
 
-const DEFAULT_CODEX_HOME = process.env.CODEX_HOME ?? join(homedir(), ".codex");
+export const DEFAULT_CODEX_HOME = process.env.CODEX_HOME ?? join(homedir(), ".codex");
+const SKILL_NAME_CACHE = new Map<string, Set<string>>();
 
-const CODEX_SKILLS_DIRS = [
-  join(process.cwd(), ".codex", "skills"),
-  join(homedir(), ".codex", "skills"),
-];
+/** Return skill names from Codex and agent skill directories for the given workspace. */
+export function findSkillNames(
+  cwd: string = process.cwd(),
+  homeDir: string = homedir(),
+  adminDir: string = "/etc/codex/skills",
+  codexHome: string = process.env.CODEX_HOME ?? join(homeDir, ".codex"),
+): Set<string> {
+  const cacheKey = [cwd, homeDir, adminDir, codexHome].join("\u0000");
+  const cached = SKILL_NAME_CACHE.get(cacheKey);
+  if (cached) return new Set(cached);
 
-/** Return skill names from Codex skill directories. */
-export function findSkillNames(dirs: string[] = CODEX_SKILLS_DIRS): Set<string> {
-  const names = new Set<string>();
-  for (const dir of dirs) {
-    if (!existsSync(dir)) continue;
-    for (const entry of readdirSync(dir)) {
-      const skillDir = join(dir, entry);
-      try {
-        if (statSync(skillDir).isDirectory() && existsSync(join(skillDir, "SKILL.md"))) {
-          names.add(entry);
-        }
-      } catch {
-        // skip entries that can't be stat'd (broken symlinks, permission errors, etc.)
-      }
-    }
-  }
-  return names;
+  const names = findInstalledSkillNames([
+    ...findRepositorySkillDirs(cwd),
+    join(homeDir, ".agents", "skills"),
+    adminDir,
+    join(codexHome, "skills"),
+    join(codexHome, "skills", ".system"),
+  ]);
+  SKILL_NAME_CACHE.set(cacheKey, names);
+  return new Set(names);
 }
 
 /**
@@ -124,6 +150,8 @@ export interface ParsedRollout {
   total_tool_calls: number;
   bash_commands: string[];
   skills_triggered: string[];
+  skills_invoked: string[];
+  skill_evidence: Record<string, "explicit" | "inferred">;
   assistant_turns: number;
   errors_encountered: number;
   input_tokens: number;
@@ -132,6 +160,19 @@ export interface ParsedRollout {
   cwd: string;
   transcript_path: string;
   last_user_query: string;
+  /** Observed-format metadata (populated when session_meta/event_msg records are found). */
+  observed_meta?: {
+    model_provider?: string;
+    model?: string;
+    approval_policy?: string;
+    sandbox_policy?: string;
+    originator?: string;
+    git?: { branch?: string; remote?: string; commit?: string };
+  };
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 /**
@@ -155,13 +196,88 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
 
   const threadId = basename(path, ".jsonl").replace("rollout-", "");
   let prompt = "";
+  let lastUserQuery = "";
   const toolCalls: Record<string, number> = {};
   const bashCommands: string[] = [];
   const skillsTriggered: string[] = [];
+  const skillEvidence = new Map<string, "explicit" | "inferred">();
   let errors = 0;
   let turns = 0;
   let inputTokens = 0;
   let outputTokens = 0;
+
+  // Observed-format metadata (session_meta/turn_context/event_msg records)
+  let observedMeta:
+    | {
+        model_provider?: string;
+        model?: string;
+        approval_policy?: string;
+        sandbox_policy?: string;
+        originator?: string;
+        git?: { branch?: string; remote?: string; commit?: string };
+      }
+    | undefined;
+  let observedSessionId: string | undefined;
+  let observedCwd: string | undefined;
+  const sessionSkillNames = new Set(skillNames);
+  let hasActionablePrompt = false;
+  const rememberSessionSkillNames = (text: unknown): void => {
+    if (typeof text !== "string" || !text) return;
+    for (const skillName of extractSkillNamesFromInstructions(text, sessionSkillNames)) {
+      sessionSkillNames.add(skillName);
+    }
+  };
+  const rememberWorkspaceSkills = (cwd: unknown): void => {
+    if (typeof cwd !== "string" || !cwd.trim()) return;
+    for (const skillName of findSkillNames(cwd)) {
+      sessionSkillNames.add(skillName);
+    }
+  };
+  const detectTriggeredSkills = (text: unknown): void => {
+    if (typeof text !== "string" || !text) return;
+    for (const skillName of sessionSkillNames) {
+      if (containsWholeSkillMention(text, skillName) && !skillsTriggered.includes(skillName)) {
+        skillsTriggered.push(skillName);
+      }
+      if (containsWholeSkillMention(text, skillName) && !skillEvidence.has(skillName)) {
+        skillEvidence.set(skillName, "inferred");
+      }
+    }
+  };
+  const detectExplicitPromptSkillMentions = (text: unknown): void => {
+    if (typeof text !== "string" || !text) return;
+    for (const skillName of extractExplicitSkillMentions(text, sessionSkillNames)) {
+      if (!skillsTriggered.includes(skillName)) {
+        skillsTriggered.push(skillName);
+      }
+      skillEvidence.set(skillName, "explicit");
+    }
+  };
+  const detectExplicitSkillReads = (text: unknown): void => {
+    if (typeof text !== "string" || !text) return;
+    for (const skillName of extractSkillNamesFromPathReferences(text, sessionSkillNames)) {
+      if (!skillsTriggered.includes(skillName)) {
+        skillsTriggered.push(skillName);
+      }
+      skillEvidence.set(skillName, "explicit");
+    }
+  };
+  const rememberPromptCandidate = (value: unknown): void => {
+    const message = typeof value === "string" ? value.trim() : "";
+    if (!message) return;
+    lastUserQuery = message;
+    const actionableMessage = extractActionableQueryText(message);
+    if (actionableMessage) {
+      if (!hasActionablePrompt) {
+        prompt = actionableMessage;
+        hasActionablePrompt = true;
+      }
+      return;
+    }
+    if (!prompt) {
+      prompt = message;
+    }
+  };
 
   for (const line of lines) {
     let event: Record<string, unknown>;
@@ -173,15 +289,93 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
 
     const etype = (event.type as string) ?? "";
 
-    if (etype === "turn.started") {
+    // --- Observed local rollout format (session_meta, event_msg, turn_context, response_item) ---
+    if (etype === "session_meta") {
+      const payload = (event.payload as Record<string, unknown>) ?? {};
+      const observedId = optionalString(payload.id);
+      const observedWorkspace = optionalString(payload.cwd);
+      const modelProvider = optionalString(payload.model_provider);
+      const model = optionalString(payload.model);
+      const originator = optionalString(payload.originator);
+      if (observedId) observedSessionId = observedId;
+      if (observedWorkspace) observedCwd = observedWorkspace;
+      rememberWorkspaceSkills(observedWorkspace);
+      rememberSessionSkillNames(payload.instructions);
+      rememberSessionSkillNames(
+        (payload.base_instructions as Record<string, unknown> | undefined)?.text,
+      );
+      if (!observedMeta) observedMeta = {};
+      if (modelProvider) observedMeta.model_provider = modelProvider;
+      if (model) observedMeta.model = model;
+      if (originator) observedMeta.originator = originator;
+    } else if (etype === "turn_context") {
+      const payload = (event.payload as Record<string, unknown>) ?? {};
+      const approvalPolicy = optionalString(payload.approval_policy);
+      const sandboxPolicy = optionalString(payload.sandbox_policy);
+      const model = optionalString(payload.model);
+      const gitPayload = payload.git as Record<string, unknown> | undefined;
+      if (!observedMeta) observedMeta = {};
+      if (approvalPolicy) observedMeta.approval_policy = approvalPolicy;
+      if (sandboxPolicy) observedMeta.sandbox_policy = sandboxPolicy;
+      if (model) observedMeta.model = model;
+      if (gitPayload) {
+        observedMeta.git = {
+          branch: optionalString(gitPayload.branch),
+          remote: optionalString(gitPayload.remote),
+          commit: optionalString(gitPayload.commit) ?? optionalString(gitPayload.sha),
+        };
+      }
+      turns += 1;
+    } else if (etype === "event_msg") {
+      const payload = (event.payload as Record<string, unknown>) ?? {};
+      const msgType = (payload.type as string) ?? "";
+      if (msgType === "user_message") {
+        rememberPromptCandidate(payload.message);
+        detectExplicitPromptSkillMentions(payload.message);
+      }
+      // Token usage in event_msg payloads
+      const tokenCount = payload.token_count as Record<string, number> | undefined;
+      if (tokenCount) {
+        inputTokens += tokenCount.input_tokens ?? tokenCount.input ?? 0;
+        outputTokens += tokenCount.output_tokens ?? tokenCount.output ?? 0;
+      }
+    } else if (etype === "response_item") {
+      const payload = (event.payload as Record<string, unknown>) ?? {};
+      const itemType = (payload.type as string) ?? "";
+      if (itemType === "function_call") {
+        const fnName = (payload.name as string) ?? "function_call";
+        toolCalls[fnName] = (toolCalls[fnName] ?? 0) + 1;
+        // Check for skill mentions in function arguments
+        detectExplicitSkillReads(payload.arguments);
+        detectTriggeredSkills(payload.arguments);
+      } else if (itemType === "agent_reasoning") {
+        toolCalls.reasoning = (toolCalls.reasoning ?? 0) + 1;
+        detectTriggeredSkills(payload.text);
+      } else if (itemType === "message") {
+        const content = Array.isArray(payload.content)
+          ? payload.content
+              .map((part) =>
+                typeof part === "object" && part
+                  ? (((part as Record<string, unknown>).text as string | undefined) ?? "")
+                  : "",
+              )
+              .join("\n")
+          : "";
+        rememberSessionSkillNames(content);
+        if ((payload.role as string) === "assistant") {
+          detectTriggeredSkills(content);
+        } else if ((payload.role as string) === "user") {
+          detectExplicitPromptSkillMentions(content);
+        }
+      }
+    } else if (etype === "turn.started") {
+      // --- Documented Codex event format ---
       turns += 1;
     } else if (etype === "turn.completed") {
       const usage = (event.usage as Record<string, number>) ?? {};
       inputTokens += usage.input_tokens ?? 0;
       outputTokens += usage.output_tokens ?? 0;
-      if (!prompt) {
-        prompt = (event.user_message as string) ?? "";
-      }
+      rememberPromptCandidate(event.user_message);
     } else if (etype === "turn.failed") {
       errors += 1;
     } else if (etype === "item.completed" || etype === "item.started" || etype === "item.updated") {
@@ -193,6 +387,7 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
           toolCalls.command_execution = (toolCalls.command_execution ?? 0) + 1;
           const cmd = ((item.command as string) ?? "").trim();
           if (cmd) bashCommands.push(cmd);
+          detectExplicitSkillReads(cmd);
           if ((item.exit_code as number) !== 0 && item.exit_code !== undefined) {
             errors += 1;
           }
@@ -209,23 +404,16 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
 
       // Detect skill names in text content on completed events
       const textContent = ((item.text as string) ?? "") + ((item.command as string) ?? "");
-      for (const skillName of skillNames) {
-        if (
-          textContent.includes(skillName) &&
-          !skillsTriggered.includes(skillName) &&
-          etype === "item.completed"
-        ) {
-          skillsTriggered.push(skillName);
-        }
+      detectExplicitSkillReads(textContent);
+      if (etype === "item.completed") {
+        detectTriggeredSkills(textContent);
       }
     } else if (etype === "error") {
       errors += 1;
     }
 
     // Some rollout formats embed the original prompt
-    if (!prompt && (event.prompt as string)) {
-      prompt = event.prompt as string;
-    }
+    rememberPromptCandidate(event.prompt);
   }
 
   // Infer file date from path structure: .../YYYY/MM/DD/rollout-*.jsonl
@@ -249,7 +437,7 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
 
   return {
     timestamp: fileDate,
-    session_id: threadId,
+    session_id: observedSessionId ?? threadId,
     source: "codex_rollout",
     rollout_path: path,
     query: prompt,
@@ -257,14 +445,19 @@ export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedR
     total_tool_calls: Object.values(toolCalls).reduce((a, b) => a + b, 0),
     bash_commands: bashCommands,
     skills_triggered: skillsTriggered,
+    skills_invoked: skillsTriggered.filter(
+      (skillName) => skillEvidence.get(skillName) === "explicit",
+    ),
+    skill_evidence: Object.fromEntries(skillEvidence),
     assistant_turns: turns,
     errors_encountered: errors,
     input_tokens: inputTokens,
     output_tokens: outputTokens,
     transcript_chars: lines.reduce((sum, l) => sum + l.length, 0),
-    cwd: "",
+    cwd: observedCwd ?? "",
     transcript_path: path,
-    last_user_query: prompt,
+    last_user_query: lastUserQuery || prompt,
+    observed_meta: observedMeta,
   };
 }
 
@@ -275,6 +468,7 @@ export function ingestFile(
   queryLogPath: string = QUERY_LOG,
   telemetryLogPath: string = TELEMETRY_LOG,
   skillLogPath: string = SKILL_LOG,
+  canonicalLogPath: string = CANONICAL_LOG,
 ): boolean {
   const { query: prompt, session_id: sessionId, skills_triggered: skills } = parsed;
 
@@ -308,6 +502,7 @@ export function ingestFile(
     total_tool_calls: parsed.total_tool_calls,
     bash_commands: parsed.bash_commands,
     skills_triggered: skills,
+    skills_invoked: parsed.skills_invoked,
     assistant_turns: parsed.assistant_turns,
     errors_encountered: parsed.errors_encountered,
     transcript_chars: parsed.transcript_chars,
@@ -321,19 +516,123 @@ export function ingestFile(
 
   // Write skill triggers
   for (const skillName of skills) {
+    const isExplicit = parsed.skill_evidence[skillName] === "explicit";
+    const skillPath = isExplicit
+      ? (findInstalledSkillPath(skillName, [
+          ...findRepositorySkillDirs(parsed.cwd || process.cwd()),
+          join(homedir(), ".agents", "skills"),
+          "/etc/codex/skills",
+          join(DEFAULT_CODEX_HOME, "skills"),
+          join(DEFAULT_CODEX_HOME, "skills", ".system"),
+        ]) ?? `(codex:${skillName})`)
+      : `(codex:${skillName})`;
     const skillRecord: SkillUsageRecord = {
       timestamp: parsed.timestamp,
       session_id: sessionId,
       skill_name: skillName,
-      skill_path: `(codex:${skillName})`,
+      skill_path: skillPath,
+      ...classifySkillPath(skillPath),
       query: prompt,
       triggered: true,
-      source: "codex_rollout",
+      source: isExplicit ? "codex_rollout_explicit" : "codex_rollout",
     };
     appendJsonl(skillLogPath, skillRecord, "skill_usage");
   }
 
+  // --- Canonical normalization records (additive) ---
+  const canonicalRecords = buildCanonicalRecordsFromRollout(parsed);
+  appendCanonicalRecords(canonicalRecords, canonicalLogPath);
+
   return true;
+}
+
+/** Build canonical records from a parsed rollout. */
+export function buildCanonicalRecordsFromRollout(parsed: ParsedRollout): CanonicalRecord[] {
+  const records: CanonicalRecord[] = [];
+  const baseInput: CanonicalBaseInput = {
+    platform: "codex",
+    capture_mode: "batch_ingest",
+    source_session_kind: "replayed",
+    session_id: parsed.session_id,
+    raw_source_ref: {
+      path: parsed.rollout_path,
+      event_type: "codex_rollout",
+    },
+  };
+
+  // Session record
+  const meta = parsed.observed_meta;
+  records.push(
+    buildCanonicalSession({
+      ...baseInput,
+      started_at: parsed.timestamp,
+      workspace_path: parsed.cwd || undefined,
+      provider: meta?.model_provider,
+      model: meta?.model,
+      approval_policy: meta?.approval_policy,
+      sandbox_policy: meta?.sandbox_policy,
+      agent_id: meta?.originator,
+      branch: meta?.git?.branch,
+      repo_remote: meta?.git?.remote,
+      commit_sha: meta?.git?.commit,
+    }),
+  );
+
+  // Prompt record
+  const promptEmitted = Boolean(parsed.query && parsed.query.length >= 4);
+  const promptId = promptEmitted ? derivePromptId(parsed.session_id, 0) : undefined;
+
+  if (promptId) {
+    records.push(
+      buildCanonicalPrompt({
+        ...baseInput,
+        prompt_id: promptId,
+        occurred_at: parsed.timestamp,
+        prompt_text: parsed.query,
+        prompt_index: 0,
+      }),
+    );
+  }
+
+  // Skill invocation records
+  for (let i = 0; i < parsed.skills_triggered.length; i++) {
+    const skillName = parsed.skills_triggered[i];
+    const isExplicit = parsed.skill_evidence[skillName] === "explicit";
+    const { invocation_mode, confidence } = deriveInvocationMode(
+      isExplicit ? { has_skill_md_read: true } : { is_text_mention_only: true },
+    );
+    records.push(
+      buildCanonicalSkillInvocation({
+        ...baseInput,
+        skill_invocation_id: deriveSkillInvocationId(parsed.session_id, skillName, i),
+        occurred_at: parsed.timestamp,
+        matched_prompt_id: promptId,
+        skill_name: skillName,
+        skill_path: `(codex:${skillName})`,
+        invocation_mode,
+        triggered: true,
+        confidence,
+      }),
+    );
+  }
+
+  // Execution fact record
+  records.push(
+    buildCanonicalExecutionFact({
+      ...baseInput,
+      occurred_at: parsed.timestamp,
+      prompt_id: promptId,
+      tool_calls_json: parsed.tool_calls,
+      total_tool_calls: parsed.total_tool_calls,
+      bash_commands_redacted: parsed.bash_commands,
+      assistant_turns: parsed.assistant_turns,
+      errors_encountered: parsed.errors_encountered,
+      input_tokens: parsed.input_tokens ?? undefined,
+      output_tokens: parsed.output_tokens ?? undefined,
+    }),
+  );
+
+  return records;
 }
 
 // --- CLI main ---

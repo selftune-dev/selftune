@@ -151,10 +151,10 @@ export async function cliMain(): Promise<void> {
   });
 
   if (values.help) {
-    console.log(`selftune baseline — Measure skill value vs. no-skill baseline
+    console.log(`selftune grade baseline — Measure skill value vs. no-skill baseline
 
 Usage:
-  selftune baseline --skill <name> --skill-path <path> [options]
+  selftune grade baseline --skill <name> --skill-path <path> [options]
 
 Options:
   --skill         Skill name (required)
@@ -187,10 +187,11 @@ Options:
     evalSet = JSON.parse(raw) as EvalEntry[];
   } else {
     // Build from logs
-    const { QUERY_LOG, SKILL_LOG } = await import("../constants.js");
+    const { QUERY_LOG } = await import("../constants.js");
     const { readJsonl } = await import("../utils/jsonl.js");
+    const { readEffectiveSkillUsageRecords } = await import("../utils/skill-log.js");
     const { buildEvalSet } = await import("./hooks-to-evals.js");
-    const skillRecords = readJsonl(SKILL_LOG);
+    const skillRecords = readEffectiveSkillUsageRecords();
     const queryRecords = readJsonl(QUERY_LOG);
     evalSet = buildEvalSet(skillRecords, queryRecords, values.skill);
   }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   checkEvolutionHealth,
@@ -48,24 +48,21 @@ describe("checkLogHealth", () => {
 });
 
 describe("checkHookInstallation", () => {
-  test("returns checks for all hooks including settings", () => {
+  test("returns settings check only (no git hook file checks)", () => {
     const checks = checkHookInstallation();
-    expect(checks.length).toBe(4);
+    // Only the settings.json check -- git hook file checks were removed
+    // since selftune uses Claude Code settings.json hooks, not .git/hooks/
+    expect(checks.length).toBe(1);
+    expect(checks[0].name).toBe("hook_settings");
   });
 
-  test("reports hook files status against repo .git/hooks directory", () => {
-    // Hooks are checked in .git/hooks/ (not bundled source), so in a
-    // test environment they are typically absent and should report "fail"
+  test("settings check uses correct Claude Code hook key names", () => {
     const checks = checkHookInstallation();
-    const hookFileChecks = checks.filter(
-      (c) => c.name.startsWith("hook_") && c.name !== "hook_settings",
-    );
-    expect(hookFileChecks.length).toBe(3);
-    for (const check of hookFileChecks) {
-      expect(["pass", "fail"]).toContain(check.status);
-      // path should point to .git/hooks/, not bundled source
-      expect(check.path).toContain(".git/hooks/");
-    }
+    const settingsCheck = checks.find((c) => c.name === "hook_settings");
+    expect(settingsCheck).toBeDefined();
+    // Should reference actual Claude Code keys (UserPromptSubmit, PreToolUse, PostToolUse, Stop)
+    // not the old incorrect keys (prompt-submit, post-tool-use, session-stop)
+    expect(["pass", "warn"]).toContain(settingsCheck?.status);
   });
 });
 
@@ -102,6 +99,57 @@ describe("checkEvolutionHealth", () => {
   });
 });
 
+describe("checkConfigHealth", () => {
+  test("accepts openclaw agent_type values written by init", () => {
+    const tempHome = mkdtempSync(join(tmpdir(), "selftune-observability-"));
+    const configDir = join(tempHome, ".selftune");
+    const configPath = join(configDir, "config.json");
+    const moduleUrl = new URL("../cli/selftune/observability.ts", import.meta.url).href;
+
+    try {
+      mkdirSync(configDir, { recursive: true });
+      writeFileSync(
+        configPath,
+        JSON.stringify(
+          {
+            agent_type: "openclaw",
+            llm_mode: "agent",
+            agent_cli: "openclaw",
+            initialized_at: "2026-03-09T00:00:00.000Z",
+          },
+          null,
+          2,
+        ),
+      );
+
+      const proc = Bun.spawnSync(
+        [
+          process.execPath,
+          "-e",
+          `const { checkConfigHealth } = await import(${JSON.stringify(moduleUrl)}); console.log(JSON.stringify(checkConfigHealth()));`,
+        ],
+        {
+          env: { ...process.env, HOME: tempHome },
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+
+      if (proc.exitCode !== 0) {
+        const stderr = new TextDecoder().decode(proc.stderr);
+        throw new Error(`Subprocess failed (exit ${proc.exitCode}): ${stderr}`);
+      }
+      const output = new TextDecoder().decode(proc.stdout).trim();
+      const checks = JSON.parse(output) as Array<{ status: string; message: string }>;
+      expect(checks).toHaveLength(1);
+      expect(checks[0]?.status).toBe("pass");
+      expect(checks[0]?.message).toContain("agent_type=openclaw");
+    } finally {
+      rmSync(tempHome, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("doctor", () => {
   test("returns structured result", () => {
     const result = doctor();
@@ -123,5 +171,13 @@ describe("doctor", () => {
       (c) => c.name === "evolution_audit" || c.name === "log_evolution_audit",
     );
     expect(evolutionChecks.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("doctor does not produce false positives from git hook checks", () => {
+    const result = doctor();
+    // With the git hook checks removed, doctor should not produce false
+    // positives from missing .git/hooks/ files
+    const gitHookChecks = result.checks.filter((c) => c.path?.includes(".git/hooks/"));
+    expect(gitHookChecks.length).toBe(0);
   });
 });

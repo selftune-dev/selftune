@@ -258,6 +258,104 @@ describe("extractFailurePatterns", () => {
     expect(patterns[0].feedback?.[0].failure_reason).toBe("Description lacks slide keywords");
   });
 
+  test("ignores low-confidence codex-triggered rows when deriving contextual grading patterns", () => {
+    const usage: SkillUsageRecord[] = [
+      {
+        ...makeUsage("selftune", "commit and push all changes"),
+        source: "codex_rollout",
+      },
+    ];
+    const gradingResults = [
+      {
+        session_id: "sess-1",
+        skill_name: "selftune",
+        transcript_path: "",
+        graded_at: "",
+        expectations: [{ text: "should have fixed auth", passed: false, evidence: "did not fix" }],
+        summary: { passed: 0, failed: 1, total: 1, pass_rate: 0 },
+        execution_metrics: {
+          tool_calls: {},
+          total_tool_calls: 0,
+          total_steps: 0,
+          bash_commands_run: 0,
+          errors_encountered: 0,
+          skills_triggered: ["selftune"],
+          transcript_chars: 0,
+        },
+        claims: [],
+        eval_feedback: { suggestions: [], overall: "" },
+      },
+    ];
+
+    expect(extractFailurePatterns([], usage, "selftune", gradingResults)).toEqual([]);
+  });
+
+  test("keeps explicit codex-triggered rows eligible for contextual grading patterns", () => {
+    const usage: SkillUsageRecord[] = [
+      {
+        ...makeUsage("selftune", "commit and push all changes"),
+        source: "codex_rollout_explicit",
+      },
+    ];
+    const gradingResults = [
+      {
+        session_id: "sess-1",
+        skill_name: "selftune",
+        transcript_path: "",
+        graded_at: "",
+        expectations: [{ text: "should have fixed auth", passed: false, evidence: "did not fix" }],
+        summary: { passed: 0, failed: 1, total: 1, pass_rate: 0 },
+        execution_metrics: {
+          tool_calls: {},
+          total_tool_calls: 0,
+          total_steps: 0,
+          bash_commands_run: 0,
+          errors_encountered: 0,
+          skills_triggered: ["selftune"],
+          transcript_chars: 0,
+        },
+        claims: [],
+        eval_feedback: { suggestions: [], overall: "" },
+      },
+    ];
+
+    const patterns = extractFailurePatterns([], usage, "selftune", gradingResults);
+    expect(patterns).toHaveLength(1);
+    expect(patterns[0].missed_queries).toEqual(["commit and push all changes"]);
+  });
+
+  test("ignores raw claude hook positives when deriving contextual grading patterns", () => {
+    const usage: SkillUsageRecord[] = [
+      {
+        ...makeUsage("selftune", "draft launch notes"),
+        source: "claude_code",
+      },
+    ];
+    const gradingResults = [
+      {
+        session_id: "sess-1",
+        skill_name: "selftune",
+        transcript_path: "",
+        graded_at: "",
+        expectations: [{ text: "should have fixed auth", passed: false, evidence: "did not fix" }],
+        summary: { passed: 0, failed: 1, total: 1, pass_rate: 0 },
+        execution_metrics: {
+          tool_calls: {},
+          total_tool_calls: 0,
+          total_steps: 0,
+          bash_commands_run: 0,
+          errors_encountered: 0,
+          skills_triggered: ["selftune"],
+          transcript_chars: 0,
+        },
+        claims: [],
+        eval_feedback: { suggestions: [], overall: "" },
+      },
+    ];
+
+    expect(extractFailurePatterns([], usage, "selftune", gradingResults)).toEqual([]);
+  });
+
   test("no feedback when grading results have no failure_feedback", () => {
     const evals: EvalEntry[] = [makeEval("make slides", true, "implicit")];
     const gradingResults = [
@@ -330,5 +428,52 @@ describe("extractFailurePatterns", () => {
     // Only the pattern containing "make slides" should have feedback
     const withFeedback = patterns.filter((p) => p.feedback && p.feedback.length > 0);
     expect(withFeedback.length).toBe(1);
+  });
+
+  test("creates contextual failure patterns from failed grading results when the skill triggered", () => {
+    const usage: SkillUsageRecord[] = [
+      {
+        timestamp: "2026-03-12T00:00:00Z",
+        session_id: "sess-1",
+        skill_name: "selftune",
+        skill_path: "/tmp/selftune/SKILL.md",
+        query: "check why selftune is not evolving",
+        triggered: true,
+      },
+    ];
+    const gradingResults = [
+      {
+        session_id: "sess-1",
+        skill_name: "selftune",
+        transcript_path: "",
+        graded_at: "",
+        expectations: [
+          {
+            text: "The skill fulfilled its purpose",
+            passed: false,
+            evidence: "No useful grading or monitoring actions were visible",
+          },
+        ],
+        summary: { passed: 0, failed: 1, total: 1, pass_rate: 0 },
+        execution_metrics: {
+          tool_calls: {},
+          total_tool_calls: 0,
+          total_steps: 0,
+          bash_commands_run: 0,
+          errors_encountered: 0,
+          skills_triggered: ["selftune"],
+          transcript_chars: 0,
+        },
+        claims: [],
+        eval_feedback: { suggestions: [], overall: "" },
+      },
+    ];
+
+    const patterns = extractFailurePatterns([], usage, "selftune", gradingResults);
+    expect(patterns).toHaveLength(1);
+    expect(patterns[0].invocation_type).toBe("contextual");
+    expect(patterns[0].missed_queries).toEqual(["check why selftune is not evolving"]);
+    expect(patterns[0].sample_sessions).toEqual(["sess-1"]);
+    expect(patterns[0].feedback?.[0].failure_reason).toContain("No useful grading");
   });
 });

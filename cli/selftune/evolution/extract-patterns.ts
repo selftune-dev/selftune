@@ -14,6 +14,8 @@ import type {
   InvocationType,
   SkillUsageRecord,
 } from "../types.js";
+import { filterActionableSkillUsageRecords } from "../utils/query-filter.js";
+import { isHighConfidencePositiveSkillRecord } from "../utils/skill-usage-confidence.js";
 
 // ---------------------------------------------------------------------------
 // Jaccard similarity
@@ -102,36 +104,37 @@ export function extractFailurePatterns(
   skillName: string,
   gradingResults?: GradingResult[],
 ): FailurePattern[] {
-  // 1. Build a set of triggered queries from skillUsage for the given skillName
+  const actionableSkillUsage = filterActionableSkillUsageRecords(skillUsage);
   const triggeredQueries = new Set<string>();
-  for (const record of skillUsage) {
-    if (record.skill_name === skillName && record.triggered) {
-      triggeredQueries.add(record.query);
-    }
+  const skillUsageBySession = new Map<string, SkillUsageRecord[]>();
+
+  for (const record of actionableSkillUsage) {
+    if (!isHighConfidencePositiveSkillRecord(record, skillName)) continue;
+    triggeredQueries.add(record.query);
+    const sessionRecords = skillUsageBySession.get(record.session_id) ?? [];
+    sessionRecords.push(record);
+    skillUsageBySession.set(record.session_id, sessionRecords);
   }
 
-  // 2. Find missed queries: should_trigger === true but NOT in the triggered set
   const missedByType = new Map<InvocationType, string[]>();
-
   for (const entry of evalEntries) {
     if (!entry.should_trigger) continue;
     if (triggeredQueries.has(entry.query)) continue;
 
     const invType = entry.invocation_type ?? "implicit";
-    if (!missedByType.has(invType)) {
-      missedByType.set(invType, []);
-    }
-    missedByType.get(invType)?.push(entry.query);
+    const queries = missedByType.get(invType) ?? [];
+    queries.push(entry.query);
+    missedByType.set(invType, queries);
   }
 
-  // 3. For each group, cluster similar queries
   const now = new Date().toISOString();
   const allPatterns: FailurePattern[] = [];
   let index = 0;
+  const feedbackMap = new Map<string, FailureFeedback[]>();
+  const sampleSessionsByQuery = new Map<string, Set<string>>();
 
   for (const [invType, queries] of missedByType) {
     const clusters = clusterQueries(queries);
-
     for (const cluster of clusters) {
       allPatterns.push({
         pattern_id: `fp-${skillName}-${index}`,
@@ -146,31 +149,86 @@ export function extractFailurePatterns(
     }
   }
 
-  // 3.5. Attach failure feedback from grading results if available
   if (gradingResults && gradingResults.length > 0) {
-    const feedbackMap = new Map<string, FailureFeedback>();
-    for (const gr of gradingResults) {
-      if (gr.failure_feedback) {
-        for (const fb of gr.failure_feedback) {
-          feedbackMap.set(fb.query, fb);
+    for (const result of gradingResults) {
+      const hasExplicitFeedback = (result.failure_feedback?.length ?? 0) > 0;
+      const hasFailedSummary = (result.summary.failed ?? 0) > 0;
+      if (result.skill_name !== skillName || (!hasExplicitFeedback && !hasFailedSummary)) continue;
+
+      const failedQueries = new Set<string>();
+
+      if (result.failure_feedback) {
+        const sessionRecords = skillUsageBySession.get(result.session_id) ?? [];
+        for (const feedback of result.failure_feedback) {
+          if (!feedback.query) continue;
+          const existing = feedbackMap.get(feedback.query) ?? [];
+          existing.push(feedback);
+          feedbackMap.set(feedback.query, existing);
+          if (sessionRecords.some((record) => record.query === feedback.query)) {
+            failedQueries.add(feedback.query);
+            const sessions = sampleSessionsByQuery.get(feedback.query) ?? new Set<string>();
+            sessions.add(result.session_id);
+            sampleSessionsByQuery.set(feedback.query, sessions);
+          }
+        }
+      }
+
+      if (failedQueries.size === 0) {
+        const sessionRecords = skillUsageBySession.get(result.session_id) ?? [];
+        const failedExpectations = result.expectations.filter((expectation) => !expectation.passed);
+        for (const record of sessionRecords) {
+          failedQueries.add(record.query);
+          const sessions = sampleSessionsByQuery.get(record.query) ?? new Set<string>();
+          sessions.add(result.session_id);
+          sampleSessionsByQuery.set(record.query, sessions);
+
+          if (failedExpectations.length > 0) {
+            const feedback = feedbackMap.get(record.query) ?? [];
+            for (const expectation of failedExpectations) {
+              feedback.push({
+                query: record.query,
+                failure_reason: expectation.evidence || expectation.text,
+                improvement_hint: expectation.text,
+                invocation_type: "contextual",
+              });
+            }
+            feedbackMap.set(record.query, feedback);
+          }
         }
       }
     }
 
-    for (const pattern of allPatterns) {
-      const matchingFeedback: FailureFeedback[] = [];
-      for (const query of pattern.missed_queries) {
-        const fb = feedbackMap.get(query);
-        if (fb) matchingFeedback.push(fb);
-      }
-      if (matchingFeedback.length > 0) {
-        pattern.feedback = matchingFeedback;
+    const contextualQueries = [...sampleSessionsByQuery.keys()];
+    if (contextualQueries.length > 0) {
+      const clusters = clusterQueries(contextualQueries);
+      for (const cluster of clusters) {
+        allPatterns.push({
+          pattern_id: `fp-${skillName}-${index}`,
+          skill_name: skillName,
+          invocation_type: "contextual",
+          missed_queries: cluster,
+          frequency: cluster.length,
+          sample_sessions: [
+            ...new Set(cluster.flatMap((query) => [...(sampleSessionsByQuery.get(query) ?? [])])),
+          ],
+          extracted_at: now,
+          feedback: cluster.flatMap((query) => feedbackMap.get(query) ?? []),
+        });
+        index++;
       }
     }
   }
 
-  // 4. Sort by frequency descending
-  allPatterns.sort((a, b) => b.frequency - a.frequency);
+  for (const pattern of allPatterns) {
+    if (pattern.feedback && pattern.feedback.length > 0) continue;
+    const matchingFeedback = pattern.missed_queries.flatMap(
+      (query) => feedbackMap.get(query) ?? [],
+    );
+    if (matchingFeedback.length > 0) {
+      pattern.feedback = matchingFeedback;
+    }
+  }
 
+  allPatterns.sort((a, b) => b.frequency - a.frequency);
   return allPatterns;
 }

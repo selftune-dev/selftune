@@ -7,8 +7,8 @@
  *  - cliMain()        (reads logs, runs doctor, prints output)
  */
 
-import { EVOLUTION_AUDIT_LOG, QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "./constants.js";
-import { computeMonitoringSnapshot } from "./monitoring/watch.js";
+import { EVOLUTION_AUDIT_LOG, QUERY_LOG, TELEMETRY_LOG } from "./constants.js";
+import { computeMonitoringSnapshot, MIN_MONITORING_SKILL_CHECKS } from "./monitoring/watch.js";
 import { doctor } from "./observability.js";
 import type {
   DoctorResult,
@@ -19,6 +19,11 @@ import type {
   SkillUsageRecord,
 } from "./types.js";
 import { readJsonl } from "./utils/jsonl.js";
+import {
+  filterActionableQueryRecords,
+  filterActionableSkillUsageRecords,
+} from "./utils/query-filter.js";
+import { readEffectiveSkillUsageRecords } from "./utils/skill-log.js";
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -29,7 +34,7 @@ export interface SkillStatus {
   passRate: number | null;
   trend: "up" | "down" | "stable" | "unknown";
   missedQueries: number;
-  status: "HEALTHY" | "WARNING" | "CRITICAL" | "UNKNOWN";
+  status: "HEALTHY" | "WARNING" | "CRITICAL" | "UNGRADED" | "UNKNOWN";
   snapshot: MonitoringSnapshot | null;
 }
 
@@ -50,7 +55,7 @@ export interface StatusResult {
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_WINDOW_SESSIONS = 20;
+export const DEFAULT_WINDOW_SESSIONS = 20;
 const DEFAULT_BASELINE_PASS_RATE = 0.5;
 
 // ---------------------------------------------------------------------------
@@ -64,13 +69,14 @@ export function computeStatus(
   auditEntries: EvolutionAuditEntry[],
   doctorResult: DoctorResult,
 ): StatusResult {
+  const actionableSkillRecords = filterActionableSkillUsageRecords(skillRecords);
+  const actionableQueryRecords = filterActionableQueryRecords(queryRecords);
   // Derive unique skill names from skill records
-  const skillNames = [...new Set(skillRecords.map((r) => r.skill_name))];
+  const skillNames = [...new Set(actionableSkillRecords.map((r) => r.skill_name))];
 
   // Build per-skill status
   const skills: SkillStatus[] = skillNames.map((skillName) => {
-    const skillSpecificRecords = skillRecords.filter((r) => r.skill_name === skillName);
-    const triggeredRecords = skillSpecificRecords.filter((r) => r.triggered);
+    const skillSpecificRecords = actionableSkillRecords.filter((r) => r.skill_name === skillName);
 
     // Get baseline from last deployed proposal
     const lastDeployed = getLastDeployedProposalFromEntries(auditEntries, skillName);
@@ -80,21 +86,19 @@ export function computeStatus(
     const snapshot = computeMonitoringSnapshot(
       skillName,
       telemetry,
-      skillRecords,
-      queryRecords,
+      actionableSkillRecords,
+      actionableQueryRecords,
       DEFAULT_WINDOW_SESSIONS,
       baselinePassRate,
     );
 
-    // Determine if there's any meaningful data
-    const totalQueries = queryRecords.length;
-    const hasData = triggeredRecords.length > 0 || totalQueries > 0;
+    // A skill has data when it has explicit check records, regardless of whether any passed.
+    // Using triggered-only rows would incorrectly hide meaningful all-false samples.
+    const hasData = skillSpecificRecords.length > 0;
+    const hasEnoughSamples = snapshot.skill_checks >= MIN_MONITORING_SKILL_CHECKS;
 
-    // Compute pass rate (null if no data)
-    let passRate: number | null = null;
-    if (hasData && totalQueries > 0) {
-      passRate = snapshot.pass_rate;
-    }
+    // Compute pass rate (null only if this skill has no graded checks at all)
+    const passRate = hasData ? snapshot.pass_rate : null;
 
     // Determine trend: compare first-half vs second-half pass rates
     const trend = computeTrend(skillSpecificRecords);
@@ -102,10 +106,11 @@ export function computeStatus(
     // Count missed queries for this skill (queries where skill was checked but not triggered)
     const missedQueries = skillSpecificRecords.filter((r) => !r.triggered).length;
 
-    // Determine status (4-state)
-    let status: "HEALTHY" | "WARNING" | "CRITICAL" | "UNKNOWN";
-    if (!hasData || passRate === null) {
-      status = "UNKNOWN";
+    // Determine status (5-state)
+    let status: "HEALTHY" | "WARNING" | "CRITICAL" | "UNGRADED" | "UNKNOWN";
+    if (!hasData || passRate === null || !hasEnoughSamples) {
+      // Skill exists in logs but has too little data for a meaningful health label
+      status = skillSpecificRecords.length > 0 ? "UNGRADED" : "UNKNOWN";
     } else if (snapshot.regression_detected || passRate < 0.4) {
       status = "CRITICAL";
     } else if (passRate < 0.7) {
@@ -118,14 +123,22 @@ export function computeStatus(
   });
 
   // Sort: CRITICAL first, then WARNING, then HEALTHY, then UNKNOWN
-  const statusOrder: Record<string, number> = { CRITICAL: 0, WARNING: 1, HEALTHY: 2, UNKNOWN: 3 };
+  const statusOrder: Record<string, number> = {
+    CRITICAL: 0,
+    WARNING: 1,
+    HEALTHY: 2,
+    UNGRADED: 3,
+    UNKNOWN: 4,
+  };
   skills.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
 
   // Unmatched queries: queries whose text appears in zero triggered skill_usage_log entries
   const triggeredQueryTexts = new Set(
-    skillRecords.filter((r) => r.triggered).map((r) => r.query.toLowerCase().trim()),
+    actionableSkillRecords
+      .filter((r) => r.triggered && typeof r.query === "string")
+      .map((r) => r.query.toLowerCase().trim()),
   );
-  const unmatchedQueries = queryRecords.filter(
+  const unmatchedQueries = actionableQueryRecords.filter(
     (q) => !triggeredQueryTexts.has(q.query.toLowerCase().trim()),
   ).length;
 
@@ -247,8 +260,17 @@ export function formatStatus(result: StatusResult): string {
           ? amber(skill.status)
           : skill.status === "HEALTHY"
             ? green(skill.status)
-            : amber(skill.status);
+            : skill.status === "UNGRADED"
+              ? amber(skill.status)
+              : amber(skill.status);
     lines.push(`  ${name}${passRate}${trend}${missed}${statusText}`);
+  }
+
+  // Onboarding hint for ungraded skills
+  const ungradedSkills = result.skills.filter((s) => s.status === "UNGRADED");
+  if (ungradedSkills.length > 0) {
+    lines.push("");
+    lines.push(`  Hint: Run \`selftune grade --skill <name>\` to establish baselines`);
   }
 
   lines.push("");
@@ -305,7 +327,7 @@ function colorize(text: string, hex: string): string {
 export function cliMain(): void {
   try {
     const telemetry = readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG);
-    const skillRecords = readJsonl<SkillUsageRecord>(SKILL_LOG);
+    const skillRecords = readEffectiveSkillUsageRecords();
     const queryRecords = readJsonl<QueryLogRecord>(QUERY_LOG);
     const auditEntries = readJsonl<EvolutionAuditEntry>(EVOLUTION_AUDIT_LOG);
     const doctorResult = doctor();

@@ -214,6 +214,156 @@ describe("buildEvalSet", () => {
     expect(positives.length).toBe(uniqueQueries.size);
   });
 
+  test("ignores untriggered skill records when building positives", () => {
+    const recordsWithBrowseOnly: SkillUsageRecord[] = [
+      ...skillRecords,
+      {
+        timestamp: "2025-01-01T00:06:00Z",
+        session_id: "s7",
+        skill_name: "pptx",
+        skill_path: "/skills/pptx",
+        query: "browse the pptx skill docs",
+        triggered: false,
+      },
+    ];
+
+    const result = buildEvalSet(recordsWithBrowseOnly, queryRecords, "pptx", 50, true, 42, true);
+    const positives = result.filter((e) => e.should_trigger).map((e) => e.query);
+
+    expect(positives).not.toContain("browse the pptx skill docs");
+    expect(positives).toHaveLength(2);
+  });
+
+  test("ignores inferred codex rollout positives when building routing eval positives", () => {
+    const recordsWithCodexInference: SkillUsageRecord[] = [
+      ...skillRecords,
+      {
+        timestamp: "2025-01-01T00:06:00Z",
+        session_id: "s7",
+        skill_name: "pptx",
+        skill_path: "/skills/pptx",
+        query: "commit and push all changes",
+        triggered: true,
+        source: "codex_rollout",
+      },
+    ];
+
+    const result = buildEvalSet(
+      recordsWithCodexInference,
+      [
+        ...queryRecords,
+        {
+          timestamp: "2025-01-01T00:06:00Z",
+          session_id: "s7",
+          query: "commit and push all changes",
+        },
+      ],
+      "pptx",
+      50,
+      true,
+      42,
+      true,
+    );
+    const positives = result.filter((e) => e.should_trigger).map((e) => e.query);
+
+    expect(positives).not.toContain("commit and push all changes");
+    expect(positives).toHaveLength(2);
+  });
+
+  test("includes explicit codex rollout positives when building routing eval positives", () => {
+    const result = buildEvalSet(
+      [
+        ...skillRecords,
+        {
+          timestamp: "2025-01-01T00:06:00Z",
+          session_id: "s7",
+          skill_name: "pptx",
+          skill_path: "/skills/pptx",
+          query: "commit and push all changes",
+          triggered: true,
+          source: "codex_rollout_explicit",
+        },
+      ],
+      [
+        ...queryRecords,
+        {
+          timestamp: "2025-01-01T00:06:00Z",
+          session_id: "s7",
+          query: "commit and push all changes",
+        },
+      ],
+      "pptx",
+      50,
+      true,
+      42,
+      true,
+    );
+
+    const positives = result.filter((entry) => entry.should_trigger).map((entry) => entry.query);
+    expect(positives).toContain("commit and push all changes");
+  });
+
+  test("ignores raw claude hook positives when building routing eval positives", () => {
+    const result = buildEvalSet(
+      [
+        ...skillRecords,
+        {
+          timestamp: "2025-01-01T00:06:00Z",
+          session_id: "s7",
+          skill_name: "pptx",
+          skill_path: "/skills/pptx",
+          query: "draft launch notes",
+          triggered: true,
+          source: "claude_code",
+        },
+      ],
+      [
+        ...queryRecords,
+        {
+          timestamp: "2025-01-01T00:06:00Z",
+          session_id: "s7",
+          query: "draft launch notes",
+        },
+      ],
+      "pptx",
+      50,
+      true,
+      42,
+      true,
+    );
+
+    const positives = result.filter((entry) => entry.should_trigger).map((entry) => entry.query);
+    expect(positives).not.toContain("draft launch notes");
+  });
+
+  test("ignores legacy or malformed records whose triggered field is not boolean true", () => {
+    const malformedTriggeredRecords: SkillUsageRecord[] = [
+      ...skillRecords,
+      {
+        timestamp: "2025-01-01T00:06:00Z",
+        session_id: "s7",
+        skill_name: "pptx",
+        skill_path: "/skills/pptx",
+        query: "this should not become a positive",
+        triggered: "true" as unknown as boolean,
+      },
+    ];
+
+    const result = buildEvalSet(
+      malformedTriggeredRecords,
+      queryRecords,
+      "pptx",
+      50,
+      true,
+      42,
+      true,
+    );
+    const positives = result.filter((e) => e.should_trigger).map((e) => e.query);
+
+    expect(positives).not.toContain("this should not become a positive");
+    expect(positives).toHaveLength(2);
+  });
+
   test("pads with generic negatives when real negatives are sparse", () => {
     // Only 3 non-pptx queries exist, but we have 2 positives.
     // The 3 negatives should be enough here, but if we make many positives:

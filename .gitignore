@@ -1,7 +1,8 @@
 node_modules/
-bun.lock
+pnpm-lock.yaml
 *.tsbuildinfo
 .context/
+.claude/worktrees/
 
 # OS files
 .DS_Store
@@ -15,6 +16,7 @@ Thumbs.db
 coverage/
 tests/sandbox/results/
 .test-data/
+.playwright-cli/
 
 # Internal business strategy (kept locally, not in public repo)
 docs/strategy/

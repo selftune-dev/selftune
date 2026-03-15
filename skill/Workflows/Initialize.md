@@ -4,9 +4,9 @@ Bootstrap selftune for first-time use or after changing environments.
 
 ## When to Use
 
-- First time using selftune in a new environment
-- After switching agent platforms (Claude Code, Codex, OpenCode)
-- When `~/.selftune/config.json` does not exist
+- The user asks to set up selftune, configure selftune, or initialize selftune
+- The agent detects `~/.selftune/config.json` does not exist
+- The user has switched agent platforms (Claude Code, Codex, OpenCode)
 
 ## Default Command
 
@@ -77,11 +77,20 @@ Skip to Step 8 (verify with doctor) unless the user wants to reinitialize.
 selftune init
 ```
 
-### 4. Install Hooks (Claude Code)
+### 4. Hooks (Claude Code)
 
-If `init` reports hooks are not installed, merge the entries from
-`skill/settings_snippet.json` into `~/.claude/settings.json`. Six hooks
-are required:
+Hooks are **automatically installed** by `selftune init`. The init command
+merges selftune hook entries from `skill/settings_snippet.json` into
+`~/.claude/settings.json` without overwriting existing user hooks. If the
+hooks are already present, they are skipped (no duplicates).
+
+The init output will report what was installed, e.g.:
+
+```text
+[INFO] Installed 4 selftune hook(s) into ~/.claude/settings.json: UserPromptSubmit, PreToolUse, PostToolUse, Stop
+```
+
+**Hook reference** (for troubleshooting):
 
 | Hook | Script | Purpose |
 |------|--------|---------|
@@ -92,15 +101,12 @@ are required:
 | `PostToolUse` (Read) | `hooks/skill-eval.ts` | Track skill triggers |
 | `Stop` | `hooks/session-stop.ts` | Capture session telemetry |
 
-Derive the hook script paths from the `cli_path` field in `~/.selftune/config.json`.
-The hooks directory is at `dirname(cli_path)/hooks/`.
-
 **Codex agents:**
-- Use `wrap-codex` for real-time telemetry capture (see `Workflows/Ingest.md`)
-- Or batch-ingest existing sessions with `selftune ingest-codex`
+- Use `selftune ingest wrap-codex` for real-time telemetry capture (see `Workflows/Ingest.md`)
+- Or batch-ingest existing sessions with `selftune ingest codex`
 
 **OpenCode agents:**
-- Use `selftune ingest-opencode` to import sessions from the SQLite database
+- Use `selftune ingest opencode` to import sessions from the SQLite database
 - See `Workflows/Ingest.md` for details
 
 ### 5. Initialize Memory Directory
@@ -121,11 +127,9 @@ watch, and rollback workflows. The directory just needs to exist.
 
 ### 6. Set Up Activation Rules
 
-Copy the default activation rules template:
-
-```bash
-cp templates/activation-rules-default.json ~/.selftune/activation-rules.json
-```
+`selftune init` copies the default activation rules template to
+`~/.selftune/activation-rules.json` automatically. If the file is missing,
+run `selftune init --force` to regenerate it.
 
 The activation rules file configures auto-activation behavior -- which skills
 get suggested and under what conditions. Edit `~/.selftune/activation-rules.json`
@@ -133,16 +137,17 @@ to customize thresholds and skill mappings for your project.
 
 ### 7. Verify Agent Availability
 
-Check that the specialized agent files are present:
+`selftune init` installs the specialized agent files to `~/.claude/agents/`
+automatically. Verify they are present:
 
 ```bash
-ls .claude/agents/
+ls ~/.claude/agents/
 ```
 
 Expected agents: `diagnosis-analyst.md`, `pattern-analyst.md`,
 `evolution-reviewer.md`, `integration-guide.md`. These are used by evolve
-and doctor workflows for deeper analysis. If missing, copy them from the
-selftune repository's `.claude/agents/` directory.
+and doctor workflows for deeper analysis. If missing, run `selftune init --force`
+to reinstall them.
 
 ### 8. Verify with Doctor
 
@@ -163,15 +168,24 @@ Templates for each project type are in the `templates/` directory:
 - `templates/multi-skill-settings.json` — hooks for multi-skill projects with activation rules
 - `templates/activation-rules-default.json` — default auto-activation rule configuration
 
+## Subagent Escalation
+
+For complex project structures (monorepos, multi-skill repos, mixed agent
+platforms), spawn the `integration-guide` agent as a subagent for guided
+setup. This agent handles project-type detection, per-package configuration,
+and verification steps that go beyond what the basic init workflow covers.
+
 ## Common Patterns
 
-**"Initialize selftune"**
-> Install the CLI (`npm install -g selftune`), run `selftune init`,
-> install hooks, and verify with `selftune doctor`.
+**User asks to set up or initialize selftune**
+> Run `which selftune` to check installation. If missing, install with
+> `npm install -g selftune`. Run `selftune init`, then verify with
+> `selftune doctor`. Report results to the user.
 
-**"Hooks aren't capturing data"**
-> Run `selftune doctor` to check hook installation. Verify paths in
-> `~/.claude/settings.json` point to actual files.
+**Hooks not capturing data**
+> Run `selftune doctor` to check hook installation. Parse the JSON output
+> for failed hook checks. If paths are wrong, update
+> `~/.claude/settings.json` to point to actual files.
 
-**"Config exists but seems stale"**
-> Run `selftune init --force` to reinitialize.
+**Config exists but appears stale**
+> Run `selftune init --force` to reinitialize. Verify with `selftune doctor`.

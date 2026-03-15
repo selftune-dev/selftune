@@ -7,15 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Real-time improvement signal detection** — `prompt-log` hook detects user corrections ("why didn't you use X?") and explicit skill requests via pure regex patterns. Signals are logged to `~/.claude/improvement_signals.jsonl` with skill name extraction from installed skills.
+- **Signal-reactive orchestration** — `session-stop` hook checks for pending improvement signals and spawns a focused `selftune orchestrate --max-skills 2` run in the background. Respects a 30-minute lockfile to prevent concurrent runs.
+- **Signal-aware candidate selection** — Orchestrator reads pending signals and boosts priority for mentioned skills (+150 per signal, capped at +450). Signaled skills bypass the minimum evidence gate and the "UNGRADED with 0 missed queries" gate.
+- **Orchestrate lockfile** — `acquireLock()`/`releaseLock()` with PID+timestamp in `~/.claude/.orchestrate.lock`. 30-minute stale threshold prevents deadlocks from crashed runs.
+- **Signal consumption** — After an orchestrate run completes, consumed signals are marked with `consumed: true`, `consumed_at`, and `consumed_by_run` so they don't affect subsequent runs.
+
 ## [0.2.0] — 2026-03-08
 
 ### Added
 
 - **Full skill body evolution** — Teacher-student model for evolving routing tables and complete skill bodies with 3-gate validation (structural, trigger, quality)
-- **Synthetic eval generation** — `selftune evals --synthetic --skill <name> --skill-path <path>` generates eval sets from SKILL.md via LLM without needing real session logs. Solves cold-start for new skills.
+- **Synthetic eval generation** — `selftune eval generate --synthetic --skill <name> --skill-path <path>` generates eval sets from SKILL.md via LLM without needing real session logs. Solves cold-start for new skills.
 - **Batch trigger validation** — `validateProposalBatched()` batches 10 queries per LLM call (configurable via `TRIGGER_CHECK_BATCH_SIZE`). ~10x faster evolution loops. Sequential `validateProposalSequential()` kept for backward compat.
 - **Cheap-loop evolution mode** — `selftune evolve --cheap-loop` uses haiku for proposal generation and validation, sonnet only for the final deployment gate. New `--gate-model` and `--proposal-model` flags for manual per-stage control.
-- **Validation model selection** — `--validation-model` flag on `evolve` and `evolve-body` commands (default: `haiku`).
+- **Validation model selection** — `--validation-model` flag on `evolve` and `evolve body` commands (default: `haiku`).
 - **Proposal model selection** — `--proposal-model` flag on `evolve`, passed through to `generateProposal()` and `generateMultipleProposals()`.
 - **Gate validation dependency injection** — `gateValidateProposal` added to `EvolveDeps` for testability.
 - **Auto-activation system** — `auto-activate.ts` UserPromptSubmit hook detects when selftune should run and outputs formatted suggestions; session state tracking prevents repeated nags; PAI coexistence support
@@ -47,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `selftune status` — CLI skill health summary with pass rates, trends, and system health
 - `selftune last` — Quick insight from the most recent session
 - `selftune dashboard` — Skill-health-centric HTML dashboard with grid view and drill-down
-- `selftune replay` — Claude Code transcript replay for retroactive log backfill
+- `selftune ingest claude` — Claude Code transcript replay for retroactive log backfill
 - `selftune contribute` — Opt-in anonymized data export for community contribution
 - CI/CD workflows: publish, auto-bump, CodeQL, scorecard
 - FOSS governance: LICENSE (MIT), CODE_OF_CONDUCT, CONTRIBUTING, SECURITY
@@ -57,7 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- CLI entry point with 10 commands: `init`, `evals`, `grade`, `evolve`, `rollback`, `watch`, `doctor`, `ingest-codex`, `ingest-opencode`, `wrap-codex`
+- CLI entry point with 10 commands: `init`, `eval generate`, `grade`, `evolve`, `evolve rollback`, `watch`, `doctor`, `ingest codex`, `ingest opencode`, `ingest wrap-codex`
 - Agent auto-detection for Claude Code, Codex, and OpenCode
 - Telemetry hooks for Claude Code (`prompt-log`, `skill-eval`, `session-stop`)
 - Codex wrapper and batch ingestor for rollout logs

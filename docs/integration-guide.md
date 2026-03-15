@@ -112,7 +112,7 @@ selftune ships with four default activation rules (see `cli/selftune/activation-
 | `post-session-diagnostic` | >2 unmatched queries in session | `selftune last` |
 | `grading-threshold-breach` | Session pass rate < 60% | `selftune evolve` |
 | `stale-evolution` | No evolution in >7 days + pending false negatives | `selftune evolve` |
-| `regression-detected` | Monitoring snapshot shows regression | `selftune rollback` |
+| `regression-detected` | Monitoring snapshot shows regression | `selftune evolve rollback` |
 
 Rules fire at most once per session (tracked via session state files in `~/.selftune/`).
 To disable a rule, set `"enabled": false` in your `activation-rules.json`.
@@ -165,13 +165,13 @@ Using selftune with OpenAI Codex instead of Claude Code.
 
 ```bash
 # Wrap codex sessions for real-time telemetry
-selftune wrap-codex -- codex <your-args>
+selftune ingest wrap-codex -- codex <your-args>
 ```
 
 3. Or batch-ingest existing sessions:
 
 ```bash
-selftune ingest-codex --dir /path/to/codex/sessions
+selftune ingest codex --dir /path/to/codex/sessions
 ```
 
 **Limitations:**
@@ -191,7 +191,7 @@ Using selftune with OpenCode.
 2. OpenCode stores sessions in a SQLite database. Import them:
 
 ```bash
-selftune ingest-opencode
+selftune ingest opencode
 ```
 
 The default database path is `~/.local/share/opencode/opencode.db`.
@@ -215,7 +215,7 @@ isolated session execution.
 2. Import existing sessions:
 
 ```bash
-selftune ingest-openclaw
+selftune ingest openclaw
 ```
 
 This scans `~/.openclaw/agents/*/sessions/*.jsonl` for all agent sessions.
@@ -273,10 +273,10 @@ Cron fires (isolated session)
     ↓
 OpenClaw agent reads selftune skill instructions
     ↓
-Runs: selftune ingest-openclaw → selftune status
+Runs: selftune ingest openclaw → selftune status
     ↓
 For each skill below 80% pass rate:
-    selftune evals → selftune evolve → selftune watch
+    selftune eval generate → selftune evolve → selftune watch
     ↓
 Evolved SKILL.md written to disk
     ↓
@@ -293,7 +293,7 @@ Each cron run uses an **isolated session** — no context pollution between runs
 - Auto-rollback via `selftune watch --auto-rollback`
 - Full audit trail in `evolution_audit_log.jsonl`
 - `SKILL.md.bak` backup before every deploy
-- Manual override: `selftune rollback --skill <name>` at any time
+- Manual override: `selftune evolve rollback --skill <name>` at any time
 
 **Limitations:**
 - Each cron run costs tokens (full LLM session, ~5K tokens estimated)
@@ -319,10 +319,10 @@ Using selftune across multiple agent platforms (e.g., Claude Code + Codex + Open
 
 ```bash
 # Ingest Codex sessions alongside Claude Code telemetry
-selftune ingest-codex --dir /path/to/sessions
+selftune ingest codex --dir /path/to/sessions
 
 # Ingest OpenClaw sessions
-selftune ingest-openclaw
+selftune ingest openclaw
 
 # View combined dashboard
 selftune dashboard
@@ -409,9 +409,9 @@ Run `selftune doctor` and address each failing check:
    ```
 
 2. Check that sessions are stored as `.jsonl` files under each agent's `sessions/` directory.
-3. Use `--verbose` to see per-session progress: `selftune ingest-openclaw --verbose`
+3. Use `--verbose` to see per-session progress: `selftune ingest openclaw --verbose`
 4. Use `--force` to re-ingest all sessions if the marker file is stale.
-5. If using a custom agents directory: `selftune ingest-openclaw --agents-dir /custom/path`
+5. If using a custom agents directory: `selftune ingest openclaw --agents-dir /custom/path`
 
 ### Cron jobs not firing
 

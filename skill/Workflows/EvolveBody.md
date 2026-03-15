@@ -7,7 +7,7 @@ LLM validates them through a 3-gate pipeline.
 ## Default Command
 
 ```bash
-selftune evolve-body --skill <name> --skill-path <path> --target <target> [options]
+selftune evolve body --skill <name> --skill-path <path> --target <target> [options]
 ```
 
 ## Options
@@ -65,7 +65,7 @@ If the user says "use defaults" or similar, skip to step 1 with recommended defa
 Present these options:
 
 ```
-selftune evolve-body — Pre-Flight Configuration
+selftune evolve body — Pre-Flight Configuration
 
 1. Evolution Target
    a) Routing table — optimize the workflow routing table only
@@ -116,7 +116,7 @@ The command reads SKILL.md and splits it into sections using `parseSkillSections
 ### 2. Build Eval Set
 
 If `--eval-set` is provided, use it directly. Otherwise, generate from logs
-(same as `selftune evals --skill <name>`).
+(same as `selftune eval generate --skill <name>`).
 
 ### 3. Extract Failure Patterns
 
@@ -147,13 +147,13 @@ If `--dry-run`, prints the proposal without deploying. Otherwise:
 ## Common Patterns
 
 **"Evolve the routing table for the Research skill"**
-> `selftune evolve-body --skill Research --skill-path ~/.claude/skills/Research/SKILL.md --target routing_table`
+> `selftune evolve body --skill Research --skill-path ~/.claude/skills/Research/SKILL.md --target routing_table`
 
 **"Rewrite the entire skill body"**
-> `selftune evolve-body --skill Research --skill-path ~/.claude/skills/Research/SKILL.md --target full_body --dry-run`
+> `selftune evolve body --skill Research --skill-path ~/.claude/skills/Research/SKILL.md --target full_body --dry-run`
 
 **"Use a stronger model for generation"**
-> `selftune evolve-body --skill pptx --skill-path /path/SKILL.md --target full_body --teacher-model opus --student-model haiku`
+> `selftune evolve body --skill pptx --skill-path /path/SKILL.md --target full_body --teacher-model opus --student-model haiku`
 
 **"Preview what would change"**
 > Always start with `--dry-run` to review the proposal before deploying.

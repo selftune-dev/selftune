@@ -2,7 +2,7 @@
 
 Visual dashboard for selftune telemetry, skill performance, evolution
 audit, and monitoring data. Supports static HTML export, file output,
-and a live server with SSE auto-refresh and action buttons.
+and a live server with polling-based auto-refresh and action buttons.
 
 ## Default Command
 
@@ -53,9 +53,10 @@ selftune dashboard --out /tmp/report.html
 
 ### Live Server
 
-Starts a Bun HTTP server with real-time data updates via Server-Sent
-Events (SSE). The dashboard auto-refreshes every 5 seconds and provides
-action buttons to trigger selftune commands.
+Starts a Bun HTTP server with a React SPA dashboard. The SPA uses
+TanStack Query polling to auto-refresh data (overview every 15s,
+orchestrate runs every 30s, doctor every 30s) and provides action
+buttons to trigger selftune commands.
 
 ```bash
 selftune dashboard --serve
@@ -73,19 +74,28 @@ override.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/` | Serve dashboard HTML with embedded data and live mode flag |
-| `GET` | `/api/data` | JSON endpoint returning current telemetry data |
-| `GET` | `/api/events` | SSE stream sending data updates every 5 seconds |
+| `GET` | `/` | Serve dashboard SPA shell |
+| `GET` | `/api/v2/overview` | SQLite-backed overview payload |
+| `GET` | `/api/v2/skills/:name` | SQLite-backed per-skill report |
+| `GET` | `/api/v2/orchestrate-runs` | Recent orchestrate run reports |
+| `GET` | `/api/v2/doctor` | System health diagnostics (config, logs, hooks, evolution) |
+| `GET` | `/api/health` | Dashboard server health probe |
 | `POST` | `/api/actions/watch` | Trigger `selftune watch` for a skill |
 | `POST` | `/api/actions/evolve` | Trigger `selftune evolve` for a skill |
-| `POST` | `/api/actions/rollback` | Trigger `selftune rollback` for a skill |
+| `POST` | `/api/actions/rollback` | Trigger `selftune evolve rollback` for a skill |
 
-### SSE Auto-Refresh
+### Auto-Refresh
 
-The `/api/events` endpoint opens an SSE connection that pushes fresh
-data every 5 seconds. The dashboard client listens for `data` events
-and re-renders automatically. When `window.__SELFTUNE_LIVE__` is set
-(injected by the live server), the dashboard enables SSE polling.
+The dashboard SPA uses TanStack Query with `refetchInterval` to poll
+the v2 API endpoints automatically:
+
+- `/api/v2/overview` — every 15 seconds
+- `/api/v2/orchestrate-runs` — every 30 seconds
+- `/api/v2/doctor` — every 30 seconds
+- `/api/v2/skills/:name` — every 30 seconds (when viewing a skill)
+
+Data also refreshes on window focus. No SSE or websocket connection
+is required.
 
 ### Action Endpoints
 
@@ -128,8 +138,8 @@ On failure, `success` is `false` and `error` contains the error message.
 The live server auto-opens the dashboard URL in the default browser on
 macOS (`open`) and Linux (`xdg-open`).
 
-Graceful shutdown on `SIGINT` (Ctrl+C) and `SIGTERM`: closes all SSE
-client connections and stops the server.
+Graceful shutdown on `SIGINT` (Ctrl+C) and `SIGTERM`: closes the SQLite
+database and stops the server.
 
 ## Data Contents
 
@@ -173,31 +183,32 @@ selftune dashboard --serve
 ### 3. Interact with Dashboard
 
 - **Static mode**: View the snapshot. Re-run to refresh.
-- **Live mode**: Data refreshes automatically every 5 seconds. Use
-  action buttons to trigger watch, evolve, or rollback directly from
+- **Live mode**: Data refreshes automatically via polling (15-30s intervals).
+  Use action buttons to trigger watch, evolve, or rollback directly from
   the dashboard.
 
 ## Common Patterns
 
-**"Show me the dashboard"**
-> Run `selftune dashboard`. Opens a browser with current data.
+**User wants to see skill performance visually**
+> Run `selftune dashboard`. This opens a browser with a point-in-time snapshot.
+> Report to the user that the dashboard is open.
 
-**"I want live updates"**
-> Run `selftune dashboard --serve`. The SSE stream refreshes every 5
-> seconds without manual intervention.
+**User wants live monitoring**
+> Run `selftune dashboard --serve`. Inform the user that data refreshes
+> automatically every 15-30 seconds via polling.
 
-**"Export a report"**
-> Use `selftune dashboard --out report.html` to save a self-contained
-> HTML file. Share it -- no server needed, all data is embedded.
+**User wants a shareable report**
+> Run `selftune dashboard --out report.html`. Report the file path to the
+> user. The HTML file is self-contained with all data embedded.
 
-**"The dashboard shows no data"**
-> No log files found. Run some sessions first so hooks generate
-> telemetry. Check `selftune doctor` to verify hooks are installed.
+**Dashboard shows no data**
+> Run `selftune doctor` to verify hooks are installed. If hooks are missing,
+> route to the Initialize workflow. If hooks are present but no sessions
+> have run, inform the user that sessions must generate telemetry first.
 
-**"Use a different port"**
-> `selftune dashboard --serve --port 8080`. Port must be 1-65535.
+**User wants a different port**
+> Run `selftune dashboard --serve --port <port>`. Port must be 1-65535.
 
-**"Trigger actions from the dashboard"**
-> In live server mode, the dashboard provides buttons to trigger watch,
-> evolve, and rollback for each skill. These call the action endpoints
-> which spawn selftune subprocesses.
+**User wants to trigger actions from the dashboard**
+> Run `selftune dashboard --serve` for live mode. The dashboard provides
+> action buttons for watch, evolve, and rollback per skill via POST endpoints.

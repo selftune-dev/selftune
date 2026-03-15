@@ -12,6 +12,7 @@ import type {
   BodyValidationResult,
   EvalEntry,
   EvolutionAuditEntry,
+  EvolutionEvidenceEntry,
   FailurePattern,
   QueryLogRecord,
   SkillUsageRecord,
@@ -127,6 +128,7 @@ const mockRefineBodyProposal = mock(
 );
 
 const mockAppendAuditEntry = mock((_entry: EvolutionAuditEntry, _logPath?: string) => {});
+const mockAppendEvidenceEntry = mock((_entry: EvolutionEvidenceEntry, _logPath?: string) => {});
 
 const mockBuildEvalSet = mock(
   (_skillRecords: SkillUsageRecord[], _queryRecords: QueryLogRecord[], _skillName: string) => {
@@ -136,6 +138,8 @@ const mockBuildEvalSet = mock(
     ] as EvalEntry[];
   },
 );
+
+const mockReadEffectiveSkillUsageRecords = mock((): SkillUsageRecord[] => []);
 
 const mockWriteFileSync = mock((_path: string, _data: string, _encoding: string) => {});
 
@@ -152,7 +156,9 @@ function makeDeps(): EvolveBodyDeps {
     validateRoutingProposal: mockValidateRoutingProposal,
     refineBodyProposal: mockRefineBodyProposal,
     appendAuditEntry: mockAppendAuditEntry,
+    appendEvidenceEntry: mockAppendEvidenceEntry,
     buildEvalSet: mockBuildEvalSet,
+    readEffectiveSkillUsageRecords: mockReadEffectiveSkillUsageRecords,
     writeFileSync: mockWriteFileSync,
   };
 }
@@ -209,11 +215,17 @@ afterEach(() => {
   mockAppendAuditEntry.mockReset();
   mockAppendAuditEntry.mockImplementation(() => {});
 
+  mockAppendEvidenceEntry.mockReset();
+  mockAppendEvidenceEntry.mockImplementation(() => {});
+
   mockBuildEvalSet.mockReset();
   mockBuildEvalSet.mockImplementation(() => [
     { query: "test query", should_trigger: true },
     { query: "unrelated", should_trigger: false },
   ]);
+
+  mockReadEffectiveSkillUsageRecords.mockReset();
+  mockReadEffectiveSkillUsageRecords.mockImplementation(() => []);
 
   mockWriteFileSync.mockReset();
   mockWriteFileSync.mockImplementation(() => {});
@@ -329,6 +341,13 @@ describe("evolveBody orchestrator", () => {
 
     // writeFileSync should have been called
     expect(mockWriteFileSync.mock.calls.length).toBe(1);
+
+    const evidenceStages = mockAppendEvidenceEntry.mock.calls.map(
+      (call: unknown[]) => (call[0] as EvolutionEvidenceEntry).stage,
+    );
+    expect(evidenceStages).toContain("created");
+    expect(evidenceStages).toContain("validated");
+    expect(evidenceStages).toContain("deployed");
   });
 
   test("missing SKILL.md returns error", async () => {
@@ -344,7 +363,10 @@ describe("evolveBody orchestrator", () => {
   });
 
   test("audit entries collected throughout flow", async () => {
-    const opts = makeOptions();
+    const originalContent =
+      "---\nname: test\n---\n\n# Test Skill\nA skill for testing\n\n## Workflow Routing\n\n| Trigger | Workflow |\n| --- | --- |\n| test | run |";
+    const { skillPath } = createTempSkill(originalContent);
+    const opts = makeOptions({ skillPath });
     const result = await evolveBody(opts, makeDeps());
 
     expect(result.auditEntries.length).toBeGreaterThanOrEqual(3);
@@ -352,6 +374,28 @@ describe("evolveBody orchestrator", () => {
     expect(actions).toContain("created");
     expect(actions).toContain("validated");
     expect(actions).toContain("deployed");
+    const createdAudit = result.auditEntries.find((entry) => entry.action === "created");
+    expect(createdAudit?.details).toBe(`original_description:${originalContent}`);
+  });
+
+  test("uses injected skill usage reader", async () => {
+    const skillUsage: SkillUsageRecord[] = [
+      {
+        timestamp: "2026-03-10T00:00:00.000Z",
+        session_id: "sess-1",
+        skill_name: "test-skill",
+        skill_path: "/tmp/test-skill/SKILL.md",
+        query: "build the project",
+        triggered: true,
+      },
+    ];
+    mockReadEffectiveSkillUsageRecords.mockImplementation(() => skillUsage);
+
+    await evolveBody(makeOptions(), makeDeps());
+
+    expect(mockReadEffectiveSkillUsageRecords.mock.calls.length).toBe(1);
+    expect(mockBuildEvalSet.mock.calls[0]?.[0]).toEqual(skillUsage);
+    expect(mockExtractFailurePatterns.mock.calls[0]?.[1]).toEqual(skillUsage);
   });
 
   test("routing target uses routing proposal and validation", async () => {

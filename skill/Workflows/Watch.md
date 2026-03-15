@@ -67,13 +67,13 @@ selftune watch --skill <name> --skill-path <path> [options]
 
 ### 0. Read Evolution Context
 
-Before starting, read `~/.selftune/memory/context.md` for session context:
+Read `~/.selftune/memory/context.md` for session context:
 - Active evolutions and their current status
 - Known issues and regression history
 - Last update timestamp
 
-This provides continuity across context resets. If the file doesn't exist,
-proceed normally -- it will be created after the first watch.
+If the file does not exist, proceed normally -- it will be created after
+the first watch.
 
 The evolution-guard hook prevents conflicting SKILL.md edits while watch is
 evaluating the skill. The auto-activation system uses watch results to
@@ -102,7 +102,7 @@ Parse the JSON output. Key decision points:
 If regression is detected:
 - Review recent session transcripts to understand what changed
 - Check if the eval set is still representative
-- Run `rollback` if the regression is confirmed (see `Workflows/Rollback.md`)
+- Run `evolve rollback` if the regression is confirmed (see `Workflows/Rollback.md`)
 
 If `--auto-rollback` was set, the command automatically restores the
 previous description and logs a `rolled_back` entry.
@@ -141,3 +141,13 @@ context window resets before the user acts on the results.
 **"Set a custom baseline"**
 > Use `--baseline 0.85` to override auto-detection. Useful when the
 > auto-detected baseline is from an older evolution.
+
+## Autonomous Mode
+
+When called by `selftune orchestrate`, watch runs automatically on recently
+evolved skills:
+
+- Checks all skills evolved in the last --recent-window hours (default 24)
+- Auto-rollback is enabled by default
+- Results are included in the orchestrate run report
+- No user notification — regressions are handled silently via rollback

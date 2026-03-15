@@ -7,7 +7,7 @@ co-occurring than when used alone.
 ## Default Command
 
 ```bash
-selftune composability --skill <name> [options]
+selftune eval composability --skill <name> [options]
 ```
 
 ## Options
@@ -65,7 +65,7 @@ The analyzer is a pure function that computes conflict scores from telemetry:
 ### 1. Run Analysis
 
 ```bash
-selftune composability --skill Research
+selftune eval composability --skill Research
 ```
 
 ### 2. Interpret Results
@@ -79,19 +79,26 @@ selftune composability --skill Research
 
 ### 3. Address Conflicts
 
-For conflict candidates:
+When conflict candidates are identified, present them to the user with recommended actions:
 - Check for trigger keyword overlap between the skills
 - Check if one skill's workflow interferes with the other's
 - Consider evolving descriptions to reduce false triggers
 - Use the `pattern-analyst` agent for deeper cross-skill analysis
 
+## Subagent Escalation
+
+For deep cross-skill analysis beyond what the composability command provides,
+spawn the `pattern-analyst` agent as a subagent. This is useful when conflict
+scores are high (> 0.3) and you need a full resolution plan with trigger
+ownership recommendations.
+
 ## Common Patterns
 
 **"Are there conflicts between my skills?"**
-> `selftune composability --skill Research`
+> `selftune eval composability --skill Research`
 
 **"Check composability for recent sessions only"**
-> `selftune composability --skill pptx --window 7`
+> `selftune eval composability --skill pptx --window 7`
 
 **"Which skills conflict with Research?"**
 > Run composability and check the `conflict_candidates` array.

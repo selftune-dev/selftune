@@ -12,8 +12,15 @@ export const LOG_DIR = join(homedir(), ".claude");
 
 export const TELEMETRY_LOG = join(LOG_DIR, "session_telemetry_log.jsonl");
 export const SKILL_LOG = join(LOG_DIR, "skill_usage_log.jsonl");
+export const REPAIRED_SKILL_LOG = join(LOG_DIR, "skill_usage_repaired.jsonl");
+export const CANONICAL_LOG = join(LOG_DIR, "canonical_telemetry_log.jsonl");
+export const REPAIRED_SKILL_SESSIONS_MARKER = join(LOG_DIR, "skill_usage_repaired_sessions.json");
 export const QUERY_LOG = join(LOG_DIR, "all_queries_log.jsonl");
 export const EVOLUTION_AUDIT_LOG = join(LOG_DIR, "evolution_audit_log.jsonl");
+export const EVOLUTION_EVIDENCE_LOG = join(LOG_DIR, "evolution_evidence_log.jsonl");
+export const ORCHESTRATE_RUN_LOG = join(LOG_DIR, "orchestrate_runs.jsonl");
+export const SIGNAL_LOG = join(LOG_DIR, "improvement_signals.jsonl");
+export const ORCHESTRATE_LOCK = join(LOG_DIR, ".orchestrate.lock");
 
 /** Evolution memory directory — human-readable session context that survives resets. */
 export const MEMORY_DIR = join(SELFTUNE_CONFIG_DIR, "memory");
@@ -65,10 +72,19 @@ export const REQUIRED_FIELDS: Record<string, Set<string>> = {
   skill_usage: new Set(["timestamp", "session_id", "skill_name"]),
   all_queries: new Set(["timestamp", "session_id", "query"]),
   evolution_audit: new Set(["timestamp", "proposal_id", "action"]),
+  evolution_evidence: new Set(["timestamp", "proposal_id", "skill_name", "stage"]),
 };
 
 /** Agent CLI candidates in detection order. */
 export const AGENT_CANDIDATES = ["claude", "codex", "opencode", "openclaw"] as const;
+
+/** Required Claude Code hook keys in settings.json. */
+export const CLAUDE_CODE_HOOK_KEYS = [
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PostToolUse",
+  "Stop",
+] as const;
 
 /** Path for user-defined activation rule overrides. */
 export const ACTIVATION_RULES_PATH = join(SELFTUNE_CONFIG_DIR, "activation-rules.json");
@@ -83,6 +99,12 @@ export function sessionStatePath(sessionId: string): string {
   return join(SESSION_STATE_DIR, `session-state-${safe}.json`);
 }
 
+/** Build a canonical prompt state file path from a session ID. */
+export function canonicalSessionStatePath(sessionId: string): string {
+  const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return join(SESSION_STATE_DIR, `canonical-session-state-${safe}.json`);
+}
+
 /** Claude Code settings file path. */
 export const CLAUDE_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
 
@@ -91,6 +113,12 @@ export const CLAUDE_CODE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
 
 /** Marker file tracking which Claude Code sessions have been ingested. */
 export const CLAUDE_CODE_MARKER = join(homedir(), ".claude", "claude_code_ingested_sessions.json");
+
+/** Marker file tracking which Codex rollout files have been ingested. */
+export const CODEX_INGEST_MARKER = join(homedir(), ".claude", "codex_ingested_rollouts.json");
+
+/** Marker file tracking which OpenCode sessions have been ingested. */
+export const OPENCODE_INGEST_MARKER = join(homedir(), ".claude", "opencode_ingested_sessions.json");
 
 /** OpenClaw agents directory containing session data. */
 export const OPENCLAW_AGENTS_DIR = join(homedir(), ".openclaw", "agents");
