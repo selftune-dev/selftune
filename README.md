@@ -17,7 +17,7 @@
 
 Your agent skills learn how you work. Detect what's broken. Improve low-risk skill behavior automatically.
 
-**[Install](#install)** · **[Use Cases](#built-for-how-you-actually-work)** · **[How It Works](#how-it-works)** · **[Commands](#commands)** · **[Platforms](#platforms)** · **[Docs](docs/integration-guide.md)**
+**[Install](#install)** · **[Use Cases](#built-for-how-you-actually-work)** · **[How It Works](#how-it-works)** · **[Commands](#commands)** · **[Platforms](#platforms)** · **[System Overview](docs/design-docs/system-overview.md)** · **[Operator Guide](docs/operator-guide.md)** · **[Docs](docs/integration-guide.md)**
 
 </div>
 
@@ -26,6 +26,8 @@ Your agent skills learn how you work. Detect what's broken. Improve low-risk ski
 Your skills do not understand how you talk. You say "make me a slide deck" and nothing happens: no error, no signal, no clue why the right skill never fired. selftune reads the transcripts and telemetry your agent already saves, learns how you actually speak, and improves skill descriptions to match. It validates changes before deployment, watches for regressions after, and rolls back when needed.
 
 Built for **Claude Code**. Also works with Codex, OpenCode, and OpenClaw. Zero runtime dependencies.
+
+Need the architecture first? Start with [System Overview](docs/design-docs/system-overview.md), then [Architecture](ARCHITECTURE.md). Need the day-2 runbook? Use [Operator Guide](docs/operator-guide.md).
 
 ## Install
 
