@@ -163,14 +163,14 @@ don't need agent intelligence or user interaction.
 All data flows through append-only JSONL files. SQLite is a read-only
 materialized view used only by the dashboard.
 
-```
+```text
 Source of Truth: JSONL files (~/.claude/*.jsonl)
-├── telemetry.jsonl          Session telemetry records
-├── skill-usage.jsonl        Skill trigger/miss records
-├── queries.jsonl            User prompt log
-├── evolution-audit.jsonl    Evolution decisions + evidence
-├── orchestrate-runs.jsonl   Orchestrate run reports
-└── canonical.jsonl          Normalized cross-platform records
+├── session_telemetry_log.jsonl    Session telemetry records
+├── skill_usage_log.jsonl          Skill trigger/miss records
+├── all_queries_log.jsonl          User prompt log
+├── evolution_audit_log.jsonl      Evolution decisions + evidence
+├── orchestrate_runs.jsonl         Orchestrate run reports
+└── canonical_telemetry_log.jsonl  Normalized cross-platform records
 
 Core Loop: reads JSONL directly
 ├── orchestrate.ts  → readJsonl(TELEMETRY_LOG)

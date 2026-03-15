@@ -131,7 +131,7 @@ After the user responds, parse their selections and map each choice to the corre
 | 3b (single model) | _(no flag)_ |
 | Custom confidence | `--confidence <value>` |
 | Custom iterations | `--max-iterations <value>` |
-| 6b (pareto) | _(pareto mode flag)_ |
+| 6b (pareto) | `--pareto` |
 
 Show a confirmation summary to the user:
 

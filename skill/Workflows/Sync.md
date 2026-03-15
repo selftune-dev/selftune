@@ -43,20 +43,22 @@ Writes/refreshed data:
 
 ### 1. Preview Sync
 
-Run `selftune sync --dry-run`. Parse the JSON output to check per-source
-`scanned` counts. Report the preview summary to the user.
+Run `selftune sync --dry-run`. The output includes per-source `scanned`
+counts. Report the preview summary to the user.
 
 ### 2. Run Sync
 
-Run `selftune sync`. Parse the JSON output for:
+Run `selftune sync`. The output includes:
 - Per-source `scanned`, `synced`, and `skipped` counts
 - Repaired overlay totals
 - Any errors or warnings
 
 ### 3. Verify Results
 
-Check that the synced counts are non-zero for active sources. If all
-sources show zero, verify hooks are installed with `selftune doctor`.
+Verify there are no sync errors and that per-source counters are internally
+consistent (`scanned`, `synced`, `skipped`). `synced=0` is valid when no
+new sessions exist since the last sync. Run `selftune doctor` only when
+sync reports source/hook failures or expected active sources are missing.
 
 ### 4. Continue to Next Workflow
 
@@ -67,7 +69,7 @@ or `selftune evolve --sync-first`.
 ## Common Patterns
 
 **User wants to refresh telemetry data**
-> Run `selftune sync`. Parse the JSON output and report per-source counts.
+> Run `selftune sync`. Report per-source `scanned`, `synced`, and `skipped` counts.
 
 **User wants to sync only recent sessions**
 > Run `selftune sync --since <date>` with the user's specified date.
@@ -77,8 +79,9 @@ or `selftune evolve --sync-first`.
 > all sessions.
 
 **Agent needs to verify sync worked**
-> Parse the JSON output for per-source `scanned`, `synced`, and `skipped`
-> counts. Non-zero `synced` values confirm data was refreshed.
+> Check per-source `scanned`, `synced`, and `skipped` counts. `synced=0`
+> is normal when data is already up-to-date. Verify `scanned > 0` for
+> expected sources to confirm sync ran successfully.
 
 **Agent is chaining into monitoring or evolution**
 > Use `selftune watch --sync-first` or `selftune evolve --sync-first` to

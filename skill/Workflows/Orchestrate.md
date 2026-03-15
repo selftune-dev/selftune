@@ -94,14 +94,22 @@ This is the recommended runtime for recurring autonomous scheduling.
 | Context | Caller | Token cost | When |
 |---------|--------|------------|------|
 | **Interactive** | Agent (user says "improve my skills") | Uses agent subscription | On demand |
-| **Automated** | OS scheduler (cron/launchd/systemd) | Zero (CLI only, no LLM) | Every 6 hours |
+| **Automated (cron)** | OS scheduler (cron/launchd/systemd) | No agent session; LLM cost only if evolution triggers | Every 6 hours |
+| **Automated (loop)** | `selftune orchestrate --loop` | No agent session; LLM cost only if evolution triggers | Configurable interval |
 
 In automated mode, the OS calls the CLI binary directly. No agent session
-is created, no tokens are consumed for the orchestrate logic itself. LLM
-calls only happen during the evolution step (proposing and validating
-description changes), which uses the configured model tier.
+is created. LLM calls only happen during the evolution step (proposing and
+validating description changes), which uses the configured model tier.
+The orchestrate logic itself (sync, status, candidate selection) is pure
+data processing with zero token cost.
 
-Set up automated mode with `selftune cron setup`.
+**Cron mode:** Install OS-level scheduling with `selftune cron setup`.
+Runs as separate invocations on a schedule (default: every 6 hours).
+
+**Loop mode:** Run `selftune orchestrate --loop` for a long-running process
+that cycles continuously. Use `--loop-interval <seconds>` to set the pause
+between cycles (default: 300s / 5 minutes, minimum: 60s). Stop with Ctrl+C
+or SIGTERM — the current cycle finishes before exit.
 
 ### Internal Workflow Chain (Autonomous Mode)
 

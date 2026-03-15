@@ -56,7 +56,7 @@ export async function quickstart(): Promise<void> {
     }
   }
 
-  // Step 2: Replay if marker doesn't exist
+  // Step 2: Ingest if marker doesn't exist
   if (existsSync(CLAUDE_CODE_MARKER)) {
     console.log("[2/3] Ingest marker exists, skipping ingestion.");
   } else {

@@ -132,6 +132,17 @@ Run 'selftune ingest <agent> --help' for agent-specific options.`);
 
   case "grade": {
     const sub = process.argv[2];
+    if (sub === "--help" || sub === "-h") {
+      console.log(`selftune grade — Grade skill sessions
+
+Usage:
+  selftune grade [options]          Run the default session grader
+  selftune grade auto [options]     Batch auto-grade sessions
+  selftune grade baseline [options] Measure baseline lift (no-skill comparison)
+
+Run 'selftune grade <subcommand> --help' for subcommand-specific options.`);
+      process.exit(0);
+    }
     // If no subcommand or starts with '-', run the default grader
     if (!sub || sub.startsWith("-")) {
       const { cliMain } = await import("./grading/grade-session.js");
@@ -162,6 +173,17 @@ Run 'selftune ingest <agent> --help' for agent-specific options.`);
 
   case "evolve": {
     const sub = process.argv[2];
+    if (sub === "--help" || sub === "-h") {
+      console.log(`selftune evolve — Evolve skill descriptions
+
+Usage:
+  selftune evolve [options]            Run description evolution
+  selftune evolve body [options]       Evolve full body or routing table
+  selftune evolve rollback [options]   Rollback a previous evolution
+
+Run 'selftune evolve <subcommand> --help' for subcommand-specific options.`);
+      process.exit(0);
+    }
     // If no subcommand or starts with '-', run the default evolve
     if (!sub || sub.startsWith("-")) {
       const { cliMain } = await import("./evolution/evolve.js");
@@ -226,6 +248,12 @@ Run 'selftune eval <action> --help' for action-specific options.`);
         break;
       }
       case "composability": {
+        if (process.argv[2] === "--help" || process.argv[2] === "-h") {
+          console.log(
+            "selftune eval composability --skill <name> [--window <days>] [--telemetry-log <path>]",
+          );
+          process.exit(0);
+        }
         const { parseArgs } = await import("node:util");
         const { readJsonl } = await import("./utils/jsonl.js");
         const { TELEMETRY_LOG } = await import("./constants.js");

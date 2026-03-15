@@ -48,12 +48,16 @@ selftune/
 │   ├── hooks/               # Telemetry capture + activation hints (Claude Code hooks)
 │   │   ├── prompt-log.ts    # UserPromptSubmit hook
 │   │   ├── session-stop.ts  # Stop hook
-│   │   └── skill-eval.ts    # PostToolUse hook
+│   │   ├── skill-eval.ts    # PostToolUse hook
+│   │   ├── auto-activate.ts # UserPromptSubmit activation suggestions
+│   │   ├── skill-change-guard.ts # PreToolUse guard for uncontrolled edits
+│   │   └── evolution-guard.ts    # PreToolUse guard for monitored skills
 │   ├── ingestors/           # Platform adapters (Codex, OpenCode, Claude replay, OpenClaw)
-│   │   ├── codex-wrapper.ts # Real-time Codex wrapper
-│   │   ├── codex-rollout.ts # Batch Codex ingestor
-│   │   ├── opencode-ingest.ts # OpenCode SQLite/JSON adapter
-│   │   └── claude-replay.ts # Claude Code transcript replay ingestor
+│   │   ├── claude-replay.ts # Claude Code transcript replay ingestor
+│   │   ├── codex-wrapper.ts # Real-time Codex wrapper (experimental)
+│   │   ├── codex-rollout.ts # Batch Codex ingestor (experimental)
+│   │   ├── opencode-ingest.ts # OpenCode SQLite/JSON adapter (experimental)
+│   │   └── openclaw-ingest.ts # OpenClaw session importer (experimental)
 │   ├── repair/              # Rebuild repaired skill-usage overlays
 │   ├── localdb/             # SQLite materialization + overview/report queries
 │   ├── cron/                # Optional OpenClaw-specific scheduler adapter
@@ -169,7 +173,7 @@ See ARCHITECTURE.md for domain map, module layering, and dependency rules.
 - Hooks should be zero-config after installation where the host agent supports them
 - Log files are append-only JSONL at `~/.claude/`
 - Evolution proposals require validation against eval set before deploy
-- `selftune orchestrate` and `selftune schedule --install` are the primary autonomous loop; `selftune cron` is the OpenClaw-specific adapter
+- `selftune orchestrate` is the primary autonomous loop; `selftune cron setup` installs OS-level scheduling (`selftune schedule` is a backward-compatible alias)
 - All knowledge lives in-repo, not in external tools
 - The core CLI keeps zero runtime dependencies and uses only Bun built-ins
 

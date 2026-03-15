@@ -133,8 +133,9 @@ Keep the summary concise. The full details are in `grading.json`.
 ## Common Patterns
 
 **User asks to grade a skill session**
-> Run `selftune grade --skill <name>` with default expectations. Parse the
-> JSON output and report the pass rate and any failures to the user.
+> Run `selftune grade --skill <name>` with default expectations. Results are
+> written to `grading.json`. Read that file and report the pass rate and any
+> failures to the user.
 
 **User provides specific expectations**
 > Run `selftune grade --skill <name> --expectations "expect1;expect2;expect3"`.

@@ -187,7 +187,7 @@ Present the following options inline in your response:
    - b) Balanced (sonnet) — better query diversity (recommended)
    - c) Best (opus) — highest quality synthetic queries
 
-4. **Output Path:** evals-&lt;skill&gt;.json (default)
+4. **Output Path:** `evals-<skill>.json` (default)
 
 Ask: "Reply with your choices or 'use defaults' for recommended settings."
 

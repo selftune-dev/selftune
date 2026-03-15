@@ -196,7 +196,7 @@ export function Status() {
         <span className="text-xs text-muted-foreground ml-auto">
           Last checked {timeAgo(timestamp)}
         </span>
-        <Button variant="ghost" size="sm" onClick={() => refetch()} className="shrink-0">
+        <Button aria-label="Refresh status" title="Refresh status" variant="ghost" size="sm" onClick={() => refetch()} className="shrink-0">
           <RefreshCwIcon className="size-3.5" />
         </Button>
       </div>

@@ -50,7 +50,7 @@ Remove all selftune cron jobs from OpenClaw.
 ## Aliases
 
 `selftune schedule` is an alias for `selftune cron`. Existing `selftune schedule`
-invocations with flags (e.g. `selftune schedule --format launchd`) continue to work.
+invocations with flags (e.g. `selftune schedule --platform launchd`) continue to work.
 
 ## Default Job Schedule
 
@@ -89,7 +89,7 @@ When scheduled jobs are active, selftune operates as a self-correcting system.
 The OS scheduler calls the CLI binary directly — no agent session is needed,
 no token cost for routine runs.
 
-```
+```text
 OS scheduler fires (cron/launchd/systemd)
     |
     v
@@ -129,4 +129,4 @@ interactive mode is for user-directed improvements.
 - **User needs a specific timezone (OpenClaw)** -- Run `selftune cron setup --platform openclaw --tz America/New_York`.
 - **User asks what jobs are registered** -- Run `selftune cron list`. Shows a table of all selftune cron jobs with their schedules and descriptions.
 - **User wants to remove cron automation** -- Run `selftune cron remove`. Preview first with `selftune cron remove --dry-run`.
-- **Skill regressed after cron evolution** -- The watch job should catch this automatically. If not, run `selftune evolve rollback --skill <name>` manually. See `Workflows/Rollback.md`.
+- **Skill regressed after cron evolution** -- The watch job should catch this automatically. If not, run `selftune evolve rollback --skill <name> --skill-path <path>` manually. See `Workflows/Rollback.md`.

@@ -101,7 +101,7 @@ The init output will report what was installed, e.g.:
 | `Stop` | `hooks/session-stop.ts` | Capture session telemetry |
 
 **Codex agents:**
-- Use `ingest wrap-codex` for real-time telemetry capture (see `Workflows/Ingest.md`)
+- Use `selftune ingest wrap-codex` for real-time telemetry capture (see `Workflows/Ingest.md`)
 - Or batch-ingest existing sessions with `selftune ingest codex`
 
 **OpenCode agents:**
@@ -141,7 +141,7 @@ to customize thresholds and skill mappings for your project.
 Check that the specialized agent files are present:
 
 ```bash
-ls .claude/agents/
+ls ~/.claude/agents/
 ```
 
 Expected agents: `diagnosis-analyst.md`, `pattern-analyst.md`,
