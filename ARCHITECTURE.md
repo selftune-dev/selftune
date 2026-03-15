@@ -126,6 +126,68 @@ Important practical interpretation:
 - The dashboard should consume payload-oriented queries, not rebuild business logic itself.
 - The orchestrator should coordinate existing modules, not duplicate evolution or monitoring logic.
 
+## Two Operating Modes
+
+selftune has two distinct operating modes with different execution models:
+
+### Interactive Mode (agent-driven)
+
+The user talks to their coding agent. The agent reads `skill/SKILL.md`, routes
+to the correct workflow, and runs CLI commands. The agent is the operator.
+
+```
+User: "improve my skills"
+  → Agent reads SKILL.md → routes to Orchestrate workflow
+  → Agent runs: selftune orchestrate
+  → Agent summarizes results to user
+```
+
+### Automated Mode (OS-driven)
+
+System scheduling (cron/launchd/systemd) calls the CLI binary directly.
+No agent session needed, no token cost. Set up via `selftune cron setup`.
+
+```
+OS scheduler fires every 6 hours
+  → selftune orchestrate --max-skills 3
+  → sync → candidate selection → evolve → watch → write results to JSONL
+  → Next interactive session sees improved SKILL.md
+```
+
+The agent is NOT in the loop for automated runs. This is intentional:
+automated runs are routine maintenance (sync, low-risk evolutions) that
+don't need agent intelligence or user interaction.
+
+## Data Architecture
+
+All data flows through append-only JSONL files. SQLite is a read-only
+materialized view used only by the dashboard.
+
+```
+Source of Truth: JSONL files (~/.claude/*.jsonl)
+├── telemetry.jsonl          Session telemetry records
+├── skill-usage.jsonl        Skill trigger/miss records
+├── queries.jsonl            User prompt log
+├── evolution-audit.jsonl    Evolution decisions + evidence
+├── orchestrate-runs.jsonl   Orchestrate run reports
+└── canonical.jsonl          Normalized cross-platform records
+
+Core Loop: reads JSONL directly
+├── orchestrate.ts  → readJsonl(TELEMETRY_LOG)
+├── evolve.ts       → readJsonl(EVOLUTION_AUDIT_LOG)
+├── grade.ts        → readJsonl(TELEMETRY_LOG)
+└── status.ts       → readJsonl(TELEMETRY_LOG + SKILL_LOG + QUERY_LOG)
+
+Materialized View: SQLite (~/.selftune/selftune.db)
+├── materialize.ts reads ALL JSONL → inserts into SQLite tables
+└── dashboard-server.ts reads SQLite for fast API queries
+```
+
+The core loop (orchestrate, evolve, grade, status) reads JSONL directly.
+SQLite is only used by the dashboard for fast queries over large datasets.
+This design keeps the core loop simple (no database dependency) while giving
+the dashboard fast aggregation.
+
 ## Repository Shape
 
 ```text

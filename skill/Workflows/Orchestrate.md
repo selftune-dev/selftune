@@ -81,3 +81,19 @@ Machine-readable JSON with the summary fields plus a `decisions` array containin
 - `alert`, `rolledBack`, `passRate`, `recommendation` — when watched
 
 This is the recommended runtime for recurring autonomous scheduling.
+
+## Two Execution Contexts
+
+`selftune orchestrate` runs in two contexts with different callers:
+
+| Context | Caller | Token cost | When |
+|---------|--------|------------|------|
+| **Interactive** | Agent (user says "improve my skills") | Uses agent subscription | On demand |
+| **Automated** | OS scheduler (cron/launchd/systemd) | Zero (CLI only, no LLM) | Every 6 hours |
+
+In automated mode, the OS calls the CLI binary directly. No agent session
+is created, no tokens are consumed for the orchestrate logic itself. LLM
+calls only happen during the evolution step (proposing and validating
+description changes), which uses the configured model tier.
+
+Set up automated mode with `selftune cron setup`.

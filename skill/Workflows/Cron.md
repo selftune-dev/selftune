@@ -60,7 +60,7 @@ Setup registers these jobs:
 |------|----------------|----------|-------------|
 | `selftune-sync` | `*/30 * * * *` | Every 30 minutes | Sync source-truth telemetry |
 | `selftune-status` | `0 8 * * *` | Daily at 8am | Health check — report skills with pass rate below 80% |
-| `selftune-orchestrate` | `0 3 * * 0` | Weekly at 3am Sunday | Full evolution pipeline for undertriggering skills |
+| `selftune-orchestrate` | `0 */6 * * *` | Every 6 hours | Full autonomous loop: sync → candidate selection → evolve → watch |
 
 All jobs run in **isolated session** mode — each execution gets a clean
 session with no context accumulation from previous runs.
@@ -85,20 +85,29 @@ For OpenClaw specifically:
 
 ## The Autonomous Evolution Loop
 
-When scheduled jobs are active, selftune operates as a self-correcting system:
+When scheduled jobs are active, selftune operates as a self-correcting system.
+The OS scheduler calls the CLI binary directly — no agent session is needed,
+no token cost for routine runs.
 
 ```
-Scheduled job fires
+OS scheduler fires (cron/launchd/systemd)
     |
     v
-Agent runs selftune pipeline (sync → status → orchestrate)
+selftune orchestrate --max-skills 3   (CLI runs directly, no agent)
+    |
+    v
+sync → candidate selection → evolve → validate → deploy → watch
     |
     v
 Improved SKILL.md written to disk
     |
     v
-Next agent turn uses updated description
+Next interactive agent session uses updated description
 ```
+
+This is distinct from interactive mode where the user says "improve my skills"
+and the agent runs orchestrate. Automated mode is for routine maintenance;
+interactive mode is for user-directed improvements.
 
 ## Safety Controls
 
