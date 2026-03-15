@@ -149,8 +149,7 @@ function formatEvolutionPhase(candidates: SkillAction[]): string[] {
 
   const lines: string[] = ["Phase 4: Evolution Results"];
   for (const c of evolved) {
-    const r = c.evolveResult;
-    if (!r) continue;
+    const r = c.evolveResult!;
     const status = r.deployed ? "deployed" : "not deployed";
     const detail = r.reason;
     const validation = r.validation
