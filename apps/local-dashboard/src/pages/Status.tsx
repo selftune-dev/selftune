@@ -155,7 +155,8 @@ export function Status() {
     )
   }
 
-  const { checks, summary, healthy, timestamp } = data
+  const { checks: rawChecks, summary, healthy, timestamp } = data
+  const checks = rawChecks ?? []
 
   // Group checks by category
   const configChecks = checks.filter((c) => c.name === "config")

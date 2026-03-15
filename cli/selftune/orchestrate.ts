@@ -547,7 +547,7 @@ export async function orchestrate(
   // -------------------------------------------------------------------------
   // Step 5: Evolve candidates
   // -------------------------------------------------------------------------
-  let _deployedCount = 0;
+  let _deployedCount = 0; // reserved for future telemetry
 
   for (const candidate of evolveCandidates) {
     // Skip if agent detection marked this candidate as skip
@@ -607,7 +607,7 @@ export async function orchestrate(
     candidates.filter((c) => c.action === "evolve").map((c) => c.skill),
   );
 
-  let _watchedCount = 0;
+  let _watchedCount = 0; // reserved for future telemetry
   for (const skillName of recentlyEvolved) {
     // Skip if already processed in this run as evolve candidate
     if (evolvedSkillNames.has(skillName)) {
