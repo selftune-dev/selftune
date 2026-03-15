@@ -38,14 +38,16 @@ function SkillActionRow({ action }: { action: OrchestrateRunSkillAction }) {
           <span className="text-xs font-medium truncate">{action.skill}</span>
           <Badge
             variant={
-              action.action === "evolve" && action.deployed ? "default"
+              action.rolledBack ? "destructive"
+              : action.action === "evolve" && action.deployed ? "default"
               : action.action === "evolve" ? "secondary"
               : action.action === "watch" ? "outline"
               : "secondary"
             }
             className="text-[10px] h-4 px-1.5 shrink-0"
           >
-            {action.action === "evolve" && action.deployed ? "deployed"
+            {action.rolledBack ? "rolled back"
+             : action.action === "evolve" && action.deployed ? "deployed"
              : action.action === "evolve" ? "evolved"
              : action.action}
           </Badge>

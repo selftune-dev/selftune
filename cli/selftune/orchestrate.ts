@@ -430,11 +430,11 @@ export async function orchestrate(
     dry_run: result.summary.dryRun,
     approval_mode: result.summary.approvalMode,
     total_skills: result.summary.totalSkills,
-    evaluated: result.summary.evaluated,
-    evolved: result.summary.evolved,
-    deployed: result.summary.deployed,
-    watched: result.summary.watched,
-    skipped: result.summary.skipped,
+    evaluated: candidates.filter((c) => c.action === "evolve").length,
+    evolved: candidates.filter((c) => c.action === "evolve" && c.evolveResult).length,
+    deployed: candidates.filter((c) => c.evolveResult?.deployed).length,
+    watched: candidates.filter((c) => c.action === "watch").length,
+    skipped: candidates.filter((c) => c.action === "skip").length,
     skill_actions: candidates.map(
       (c): OrchestrateRunSkillAction => ({
         skill: c.skill,
@@ -449,8 +449,9 @@ export async function orchestrate(
 
   try {
     appendJsonl(ORCHESTRATE_RUN_LOG, runReport);
-  } catch {
-    console.error("[orchestrate] Warning: failed to persist run report");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[orchestrate] Warning: failed to persist run report: ${message}`);
   }
 
   return result;

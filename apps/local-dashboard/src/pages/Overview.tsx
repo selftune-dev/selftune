@@ -209,7 +209,15 @@ export function Overview({
               pendingProposals={overview.pending_proposals}
               unmatchedQueries={overview.unmatched_queries}
             />
-            <OrchestrateRunsPanel runs={orchestrateQuery.data?.runs ?? []} />
+            {orchestrateQuery.isPending ? (
+              <Skeleton className="h-32 rounded-xl" />
+            ) : orchestrateQuery.isError ? (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+                Failed to load orchestrate runs.
+              </div>
+            ) : (
+              <OrchestrateRunsPanel runs={orchestrateQuery.data.runs} />
+            )}
           </div>
         </div>
       </div>

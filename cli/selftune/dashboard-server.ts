@@ -749,7 +749,11 @@ export async function startDashboardServer(
         }
         refreshV2Data();
         const limitParam = url.searchParams.get("limit");
-        const limit = limitParam ? Math.min(Math.max(Number.parseInt(limitParam, 10), 1), 100) : 20;
+        const parsedLimit = limitParam === null ? null : Number.parseInt(limitParam, 10);
+        if (parsedLimit !== null && Number.isNaN(parsedLimit)) {
+          return Response.json({ error: "Invalid limit" }, { status: 400, headers: corsHeaders() });
+        }
+        const limit = parsedLimit === null ? 20 : Math.min(Math.max(parsedLimit, 1), 100);
         const runs = getOrchestrateRuns(db, limit);
         return Response.json({ runs }, { headers: corsHeaders() });
       }
