@@ -20,7 +20,7 @@
  *   selftune badge              — Generate skill health badges for READMEs
  *   selftune contribute         — Export anonymized skill data for community
  *   selftune workflows          — Discover and manage multi-skill workflows
- *   selftune quickstart         — Guided onboarding: init, replay, status, and suggestions
+ *   selftune quickstart         — Guided onboarding: init, ingest, status, and suggestions
  *   selftune repair-skill-usage — Rebuild trustworthy skill usage from transcripts
  *   selftune export-canonical   — Export canonical telemetry for downstream ingestion
  *   selftune hook <name>        — Run a hook by name (prompt-log, session-stop, etc.)
@@ -52,7 +52,7 @@ Commands:
   badge              Generate skill health badges for READMEs
   contribute         Export anonymized skill data for community
   workflows          Discover and manage multi-skill workflows
-  quickstart         Guided onboarding: init, replay, status, and suggestions
+  quickstart         Guided onboarding: init, ingest, status, and suggestions
   repair-skill-usage Rebuild trustworthy skill usage from transcripts
   export-canonical   Export canonical telemetry for downstream ingestion
   hook <name>        Run a hook by name (prompt-log, session-stop, etc.)

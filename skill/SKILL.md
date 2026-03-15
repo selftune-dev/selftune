@@ -140,18 +140,20 @@ These read-only or simple workflows run immediately without prompting:
 ## The Feedback Loop
 
 ```
-Observe --> Detect --> Diagnose --> Propose --> Validate --> Deploy --> Watch
+Observe --> Detect --> Diagnose --> Propose --> Validate --> Audit --> Deploy --> Watch --> Rollback
    |                                                                    |
    +--------------------------------------------------------------------+
 ```
 
 1. **Observe** -- Hooks capture every session (queries, triggers, metrics)
-2. **Detect** -- `eval generate` finds missed triggers across invocation types
-3. **Diagnose** -- `grade` evaluates session quality with evidence
-4. **Propose** -- `evolve` generates description improvements
+2. **Detect** -- `selftune eval generate` extracts missed-trigger patterns across invocation types
+3. **Diagnose** -- `selftune grade` evaluates session quality with evidence
+4. **Propose** -- `selftune evolve` generates description improvements
 5. **Validate** -- Evolution is tested against the eval set
-6. **Deploy** -- Updated description replaces the original (with backup)
-7. **Watch** -- `watch` monitors for regressions post-deploy
+6. **Audit** -- Persist proposal, evidence, and decision metadata for traceability
+7. **Deploy** -- Updated description replaces the original (with backup)
+8. **Watch** -- `selftune watch` monitors for regressions post-deploy
+9. **Rollback** -- `selftune evolve rollback` restores the previous version when regressions are detected
 
 ## Resource Index
 

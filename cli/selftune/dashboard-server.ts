@@ -5,6 +5,7 @@
  * Endpoints:
  *   GET  /                     — Serve dashboard SPA shell
  *   GET  /api/health           — Dashboard server health probe
+ *   GET  /api/v2/doctor        — System health diagnostics (config, logs, hooks, evolution)
  *   GET  /api/v2/overview      — SQLite-backed overview payload
  *   GET  /api/v2/skills/:name  — SQLite-backed per-skill report
  *   POST /api/actions/watch    — Trigger `selftune watch` for a skill
@@ -829,7 +830,9 @@ export async function startDashboardServer(
             `SELECT skill_actions_json FROM orchestrate_runs
              WHERE skill_actions_json LIKE ?`,
           )
-          .all(`%"skill":"${skillName}"%`) as Array<{ skill_actions_json: string }>;
+          .all(`%${skillName.replace(/%/g, "\\%").replace(/_/g, "\\_")}%`) as Array<{
+            skill_actions_json: string;
+          }>;
 
         let totalLlmCalls = 0;
         let totalSelftunElapsedMs = 0;

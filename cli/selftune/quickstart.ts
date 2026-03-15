@@ -1,9 +1,9 @@
 /**
- * selftune quickstart — Guided onboarding that runs init, replay, and status.
+ * selftune quickstart — Guided onboarding that runs init, ingest, and status.
  *
  * Steps:
  *  1. Run `init` if config doesn't exist
- *  2. Run `replay` if marker file doesn't exist
+ *  2. Run `ingest claude` if marker file doesn't exist
  *  3. Run `status` to display current state
  *  4. Suggest top 3 skills to evolve
  */
@@ -58,9 +58,9 @@ export async function quickstart(): Promise<void> {
 
   // Step 2: Replay if marker doesn't exist
   if (existsSync(CLAUDE_CODE_MARKER)) {
-    console.log("[2/3] Replay marker exists, skipping replay.");
+    console.log("[2/3] Ingest marker exists, skipping ingestion.");
   } else {
-    console.log("[2/3] Running replay...");
+    console.log("[2/3] Running ingest claude...");
     try {
       const transcriptFiles = findTranscriptFiles(CLAUDE_CODE_PROJECTS_DIR);
       if (transcriptFiles.length === 0) {
@@ -86,7 +86,7 @@ export async function quickstart(): Promise<void> {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`      Replay failed: ${msg}`);
-      console.log("      You can run `selftune replay` manually to troubleshoot.");
+      console.log("      You can run `selftune ingest claude` manually to troubleshoot.");
     }
   }
 
@@ -177,7 +177,7 @@ Usage:
 
 Steps:
   1. Runs init if ~/.selftune/config.json doesn't exist
-  2. Runs replay if session marker doesn't exist
+  2. Runs ingest claude if session marker doesn't exist
   3. Shows current status
   4. Suggests top skills to evolve`);
     process.exit(0);
