@@ -27,6 +27,7 @@ import { readEvidenceTrail } from "./evolution/evidence.js";
 import { openDb } from "./localdb/db.js";
 import { materializeIncremental } from "./localdb/materialize.js";
 import {
+  getOrchestrateRuns,
   getOverviewPayload,
   getPendingProposals,
   getSkillReportPayload,
@@ -736,6 +737,21 @@ export async function startDashboardServer(
           { overview, skills, version: selftuneVersion },
           { headers: corsHeaders() },
         );
+      }
+
+      // ---- GET /api/v2/orchestrate-runs ---- Recent orchestrate run reports
+      if (url.pathname === "/api/v2/orchestrate-runs" && req.method === "GET") {
+        if (!db) {
+          return Response.json(
+            { error: "V2 data unavailable" },
+            { status: 503, headers: corsHeaders() },
+          );
+        }
+        refreshV2Data();
+        const limitParam = url.searchParams.get("limit");
+        const limit = limitParam ? Math.min(Math.max(Number.parseInt(limitParam, 10), 1), 100) : 20;
+        const runs = getOrchestrateRuns(db, limit);
+        return Response.json({ runs }, { headers: corsHeaders() });
       }
 
       // ---- GET /api/v2/skills/:name ---- SQLite-backed skill report

@@ -13,7 +13,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 
-import { EVOLUTION_AUDIT_LOG, QUERY_LOG, TELEMETRY_LOG } from "./constants.js";
+import { EVOLUTION_AUDIT_LOG, ORCHESTRATE_RUN_LOG, QUERY_LOG, TELEMETRY_LOG } from "./constants.js";
+import type { OrchestrateRunReport, OrchestrateRunSkillAction } from "./dashboard-contract.js";
 import type { EvolveResult } from "./evolution/evolve.js";
 import { readGradingResultsForSkill } from "./grading/results.js";
 import type { WatchResult } from "./monitoring/watch.js";
@@ -23,7 +24,7 @@ import { computeStatus } from "./status.js";
 import type { SyncResult } from "./sync.js";
 import { createDefaultSyncOptions, syncSources } from "./sync.js";
 import type { EvolutionAuditEntry, QueryLogRecord, SessionTelemetryRecord } from "./types.js";
-import { readJsonl } from "./utils/jsonl.js";
+import { appendJsonl, readJsonl } from "./utils/jsonl.js";
 import { detectAgent } from "./utils/llm-call.js";
 import {
   findInstalledSkillPath,
@@ -418,6 +419,39 @@ export async function orchestrate(
       elapsedMs: Date.now() - startTime,
     },
   };
+
+  // -------------------------------------------------------------------------
+  // Step 8: Persist run report
+  // -------------------------------------------------------------------------
+  const runReport: OrchestrateRunReport = {
+    run_id: `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: new Date().toISOString(),
+    elapsed_ms: result.summary.elapsedMs,
+    dry_run: result.summary.dryRun,
+    approval_mode: result.summary.approvalMode,
+    total_skills: result.summary.totalSkills,
+    evaluated: result.summary.evaluated,
+    evolved: result.summary.evolved,
+    deployed: result.summary.deployed,
+    watched: result.summary.watched,
+    skipped: result.summary.skipped,
+    skill_actions: candidates.map(
+      (c): OrchestrateRunSkillAction => ({
+        skill: c.skill,
+        action: c.action,
+        reason: c.reason,
+        deployed: c.evolveResult?.deployed,
+        rolledBack: c.watchResult?.rolledBack,
+        alert: c.watchResult?.alert,
+      }),
+    ),
+  };
+
+  try {
+    appendJsonl(ORCHESTRATE_RUN_LOG, runReport);
+  } catch {
+    console.error("[orchestrate] Warning: failed to persist run report");
+  }
 
   return result;
 }
