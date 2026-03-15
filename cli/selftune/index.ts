@@ -83,27 +83,10 @@ Run 'selftune <command> --help' for command-specific options.`);
 }
 
 if (!command) {
-  try {
-    const { computeStatus, formatStatus } = await import("./status.js");
-    const { doctor } = await import("./observability.js");
-    const { readJsonl } = await import("./utils/jsonl.js");
-    const { readEffectiveSkillUsageRecords } = await import("./utils/skill-log.js");
-    const { TELEMETRY_LOG, QUERY_LOG, EVOLUTION_AUDIT_LOG } = await import("./constants.js");
-
-    const telemetry = readJsonl(TELEMETRY_LOG);
-    const skillRecords = readEffectiveSkillUsageRecords();
-    const queryRecords = readJsonl(QUERY_LOG);
-    const auditEntries = readJsonl(EVOLUTION_AUDIT_LOG);
-    const doctorResult = doctor();
-    const result = computeStatus(telemetry, skillRecords, queryRecords, auditEntries, doctorResult);
-    console.log(formatStatus(result));
-    console.log("\nRun 'selftune --help' for all commands.");
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`selftune: ${message}`);
-    console.log("\nRun 'selftune --help' for all commands.");
-  }
-  process.exit(0);
+  // Show status by default — same as `selftune status` but with a help footer
+  const { cliMain: statusMain } = await import("./status.js");
+  statusMain();
+  // statusMain calls process.exit, so this line is unreachable
 }
 
 // Route to the appropriate subcommand module.

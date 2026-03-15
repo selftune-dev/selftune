@@ -50,10 +50,6 @@ export interface OrchestrateOptions {
   recentWindowHours: number;
   /** Force sync to rescan all sources. */
   syncForce: boolean;
-  /** Run orchestrate in a continuous loop until interrupted. */
-  loop: boolean;
-  /** Seconds between loop iterations (default: 3600). */
-  loopInterval: number;
 }
 
 export interface SkillAction {
@@ -700,6 +696,8 @@ export async function orchestrate(
         deployed: c.evolveResult?.deployed,
         rolledBack: c.watchResult?.rolledBack,
         alert: c.watchResult?.alert,
+        elapsed_ms: c.evolveResult?.elapsedMs,
+        llm_calls: c.evolveResult?.llmCallCount,
       }),
     ),
   };
@@ -824,8 +822,6 @@ Examples:
       maxSkills,
       recentWindowHours: recentWindow,
       syncForce: values["sync-force"] ?? false,
-      loop: isLoop,
-      loopInterval,
     });
 
     // JSON output: include per-skill decisions for machine consumption
