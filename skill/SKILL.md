@@ -84,25 +84,25 @@ selftune cron remove [--dry-run]
 |------------------|----------|------|
 | grade, score, evaluate, assess session, auto-grade | Grade | Workflows/Grade.md |
 | evals, eval set, undertriggering, skill stats, eval generate | Evals | Workflows/Evals.md |
-| evolve, improve, triggers, catch more queries | Evolve | Workflows/Evolve.md |
-| evolve rollback, undo, restore, revert evolution | Rollback | Workflows/Rollback.md |
-| watch, monitor, regression, post-deploy, performing | Watch | Workflows/Watch.md |
-| doctor, health, hooks, broken, diagnose | Doctor | Workflows/Doctor.md |
+| evolve, improve, optimize skills, make skills better, triggers, catch more queries | Evolve | Workflows/Evolve.md |
+| evolve rollback, undo, restore, revert evolution, go back, undo last change | Rollback | Workflows/Rollback.md |
+| watch, monitor, regression, post-deploy, performing, keep an eye on | Watch | Workflows/Watch.md |
+| doctor, health, hooks, broken, diagnose, not working, something wrong | Doctor | Workflows/Doctor.md |
 | ingest, import, codex logs, opencode, openclaw, wrap codex, ingest claude | Ingest | Workflows/Ingest.md |
 | ingest claude, backfill, claude transcripts, historical sessions | Replay | Workflows/Replay.md |
-| contribute, share, community, export data, anonymized | Contribute | Workflows/Contribute.md |
-| init, setup, bootstrap, first time | Initialize | Workflows/Initialize.md |
-| cron, schedule, autonomous, automate evolution | Cron | Workflows/Cron.md |
+| contribute, share, community, export data, anonymized, give back, help others | Contribute | Workflows/Contribute.md |
+| init, setup, set up, bootstrap, first time, install, configure selftune | Initialize | Workflows/Initialize.md |
+| cron, schedule, autonomous, automate evolution, run automatically, run on its own | Cron | Workflows/Cron.md |
 | auto-activate, suggestions, activation rules, nag, why suggest | AutoActivation | Workflows/AutoActivation.md |
-| dashboard, visual, open dashboard, skill grid, serve dashboard, live dashboard | Dashboard | Workflows/Dashboard.md |
+| dashboard, visual, open dashboard, show dashboard, skill grid, serve dashboard, live dashboard | Dashboard | Workflows/Dashboard.md |
 | evolution memory, context memory, session continuity, what happened last | EvolutionMemory | Workflows/EvolutionMemory.md |
 | evolve body, evolve routing, full body evolution, rewrite skill, teacher student | EvolveBody | Workflows/EvolveBody.md |
 | grade baseline, baseline lift, adds value, skill value, no-skill comparison | Baseline | Workflows/Baseline.md |
 | eval unit-test, skill test, test skill, generate tests, run tests, assertions | UnitTest | Workflows/UnitTest.md |
 | eval composability, co-occurrence, skill conflicts, skills together, conflict score | Composability | Workflows/Composability.md |
 | eval import, skillsbench, external evals, benchmark tasks, import corpus | ImportSkillsBench | Workflows/ImportSkillsBench.md |
-| status, health summary, skill health, pass rates, how are skills | Status | *(direct command — no workflow file)* |
-| last, last session, recent session, what happened | Last | *(direct command — no workflow file)* |
+| status, health summary, skill health, pass rates, how are skills, skills working, skills doing, run selftune, start selftune | Status | *(direct command — no workflow file)* |
+| last, last session, recent session, what happened, what changed, what did selftune do | Last | *(direct command — no workflow file)* |
 
 ## Interactive Configuration
 
@@ -243,6 +243,18 @@ selftune provides focused agents for deeper analysis. These live in
 - "Which skills conflict with each other?"
 - "Analyze composability for the Research skill"
 - "Import SkillsBench tasks for my skill"
+- "Install selftune"
+- "Configure selftune for this project"
+- "Make my skills better"
+- "Optimize my skills"
+- "Are my skills working?"
+- "Show me the dashboard"
+- "What changed since last time?"
+- "What did selftune do?"
+- "Run selftune"
+- "Start selftune"
+- "Go back to the previous version"
+- "Undo the last change"
 
 ## Negative Examples
 

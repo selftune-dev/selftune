@@ -77,11 +77,19 @@ Skip to Step 8 (verify with doctor) unless the user wants to reinitialize.
 selftune init
 ```
 
-### 4. Install Hooks (Claude Code)
+### 4. Hooks (Claude Code)
 
-If `init` reports hooks are not installed, merge the entries from
-`skill/settings_snippet.json` into `~/.claude/settings.json`. Six hooks
-are required:
+Hooks are **automatically installed** by `selftune init`. The init command
+merges selftune hook entries from `skill/settings_snippet.json` into
+`~/.claude/settings.json` without overwriting existing user hooks. If the
+hooks are already present, they are skipped (no duplicates).
+
+The init output will report what was installed, e.g.:
+```
+[INFO] Installed 4 selftune hook(s) into ~/.claude/settings.json: UserPromptSubmit, PreToolUse, PostToolUse, Stop
+```
+
+**Hook reference** (for troubleshooting):
 
 | Hook | Script | Purpose |
 |------|--------|---------|
@@ -91,9 +99,6 @@ are required:
 | `PreToolUse` (Write/Edit) | `hooks/evolution-guard.ts` | Block SKILL.md edits on monitored skills |
 | `PostToolUse` (Read) | `hooks/skill-eval.ts` | Track skill triggers |
 | `Stop` | `hooks/session-stop.ts` | Capture session telemetry |
-
-Derive the hook script paths from the `cli_path` field in `~/.selftune/config.json`.
-The hooks directory is at `dirname(cli_path)/hooks/`.
 
 **Codex agents:**
 - Use `ingest wrap-codex` for real-time telemetry capture (see `Workflows/Ingest.md`)

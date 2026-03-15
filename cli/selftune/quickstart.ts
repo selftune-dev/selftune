@@ -90,14 +90,30 @@ export async function quickstart(): Promise<void> {
     }
   }
 
+  // Check if any telemetry was produced after ingest
+  const telemetry = readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG);
+  const skillRecords = readEffectiveSkillUsageRecords();
+  const queryRecords = readJsonl<QueryLogRecord>(QUERY_LOG);
+  const hasSessions = telemetry.length > 0 || queryRecords.length > 0;
+  const hasSkills = skillRecords.length > 0;
+
+  if (!hasSessions) {
+    console.log("[2/3] No sessions found. Checking for skills from hooks...");
+    if (hasSkills) {
+      const skillNames = [...new Set(skillRecords.map((r) => r.skill_name))].sort();
+      console.log(`      Found ${skillNames.length} skill(s) from hooks: ${skillNames.join(", ")}`);
+    } else {
+      console.log("      No skills detected yet. Use your agent normally, then run");
+      console.log("      `selftune status` to see health scores.");
+    }
+    console.log("");
+  }
+
   // Step 3: Status
   console.log("[3/3] Current status:");
   console.log("");
 
   try {
-    const telemetry = readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG);
-    const skillRecords = readEffectiveSkillUsageRecords();
-    const queryRecords = readJsonl<QueryLogRecord>(QUERY_LOG);
     const auditEntries = readJsonl<EvolutionAuditEntry>(EVOLUTION_AUDIT_LOG);
     const doctorResult = doctor();
 

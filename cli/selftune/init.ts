@@ -158,6 +158,114 @@ export function checkClaudeCodeHooks(settingsPath: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Hook installation (Claude Code only)
+// ---------------------------------------------------------------------------
+
+/** Bundled settings snippet (ships with the npm package). */
+const SETTINGS_SNIPPET_PATH = resolve(
+  dirname(import.meta.path),
+  "..",
+  "..",
+  "skill",
+  "settings_snippet.json",
+);
+
+/**
+ * Install selftune hooks into ~/.claude/settings.json by merging entries
+ * from the bundled settings_snippet.json.
+ *
+ * - Creates settings.json if it does not exist
+ * - Creates the hooks section if it does not exist
+ * - Only adds hook entries for keys that don't already have a selftune entry
+ * - Never overwrites existing user hooks
+ *
+ * Returns the list of hook keys that were added.
+ */
+export function installClaudeCodeHooks(options?: {
+  settingsPath?: string;
+  snippetPath?: string;
+  cliPath?: string;
+}): string[] {
+  const settingsPath = options?.settingsPath ?? join(homedir(), ".claude", "settings.json");
+  const snippetPath = options?.snippetPath ?? SETTINGS_SNIPPET_PATH;
+
+  // Read the snippet
+  if (!existsSync(snippetPath)) {
+    console.error(`[WARN] Hook snippet not found at ${snippetPath}, skipping hook installation`);
+    return [];
+  }
+
+  let snippet: Record<string, unknown>;
+  try {
+    snippet = JSON.parse(readFileSync(snippetPath, "utf-8"));
+  } catch {
+    console.error(`[WARN] Failed to parse hook snippet at ${snippetPath}`);
+    return [];
+  }
+
+  const snippetHooks = snippet.hooks as Record<string, unknown[]> | undefined;
+  if (!snippetHooks || typeof snippetHooks !== "object") {
+    console.error("[WARN] Hook snippet has no 'hooks' section");
+    return [];
+  }
+
+  // Read existing settings (or start with empty object)
+  let settings: Record<string, unknown> = {};
+  if (existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    } catch {
+      console.error(`[WARN] Failed to parse ${settingsPath}, starting with empty settings`);
+      settings = {};
+    }
+  }
+
+  // Ensure hooks section exists
+  if (!settings.hooks || typeof settings.hooks !== "object") {
+    settings.hooks = {};
+  }
+  const existingHooks = settings.hooks as Record<string, unknown[]>;
+
+  // Resolve the CLI hooks directory for path substitution
+  const cliPath = options?.cliPath;
+  const hooksDir = cliPath ? `${dirname(cliPath)}/hooks` : null;
+
+  const addedKeys: string[] = [];
+
+  for (const key of Object.keys(snippetHooks)) {
+    // Skip if this key already has a selftune entry
+    if (hookKeyHasSelftuneEntry(existingHooks, key)) {
+      continue;
+    }
+
+    // Get the snippet entries for this key, replacing /PATH/TO/ with actual path
+    let entries = snippetHooks[key];
+    if (hooksDir) {
+      // Deep clone and substitute paths
+      const raw = JSON.stringify(entries).replace(/\/PATH\/TO\/cli\/selftune\/hooks/g, hooksDir);
+      entries = JSON.parse(raw);
+    }
+
+    // Merge: append to existing array or create new one
+    if (Array.isArray(existingHooks[key])) {
+      existingHooks[key] = [...existingHooks[key], ...entries];
+    } else {
+      existingHooks[key] = entries;
+    }
+
+    addedKeys.push(key);
+  }
+
+  if (addedKeys.length > 0) {
+    // Ensure ~/.claude/ directory exists
+    mkdirSync(dirname(settingsPath), { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
+  }
+
+  return addedKeys;
+}
+
+// ---------------------------------------------------------------------------
 // Agent file installation
 // ---------------------------------------------------------------------------
 
@@ -393,6 +501,28 @@ export function runInit(opts: InitOptions): SelftuneConfig {
   const copiedAgents = installAgentFiles({ homeDir: home, force });
   if (copiedAgents.length > 0) {
     console.error(`[INFO] Installed agent files: ${copiedAgents.join(", ")}`);
+  }
+
+  // Auto-install hooks into ~/.claude/settings.json (Claude Code only)
+  if (agentType === "claude_code") {
+    const addedHookKeys = installClaudeCodeHooks({
+      settingsPath,
+      cliPath,
+    });
+    if (addedHookKeys.length > 0) {
+      config.hooks_installed = true;
+      // Re-write config with updated hooks_installed flag
+      writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+      console.error(
+        `[INFO] Installed ${addedHookKeys.length} selftune hook(s) into ${settingsPath}: ${addedHookKeys.join(", ")}`,
+      );
+    } else if (!config.hooks_installed) {
+      // Re-check in case hooks were already present
+      config.hooks_installed = checkClaudeCodeHooks(settingsPath);
+      if (config.hooks_installed) {
+        writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+      }
+    }
   }
 
   return config;
