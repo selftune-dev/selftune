@@ -61,6 +61,17 @@ export interface SessionTelemetryRecord {
   rollout_path?: string;
 }
 
+export interface ImprovementSignalRecord {
+  timestamp: string;
+  session_id: string;
+  query: string;
+  signal_type: "correction" | "explicit_request" | "manual_invocation";
+  mentioned_skill?: string;
+  consumed: boolean;
+  consumed_at?: string;
+  consumed_by_run?: string;
+}
+
 export type {
   CanonicalCaptureMode,
   CanonicalCompletionStatus,

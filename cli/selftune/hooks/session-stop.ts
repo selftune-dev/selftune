@@ -7,7 +7,8 @@
  * Appends one record per session to ~/.claude/session_telemetry_log.jsonl.
  */
 
-import { CANONICAL_LOG, TELEMETRY_LOG } from "../constants.js";
+import { readFileSync } from "node:fs";
+import { CANONICAL_LOG, ORCHESTRATE_LOCK, SIGNAL_LOG, TELEMETRY_LOG } from "../constants.js";
 import {
   appendCanonicalRecords,
   buildCanonicalExecutionFact,
@@ -15,9 +16,51 @@ import {
   type CanonicalBaseInput,
   getLatestPromptIdentity,
 } from "../normalization.js";
-import type { SessionTelemetryRecord, StopPayload } from "../types.js";
-import { appendJsonl } from "../utils/jsonl.js";
+import type { ImprovementSignalRecord, SessionTelemetryRecord, StopPayload } from "../types.js";
+import { appendJsonl, readJsonl } from "../utils/jsonl.js";
 import { parseTranscript } from "../utils/transcript.js";
+
+const LOCK_STALE_MS = 30 * 60 * 1000;
+
+/**
+ * Check for pending improvement signals and spawn a focused orchestrate run
+ * in the background if warranted. Fire-and-forget — the hook exits immediately.
+ *
+ * Returns true if a process was spawned, false otherwise.
+ */
+export function maybeSpawnReactiveOrchestrate(
+  signalLogPath: string = SIGNAL_LOG,
+  lockPath: string = ORCHESTRATE_LOCK,
+): boolean {
+  try {
+    // Read pending signals
+    const signals = readJsonl<ImprovementSignalRecord>(signalLogPath);
+    const pending = signals.filter((s) => !s.consumed);
+    if (pending.length === 0) return false;
+
+    // Check lock — if another orchestrate run is active and fresh, skip
+    try {
+      const lockContent = readFileSync(lockPath, "utf8");
+      const lock = JSON.parse(lockContent);
+      const lockAge = Date.now() - new Date(lock.timestamp).getTime();
+      if (lockAge < LOCK_STALE_MS) return false;
+    } catch {
+      // No lock file or invalid — proceed
+    }
+
+    // Spawn orchestrate in background (fire-and-forget)
+    const proc = Bun.spawn(["selftune", "orchestrate", "--max-skills", "2"], {
+      stdout: "ignore",
+      stderr: "ignore",
+      stdin: "ignore",
+    });
+    proc.unref(); // Allow this process to exit without waiting
+
+    return true;
+  } catch {
+    return false; // Silent — hooks must never block Claude
+  }
+}
 
 /**
  * Core processing logic, exported for testability.
@@ -78,6 +121,13 @@ export function processSessionStop(
     duration_ms: metrics.duration_ms,
   });
   appendCanonicalRecords([canonicalSession, canonicalFact], canonicalLogPath);
+
+  // Reactive: spawn focused orchestrate if pending improvement signals exist
+  try {
+    maybeSpawnReactiveOrchestrate();
+  } catch {
+    // silent — hooks must never block
+  }
 
   return record;
 }

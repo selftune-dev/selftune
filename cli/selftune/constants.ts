@@ -19,6 +19,8 @@ export const QUERY_LOG = join(LOG_DIR, "all_queries_log.jsonl");
 export const EVOLUTION_AUDIT_LOG = join(LOG_DIR, "evolution_audit_log.jsonl");
 export const EVOLUTION_EVIDENCE_LOG = join(LOG_DIR, "evolution_evidence_log.jsonl");
 export const ORCHESTRATE_RUN_LOG = join(LOG_DIR, "orchestrate_runs.jsonl");
+export const SIGNAL_LOG = join(LOG_DIR, "improvement_signals.jsonl");
+export const ORCHESTRATE_LOCK = join(LOG_DIR, ".orchestrate.lock");
 
 /** Evolution memory directory — human-readable session context that survives resets. */
 export const MEMORY_DIR = join(SELFTUNE_CONFIG_DIR, "memory");

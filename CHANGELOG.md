@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Real-time improvement signal detection** — `prompt-log` hook detects user corrections ("why didn't you use X?") and explicit skill requests via pure regex patterns. Signals are logged to `~/.claude/improvement_signals.jsonl` with skill name extraction from installed skills.
+- **Signal-reactive orchestration** — `session-stop` hook checks for pending improvement signals and spawns a focused `selftune orchestrate --max-skills 2` run in the background. Respects a 30-minute lockfile to prevent concurrent runs.
+- **Signal-aware candidate selection** — Orchestrator reads pending signals and boosts priority for mentioned skills (+150 per signal, capped at +450). Signaled skills bypass the minimum evidence gate and the "UNGRADED with 0 missed queries" gate.
+- **Orchestrate lockfile** — `acquireLock()`/`releaseLock()` with PID+timestamp in `~/.claude/.orchestrate.lock`. 30-minute stale threshold prevents deadlocks from crashed runs.
+- **Signal consumption** — After an orchestrate run completes, consumed signals are marked with `consumed: true`, `consumed_at`, and `consumed_by_run` so they don't affect subsequent runs.
+
 ## [0.2.0] — 2026-03-08
 
 ### Added
