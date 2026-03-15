@@ -243,7 +243,7 @@ Current policy:
 | `~/.claude/skill_usage_repaired.jsonl` | Sync / repair | Eval, status, localdb |
 | `~/.claude/all_queries_log.jsonl` | Hooks, ingestors, sync | Eval, status, localdb |
 | `~/.claude/evolution_audit_log.jsonl` | Evolution | Monitoring, status, localdb |
-| `~/.claude/orchestrate_run_log.jsonl` | Orchestrator | LocalDB, dashboard |
+| `~/.claude/orchestrate_runs.jsonl` | Orchestrator | LocalDB, dashboard |
 | `~/.selftune/*.sqlite` | LocalDB materializer | Dashboard server |
 
 ## The Evaluation Model

@@ -7,8 +7,9 @@ autonomy-first architecture.
 
 ## What This Guide Covers
 
+- the recommended autonomy-first setup path
 - first-run verification
-- the normal operating loop
+- the autonomous operating loop
 - scheduler installation
 - the important local files
 - dashboard and SQLite checks
@@ -19,21 +20,52 @@ autonomy-first architecture.
 ```mermaid
 sequenceDiagram
   participant Operator
+  participant Scheduler
   participant Sync
   participant Orchestrate
   participant Dashboard
 
-  Operator->>Sync: selftune sync
-  Sync-->>Operator: trustworthy local evidence
+  Operator->>Scheduler: selftune init --enable-autonomy
+  Scheduler-->>Operator: recurring sync / status / orchestrate installed
+  Scheduler->>Sync: selftune sync
+  Sync-->>Scheduler: trustworthy local evidence
+  Scheduler->>Orchestrate: selftune orchestrate
+  Orchestrate-->>Scheduler: evolved / watched / rolled back summary
   Operator->>Dashboard: selftune dashboard
   Dashboard-->>Operator: overview and per-skill report
   Operator->>Orchestrate: selftune orchestrate --dry-run
   Orchestrate-->>Operator: candidate decisions
-  Operator->>Orchestrate: selftune orchestrate
-  Orchestrate-->>Operator: evolved / watched / rolled back summary
 ```
 
-## Day 0: First-Run Verification
+## Recommended Default: Turn On Autonomy
+
+For most users, the intended path is:
+
+```bash
+selftune init --enable-autonomy
+selftune dashboard --no-open
+selftune orchestrate --dry-run
+```
+
+What this means:
+
+- `init --enable-autonomy` installs the recurring scheduler path
+- the scheduler handles the background `sync` / `status` / `orchestrate` loop
+- `dashboard` is the inspection surface
+- `orchestrate --dry-run` is the trust check when you want to see what would happen next
+
+selftune is supposed to be autonomous in the sense that low-risk description
+improvements can run on a schedule without manual approval. It is **not** a
+long-running daemon yet, and it is still explicitly local-first, so scheduler
+installation is how autonomy is activated.
+
+## Manual Verification Path
+
+Use this path when you are:
+
+- verifying a fresh install
+- debugging a polluted or stale local state
+- rebuilding evidence after imports or replay
 
 Run this exact sequence:
 
@@ -60,7 +92,17 @@ selftune init --enable-autonomy
 selftune orchestrate --dry-run
 ```
 
-## Day 2: Normal Operating Loop
+## Day 2: Autonomous Operating Loop
+
+Once autonomy is enabled, the normal posture is:
+
+- let the scheduler run `sync`, `status`, and `orchestrate`
+- use the dashboard to inspect what changed
+- use `orchestrate --dry-run` when you want a visible decision preview
+
+Most operators should **not** be manually running `sync` as a daily ritual.
+`sync` matters because it is the authoritative evidence builder, but it should
+usually happen via the scheduler or as the first step inside `orchestrate`.
 
 ### 1. Refresh local evidence
 
@@ -70,6 +112,9 @@ selftune sync
 
 Use `--force` only when you explicitly want to rebuild local state from
 scratch.
+
+When autonomy is already installed, treat this as a repair/verification command,
+not the main product interaction.
 
 ### 2. Inspect health
 
@@ -160,6 +205,7 @@ It is still supported, but it is not the primary product path.
 | `~/.claude/all_queries_log.jsonl` | all observed user queries |
 | `~/.claude/skill_usage_repaired.jsonl` | repaired/source-truth skill usage |
 | `~/.claude/evolution_audit_log.jsonl` | proposal, deploy, and rollback audit trail |
+| `~/.claude/orchestrate_runs.jsonl` | persisted orchestrate run reports and skill-level actions |
 
 ## Dashboard Checks
 
@@ -176,6 +222,7 @@ Then open `http://127.0.0.1:3141`.
 - `/` serves the SPA shell
 - `/api/v2/overview` returns overview data
 - `/api/v2/skills/:name` returns a per-skill report
+- `/api/v2/orchestrate-runs` returns recent orchestrate activity
 - the server can rebuild SQLite-backed data from local logs
 
 ### If the dashboard looks wrong
@@ -219,7 +266,9 @@ selftune orchestrate --dry-run
 Then inspect:
 
 - recent `status` output
+- recent orchestrate runs in the dashboard overview
 - the affected skill’s dashboard report
+- `~/.claude/orchestrate_runs.jsonl`
 - `~/.claude/evolution_audit_log.jsonl`
 
 If a deployed change regressed, `watch` and rollback are the first safety

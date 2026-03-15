@@ -112,6 +112,10 @@ sequenceDiagram
   Server->>DB: skill report query
   DB-->>Server: SkillReportPayload
   Server-->>Browser: JSON
+  Browser->>Server: GET /api/v2/orchestrate-runs
+  Server->>DB: recent orchestrate runs query
+  DB-->>Server: OrchestrateRunsResponse
+  Server-->>Browser: JSON
   Materializer->>DB: refresh from logs when sync/materialize runs
 ```
 
@@ -120,10 +124,11 @@ sequenceDiagram
 | Artifact | Role |
 |---|---|
 | `~/.claude/*.jsonl` | Shared append-only logs for telemetry, queries, repaired usage, and evolution audit |
+| `~/.claude/orchestrate_runs.jsonl` | Persisted orchestrate run reports for CLI and dashboard inspection |
 | `selftune sync` | Rebuilds trustworthy local evidence from source systems |
 | `cli/selftune/localdb/` | Materializes logs into SQLite tables and payload-oriented queries |
 | `cli/selftune/dashboard-server.ts` | Serves the SPA and the v2 dashboard API |
-| `apps/local-dashboard/` | Overview and per-skill report UI |
+| `apps/local-dashboard/` | Overview, recent orchestrate activity, and per-skill report UI |
 
 ## What selftune Is Not
 
