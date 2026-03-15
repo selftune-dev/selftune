@@ -1,14 +1,10 @@
 # Execution Plan: Multi-Agent Sandbox Expansion
 
-<!-- Verified: 2026-03-14 -->
+<!-- Verified: 2026-03-02 -->
 
-**Status:** Deferred
+**Status:** Active
 **Created:** 2026-03-02
 **Goal:** Expand the sandbox test harness from Claude Code-only to cover all three agents (Claude Code, Codex, OpenCode) with shared fixtures, per-agent Layer 1 tests, and per-agent Layer 2 Docker containers.
-
-## Priority Note
-
-This is no longer on the immediate shipping path. Keep the current Claude/sandbox coverage working, but defer the broader multi-agent expansion until after the next release candidate is shipped and validated.
 
 ---
 
@@ -99,8 +95,8 @@ Add per-agent tests to the local sandbox.
 
 | Step | Description | Depends On |
 |------|-------------|------------|
-| C1 | Add Codex ingestor test (`ingest-codex --dry-run`) | B3 |
-| C2 | Add OpenCode ingestor test (`ingest-opencode --dry-run`) | B4 |
+| C1 | Add Codex ingestor test (`ingest codex --dry-run`) | B3 |
+| C2 | Add OpenCode ingestor test (`ingest opencode --dry-run`) | B4 |
 | C3 | Make hook tests conditional on `agent_type === "claude_code"` | B5 |
 | C4 | Add Makefile targets: `sandbox-codex`, `sandbox-opencode`, `sandbox-all` | C1, C2 |
 

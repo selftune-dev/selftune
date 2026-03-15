@@ -6,7 +6,7 @@ Records the rollback in the evolution audit log for traceability.
 ## Default Command
 
 ```bash
-selftune rollback --skill <name> --skill-path <path> [options]
+selftune evolve rollback --skill <name> --skill-path <path> [options]
 ```
 
 ## Options
@@ -95,13 +95,13 @@ If `--proposal-id` is specified, use that instead.
 ### 2. Run Rollback
 
 ```bash
-selftune rollback --skill pptx --skill-path /path/to/SKILL.md
+selftune evolve rollback --skill pptx --skill-path /path/to/SKILL.md
 ```
 
 Or to rollback a specific proposal:
 
 ```bash
-selftune rollback --skill pptx --skill-path /path/to/SKILL.md --proposal-id evolve-pptx-1709125200000
+selftune evolve rollback --skill pptx --skill-path /path/to/SKILL.md --proposal-id evolve-pptx-1709125200000
 ```
 
 ### 3. Verify Restoration

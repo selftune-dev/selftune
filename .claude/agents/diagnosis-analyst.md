@@ -48,7 +48,7 @@ any warnings or regression flags.
 ### Step 3: Pull telemetry stats
 
 ```bash
-selftune evals --skill <name> --stats
+selftune eval generate --skill <name> --stats
 ```
 
 Review aggregate metrics:
@@ -59,7 +59,7 @@ Review aggregate metrics:
 ### Step 4: Analyze trigger coverage
 
 ```bash
-selftune evals --skill <name> --max 50
+selftune eval generate --skill <name> --max 50
 ```
 
 Review the generated eval set. Count entries by invocation type:
@@ -106,8 +106,8 @@ Compile findings into a structured report.
 |---------|---------|
 | `selftune status` | Overall health snapshot |
 | `selftune last` | Most recent session details |
-| `selftune evals --skill <name> --stats` | Aggregate telemetry |
-| `selftune evals --skill <name> --max 50` | Generate eval set for coverage analysis |
+| `selftune eval generate --skill <name> --stats` | Aggregate telemetry |
+| `selftune eval generate --skill <name> --max 50` | Generate eval set for coverage analysis |
 | `selftune doctor` | Check infrastructure health |
 
 ## Output

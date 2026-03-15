@@ -30,7 +30,7 @@ selftune had 499 unit tests covering individual functions, but zero integration 
 | `evals --skill frontend-design` | 0 positives (correctly identifies undertriggering) |
 | `status` | Colored table with per-skill health |
 | `last` | Latest session insight with unmatched queries |
-| `dashboard --port <port> --no-open` | Starts the SPA dashboard server and responds on HTTP |
+| `dashboard --export` | Standalone HTML with embedded data |
 | `contribute --preview` | Sanitized contribution bundle |
 | Hook: prompt-log | Record appended to all_queries_log.jsonl |
 | Hook: skill-eval | Record appended to skill_usage_log.jsonl |
@@ -101,10 +101,10 @@ make check
 
 | Test Name | Command | Verification |
 |-----------|---------|-------------|
-| `ingest-openclaw` | `ingest-openclaw --agents-dir <sandbox>` | Exit 0 + openclaw records in logs |
-| `ingest-openclaw --dry-run` | `ingest-openclaw --agents-dir <sandbox> --dry-run` | Exit 0 + no new log records |
-| `ingest-openclaw (idempotent)` | Run ingest twice | Second run: "0 not yet ingested" |
-| `cron list` | `cron list` | Exit 0 + shows selftune-sync |
+| `ingest openclaw` | `ingest openclaw --agents-dir <sandbox>` | Exit 0 + openclaw records in logs |
+| `ingest openclaw --dry-run` | `ingest openclaw --agents-dir <sandbox> --dry-run` | Exit 0 + no new log records |
+| `ingest openclaw (idempotent)` | Run ingest twice | Second run: "0 not yet ingested" |
+| `cron list` | `cron list` | Exit 0 + shows selftune-ingest |
 | `cron setup --dry-run` | `cron setup --dry-run --tz UTC` | Exit 0 + shows [DRY RUN] |
 
 **Fixtures:** 5 sessions across 2 agents, 2 skills (Deploy, CodeReview), cron jobs.
@@ -123,7 +123,7 @@ make check
 | Test Name | What It Does | Verification |
 |-----------|-------------|-------------|
 | `gateway-health` | Curl gateway /healthz | HTTP 200 |
-| `ingest-openclaw` | Run ingestion against gateway data | Exit 0 + log records |
+| `ingest openclaw` | Run ingestion against gateway data | Exit 0 + log records |
 | `cron setup --dry-run` | Register cron jobs (dry-run) | Exit 0 + dry-run output |
 | `cron list` | List registered jobs | Exit 0 + shows jobs |
 | `status` | Show skill health post-ingestion | Exit 0 + output |
@@ -153,7 +153,7 @@ make sandbox-openclaw-clean
 
 ## Future Work
 
-- Add `replay` command testing with simulated `~/.claude/projects/` transcripts
+- Add `ingest claude` command testing with simulated `~/.claude/projects/` transcripts
 - Add `init` command testing with mocked `Bun.which()` for agent detection
 - CI integration: Run Layer 1 on every PR, Layer 2 on release branches
 - Fixture expansion: Add codex and opencode skill profiles

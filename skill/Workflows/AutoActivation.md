@@ -40,7 +40,7 @@ Detection scans all hook entries in settings for any command containing
 | `post-session-diagnostic` | Suggest diagnostic review | >2 unmatched queries in current session | `selftune last` |
 | `grading-threshold-breach` | Suggest evolution | Session pass rate < 0.6 (60%) | `selftune evolve` |
 | `stale-evolution` | Suggest evolution | >7 days since last evolution AND pending false negatives exist | `selftune evolve` |
-| `regression-detected` | Suggest rollback | Watch snapshot shows `regression_detected: true` | `selftune rollback` |
+| `regression-detected` | Suggest rollback | Watch snapshot shows `regression_detected: true` | `selftune evolve rollback` |
 
 ### Rule Details
 

@@ -170,7 +170,7 @@ Quick post-session diagnostic showing the most recent session's triggered skills
 ### Skill Health Dashboard (`selftune dashboard`)
 Local React SPA served by `dashboard-server.ts`, backed by SQLite materialization and payload-oriented v2 API routes. Primary view is an overview page showing skill health, trends, unmatched queries, recent orchestrate activity, and pending proposals. Drill-down routes provide per-skill reports with pass-rate history, missed queries, evidence, and evolution context.
 
-### Retroactive Replay (`selftune replay`)
+### Retroactive Replay (`selftune ingest claude`)
 Batch ingestor for existing Claude Code session transcripts. Scans `~/.claude/projects/<hash>/<session-id>.jsonl`, extracts user queries and session metrics, and populates the shared JSONL logs. Idempotent via marker file — safe to run repeatedly. Supports `--since` date filtering, `--dry-run` preview, `--force` re-ingestion, and `--verbose` output. Bootstraps the eval corpus from existing sessions without waiting for hooks to accumulate data.
 
 ### Community Contribution (`selftune contribute`)
@@ -278,7 +278,7 @@ Use reins to build the repo that makes agents effective. Use selftune to know wh
 - Three observability surfaces replace activity-metric-only dashboard with actionable skill health data
 
 ### M7 — Retroactive Replay & Community Contribution (Complete)
-- `selftune replay`: batch ingest Claude Code transcripts from `~/.claude/projects/`
+- `selftune ingest claude`: batch ingest Claude Code transcripts from `~/.claude/projects/`
 - Idempotent marker file prevents duplicate ingestion
 - Extracts all user queries per session (not just last), populates all three JSONL logs
 - `selftune contribute`: opt-in anonymized data export as `ContributionBundle`

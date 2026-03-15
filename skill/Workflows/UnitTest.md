@@ -6,7 +6,7 @@ accuracy, output content, and tool usage with deterministic assertions.
 ## Default Command
 
 ```bash
-selftune unit-test --skill <name> --tests <path> [options]
+selftune eval unit-test --skill <name> --tests <path> [options]
 ```
 
 ## Options
@@ -89,7 +89,7 @@ require `--run-agent` and run the query through the full agent.
 For a new skill, generate initial tests from the skill content:
 
 ```bash
-selftune unit-test --skill Research --generate --skill-path ~/.claude/skills/Research/SKILL.md
+selftune eval unit-test --skill Research --generate --skill-path ~/.claude/skills/Research/SKILL.md
 ```
 
 This uses an LLM to create test cases covering:
@@ -103,7 +103,7 @@ Tests are saved to `~/.selftune/unit-tests/Research.json`.
 ### 2. Run Tests
 
 ```bash
-selftune unit-test --skill Research --tests ~/.selftune/unit-tests/Research.json
+selftune eval unit-test --skill Research --tests ~/.selftune/unit-tests/Research.json
 ```
 
 By default, only `trigger_check` assertions run (fast, no agent needed).
@@ -120,19 +120,19 @@ Check `pass_rate` and investigate failures:
 
 After evolving a skill, re-run unit tests to verify improvements:
 1. Evolve: `selftune evolve --skill Research --skill-path /path/SKILL.md`
-2. Test: `selftune unit-test --skill Research`
+2. Test: `selftune eval unit-test --skill Research`
 3. Check pass rate improved
 
 ## Common Patterns
 
 **"Generate tests for the pptx skill"**
-> `selftune unit-test --skill pptx --generate --skill-path /path/SKILL.md`
+> `selftune eval unit-test --skill pptx --generate --skill-path /path/SKILL.md`
 
 **"Run existing tests"**
-> `selftune unit-test --skill pptx --tests ~/.selftune/unit-tests/pptx.json`
+> `selftune eval unit-test --skill pptx --tests ~/.selftune/unit-tests/pptx.json`
 
 **"Run full agent tests"**
-> `selftune unit-test --skill pptx --tests /path/tests.json --run-agent`
+> `selftune eval unit-test --skill pptx --tests /path/tests.json --run-agent`
 
 **"Test after evolution"**
-> Run `selftune unit-test` after each `selftune evolve` to verify improvements.
+> Run `selftune eval unit-test` after each `selftune evolve` to verify improvements.

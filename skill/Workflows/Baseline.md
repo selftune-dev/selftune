@@ -7,7 +7,7 @@ improvement in pass rate that the skill provides.
 ## Default Command
 
 ```bash
-selftune baseline --skill <name> --skill-path <path> [options]
+selftune grade baseline --skill <name> --skill-path <path> [options]
 ```
 
 ## Options
@@ -65,7 +65,7 @@ If the user says "use defaults" or similar, skip to step 1 with recommended defa
 Present these options:
 
 ```
-selftune baseline — Pre-Flight Configuration
+selftune grade baseline — Pre-Flight Configuration
 
 1. Eval Set Source
    a) Auto-generate from logs (recommended if logs exist)
@@ -92,7 +92,7 @@ Proceeding...
 ### 1. Run Baseline Measurement
 
 ```bash
-selftune baseline --skill Research --skill-path ~/.claude/skills/Research/SKILL.md
+selftune grade baseline --skill Research --skill-path ~/.claude/skills/Research/SKILL.md
 ```
 
 ### 2. Interpret Results
@@ -112,10 +112,10 @@ cycles on skills that don't add value.
 ## Common Patterns
 
 **"Does the Research skill add value?"**
-> `selftune baseline --skill Research --skill-path ~/.claude/skills/Research/SKILL.md`
+> `selftune grade baseline --skill Research --skill-path ~/.claude/skills/Research/SKILL.md`
 
 **"Only evolve if the skill is actually useful"**
 > `selftune evolve --skill Research --skill-path /path/SKILL.md --with-baseline`
 
 **"Check baseline with a custom eval set"**
-> `selftune baseline --skill pptx --skill-path /path/SKILL.md --eval-set evals-pptx.json`
+> `selftune grade baseline --skill pptx --skill-path /path/SKILL.md --eval-set evals-pptx.json`

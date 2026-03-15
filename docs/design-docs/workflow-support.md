@@ -227,9 +227,9 @@ that is not part of the current command surface.
 
 Workflow discovery works on any platform that produces `skill_usage_log.jsonl`:
 - Claude Code: native hook support
-- Codex: via `selftune ingest-codex`
-- OpenCode: via `selftune ingest-opencode`
-- OpenClaw: via `selftune ingest-openclaw`
+- Codex: via `selftune ingest codex`
+- OpenCode: via `selftune ingest opencode`
+- OpenClaw: via `selftune ingest openclaw`
 
 No platform-specific logic needed. The analysis operates on the shared log schema.
 

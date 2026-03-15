@@ -90,8 +90,8 @@ Parse the output to confirm `~/.selftune/config.json` was created. Note the
 detected `agent_type` and `cli_path`.
 
 If the user is on a non-Claude agent platform:
-- **Codex** — inform about `wrap-codex` and `ingest-codex` options
-- **OpenCode** — inform about `ingest-opencode` option
+- **Codex** — inform about `ingest wrap-codex` and `ingest codex` options
+- **OpenCode** — inform about `ingest opencode` option
 
 ### Step 5: Install hooks
 
@@ -106,8 +106,8 @@ into `~/.claude/settings.json`. Three hooks are required:
 
 Derive script paths from `cli_path` in `~/.selftune/config.json`.
 
-For **Codex**: use `selftune wrap-codex` or `selftune ingest-codex`.
-For **OpenCode**: use `selftune ingest-opencode`.
+For **Codex**: use `selftune ingest wrap-codex` or `selftune ingest codex`.
+For **OpenCode**: use `selftune ingest opencode`.
 
 ### Step 6: Verify with doctor
 
@@ -159,7 +159,7 @@ from any package directory.
 Tell the user what to do next based on their goals:
 
 - **"I want to see how my skills are doing"** — run `selftune status`
-- **"I want to improve a skill"** — run `selftune evals --skill <name>` then `selftune evolve`
+- **"I want to improve a skill"** — run `selftune eval generate --skill <name>` then `selftune evolve`
 - **"I want to grade a session"** — run `selftune grade --skill <name>`
 
 ## Commands
@@ -170,7 +170,7 @@ Tell the user what to do next based on their goals:
 | `selftune doctor` | Verify installation health |
 | `selftune status` | Post-setup health check |
 | `selftune last` | Verify telemetry capture |
-| `selftune evals --list-skills` | Confirm skills are being tracked |
+| `selftune eval generate --list-skills` | Confirm skills are being tracked |
 
 ## Output
 

@@ -1,19 +1,14 @@
-# selftune Cron Workflow (OpenClaw Integration)
+# selftune Cron Workflow
 
 Manage OpenClaw cron jobs that run the selftune pipeline on a schedule.
-This is the **OpenClaw-specific** scheduling path. For generic scheduling
-with system cron, launchd, or systemd, see `Workflows/Schedule.md` or
-run `selftune schedule`.
-
-The scheduled architecture is **source-truth first**: the autonomous loop
-should sync raw agent data before making decisions.
+Enables fully autonomous skill evolution — skills improve while you sleep.
 
 ## When to Use
 
-- Setting up selftune automation specifically on OpenClaw
-- Checking which OpenClaw cron jobs are registered
-- Removing selftune cron jobs from OpenClaw
-- Enabling the autonomous observe-grade-evolve-deploy loop via OpenClaw
+- Setting up selftune automation for the first time on OpenClaw
+- Checking which cron jobs are registered
+- Removing selftune cron jobs (cleanup or reconfiguration)
+- Enabling the autonomous observe-grade-evolve-deploy loop
 
 ## Prerequisites
 
@@ -57,13 +52,14 @@ Remove all selftune cron jobs from OpenClaw.
 
 ## Default Job Schedule
 
-Setup registers these three jobs:
+Setup registers these four jobs:
 
 | Name | Cron Expression | Schedule | Description |
 |------|----------------|----------|-------------|
-| `selftune-sync` | `*/30 * * * *` | Every 30 minutes | Sync source-truth telemetry and rebuild repaired overlay |
-| `selftune-status` | `0 8 * * *` | Daily at 8am | Sync first, then report skills with pass rate below 80% |
-| `selftune-orchestrate` | `0 */6 * * *` | Every 6 hours | Autonomous loop: sync, candidate selection, evolve, and watch |
+| `selftune-ingest` | `*/30 * * * *` | Every 30 minutes | Ingest new sessions from OpenClaw transcripts |
+| `selftune-status` | `0 8 * * *` | Daily at 8am | Health check — report skills with pass rate below 80% |
+| `selftune-evolve` | `0 3 * * 0` | Weekly at 3am Sunday | Full evolution pipeline for undertriggering skills |
+| `selftune-watch` | `0 */6 * * *` | Every 6 hours | Monitor recently evolved skills for regressions |
 
 All jobs run in **isolated session** mode — each execution gets a clean
 session with no context accumulation from previous runs.
@@ -81,7 +77,7 @@ Jobs persist at `~/.openclaw/cron/jobs.json` and survive OpenClaw restarts.
 1. Run `selftune cron setup --dry-run` to preview what would be registered
 2. Run `selftune cron setup` to register the default jobs
 3. Run `selftune cron list` to verify jobs are registered
-4. Wait for the first cron cycle to fire (sync runs every 30 minutes)
+4. Wait for the first cron cycle to fire (ingest runs every 30 minutes)
 5. Check results with `selftune status` after the first daily health check
 
 ## The Autonomous Evolution Loop
@@ -92,7 +88,7 @@ When cron jobs are active, selftune operates as a self-correcting system:
 Cron fires (isolated session)
     |
     v
-Agent runs selftune pipeline (sync -> status -> evolve -> watch)
+Agent runs selftune pipeline (ingest -> status -> evolve -> watch)
     |
     v
 Improved SKILL.md written to disk
@@ -107,10 +103,11 @@ Skill snapshot version bumped — next agent turn uses updated description
 Better triggering in real-time, no restart needed
 ```
 
-The three jobs form a continuous loop:
-- **sync** refreshes source-truth telemetry and rebuilds the repaired skill overlay every 30 minutes
-- **status** evaluates health only after that sync has completed
-- **orchestrate** runs `selftune orchestrate --max-skills 3`, which syncs, evolves validated low-risk descriptions autonomously, and watches recent deployments with auto-rollback
+The four jobs form a continuous loop:
+- **ingest** captures raw session data every 30 minutes
+- **status** identifies undertriggering skills daily
+- **evolve** proposes and deploys improvements weekly
+- **watch** monitors for regressions every 6 hours and auto-rolls back if needed
 
 Skills improve and take effect within seconds of the cron job completing.
 No deployment step, no restart, no manual intervention.
@@ -125,14 +122,14 @@ No deployment step, no restart, no manual intervention.
 | Audit trail | Every evolution recorded in `evolution_audit_log.jsonl` with full history |
 | SKILL.md backup | `.bak` file created before every deploy — primary rollback path exists via .bak; fallback depends on audit metadata integrity |
 | Isolated sessions | Each cron run gets a clean session (no context pollution between runs) |
-| Human override | `selftune rollback --skill <name> --skill-path <path>` available anytime to manually revert |
+| Human override | `selftune evolve rollback --skill <name> --skill-path <path>` available anytime to manually revert |
 | Pin descriptions | Config flag to freeze specific skills and prevent evolution on sensitive skills |
 
 ## Common Patterns
 
 **"Set up autonomous skill evolution"**
-> Run `selftune cron setup`. The default jobs handle source sync,
-> health checks, and the autonomous orchestrated loop.
+> Run `selftune cron setup`. The four default jobs handle ingestion,
+> health checks, evolution, and regression monitoring.
 
 **"Preview before registering"**
 > Run `selftune cron setup --dry-run` to see exactly what commands
@@ -151,9 +148,8 @@ No deployment step, no restart, no manual intervention.
 
 **"A skill regressed after cron evolution"**
 > The watch job should catch this automatically. If not, run
-> `selftune rollback --skill <name>` manually. See `Workflows/Rollback.md`.
+> `selftune evolve rollback --skill <name>` manually. See `Workflows/Rollback.md`.
 
 **"How do I know the cron loop is working?"**
 > Run `selftune status` after the first daily health check fires (8am).
-> Check that `skill_usage_repaired.jsonl` and `canonical_telemetry_log.jsonl`
-> have recent timestamps, then inspect `evolution_audit_log.jsonl`.
+> Check `evolution_audit_log.jsonl` for entries with recent timestamps.

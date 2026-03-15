@@ -18,7 +18,7 @@ This produces much richer eval data from historical sessions.
 ## Default Command
 
 ```bash
-selftune replay
+selftune ingest claude
 ```
 
 ## Options
@@ -50,21 +50,21 @@ which transcripts have already been ingested. Use `--force` to re-ingest all.
 
 ## Steps
 
-1. Run `selftune replay --dry-run` to preview what would be ingested
-2. Run `selftune replay` to perform the ingestion
+1. Run `selftune ingest claude --dry-run` to preview what would be ingested
+2. Run `selftune ingest claude` to perform the ingestion
 3. Run `selftune doctor` to verify logs are healthy
-4. Run `selftune evals --list-skills` to see if replayed sessions appear
+4. Run `selftune eval generate --list-skills` to see if replayed sessions appear
 
 ## Common Patterns
 
 **"Backfill my logs"**
-> Run `selftune replay`. No options needed.
+> Run `selftune ingest claude`. No options needed.
 
 **"Only replay recent sessions"**
-> Run `selftune replay --since 2026-02-01`
+> Run `selftune ingest claude --since 2026-02-01`
 
 **"Re-ingest everything"**
-> Run `selftune replay --force`
+> Run `selftune ingest claude --force`
 
 **"How do I know it worked?"**
 > Run `selftune doctor` after replay. Check log file line counts increased.

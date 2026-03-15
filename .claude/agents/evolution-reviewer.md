@@ -114,7 +114,7 @@ Issue an approve or reject decision with full reasoning.
 | Command | Purpose |
 |---------|---------|
 | `selftune evolve --skill <name> --skill-path <path> --dry-run` | Generate proposal without deploying |
-| `selftune evals --skill <name>` | Check eval set used for validation |
+| `selftune eval generate --skill <name>` | Check eval set used for validation |
 | `selftune watch --skill <name> --skill-path <path>` | Check current performance baseline |
 | `selftune status` | Overall skill health context |
 

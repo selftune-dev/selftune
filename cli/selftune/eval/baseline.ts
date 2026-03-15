@@ -151,10 +151,10 @@ export async function cliMain(): Promise<void> {
   });
 
   if (values.help) {
-    console.log(`selftune baseline — Measure skill value vs. no-skill baseline
+    console.log(`selftune grade baseline — Measure skill value vs. no-skill baseline
 
 Usage:
-  selftune baseline --skill <name> --skill-path <path> [options]
+  selftune grade baseline --skill <name> --skill-path <path> [options]
 
 Options:
   --skill         Skill name (required)

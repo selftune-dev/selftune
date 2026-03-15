@@ -9,7 +9,7 @@
 
 ## Problem
 
-The current `composability` command only answers one question: "Do these skills conflict?" It computes a `conflict_score` based on error rate increases when skills co-occur. This is useful but limited.
+The current `eval composability` command only answers one question: "Do these skills conflict?" It computes a `conflict_score` based on error rate increases when skills co-occur. This is useful but limited.
 
 Users need answers to three more questions:
 1. "Do these skills work **better** together?" (synergy detection)
@@ -193,12 +193,12 @@ The extension is **additive only**:
 4. The existing `analyzeComposability()` function is NOT modified
 5. New function `analyzeComposabilityV2()` is separate — requires the additional `usage` parameter
 
-Existing tests continue to pass. The CLI `composability` command gains new output sections but existing output format is preserved.
+Existing tests continue to pass. The CLI `eval composability` command gains new output sections but existing output format is preserved.
 
 ### Updated CLI Output
 
 ```bash
-selftune composability --skill Copywriting
+selftune eval composability --skill Copywriting
 
 Composability Report: Copywriting
 Analyzed: 150 sessions | Window: all
@@ -224,7 +224,7 @@ Conflicts:
 
 ### Updated Composability.md Workflow Doc
 
-The workflow documentation for the `composability` command should be updated to reflect:
+The workflow documentation for the `eval composability` command should be updated to reflect:
 
 1. New `--min-occurrences` flag
 2. Synergy score interpretation table:

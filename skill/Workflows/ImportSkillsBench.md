@@ -7,7 +7,7 @@ your skill's eval set with externally validated test cases.
 ## Default Command
 
 ```bash
-selftune import-skillsbench --dir <path> --skill <name> --output <path> [options]
+selftune eval import --dir <path> --skill <name> --output <path> [options]
 ```
 
 ## Options
@@ -86,7 +86,7 @@ Clone or download the SkillsBench repository containing the task directory.
 ### 2. Import Tasks
 
 ```bash
-selftune import-skillsbench --dir /path/to/skillsbench/tasks --skill Research --output evals-bench.json
+selftune eval import --dir /path/to/skillsbench/tasks --skill Research --output evals-bench.json
 ```
 
 ### 3. Review Output
@@ -102,10 +102,10 @@ corpus. Use the merged set with `selftune evolve --eval-set merged-evals.json`.
 ## Common Patterns
 
 **"Import SkillsBench tasks for Research"**
-> `selftune import-skillsbench --dir /path/tasks --skill Research --output bench-evals.json`
+> `selftune eval import --dir /path/tasks --skill Research --output bench-evals.json`
 
 **"Use fuzzy matching for broader coverage"**
-> `selftune import-skillsbench --dir /path/tasks --skill pptx --output bench-evals.json --match-strategy fuzzy`
+> `selftune eval import --dir /path/tasks --skill pptx --output bench-evals.json --match-strategy fuzzy`
 
 **"Enrich my eval set with external benchmarks"**
-> Import with `import-skillsbench`, then pass the output to `evolve --eval-set`.
+> Import with `eval import`, then pass the output to `evolve --eval-set`.

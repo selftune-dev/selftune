@@ -7,7 +7,7 @@ its invocation type.
 ## Default Command
 
 ```bash
-selftune evals --skill <name> [options]
+selftune eval generate --skill <name> [options]
 ```
 
 ## Options
@@ -101,7 +101,7 @@ selftune evals --skill <name> [options]
 Discover which skills have telemetry data and how many queries each has.
 
 ```bash
-selftune evals --list-skills
+selftune eval generate --list-skills
 ```
 
 Use this first to identify which skills have enough data for eval generation.
@@ -112,7 +112,7 @@ When a skill has no telemetry data yet, use `--synthetic` to generate eval
 queries directly from the SKILL.md content via an LLM.
 
 ```bash
-selftune evals --skill pptx --synthetic --skill-path /path/to/skills/pptx/SKILL.md
+selftune eval generate --skill pptx --synthetic --skill-path /path/to/skills/pptx/SKILL.md
 ```
 
 The command:
@@ -125,7 +125,7 @@ The command:
 Use `--model` to override the default LLM model:
 
 ```bash
-selftune evals --skill pptx --synthetic --skill-path ./skills/pptx/SKILL.md --model claude-sonnet-4-5-20250514
+selftune eval generate --skill pptx --synthetic --skill-path ./skills/pptx/SKILL.md --model claude-sonnet-4-5-20250514
 ```
 
 ### Generate Evals (Log-Based)
@@ -135,7 +135,7 @@ Cross-reference `skill_usage_log.jsonl` (positive triggers) against
 an eval set annotated with invocation types.
 
 ```bash
-selftune evals --skill pptx --max 50 --out evals-pptx.json
+selftune eval generate --skill pptx --max 50 --out evals-pptx.json
 ```
 
 The command:
@@ -152,7 +152,7 @@ View aggregate telemetry for a skill: average turns, tool call breakdown,
 error rates, and common bash command patterns.
 
 ```bash
-selftune evals --skill pptx --stats
+selftune eval generate --skill pptx --stats
 ```
 
 ## Steps
@@ -167,7 +167,7 @@ For `--list-skills` or `--stats` requests, skip pre-flight entirely (read-only).
 Present these options:
 
 ```text
-selftune evals — Pre-Flight Configuration
+selftune eval generate — Pre-Flight Configuration
 
 1. Generation Mode
    a) Log-based — build evals from real usage logs (recommended if logs exist)
@@ -198,7 +198,7 @@ Proceeding...
 
 ### 1. List Available Skills
 
-Run `selftune evals --list-skills` to see what skills have telemetry data. If the target
+Run `selftune eval generate --list-skills` to see what skills have telemetry data. If the target
 skill has zero or very few queries, more sessions are needed before
 eval generation is useful.
 
@@ -234,18 +234,18 @@ beyond trigger coverage.
 ## Common Patterns
 
 **"What skills are undertriggering?"**
-> Run `selftune evals --list-skills`, then for each skill with significant query counts,
+> Run `selftune eval generate --list-skills`, then for each skill with significant query counts,
 > generate evals and check for missed implicit/contextual queries.
 
 **"Generate evals for pptx"**
-> Run `selftune evals --skill pptx`. Review the invocation type distribution.
+> Run `selftune eval generate --skill pptx`. Review the invocation type distribution.
 > Feed the output to `evolve` if coverage gaps exist.
 
 **"Show me skill stats"**
-> Run `selftune evals --skill <name> --stats` for aggregate telemetry.
+> Run `selftune eval generate --skill <name> --stats` for aggregate telemetry.
 
 **"I have a new skill with no usage data"**
-> Use `selftune evals --skill <name> --synthetic --skill-path /path/to/SKILL.md`.
+> Use `selftune eval generate --skill <name> --synthetic --skill-path /path/to/SKILL.md`.
 > This generates eval queries from the skill description without needing session logs.
 
 **"I want reproducible evals"**

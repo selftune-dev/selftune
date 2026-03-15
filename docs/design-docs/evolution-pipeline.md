@@ -159,7 +159,7 @@ All proposal generation and validation runs on the cheap model. Before deploy, a
 
 ### Synthetic Eval Generation
 
-`cli/selftune/eval/synthetic-evals.ts` generates eval sets from SKILL.md via LLM, without requiring real session logs. Invoked via `selftune evals --synthetic --skill <name> --skill-path <path>`. Solves the cold-start problem where new skills have no session data for eval generation.
+`cli/selftune/eval/synthetic-evals.ts` generates eval sets from SKILL.md via LLM, without requiring real session logs. Invoked via `selftune eval generate --synthetic --skill <name> --skill-path <path>`. Solves the cold-start problem where new skills have no session data for eval generation.
 
 ### Dependency Injection
 
@@ -197,7 +197,7 @@ Every state change is recorded to `~/.claude/evolution_audit_log.jsonl`:
 
 Each entry includes: `timestamp`, `proposal_id`, `action`, `details`, optional `eval_snapshot`.
 
-## Full Body Evolution Pipeline (`evolve-body.ts`)
+## Full Body Evolution Pipeline (`evolve body`)
 
 Extends evolution beyond descriptions to routing tables and complete skill bodies. Uses a teacher-student model where a stronger LLM generates proposals and a cheaper LLM validates them.
 
@@ -244,7 +244,7 @@ Extends Pareto dominance from 4 dimensions to 5 by adding token efficiency:
 - When `--token-efficiency` is enabled, the score is attached to `ParetoCandidate.token_efficiency_score` and used in `dominates()` comparison
 - Backward compatible — the 5th dimension is only used when both candidates have token scores
 
-## Skill Unit Tests (`eval/unit-test.ts`)
+## Skill Unit Tests (`eval unit-test`)
 
 Deterministic assertion framework for per-skill validation:
 
@@ -262,7 +262,7 @@ Pure function that detects skill interaction conflicts from telemetry:
 - `conflict_score = clamp((errors_together - errors_alone) / (errors_alone + 1), 0, 1)`
 - Pairs with `conflict_score > 0.3` are flagged as conflict candidates
 
-## SkillsBench Import (`eval/import-skillsbench.ts`)
+## SkillsBench Import (`eval import`)
 
 Imports external evaluation tasks from the SkillsBench corpus:
 
