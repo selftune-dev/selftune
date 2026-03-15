@@ -53,11 +53,11 @@ selftune learned that real users say "slides", "deck", "presentation for Monday"
 
 ## Built for How You Actually Work
 
-**I write and use my own skills** — You built skills for your workflow but your descriptions don't match how you actually talk. selftune learns your language from real sessions and evolves descriptions to match — no more manual tuning. `selftune status` · `selftune evolve` · `selftune grade baseline`
+**I write and use my own skills** — Your skill descriptions don't match how you actually talk. Tell your agent "improve my skills" and selftune learns your language from real sessions, evolves descriptions to match, and validates before deploying. No manual tuning.
 
-**I publish skills others install** — Your skill works for you, but every user talks differently. selftune ships skills that get better for every user automatically — adapting descriptions to how each person actually works. `selftune status` · `selftune eval generate` · `selftune badge`
+**I publish skills others install** — Your skill works for you, but every user talks differently. selftune ships skills that get better for every user automatically — adapting descriptions to how each person actually works.
 
-**I manage an agent setup with many skills** — You have 15+ skills installed. Some work. Some don't. Some conflict. selftune gives you a health dashboard and automatically improves the skills that aren't keeping up with how your team works. `selftune dashboard` · `selftune eval composability` · `selftune doctor`
+**I manage an agent setup with many skills** — You have 15+ skills installed. Some work. Some don't. Some conflict. Tell your agent "how are my skills doing?" and selftune gives you a health dashboard and automatically improves the skills that aren't keeping up.
 
 ## How It Works
 
@@ -65,15 +65,17 @@ selftune learned that real users say "slides", "deck", "presentation for Monday"
   <img src="./assets/FeedbackLoop.gif" alt="Observe → Detect → Evolve → Watch" width="800">
 </p>
 
-A continuous feedback loop that makes your skills learn and adapt. Automatically.
+A continuous feedback loop that makes your skills learn and adapt. Automatically. Your agent runs everything — you just install the skill and talk naturally.
 
-**Observe** — Hooks capture every user query and which skills fired. On Claude Code, hooks install automatically. Use `selftune ingest claude` to backfill existing transcripts. This is how your skills start learning.
+**Observe** — Hooks capture every query and which skills fired. On Claude Code, hooks install automatically during `selftune init`. Backfill existing transcripts with `selftune ingest claude`.
 
-**Detect** — selftune finds the gap between how you talk and how your skills are described. You say "make me a slide deck" and your pptx skill stays silent — selftune catches that mismatch.
+**Detect** — Finds the gap between how you talk and how your skills are described. You say "make me a slide deck" and your pptx skill stays silent — selftune catches that mismatch. Real-time correction signals ("why didn't you use X?") are detected and trigger immediate improvement.
 
-**Evolve** — Rewrites skill descriptions — and full skill bodies — to match how you actually work. Batched validation with per-stage model control (`--cheap-loop` uses haiku for the loop, sonnet for the gate). Teacher-student body evolution with 3-gate validation. Baseline comparison gates on measurable lift. Automatic backup.
+**Evolve** — Rewrites skill descriptions — and full skill bodies — to match how you actually work. Cheap-loop mode uses haiku for the loop, sonnet for the gate (~80% cost reduction). Teacher-student body evolution with 3-gate validation. Automatic backup.
 
-**Watch** — After deploying changes, selftune monitors skill trigger rates. If anything regresses, it rolls back automatically. Your skills keep improving without you touching them.
+**Watch** — After deploying changes, selftune monitors skill trigger rates. If anything regresses, it rolls back automatically.
+
+**Automate** — Run `selftune cron setup` to install OS-level scheduling. selftune syncs, evaluates, evolves, and watches on a schedule — no manual intervention needed.
 
 ## What's New in v0.2.0
 
@@ -91,21 +93,26 @@ A continuous feedback loop that makes your skills learn and adapt. Automatically
 
 ## Commands
 
-| Command | What it does |
-|---|---|
-| `selftune status` | See which skills are undertriggering and why |
-| `selftune eval generate --skill <name>` | Generate eval sets from real session data (`--synthetic` for cold-start) |
-| `selftune evolve --skill <name>` | Propose, validate, and deploy improved descriptions (`--cheap-loop`, `--with-baseline`) |
-| `selftune evolve body --skill <name>` | Evolve full skill body or routing table (teacher-student, 3-gate validation) |
-| `selftune grade baseline --skill <name>` | Measure skill value vs no-skill baseline |
-| `selftune eval unit-test --skill <name>` | Run or generate skill-level unit tests |
-| `selftune eval composability --skill <name>` | Detect conflicts between co-occurring skills |
-| `selftune eval import` | Import external eval corpus from [SkillsBench](https://github.com/benchflow-ai/skillsbench) |
-| `selftune badge --skill <name>` | Generate skill health badge SVG |
-| `selftune watch --skill <name>` | Monitor after deploy. Auto-rollback on regression. |
-| `selftune dashboard` | Open the visual skill health dashboard |
-| `selftune ingest claude` | Backfill data from existing Claude Code transcripts |
-| `selftune doctor` | Health check: logs, hooks, config, permissions |
+Your agent runs these — you just say what you want ("improve my skills", "show the dashboard").
+
+| Group | Command | What it does |
+|-------|---------|-------------|
+| | `selftune status` | See which skills are undertriggering and why |
+| | `selftune orchestrate` | Run the full autonomous loop (sync → evolve → watch) |
+| | `selftune dashboard` | Open the visual skill health dashboard |
+| | `selftune doctor` | Health check: logs, hooks, config, permissions |
+| **ingest** | `selftune ingest claude` | Backfill from Claude Code transcripts |
+| | `selftune ingest codex` | Import Codex rollout logs (experimental) |
+| **grade** | `selftune grade --skill <name>` | Grade a skill session with evidence |
+| | `selftune grade baseline --skill <name>` | Measure skill value vs no-skill baseline |
+| **evolve** | `selftune evolve --skill <name>` | Propose, validate, and deploy improved descriptions |
+| | `selftune evolve body --skill <name>` | Evolve full skill body or routing table |
+| | `selftune evolve rollback --skill <name>` | Rollback a previous evolution |
+| **eval** | `selftune eval generate --skill <name>` | Generate eval sets (`--synthetic` for cold-start) |
+| | `selftune eval unit-test --skill <name>` | Run or generate skill-level unit tests |
+| | `selftune eval composability --skill <name>` | Detect conflicts between co-occurring skills |
+| **auto** | `selftune cron setup` | Install OS-level scheduling (cron/launchd/systemd) |
+| | `selftune watch --skill <name>` | Monitor after deploy. Auto-rollback on regression. |
 
 Full command reference: `selftune --help`
 

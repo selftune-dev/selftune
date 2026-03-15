@@ -152,17 +152,36 @@ See ARCHITECTURE.md for domain map, module layering, and dependency rules.
 | Code of Conduct | CODE_OF_CONDUCT.md | Current |
 | License | LICENSE | Current |
 
+## Change Propagation Map
+
+When changing one part of selftune, check if dependent files need updating.
+This prevents stale docs and broken contracts.
+
+| If you change... | Also update... |
+|------------------|---------------|
+| CLI commands in `index.ts` (add/rename/remove) | `skill/SKILL.md` Quick Reference + Workflow Routing table, `README.md` Commands table, `AGENTS.md` project tree |
+| CLI flags on any command | The command's `skill/Workflows/*.md` doc (flags table + examples) |
+| JSONL log schema or new log file | `constants.ts`, `types.ts`, `skill/references/logs.md`, `localdb/schema.ts` + `materialize.ts`, `ARCHITECTURE.md` data architecture |
+| Dashboard contract (`dashboard-contract.ts`) | `apps/local-dashboard/src/types.ts`, dashboard components that consume the changed fields |
+| Hook behavior (`hooks/*.ts`) | `skill/Workflows/Initialize.md` hook table, `skill/settings_snippet.json` |
+| Orchestrate behavior | `skill/Workflows/Orchestrate.md`, `ARCHITECTURE.md` operating modes |
+| Agent files (`.claude/agents/*.md`) | `skill/SKILL.md` Specialized Agents table |
+| New workflow file | `skill/SKILL.md` Workflow Routing table + Resource Index |
+| Evolution pipeline changes | `skill/Workflows/Evolve.md`, `docs/design-docs/evolution-pipeline.md` |
+| Platform adapter (ingestor) changes | `skill/Workflows/Ingest.md`, `README.md` Platforms section |
+
 ## Development Workflow
 
 1. Receive task via prompt
 2. Read this file, then follow pointers to relevant docs
 3. Read PRD.md for product context and the feedback loop model
 4. Implement changes following ARCHITECTURE.md layer rules
-5. Run sandbox harness: `bun run tests/sandbox/run-sandbox.ts`
-6. Run `make check` (lint + test) or `bun test`
-7. Verify JSONL output schema matches appendix in PRD.md
-8. Self-review: check log schema compatibility across all three platforms
-9. Open PR with concise summary
+5. **Check the Change Propagation Map above** — update dependent docs before committing
+6. Run sandbox harness: `bun run tests/sandbox/run-sandbox.ts`
+7. Run `make check` (lint + test) or `bun test`
+8. Verify JSONL output schema matches appendix in PRD.md
+9. Self-review: check log schema compatibility across all platforms
+10. Open PR with concise summary
 
 ## Key Constraints
 
