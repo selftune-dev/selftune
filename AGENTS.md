@@ -163,7 +163,7 @@ See ARCHITECTURE.md for domain map, module layering, and dependency rules.
 ## Key Constraints
 
 - **selftune is agent-first:** users interact through their coding agent, not the CLI directly. SKILL.md and workflow docs are the product surface; the CLI is the agent's API.
-- All four platform adapters (Claude Code, Codex, OpenCode, OpenClaw) write to the same shared log schema
+- Claude Code is the primary supported platform; Codex, OpenCode, and OpenClaw adapters are experimental (they exist but are not actively tested). All four write to the same shared log schema
 - Source-truth transcripts/rollouts are authoritative; hooks are low-latency hints, not the canonical record
 - Grading uses the user's existing agent subscription — no separate API key
 - Hooks should be zero-config after installation where the host agent supports them

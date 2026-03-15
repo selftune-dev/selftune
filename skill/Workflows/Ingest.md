@@ -1,5 +1,7 @@
 # selftune Ingest Workflow
 
+> **Note:** Claude Code is the fully supported platform. Codex, OpenCode, and OpenClaw adapters are experimental and may have gaps.
+
 Import sessions from agent platforms into the shared selftune log format.
 Covers five sub-commands: `ingest claude`, `ingest codex`, `ingest opencode`,
 `ingest openclaw`, and `ingest wrap-codex`.

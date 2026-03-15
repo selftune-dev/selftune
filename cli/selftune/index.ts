@@ -15,8 +15,7 @@
  *   selftune doctor             — Run health checks
  *   selftune dashboard          — Open visual data dashboard
  *   selftune last               — Show last session details
- *   selftune schedule           — Generate scheduling examples (cron, launchd, systemd)
- *   selftune cron               — OpenClaw cron integration (setup, list, remove)
+ *   selftune cron               — Scheduling & automation (setup, list, remove)
  *   selftune badge              — Generate skill health badges for READMEs
  *   selftune contribute         — Export anonymized skill data for community
  *   selftune workflows          — Discover and manage multi-skill workflows
@@ -47,8 +46,7 @@ Commands:
   doctor             Run health checks
   dashboard          Open visual data dashboard
   last               Show last session details
-  schedule           Generate scheduling examples (cron, launchd, systemd)
-  cron               OpenClaw cron integration (setup, list, remove)
+  cron               Scheduling & automation (setup, list, remove)
   badge              Generate skill health badges for READMEs
   contribute         Export anonymized skill data for community
   workflows          Discover and manage multi-skill workflows
@@ -87,10 +85,10 @@ Usage:
 
 Agents:
   claude       Replay Claude Code transcripts into logs
-  codex        Ingest Codex rollout logs
-  opencode     Ingest OpenCode sessions
-  openclaw     Ingest OpenClaw sessions
-  wrap-codex   Wrap codex exec with real-time telemetry
+  codex        Ingest Codex rollout logs (experimental)
+  opencode     Ingest OpenCode sessions (experimental)
+  openclaw     Ingest OpenClaw sessions (experimental)
+  wrap-codex   Wrap codex exec with real-time telemetry (experimental)
 
 Run 'selftune ingest <agent> --help' for agent-specific options.`);
       process.exit(0);
@@ -312,9 +310,91 @@ Run 'selftune eval <action> --help' for action-specific options.`);
     await cliMain();
     break;
   }
-  case "cron": {
-    const { cliMain } = await import("./cron/setup.js");
-    await cliMain();
+  case "cron":
+  case "schedule": {
+    const sub = process.argv[2];
+    if (sub === "--help" || sub === "-h" || (!sub && command === "cron")) {
+      console.log(`selftune cron — Scheduling & automation for selftune
+
+Usage:
+  selftune cron <subcommand> [options]
+
+Subcommands:
+  setup              Auto-detect platform and install scheduled jobs (cron/launchd/systemd)
+  setup --platform openclaw   Use OpenClaw-specific cron integration
+  list               Show registered selftune cron jobs (OpenClaw)
+  remove             Remove selftune cron jobs (OpenClaw)
+
+Flags (setup):
+  --platform <name>  Force a specific platform (openclaw, cron, launchd, systemd)
+  --dry-run          Preview without installing
+  --tz <timezone>    IANA timezone for job schedules (OpenClaw only)
+  --format, -f       Alias for --platform (backward compat with schedule)
+  --install          Write and activate artifacts (default for setup)
+
+Aliases:
+  selftune schedule  → selftune cron
+
+Run 'selftune cron <subcommand> --help' for subcommand-specific options.`);
+      process.exit(0);
+    }
+
+    // If invoked as `selftune schedule` with no subcommand or with flags,
+    // route directly to the schedule module for backward compatibility
+    if (command === "schedule" && (!sub || sub.startsWith("-"))) {
+      const { cliMain } = await import("./schedule.js");
+      cliMain();
+      break;
+    }
+
+    // Strip the subcommand so downstream sees clean argv
+    process.argv = [process.argv[0], process.argv[1], ...process.argv.slice(3)];
+
+    switch (sub) {
+      case "setup": {
+        // Check for --platform flag to decide which setup path
+        const platformIdx = process.argv.indexOf("--platform");
+        const platformVal = platformIdx >= 0 ? process.argv[platformIdx + 1] : undefined;
+
+        if (platformVal === "openclaw") {
+          // Remove --platform openclaw from argv before passing to cron/setup
+          process.argv = process.argv.filter((_, i) => i !== platformIdx && i !== platformIdx + 1);
+          const { cliMain } = await import("./cron/setup.js");
+          await cliMain();
+        } else if (platformVal) {
+          // Map --platform to --format for the schedule module
+          process.argv = process.argv.filter((_, i) => i !== platformIdx && i !== platformIdx + 1);
+          process.argv.push("--format", platformVal, "--install");
+          const { cliMain } = await import("./schedule.js");
+          cliMain();
+        } else {
+          // Auto-detect: install schedule artifacts for the current platform
+          process.argv.push("--install");
+          const { cliMain } = await import("./schedule.js");
+          cliMain();
+        }
+        break;
+      }
+      case "list": {
+        const { cliMain } = await import("./cron/setup.js");
+        // Re-add 'list' so cron/setup.ts sees the subcommand
+        process.argv = [process.argv[0], process.argv[1], "list", ...process.argv.slice(2)];
+        await cliMain();
+        break;
+      }
+      case "remove": {
+        const { cliMain } = await import("./cron/setup.js");
+        // Re-add 'remove' so cron/setup.ts sees the subcommand
+        process.argv = [process.argv[0], process.argv[1], "remove", ...process.argv.slice(2)];
+        await cliMain();
+        break;
+      }
+      default:
+        console.error(
+          `Unknown cron subcommand: ${sub}\nRun 'selftune cron --help' for available subcommands.`,
+        );
+        process.exit(1);
+    }
     break;
   }
   case "badge": {
@@ -324,11 +404,6 @@ Run 'selftune eval <action> --help' for action-specific options.`);
   }
   case "sync": {
     const { cliMain } = await import("./sync.js");
-    cliMain();
-    break;
-  }
-  case "schedule": {
-    const { cliMain } = await import("./schedule.js");
     cliMain();
     break;
   }

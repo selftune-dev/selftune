@@ -135,13 +135,13 @@ selftune is complementary to these tools, not competitive. They trace what happe
 
 ## Platforms
 
-**Claude Code** — Hooks install automatically. `selftune ingest claude` backfills existing transcripts.
+**Claude Code** (fully supported) — Hooks install automatically. `selftune ingest claude` backfills existing transcripts. This is the primary supported platform.
 
-**Codex** — `selftune ingest wrap-codex -- <args>` or `selftune ingest codex`
+**Codex** (experimental) — `selftune ingest wrap-codex -- <args>` or `selftune ingest codex`. Adapter exists but is not actively tested.
 
-**OpenCode** — `selftune ingest opencode`
+**OpenCode** (experimental) — `selftune ingest opencode`. Adapter exists but is not actively tested.
 
-**OpenClaw** — `selftune ingest openclaw` + `selftune cron setup` for autonomous evolution
+**OpenClaw** (experimental) — `selftune ingest openclaw` + `selftune cron setup` for autonomous evolution. Adapter exists but is not actively tested.
 
 Requires [Bun](https://bun.sh) or Node.js 18+. No extra API keys.
 

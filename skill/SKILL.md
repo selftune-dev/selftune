@@ -45,10 +45,10 @@ Most commands output deterministic JSON. Parse JSON output for machine-readable 
 ```bash
 # Ingest group
 selftune ingest claude   [--since DATE] [--dry-run] [--force] [--verbose]
-selftune ingest codex
-selftune ingest opencode
-selftune ingest openclaw [--agents-dir PATH] [--since DATE] [--dry-run] [--force] [--verbose]
-selftune ingest wrap-codex -- <codex args>
+selftune ingest codex                                                          # (experimental)
+selftune ingest opencode                                                       # (experimental)
+selftune ingest openclaw [--agents-dir PATH] [--since DATE] [--dry-run] [--force] [--verbose]  # (experimental)
+selftune ingest wrap-codex -- <codex args>                                     # (experimental)
 
 # Grade group
 selftune grade auto      --skill <name> [--expectations "..."] [--agent <name>]
@@ -73,7 +73,8 @@ selftune doctor
 selftune dashboard [--export] [--out FILE] [--serve]
 selftune dashboard --serve [--port <port>]
 selftune contribute [--skill NAME] [--preview] [--sanitize LEVEL] [--submit]
-selftune cron setup [--dry-run] [--tz <timezone>]
+selftune cron setup [--dry-run]                         # auto-detect platform (cron/launchd/systemd)
+selftune cron setup --platform openclaw [--dry-run] [--tz <timezone>]  # OpenClaw-specific
 selftune cron list
 selftune cron remove [--dry-run]
 ```
@@ -179,7 +180,7 @@ Observe --> Detect --> Diagnose --> Propose --> Validate --> Audit --> Deploy --
 | `Workflows/Ingest.md` | Import sessions from Codex, OpenCode, and OpenClaw |
 | `Workflows/Replay.md` | Backfill logs from Claude Code transcripts |
 | `Workflows/Contribute.md` | Export anonymized data for community contribution |
-| `Workflows/Cron.md` | Manage OpenClaw cron jobs for autonomous evolution |
+| `Workflows/Cron.md` | Scheduling & automation (cron/launchd/systemd/OpenClaw) |
 | `Workflows/AutoActivation.md` | Auto-activation hook behavior and rules |
 | `Workflows/Dashboard.md` | Dashboard modes: static, export, live server |
 | `Workflows/EvolutionMemory.md` | Evolution memory system for session continuity |
