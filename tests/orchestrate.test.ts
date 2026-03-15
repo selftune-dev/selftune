@@ -9,7 +9,11 @@ import {
 } from "../cli/selftune/orchestrate.js";
 import type { SkillStatus, StatusResult } from "../cli/selftune/status.js";
 import type { SyncResult, SyncStepResult } from "../cli/selftune/sync.js";
-import type { DoctorResult, EvolutionAuditEntry, MonitoringSnapshot } from "../cli/selftune/types.js";
+import type {
+  DoctorResult,
+  EvolutionAuditEntry,
+  MonitoringSnapshot,
+} from "../cli/selftune/types.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
