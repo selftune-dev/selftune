@@ -2,7 +2,7 @@
 
 Visual dashboard for selftune telemetry, skill performance, evolution
 audit, and monitoring data. Supports static HTML export, file output,
-and a live server with SSE auto-refresh and action buttons.
+and a live server with polling-based auto-refresh and action buttons.
 
 ## Default Command
 
@@ -53,9 +53,10 @@ selftune dashboard --out /tmp/report.html
 
 ### Live Server
 
-Starts a Bun HTTP server with real-time data updates via Server-Sent
-Events (SSE). The dashboard auto-refreshes every 5 seconds and provides
-action buttons to trigger selftune commands.
+Starts a Bun HTTP server with a React SPA dashboard. The SPA uses
+TanStack Query polling to auto-refresh data (overview every 15s,
+orchestrate runs every 30s, doctor every 30s) and provides action
+buttons to trigger selftune commands.
 
 ```bash
 selftune dashboard --serve
@@ -83,12 +84,18 @@ override.
 | `POST` | `/api/actions/evolve` | Trigger `selftune evolve` for a skill |
 | `POST` | `/api/actions/rollback` | Trigger `selftune evolve rollback` for a skill |
 
-### SSE Auto-Refresh
+### Auto-Refresh
 
-The `/api/events` endpoint opens an SSE connection that pushes fresh
-data every 5 seconds. The dashboard client listens for `data` events
-and re-renders automatically. When `window.__SELFTUNE_LIVE__` is set
-(injected by the live server), the dashboard enables SSE polling.
+The dashboard SPA uses TanStack Query with `refetchInterval` to poll
+the v2 API endpoints automatically:
+
+- `/api/v2/overview` — every 15 seconds
+- `/api/v2/orchestrate-runs` — every 30 seconds
+- `/api/v2/doctor` — every 30 seconds
+- `/api/v2/skills/:name` — every 30 seconds (when viewing a skill)
+
+Data also refreshes on window focus. No SSE or websocket connection
+is required.
 
 ### Action Endpoints
 
@@ -131,8 +138,8 @@ On failure, `success` is `false` and `error` contains the error message.
 The live server auto-opens the dashboard URL in the default browser on
 macOS (`open`) and Linux (`xdg-open`).
 
-Graceful shutdown on `SIGINT` (Ctrl+C) and `SIGTERM`: closes all SSE
-client connections and stops the server.
+Graceful shutdown on `SIGINT` (Ctrl+C) and `SIGTERM`: closes the SQLite
+database and stops the server.
 
 ## Data Contents
 
@@ -176,8 +183,8 @@ selftune dashboard --serve
 ### 3. Interact with Dashboard
 
 - **Static mode**: View the snapshot. Re-run to refresh.
-- **Live mode**: Data refreshes automatically every 5 seconds. Use
-  action buttons to trigger watch, evolve, or rollback directly from
+- **Live mode**: Data refreshes automatically via polling (15-30s intervals).
+  Use action buttons to trigger watch, evolve, or rollback directly from
   the dashboard.
 
 ## Common Patterns
@@ -186,8 +193,8 @@ selftune dashboard --serve
 > Run `selftune dashboard`. Opens a browser with current data.
 
 **"I want live updates"**
-> Run `selftune dashboard --serve`. The SSE stream refreshes every 5
-> seconds without manual intervention.
+> Run `selftune dashboard --serve`. The SPA polls for fresh data every
+> 15-30 seconds without manual intervention.
 
 **"Export a report"**
 > Use `selftune dashboard --out report.html` to save a self-contained

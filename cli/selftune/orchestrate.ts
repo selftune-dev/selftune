@@ -802,11 +802,19 @@ Examples:
   const isLoop = values.loop ?? false;
   let stopRequested = false;
   let sleepTimer: ReturnType<typeof setTimeout> | null = null;
+  let sleepResolve: (() => void) | null = null;
 
   if (isLoop) {
     const requestStop = () => {
       stopRequested = true;
-      if (sleepTimer) clearTimeout(sleepTimer);
+      if (sleepTimer) {
+        clearTimeout(sleepTimer);
+        sleepTimer = null;
+      }
+      if (sleepResolve) {
+        sleepResolve();
+        sleepResolve = null;
+      }
       console.error("\n[orchestrate] Loop interrupted. Finishing current cycle...");
     };
     process.on("SIGINT", requestStop);
@@ -868,10 +876,14 @@ Examples:
 
     const nextMinutes = Math.round(loopInterval / 60);
     console.error(`\n[orchestrate] Next cycle in ${nextMinutes} minute(s)... (Ctrl+C to stop)`);
-    await new Promise((resolve) => {
-      sleepTimer = setTimeout(resolve, loopInterval * 1000);
+    await new Promise<void>((resolve) => {
+      sleepResolve = resolve;
+      sleepTimer = setTimeout(() => {
+        sleepTimer = null;
+        sleepResolve = null;
+        resolve();
+      }, loopInterval * 1000);
     });
-    sleepTimer = null;
   } while (isLoop && !stopRequested);
 
   process.exit(0);

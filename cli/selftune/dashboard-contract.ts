@@ -175,23 +175,7 @@ export interface OrchestrateRunsResponse {
 }
 
 // -- Doctor / health check types ----------------------------------------------
-
-export type HealthStatus = "pass" | "fail" | "warn";
-
-export interface HealthCheck {
-  name: string;
-  path: string;
-  status: HealthStatus;
-  message: string;
-}
-
-export interface DoctorResult {
-  command: string;
-  timestamp: string;
-  checks: HealthCheck[];
-  summary: { pass: number; fail: number; warn: number; total: number };
-  healthy: boolean;
-}
+export type { DoctorResult, HealthCheck, HealthStatus } from "./types.js";
 
 export interface SkillReportResponse extends SkillReportPayload {
   evolution: EvolutionEntry[];

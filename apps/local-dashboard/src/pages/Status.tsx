@@ -162,12 +162,20 @@ export function Status() {
   const logChecks = checks.filter((c) => c.name.startsWith("log_"))
   const hookChecks = checks.filter((c) => c.name === "hook_settings")
   const evolutionChecks = checks.filter((c) => c.name === "evolution_audit")
+  const knownNames = new Set([
+    "config",
+    ...logChecks.map((c) => c.name),
+    "hook_settings",
+    "evolution_audit",
+  ])
+  const otherChecks = checks.filter((c) => !knownNames.has(c.name))
 
   const groups = [
     { title: "Configuration", checks: configChecks },
     { title: "Log Files", checks: logChecks },
     { title: "Hooks", checks: hookChecks },
     { title: "Evolution", checks: evolutionChecks },
+    { title: "Other", checks: otherChecks },
   ].filter((g) => g.checks.length > 0)
 
   return (
@@ -234,8 +242,8 @@ export function Status() {
         <div key={group.title}>
           <h2 className="text-sm font-medium text-muted-foreground mb-3">{group.title}</h2>
           <div className="grid grid-cols-1 gap-3 @xl/main:grid-cols-2">
-            {group.checks.map((check) => (
-              <CheckCard key={check.name} check={check} />
+            {group.checks.map((check, idx) => (
+              <CheckCard key={`${check.name}-${idx}`} check={check} />
             ))}
           </div>
         </div>
