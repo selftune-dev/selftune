@@ -22,30 +22,20 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import type { EvolveResult } from "../cli/selftune/evolution/evolve.js";
-import { evolve, type EvolveDeps, type EvolveOptions } from "../cli/selftune/evolution/evolve.js";
+import { appendAuditEntry } from "../cli/selftune/evolution/audit.js";
+import { type EvolveOptions, evolve } from "../cli/selftune/evolution/evolve.js";
+import { rollback } from "../cli/selftune/evolution/rollback.js";
 import type { ValidationResult } from "../cli/selftune/evolution/validate-proposal.js";
-import { computeMonitoringSnapshot, watch } from "../cli/selftune/monitoring/watch.js";
 import type { WatchOptions, WatchResult } from "../cli/selftune/monitoring/watch.js";
+import { watch } from "../cli/selftune/monitoring/watch.js";
 import {
-  orchestrate,
   type OrchestrateDeps,
-  type OrchestrateOptions,
+  orchestrate,
   selectCandidates,
 } from "../cli/selftune/orchestrate.js";
-import { appendAuditEntry, readAuditTrail } from "../cli/selftune/evolution/audit.js";
-import { rollback } from "../cli/selftune/evolution/rollback.js";
 import type { SkillStatus, StatusResult } from "../cli/selftune/status.js";
 import type { SyncResult, SyncStepResult } from "../cli/selftune/sync.js";
 import type {
@@ -266,7 +256,9 @@ describe("autonomy proof: autonomous deploy end-to-end", () => {
     const deps: OrchestrateDeps = {
       syncSources: () => makeSyncResult(),
       computeStatus: () =>
-        makeStatusResult([makeSkill({ name: "test-autonomy", status: "WARNING", passRate: 0.6, missedQueries: 3 })]),
+        makeStatusResult([
+          makeSkill({ name: "test-autonomy", status: "WARNING", passRate: 0.6, missedQueries: 3 }),
+        ]),
       detectAgent: () => "claude",
       doctor: () => makeDoctorResult(),
       readTelemetry: () => [],
@@ -340,14 +332,14 @@ describe("autonomy proof: autonomous deploy end-to-end", () => {
     // --- Assert: orchestrate picked the right candidate ---
     expect(result.summary.evaluated).toBe(1);
     expect(evolveCalled).toBe(true);
-    expect(evolveOpts!.dryRun).toBe(false); // autonomous mode = dryRun false
-    expect(evolveOpts!.skillName).toBe("test-autonomy");
+    expect(evolveOpts?.dryRun).toBe(false); // autonomous mode = dryRun false
+    expect(evolveOpts?.skillName).toBe("test-autonomy");
 
     // --- Assert: evolve actually deployed (real file I/O) ---
     const candidate = result.candidates.find((c) => c.skill === "test-autonomy");
     expect(candidate).toBeDefined();
-    expect(candidate!.evolveResult).toBeDefined();
-    expect(candidate!.evolveResult!.deployed).toBe(true);
+    expect(candidate?.evolveResult).toBeDefined();
+    expect(candidate?.evolveResult?.deployed).toBe(true);
 
     // --- Assert: SKILL.md on disk was updated ---
     // Note: replaceFrontmatterDescription may YAML-fold the description, so we
@@ -373,8 +365,8 @@ describe("autonomy proof: autonomous deploy end-to-end", () => {
     expect(actions).toContain("deployed");
 
     const deployedEntry = auditEntries.find((e) => e.action === "deployed");
-    expect(deployedEntry!.proposal_id).toBe("evo-autonomy-proof-001");
-    expect(deployedEntry!.eval_snapshot?.pass_rate).toBe(0.9);
+    expect(deployedEntry?.proposal_id).toBe("evo-autonomy-proof-001");
+    expect(deployedEntry?.eval_snapshot?.pass_rate).toBe(0.9);
   });
 
   test("review-required mode prevents autonomous deploy", async () => {
@@ -388,7 +380,9 @@ describe("autonomy proof: autonomous deploy end-to-end", () => {
     const deps: OrchestrateDeps = {
       syncSources: () => makeSyncResult(),
       computeStatus: () =>
-        makeStatusResult([makeSkill({ name: "review-skill", status: "WARNING", passRate: 0.5, missedQueries: 5 })]),
+        makeStatusResult([
+          makeSkill({ name: "review-skill", status: "WARNING", passRate: 0.5, missedQueries: 5 }),
+        ]),
       detectAgent: () => "claude",
       doctor: () => makeDoctorResult(),
       readTelemetry: () => [],
@@ -433,7 +427,13 @@ describe("autonomy proof: autonomous deploy end-to-end", () => {
     };
 
     await orchestrate(
-      { dryRun: false, approvalMode: "review", maxSkills: 5, recentWindowHours: 48, syncForce: false },
+      {
+        dryRun: false,
+        approvalMode: "review",
+        maxSkills: 5,
+        recentWindowHours: 48,
+        syncForce: false,
+      },
       deps,
     );
 
@@ -459,11 +459,18 @@ describe("autonomy proof: watch detects regression", () => {
     // Only 1 of 10 triggered = 0.1 pass rate, well below 0.8 baseline
     const skillRecords = [
       makeSkillUsageRecord({ session_id: sessionIds[0], triggered: true }),
-      ...sessionIds.slice(1).map((sid) => makeSkillUsageRecord({ session_id: sid, triggered: false })),
+      ...sessionIds
+        .slice(1)
+        .map((sid) => makeSkillUsageRecord({ session_id: sid, triggered: false })),
     ];
 
-    const queryRecords = sessionIds.map((sid) =>
-      ({ timestamp: "2026-03-14T12:00:00Z", session_id: sid, query: "run tests" }) as QueryLogRecord,
+    const queryRecords = sessionIds.map(
+      (sid) =>
+        ({
+          timestamp: "2026-03-14T12:00:00Z",
+          session_id: sid,
+          query: "run tests",
+        }) as QueryLogRecord,
     );
 
     // Audit log with a deployed entry establishing 0.8 baseline
@@ -505,7 +512,7 @@ describe("autonomy proof: watch detects regression", () => {
     expect(result.snapshot.pass_rate).toBeCloseTo(0.1, 2);
     expect(result.snapshot.baseline_pass_rate).toBe(0.8);
     expect(result.alert).not.toBeNull();
-    expect(result.alert!).toContain("regression");
+    expect(result.alert ?? "").toContain("regression");
     expect(result.rolledBack).toBe(false); // autoRollback was off
   });
 
@@ -518,12 +525,19 @@ describe("autonomy proof: watch detects regression", () => {
 
     // 4 of 5 triggered = 0.8, which is >= 0.8 - 0.1 = 0.7
     const skillRecords = [
-      ...sessionIds.slice(0, 4).map((sid) => makeSkillUsageRecord({ session_id: sid, triggered: true })),
+      ...sessionIds
+        .slice(0, 4)
+        .map((sid) => makeSkillUsageRecord({ session_id: sid, triggered: true })),
       makeSkillUsageRecord({ session_id: sessionIds[4], triggered: false }),
     ];
 
     const queryRecords = sessionIds.map(
-      (sid) => ({ timestamp: "2026-03-14T12:00:00Z", session_id: sid, query: "run tests" }) as QueryLogRecord,
+      (sid) =>
+        ({
+          timestamp: "2026-03-14T12:00:00Z",
+          session_id: sid,
+          query: "run tests",
+        }) as QueryLogRecord,
     );
 
     const auditEntries: EvolutionAuditEntry[] = [
@@ -621,7 +635,12 @@ describe("autonomy proof: automatic rollback on regression", () => {
     );
 
     const queryRecords = sessionIds.map(
-      (sid) => ({ timestamp: "2026-03-14T12:00:00Z", session_id: sid, query: "run tests" }) as QueryLogRecord,
+      (sid) =>
+        ({
+          timestamp: "2026-03-14T12:00:00Z",
+          session_id: sid,
+          query: "run tests",
+        }) as QueryLogRecord,
     );
 
     const telemetryPath = join(tmpDir, "autoroll-telemetry.jsonl");
@@ -719,7 +738,12 @@ describe("autonomy proof: automatic rollback on regression", () => {
       makeSkillUsageRecord({ session_id: sid, triggered: i < 8 }),
     );
     const queryRecords = sessionIds.map(
-      (sid) => ({ timestamp: "2026-03-14T12:00:00Z", session_id: sid, query: "run tests" }) as QueryLogRecord,
+      (sid) =>
+        ({
+          timestamp: "2026-03-14T12:00:00Z",
+          session_id: sid,
+          query: "run tests",
+        }) as QueryLogRecord,
     );
 
     writeJsonl(telemetry, join(tmpDir, "ok-telemetry.jsonl"));
@@ -782,7 +806,9 @@ describe("autonomy proof: orchestrate watches recently-evolved skills", () => {
         },
       ],
       resolveSkillPath: (name) =>
-        name === "recently-deployed-skill" ? "/tmp/skills/recently-deployed-skill/SKILL.md" : undefined,
+        name === "recently-deployed-skill"
+          ? "/tmp/skills/recently-deployed-skill/SKILL.md"
+          : undefined,
       readGradingResults: () => [],
       evolve: async () => ({
         proposal: null,
@@ -821,7 +847,13 @@ describe("autonomy proof: orchestrate watches recently-evolved skills", () => {
     };
 
     const result = await orchestrate(
-      { dryRun: false, approvalMode: "auto", maxSkills: 5, recentWindowHours: 48, syncForce: false },
+      {
+        dryRun: false,
+        approvalMode: "auto",
+        maxSkills: 5,
+        recentWindowHours: 48,
+        syncForce: false,
+      },
       deps,
     );
 
@@ -833,7 +865,7 @@ describe("autonomy proof: orchestrate watches recently-evolved skills", () => {
       (c) => c.skill === "recently-deployed-skill" && c.action === "watch",
     );
     expect(watchCandidate).toBeDefined();
-    expect(watchCandidate!.reason).toContain("stable");
+    expect(watchCandidate?.reason).toContain("stable");
   });
 });
 
