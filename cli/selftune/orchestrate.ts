@@ -650,19 +650,23 @@ export async function orchestrate(
   }
 
   // -------------------------------------------------------------------------
-  // Step 7: Build summary
+  // Step 7: Build summary (single source of truth for both CLI and dashboard)
   // -------------------------------------------------------------------------
+  const finalTotals = {
+    totalSkills: statusResult.skills.length,
+    evaluated: candidates.filter((c) => c.action === "evolve").length,
+    evolved: candidates.filter((c) => c.action === "evolve" && c.evolveResult !== undefined).length,
+    deployed: candidates.filter((c) => c.evolveResult?.deployed).length,
+    watched: candidates.filter((c) => c.action === "watch").length,
+    skipped: candidates.filter((c) => c.action === "skip").length,
+  };
+
   const result: OrchestrateResult = {
     syncResult,
     statusResult,
     candidates,
     summary: {
-      totalSkills: statusResult.skills.length,
-      evaluated: evolveCandidates.length,
-      evolved: evolveCandidates.filter((c) => c.evolveResult?.deployed).length,
-      deployed: deployedCount,
-      watched: watchedCount,
-      skipped: candidates.filter((c) => c.action === "skip").length,
+      ...finalTotals,
       dryRun: options.dryRun,
       approvalMode: options.approvalMode,
       elapsedMs: Date.now() - startTime,
@@ -678,12 +682,12 @@ export async function orchestrate(
     elapsed_ms: result.summary.elapsedMs,
     dry_run: result.summary.dryRun,
     approval_mode: result.summary.approvalMode,
-    total_skills: result.summary.totalSkills,
-    evaluated: candidates.filter((c) => c.action === "evolve").length,
-    evolved: candidates.filter((c) => c.action === "evolve" && c.evolveResult).length,
-    deployed: candidates.filter((c) => c.evolveResult?.deployed).length,
-    watched: candidates.filter((c) => c.action === "watch").length,
-    skipped: candidates.filter((c) => c.action === "skip").length,
+    total_skills: finalTotals.totalSkills,
+    evaluated: finalTotals.evaluated,
+    evolved: finalTotals.evolved,
+    deployed: finalTotals.deployed,
+    watched: finalTotals.watched,
+    skipped: finalTotals.skipped,
     skill_actions: candidates.map(
       (c): OrchestrateRunSkillAction => ({
         skill: c.skill,
