@@ -12,15 +12,17 @@ JSONL logs → materializeIncremental() → SQLite → getOverviewPayload() / ge
 
 ## What is implemented
 
-- **Two routes**:
+- **Three routes**:
   - `/` — Overview with KPI section cards (with info tooltips), skill health grid with status filters (healthy/warning/critical/unknown), evolution feed (ActivityTimeline), unmatched queries, onboarding banner (dismissible, localStorage-persisted)
   - `/skills/:name` — Per-skill drilldown with usage stats (with info tooltips), invocation records, EvidenceViewer (collapsible evidence entries with markdown rendering, context banner), EvolutionTimeline (vertical timeline with pass-rate deltas, lifecycle legend), pending proposals, tab descriptions via hover tooltips
+  - `/status` — System health diagnostics showing doctor check results grouped by category (config, logs, hooks, evolution) with pass/fail/warn badges, summary cards, and auto-refresh
 - **UX helpers**: `InfoTip` component for glossary tooltips on all metrics, lifecycle legend in evolution timeline, evidence context banner, onboarding flow for first-time users
 - **Data layer**: TanStack Query (`@tanstack/react-query`) with smart caching, fetching from v2 endpoints backed by SQLite materialized queries
   - `GET /api/v2/overview` — combined `getOverviewPayload()` + `getSkillsList()`
   - `GET /api/v2/skills/:name` — `getSkillReportPayload()` + evolution audit + pending proposals
+  - `GET /api/v2/doctor` — system health diagnostics (config, log files, hooks, evolution audit)
 - **Live updates**: 15-second polling interval via TanStack Query `refetchInterval` (replaced old SSE approach)
-- **Caching**: `staleTime` of 10s (overview) / 30s (skill report) for instant back-navigation; `gcTime` of 5 minutes; automatic background refetch on window focus
+- **Caching**: `staleTime` of 10s (overview) / 20s (doctor) / 30s (skill report) for instant back-navigation; `gcTime` of 5 minutes; automatic background refetch on window focus
 - **Loading/error/empty/not-found states** on every route
 - **UI framework**: shadcn/ui components with dark/light theme toggle, TanStack Table for data grids
 - **Design**: selftune branding, collapsible sidebar, Tailwind v4

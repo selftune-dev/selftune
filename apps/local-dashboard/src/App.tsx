@@ -8,6 +8,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { Overview } from "@/pages/Overview"
 import { SkillReport } from "@/pages/SkillReport"
+import { Status } from "@/pages/Status"
 import { useOverview } from "@/hooks/useOverview"
 import type { SkillHealthStatus, SkillSummary } from "@/types"
 import { deriveStatus, sortByPassRateAndChecks } from "@/utils"
@@ -26,6 +27,15 @@ function SkillReportWithHeader() {
     <>
       <SiteHeader />
       <SkillReport />
+    </>
+  )
+}
+
+function StatusWithHeader() {
+  return (
+    <>
+      <SiteHeader />
+      <Status />
     </>
   )
 }
@@ -75,6 +85,7 @@ function DashboardShell() {
             }
           />
           <Route path="/skills/:name" element={<SkillReportWithHeader />} />
+          <Route path="/status" element={<StatusWithHeader />} />
         </Routes>
       </SidebarInset>
     </SidebarProvider>

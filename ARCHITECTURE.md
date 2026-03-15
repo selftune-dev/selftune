@@ -62,7 +62,7 @@ flowchart LR
 | Orchestrator | `cli/selftune/orchestrate.ts` | Autonomy-first sync -> candidate selection -> evolve -> watch loop | B |
 | Monitoring | `cli/selftune/monitoring/` | Post-deploy regression detection and rollback triggers | B |
 | Local DB | `cli/selftune/localdb/` | SQLite materialization and payload-oriented queries | B |
-| Dashboard | `cli/selftune/dashboard.ts`, `cli/selftune/dashboard-server.ts`, `apps/local-dashboard/` | Local SPA shell, v2 API, overview/report UI | B |
+| Dashboard | `cli/selftune/dashboard.ts`, `cli/selftune/dashboard-server.ts`, `apps/local-dashboard/` | Local SPA shell, v2 API, overview/report/status UI | B |
 | Observability CLI | `cli/selftune/status.ts`, `cli/selftune/last.ts`, `cli/selftune/badge/` | Fast local readouts of health, recent activity, and badge state | B |
 | Contribute | `cli/selftune/contribute/` | Opt-in anonymized export for community signal pooling | C |
 | Skill | `skill/` | Agent-facing routing table, workflows, and references | B |
@@ -145,7 +145,7 @@ cli/selftune/
 └── workflows/            Multi-skill workflow discovery and persistence
 
 apps/local-dashboard/
-├── src/pages/            Overview and per-skill report routes
+├── src/pages/            Overview, per-skill report, and system status routes
 ├── src/components/       Dashboard components
 ├── src/hooks/            Data-fetch hooks against the v2 API
 └── src/types.ts          Frontend types from dashboard-contract.ts

@@ -73,9 +73,12 @@ override.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/` | Serve dashboard HTML with embedded data and live mode flag |
-| `GET` | `/api/data` | JSON endpoint returning current telemetry data |
-| `GET` | `/api/events` | SSE stream sending data updates every 5 seconds |
+| `GET` | `/` | Serve dashboard SPA shell |
+| `GET` | `/api/v2/overview` | SQLite-backed overview payload |
+| `GET` | `/api/v2/skills/:name` | SQLite-backed per-skill report |
+| `GET` | `/api/v2/orchestrate-runs` | Recent orchestrate run reports |
+| `GET` | `/api/v2/doctor` | System health diagnostics (config, logs, hooks, evolution) |
+| `GET` | `/api/health` | Dashboard server health probe |
 | `POST` | `/api/actions/watch` | Trigger `selftune watch` for a skill |
 | `POST` | `/api/actions/evolve` | Trigger `selftune evolve` for a skill |
 | `POST` | `/api/actions/rollback` | Trigger `selftune evolve rollback` for a skill |
