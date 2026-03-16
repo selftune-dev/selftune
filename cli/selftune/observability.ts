@@ -203,6 +203,23 @@ export function checkConfigHealth(): HealthCheck[] {
   return [check];
 }
 
+/**
+ * Compare two semver strings. Returns:
+ *   -1 if a < b, 0 if equal, 1 if a > b.
+ * Handles standard x.y.z versions; pre-release tags are not compared.
+ */
+function compareSemver(a: string, b: string): -1 | 0 | 1 {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const va = pa[i] ?? 0;
+    const vb = pb[i] ?? 0;
+    if (va < vb) return -1;
+    if (va > vb) return 1;
+  }
+  return 0;
+}
+
 /** Check if the installed version is the latest on npm. Non-blocking, warns on stale. */
 export async function checkVersionHealth(): Promise<HealthCheck[]> {
   const check: HealthCheck = {
@@ -218,22 +235,26 @@ export async function checkVersionHealth(): Promise<HealthCheck[]> {
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch("https://registry.npmjs.org/selftune/latest", {
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
+    try {
+      const res = await fetch("https://registry.npmjs.org/selftune/latest", {
+        signal: controller.signal,
+      });
 
-    if (res.ok) {
-      const data = (await res.json()) as { version: string };
-      const latestVersion = data.version;
-      if (currentVersion === latestVersion) {
-        check.message = `v${currentVersion} (latest)`;
+      if (res.ok) {
+        const data = (await res.json()) as { version: string };
+        const latestVersion = data.version;
+        const cmp = compareSemver(currentVersion, latestVersion);
+        if (cmp >= 0) {
+          check.message = `v${currentVersion} (latest)`;
+        } else {
+          check.status = "warn";
+          check.message = `v${currentVersion} installed, v${latestVersion} available. Run: npx skills add selftune-dev/selftune`;
+        }
       } else {
-        check.status = "warn";
-        check.message = `v${currentVersion} installed, v${latestVersion} available. Run: npx skills add selftune-dev/selftune`;
+        check.message = `v${currentVersion} (unable to check npm registry)`;
       }
-    } else {
-      check.message = `v${currentVersion} (unable to check npm registry)`;
+    } finally {
+      clearTimeout(timeout);
     }
   } catch {
     check.message = "Unable to check latest version (network unavailable)";
