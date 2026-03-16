@@ -242,8 +242,13 @@ function createColumns(renderSkillName?: (skill: SkillCard) => React.ReactNode):
         </div>
       ),
       sortingFn: (rowA, rowB) => {
-        const a = rowA.original.lastSeen ? new Date(rowA.original.lastSeen).getTime() : 0
-        const b = rowB.original.lastSeen ? new Date(rowB.original.lastSeen).getTime() : 0
+        const toEpoch = (v: string | null) => {
+          if (!v) return 0
+          const t = new Date(v).getTime()
+          return Number.isNaN(t) ? 0 : t
+        }
+        const a = toEpoch(rowA.original.lastSeen)
+        const b = toEpoch(rowB.original.lastSeen)
         return a - b
       },
     },

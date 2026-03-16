@@ -2,9 +2,10 @@
  * Compile-time parity guard between @selftune/ui types and dashboard-contract.
  *
  * If the canonical types in cli/selftune/dashboard-contract.ts diverge from
- * the re-declared types in this package, this file will produce a type error
- * at build time. Run `tsc --noEmit` to verify parity.
+ * the re-declared types in packages/ui, this test will fail to compile.
  */
+
+import { describe, expect, test } from "bun:test";
 
 import type {
   EvalSnapshot as Canonical_EvalSnapshot,
@@ -14,7 +15,7 @@ import type {
   OrchestrateRunSkillAction as Canonical_OrchestrateRunSkillAction,
   PendingProposal as Canonical_PendingProposal,
   UnmatchedQuery as Canonical_UnmatchedQuery,
-} from "../../../cli/selftune/dashboard-contract";
+} from "../../cli/selftune/dashboard-contract";
 
 import type {
   EvalSnapshot,
@@ -24,7 +25,7 @@ import type {
   OrchestrateRunSkillAction,
   PendingProposal,
   UnmatchedQuery,
-} from "./types";
+} from "../../packages/ui/src/types";
 
 // Assert mutual assignability — fails at compile time if fields diverge.
 type AssertAssignable<T, U> = T extends U ? (U extends T ? true : false) : false;
@@ -43,3 +44,16 @@ const _orchestrateRunReport: AssertAssignable<
   OrchestrateRunReport,
   Canonical_OrchestrateRunReport
 > = true;
+
+describe("@selftune/ui type parity with dashboard-contract", () => {
+  test("types are mutually assignable (compile-time check)", () => {
+    // If this file compiles, all type assertions above passed.
+    expect(_evalSnapshot).toBe(true);
+    expect(_evolutionEntry).toBe(true);
+    expect(_unmatchedQuery).toBe(true);
+    expect(_pendingProposal).toBe(true);
+    expect(_evidenceEntry).toBe(true);
+    expect(_orchestrateRunSkillAction).toBe(true);
+    expect(_orchestrateRunReport).toBe(true);
+  });
+});

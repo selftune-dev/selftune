@@ -8,7 +8,7 @@ export function deriveStatus(passRate: number, checks: number): SkillHealthStatu
 }
 
 export function formatRate(rate: number | null | undefined): string {
-  if (rate === null || rate === undefined) return "--";
+  if (rate === null || rate === undefined || !Number.isFinite(rate)) return "--";
   return `${Math.round(rate * 100)}%`;
 }
 
