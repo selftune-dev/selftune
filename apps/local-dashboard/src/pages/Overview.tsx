@@ -1,14 +1,15 @@
 import { useMemo, useState } from "react"
-import { ActivityPanel } from "@/components/ActivityTimeline"
-import { OrchestrateRunsPanel } from "@/components/OrchestrateRunsPanel"
-import { SectionCards } from "@/components/section-cards"
-import { SkillHealthGrid } from "@/components/skill-health-grid"
+import { Link } from "react-router-dom"
+import { ActivityPanel } from "@selftune/ui/components"
+import { OrchestrateRunsPanel } from "@selftune/ui/components"
+import { SectionCards } from "@selftune/ui/components"
+import { SkillHealthGrid } from "@selftune/ui/components"
 import type { UseQueryResult } from "@tanstack/react-query"
 import type { SkillCard, SkillHealthStatus, SkillSummary, OverviewResponse } from "@/types"
 import { useOrchestrateRuns } from "@/hooks/useOrchestrateRuns"
 import { deriveStatus, sortByPassRateAndChecks } from "@/utils"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Button } from "@/components/ui/button"
+import { Button } from "@selftune/ui/primitives"
 import { AlertCircleIcon, RefreshCwIcon, RocketIcon, LayersIcon, ActivityIcon, XIcon } from "lucide-react"
 
 function deriveSkillCards(skills: SkillSummary[]): SkillCard[] {
@@ -200,7 +201,11 @@ export function Overview({
       />
 
       <div className="grid grid-cols-1 gap-6 @5xl/main:grid-cols-[1fr_320px]">
-        <SkillHealthGrid cards={filteredCards} totalCount={cards.length} statusFilter={statusFilter} onStatusFilterChange={onStatusFilterChange} />
+        <SkillHealthGrid cards={filteredCards} totalCount={cards.length} statusFilter={statusFilter} onStatusFilterChange={onStatusFilterChange} renderSkillName={(name) => (
+          <Link to={`/skills/${encodeURIComponent(name)}`} className="text-sm font-medium hover:underline">
+            {name}
+          </Link>
+        )} />
 
         <div className="px-4 lg:px-6 @5xl/main:px-0 @5xl/main:pr-4 lg:@5xl/main:pr-6">
           <div className="sticky top-4 space-y-4">
