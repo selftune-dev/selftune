@@ -385,8 +385,6 @@
 
     "@selftune/telemetry-contract": ["@selftune/telemetry-contract@workspace:packages/telemetry-contract"],
 
-    "@selftune/telemetry-contract": ["@selftune/telemetry-contract@file:packages/telemetry-contract", {}],
-
     "@selftune/ui": ["@selftune/ui@workspace:packages/ui"],
 
     "@sindresorhus/merge-streams": ["@sindresorhus/merge-streams@4.0.0", "", {}, "sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ=="],
