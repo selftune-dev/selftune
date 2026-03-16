@@ -22,6 +22,7 @@
  *   selftune quickstart         — Guided onboarding: init, ingest, status, and suggestions
  *   selftune repair-skill-usage — Rebuild trustworthy skill usage from transcripts
  *   selftune export-canonical   — Export canonical telemetry for downstream ingestion
+ *   selftune telemetry          — Manage anonymous usage analytics (status, enable, disable)
  *   selftune hook <name>        — Run a hook by name (prompt-log, session-stop, etc.)
  */
 
@@ -53,10 +54,18 @@ Commands:
   quickstart         Guided onboarding: init, ingest, status, and suggestions
   repair-skill-usage Rebuild trustworthy skill usage from transcripts
   export-canonical   Export canonical telemetry for downstream ingestion
+  telemetry          Manage anonymous usage analytics (status, enable, disable)
   hook <name>        Run a hook by name (prompt-log, session-stop, etc.)
 
 Run 'selftune <command> --help' for command-specific options.`);
   process.exit(0);
+}
+
+// Track command usage (lazy import — avoids loading crypto/os on --help or no-op paths)
+if (command && command !== "--help" && command !== "-h") {
+  import("./analytics.js")
+    .then(({ trackEvent }) => trackEvent("command_run", { command }))
+    .catch(() => {});
 }
 
 if (!command) {
@@ -456,6 +465,11 @@ Run 'selftune cron <subcommand> --help' for subcommand-specific options.`);
   }
   case "orchestrate": {
     const { cliMain } = await import("./orchestrate.js");
+    await cliMain();
+    break;
+  }
+  case "telemetry": {
+    const { cliMain } = await import("./analytics.js");
     await cliMain();
     break;
   }

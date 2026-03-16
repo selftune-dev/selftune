@@ -24,6 +24,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import { TELEMETRY_NOTICE } from "./analytics.js";
 import { CLAUDE_CODE_HOOK_KEYS, SELFTUNE_CONFIG_DIR, SELFTUNE_CONFIG_PATH } from "./constants.js";
 import type { SelftuneConfig } from "./types.js";
 import { hookKeyHasSelftuneEntry } from "./utils/hooks.js";
@@ -588,6 +589,9 @@ export async function cliMain(): Promise<void> {
         : null,
     }),
   );
+
+  // Print telemetry disclosure
+  console.error(TELEMETRY_NOTICE);
 
   // Run doctor as post-check
   const { doctor } = await import("./observability.js");

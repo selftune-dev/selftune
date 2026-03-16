@@ -1,8 +1,8 @@
-FROM node:20-slim
+FROM node:20-slim@sha256:eef3816042c0f522a2ca9655c1947ca6f97c908b0c227aa50e19432646342ab7
 
 # Install system deps + Bun
 RUN apt-get update && apt-get install -y --no-install-recommends curl unzip git ca-certificates && \
-    curl -fsSL https://bun.sh/install | bash && \
+    curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.10" && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Move bun to a shared location so non-root user can access it

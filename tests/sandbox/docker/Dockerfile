@@ -1,7 +1,7 @@
 # selftune Layer 2 sandbox — based on the official Claude Code devcontainer reference:
 # https://code.claude.com/docs/en/devcontainer
 # https://github.com/anthropics/claude-code/tree/main/.devcontainer
-FROM node:20
+FROM node:20@sha256:bab3cdce60d2a5ac2d2822947cdd5e267c79503c65c2f05d83911e86bea7d2fc
 
 ARG CLAUDE_CODE_VERSION=latest
 
@@ -26,7 +26,7 @@ WORKDIR /app
 USER node
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
 ENV PATH=$PATH:/usr/local/share/npm-global/bin
-RUN curl -fsSL https://bun.sh/install | bash
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.10"
 ENV PATH="/home/node/.bun/bin:$PATH"
 
 # Install Claude Code CLI (same method as official devcontainer)

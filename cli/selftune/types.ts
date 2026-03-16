@@ -13,6 +13,7 @@ export interface SelftuneConfig {
   agent_cli: string | null;
   hooks_installed: boolean;
   initialized_at: string;
+  analytics_disabled?: boolean;
 }
 
 // ---------------------------------------------------------------------------
