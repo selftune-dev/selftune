@@ -43,6 +43,16 @@ Two minutes. No API keys. No external services. No configuration ceremony. Uses 
 npx selftune@latest doctor
 ```
 
+## Updating
+
+The skill and CLI ship together as one npm package. To update:
+
+```bash
+npx skills add selftune-dev/selftune
+```
+
+This reinstalls the latest version of both the skill (SKILL.md, workflows) and the CLI. `selftune doctor` will warn you when a newer version is available.
+
 ## Before / After
 
 <p align="center">
@@ -114,6 +124,7 @@ Your agent runs these — you just say what you want ("improve my skills", "show
 | | `selftune eval import` | Import external eval corpus from [SkillsBench](https://github.com/benchflow-ai/skillsbench) |
 | **auto** | `selftune cron setup` | Install OS-level scheduling (cron/launchd/systemd) |
 | | `selftune watch --skill <name>` | Monitor after deploy. Auto-rollback on regression. |
+| **other** | `selftune telemetry` | Manage anonymous usage analytics (status, enable, disable) |
 
 Full command reference: `selftune --help`
 
