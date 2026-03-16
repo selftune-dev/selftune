@@ -67,7 +67,8 @@ export function stripMarkdownFences(raw: string): string {
       const newlineIdx = inner.indexOf("\n");
       inner = newlineIdx >= 0 ? inner.slice(newlineIdx + 1) : inner.slice(fence.length);
       // Find matching closing fence (same length of backticks on its own line)
-      const closingPattern = new RegExp(`^${fence.replace(/`/g, "\\`")}\\s*$`, "m");
+      const escapedFence = fence.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const closingPattern = new RegExp(`^${escapedFence}\\s*$`, "m");
       const closingMatch = inner.match(closingPattern);
       if (closingMatch && closingMatch.index != null) {
         inner = inner.slice(0, closingMatch.index);
