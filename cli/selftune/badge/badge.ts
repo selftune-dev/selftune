@@ -71,7 +71,7 @@ export function cliMain(): void {
   const auditEntries = readJsonl<EvolutionAuditEntry>(EVOLUTION_AUDIT_LOG);
 
   // Run doctor for system health
-  const doctorResult = doctor();
+  const doctorResult = await doctor();
 
   // Compute status
   const result = computeStatus(telemetry, skillRecords, queryRecords, auditEntries, doctorResult);

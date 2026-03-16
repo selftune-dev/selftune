@@ -203,12 +203,52 @@ export function checkConfigHealth(): HealthCheck[] {
   return [check];
 }
 
-export function doctor(): DoctorResult {
+/** Check if the installed version is the latest on npm. Non-blocking, warns on stale. */
+export async function checkVersionHealth(): Promise<HealthCheck[]> {
+  const check: HealthCheck = {
+    name: "version_up_to_date",
+    path: "package.json",
+    status: "pass",
+    message: "",
+  };
+
+  try {
+    const pkgPath = join(import.meta.dir, "../../package.json");
+    const currentVersion = JSON.parse(readFileSync(pkgPath, "utf-8")).version;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    const res = await fetch("https://registry.npmjs.org/selftune/latest", {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (res.ok) {
+      const data = (await res.json()) as { version: string };
+      const latestVersion = data.version;
+      if (currentVersion === latestVersion) {
+        check.message = `v${currentVersion} (latest)`;
+      } else {
+        check.status = "warn";
+        check.message = `v${currentVersion} installed, v${latestVersion} available. Run: npx skills add selftune-dev/selftune`;
+      }
+    } else {
+      check.message = `v${currentVersion} (unable to check npm registry)`;
+    }
+  } catch {
+    check.message = "Unable to check latest version (network unavailable)";
+  }
+
+  return [check];
+}
+
+export async function doctor(): Promise<DoctorResult> {
   const allChecks = [
     ...checkConfigHealth(),
     ...checkLogHealth(),
     ...checkHookInstallation(),
     ...checkEvolutionHealth(),
+    ...(await checkVersionHealth()),
   ];
   const passed = allChecks.filter((c) => c.status === "pass").length;
   const failed = allChecks.filter((c) => c.status === "fail").length;
@@ -224,7 +264,7 @@ export function doctor(): DoctorResult {
 }
 
 if (import.meta.main) {
-  const result = doctor();
+  const result = await doctor();
   console.log(JSON.stringify(result, null, 2));
   process.exit(result.healthy ? 0 : 1);
 }

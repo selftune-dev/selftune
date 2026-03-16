@@ -330,7 +330,7 @@ export function cliMain(): void {
     const skillRecords = readEffectiveSkillUsageRecords();
     const queryRecords = readJsonl<QueryLogRecord>(QUERY_LOG);
     const auditEntries = readJsonl<EvolutionAuditEntry>(EVOLUTION_AUDIT_LOG);
-    const doctorResult = doctor();
+    const doctorResult = await doctor();
 
     const result = computeStatus(telemetry, skillRecords, queryRecords, auditEntries, doctorResult);
     const output = formatStatus(result);
