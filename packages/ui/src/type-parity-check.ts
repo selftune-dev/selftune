@@ -27,7 +27,7 @@ import type {
 } from "./types";
 
 // Assert mutual assignability — fails at compile time if fields diverge.
-type AssertAssignable<T, U> = T extends U ? U extends T ? true : false : false;
+type AssertAssignable<T, U> = T extends U ? (U extends T ? true : false) : false;
 
 // Each assertion must resolve to `true`. A `false` here means the types have drifted.
 const _evalSnapshot: AssertAssignable<EvalSnapshot, Canonical_EvalSnapshot> = true;
@@ -35,5 +35,11 @@ const _evolutionEntry: AssertAssignable<EvolutionEntry, Canonical_EvolutionEntry
 const _unmatchedQuery: AssertAssignable<UnmatchedQuery, Canonical_UnmatchedQuery> = true;
 const _pendingProposal: AssertAssignable<PendingProposal, Canonical_PendingProposal> = true;
 const _evidenceEntry: AssertAssignable<EvidenceEntry, Canonical_EvidenceEntry> = true;
-const _orchestrateRunSkillAction: AssertAssignable<OrchestrateRunSkillAction, Canonical_OrchestrateRunSkillAction> = true;
-const _orchestrateRunReport: AssertAssignable<OrchestrateRunReport, Canonical_OrchestrateRunReport> = true;
+const _orchestrateRunSkillAction: AssertAssignable<
+  OrchestrateRunSkillAction,
+  Canonical_OrchestrateRunSkillAction
+> = true;
+const _orchestrateRunReport: AssertAssignable<
+  OrchestrateRunReport,
+  Canonical_OrchestrateRunReport
+> = true;
