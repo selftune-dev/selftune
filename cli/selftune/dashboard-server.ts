@@ -368,7 +368,11 @@ export async function startDashboardServer(
           }
         } catch {
           return Response.json(
-            { success: false, error: "Malformed JSON body. Retry with a JSON object containing skill and skillPath." },
+            {
+              success: false,
+              error:
+                "Malformed JSON body. Retry with a JSON object containing skill and skillPath.",
+            },
             { status: 400, headers: corsHeaders() },
           );
         }
