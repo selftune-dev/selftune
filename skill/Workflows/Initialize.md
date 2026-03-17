@@ -98,7 +98,7 @@ The init output will report what was installed, e.g.:
 | `UserPromptSubmit` | `hooks/auto-activate.ts` | Suggest skills before prompt processing |
 | `PreToolUse` (Write/Edit) | `hooks/skill-change-guard.ts` | Detect uncontrolled skill edits |
 | `PreToolUse` (Write/Edit) | `hooks/evolution-guard.ts` | Block SKILL.md edits on monitored skills |
-| `PostToolUse` (Read) | `hooks/skill-eval.ts` | Track skill triggers |
+| `PostToolUse` (Read/Skill) | `hooks/skill-eval.ts` | Track skill triggers and Skill tool invocations |
 | `Stop` | `hooks/session-stop.ts` | Capture session telemetry |
 
 **Codex agents:**

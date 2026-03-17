@@ -89,11 +89,12 @@ The evolution process writes multiple audit entries:
 
 ### 0. Pre-Flight Configuration
 
-Before running the evolve command, use the `AskUserQuestion` tool to present structured configuration options. If the user responds with "use defaults", cancels, or similar shorthand, skip to step 1 using the recommended defaults.
+Before running the evolve command, use the `AskUserQuestion` tool to present structured configuration options. If the user responds with "use defaults" or similar shorthand, skip to step 1 using the recommended defaults. If the user cancels, stop and do not continue.
 
 Use `AskUserQuestion` with these questions (max 4 per call — split if needed):
 
 **Call 1:**
+
 ```json
 {
   "questions": [

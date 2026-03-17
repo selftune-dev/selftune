@@ -389,6 +389,12 @@ function insertSession(db: Database, s: CanonicalSessionRecord): void {
        schema_version, normalized_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(session_id) DO UPDATE SET
+      platform = CASE
+        WHEN sessions.platform IS NULL OR sessions.platform = 'unknown'
+          THEN excluded.platform
+        ELSE sessions.platform
+      END,
+      source_session_kind = COALESCE(sessions.source_session_kind, excluded.source_session_kind),
       started_at = COALESCE(sessions.started_at, excluded.started_at),
       ended_at = COALESCE(sessions.ended_at, excluded.ended_at),
       model = COALESCE(sessions.model, excluded.model),
