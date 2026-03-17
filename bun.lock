@@ -67,6 +67,10 @@
         "lucide-react": "^0.577.0",
         "tailwind-merge": "^3.5.0",
       },
+      "devDependencies": {
+        "@types/react": "^19.0.0",
+        "@types/react-dom": "^19.0.0",
+      },
       "peerDependencies": {
         "@dnd-kit/core": "^6.0.0",
         "@dnd-kit/modifiers": "^9.0.0",
@@ -383,6 +387,8 @@
     "@sec-ant/readable-stream": ["@sec-ant/readable-stream@0.4.1", "", {}, "sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg=="],
 
     "@selftune/local-dashboard": ["@selftune/local-dashboard@workspace:apps/local-dashboard"],
+
+    "@selftune/telemetry-contract": ["@selftune/telemetry-contract@file:packages/telemetry-contract", {}],
 
     "@selftune/telemetry-contract": ["@selftune/telemetry-contract@workspace:packages/telemetry-contract"],
 
