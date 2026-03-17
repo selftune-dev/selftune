@@ -278,6 +278,7 @@ export function SkillReport() {
   const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.UNKNOWN
   const passRateGood = status === "HEALTHY"
   const hasEvolution = (selftune_stats?.run_count ?? 0) > 0
+  const missed = duration_stats?.missed_triggers ?? 0
 
   // Auto-select first proposal if none selected
   const activeProposal = selectedProposal ?? (evolution.length > 0 ? evolution[0].proposal_id : null)
@@ -477,14 +478,9 @@ export function SkillReport() {
               Missed Triggers
               <InfoTip text="Number of times this skill was evaluated but did not trigger. High counts may indicate the skill description needs evolution." />
             </CardDescription>
-            {(() => {
-              const missed = duration_stats?.missed_triggers ?? 0;
-              return (
-                <CardTitle className={`text-2xl font-semibold tabular-nums @[250px]/card:text-3xl ${missed > 0 ? "text-amber-600" : ""}`}>
-                  {missed}
-                </CardTitle>
-              );
-            })()}
+            <CardTitle className={`text-2xl font-semibold tabular-nums @[250px]/card:text-3xl ${missed > 0 ? "text-amber-600" : ""}`}>
+              {missed}
+            </CardTitle>
           </CardHeader>
         </Card>
 

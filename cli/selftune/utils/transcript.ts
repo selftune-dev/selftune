@@ -69,8 +69,13 @@ export function parseTranscript(transcriptPath: string): TranscriptMetrics {
 
     // Extract model from first entry that has it
     if (!model) {
-      const m = (msg.model as string) ?? (entry.model as string);
-      if (m) model = m;
+      const msgModel = msg.model;
+      const entryModel = entry.model;
+      if (typeof msgModel === "string" && msgModel.trim()) {
+        model = msgModel;
+      } else if (typeof entryModel === "string" && entryModel.trim()) {
+        model = entryModel;
+      }
     }
 
     // Track last user query
