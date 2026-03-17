@@ -52,14 +52,15 @@ describe("localdb schema", () => {
   });
 
   it("creates queries table with expected columns", () => {
-    // Should not throw — table exists and has the expected shape
-    const rows = db.query("SELECT * FROM queries LIMIT 1").all();
-    expect(rows).toHaveLength(0); // empty but accessible
+    const cols = db.query("PRAGMA table_info(queries)").all() as Array<{ name: string }>;
+    const names = cols.map((c) => c.name);
+    expect(names).toEqual(expect.arrayContaining(["timestamp", "session_id", "query"]));
   });
 
   it("creates improvement_signals table with expected columns", () => {
-    const rows = db.query("SELECT * FROM improvement_signals LIMIT 1").all();
-    expect(rows).toHaveLength(0);
+    const cols = db.query("PRAGMA table_info(improvement_signals)").all() as Array<{ name: string }>;
+    const names = cols.map((c) => c.name);
+    expect(names).toEqual(expect.arrayContaining(["timestamp", "session_id", "signal_type"]));
   });
 
   it("creates indexes on session_id and timestamp columns", () => {

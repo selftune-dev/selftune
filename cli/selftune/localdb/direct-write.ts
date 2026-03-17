@@ -101,6 +101,8 @@ export function writeCanonicalToDb(record: CanonicalRecord): boolean {
       case "execution_fact":
         insertExecutionFact(db, record as CanonicalExecutionFactRecord);
         break;
+      case "normalization_run":
+        break; // no-op — not persisted to SQLite
     }
   });
 }
@@ -124,6 +126,8 @@ export function writeCanonicalBatchToDb(records: CanonicalRecord[]): boolean {
           case "execution_fact":
             insertExecutionFact(db, record as CanonicalExecutionFactRecord);
             break;
+          case "normalization_run":
+            break; // no-op — not persisted to SQLite
         }
       }
       db.run("COMMIT");

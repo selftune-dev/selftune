@@ -567,15 +567,15 @@ describe("getSkillsList", () => {
 
     const research = list.find((s) => s.skill_name === "Research");
     expect(research).toBeDefined();
-    expect(research!.total_checks).toBe(2);
-    expect(research!.triggered_count).toBe(1);
-    expect(research!.pass_rate).toBe(0.5);
-    expect(research!.has_evidence).toBe(true);
+    expect(research?.total_checks).toBe(2);
+    expect(research?.triggered_count).toBe(1);
+    expect(research?.pass_rate).toBe(0.5);
+    expect(research?.has_evidence).toBe(true);
 
     const browser = list.find((s) => s.skill_name === "Browser");
     expect(browser).toBeDefined();
-    expect(browser!.total_checks).toBe(1);
-    expect(browser!.has_evidence).toBe(false);
+    expect(browser?.total_checks).toBe(1);
+    expect(browser?.has_evidence).toBe(false);
   });
 });
 

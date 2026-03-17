@@ -52,7 +52,7 @@ export interface DashboardServerOptions {
   host?: string;
   spaDir?: string;
   openBrowser?: boolean;
-  statusLoader?: () => StatusResult;
+  statusLoader?: () => StatusResult | Promise<StatusResult>;
   evidenceLoader?: () => EvolutionEvidenceEntry[];
   overviewLoader?: () => OverviewResponse;
   skillReportLoader?: (skillName: string) => SkillReportResponse | null;
@@ -103,16 +103,12 @@ const MIME_TYPES: Record<string, string> = {
 
 async function computeStatusFromDb(): Promise<StatusResult> {
   const db = getDb();
-  try {
-    const telemetry = querySessionTelemetry(db);
-    const skillRecords = querySkillUsageRecords(db);
-    const queryRecords = queryQueryLog(db);
-    const auditEntries = queryEvolutionAudit(db);
-    const doctorResult = await doctor();
-    return computeStatus(telemetry, skillRecords, queryRecords, auditEntries, doctorResult);
-  } finally {
-    db.close();
-  }
+  const telemetry = querySessionTelemetry(db);
+  const skillRecords = querySkillUsageRecords(db);
+  const queryRecords = queryQueryLog(db);
+  const auditEntries = queryEvolutionAudit(db);
+  const doctorResult = await doctor();
+  return computeStatus(telemetry, skillRecords, queryRecords, auditEntries, doctorResult);
 }
 
 function corsHeaders(): Record<string, string> {
@@ -252,7 +248,7 @@ export async function startDashboardServer(
     if (statusRefreshPromise) return statusRefreshPromise;
 
     statusRefreshPromise = (async () => {
-      cachedStatusResult = getStatusResult();
+      cachedStatusResult = await Promise.resolve(getStatusResult());
       lastStatusCacheRefreshAt = Date.now();
     })();
 

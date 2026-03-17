@@ -12,7 +12,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  _setTestDb(null);
+  _setTestDb(null); // also closes previous DB via _setTestDb
 });
 
 function makeEntry(overrides: Partial<EvolutionEvidenceEntry> = {}): EvolutionEvidenceEntry {

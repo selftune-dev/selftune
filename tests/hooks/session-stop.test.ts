@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { processPrompt } from "../../cli/selftune/hooks/prompt-log.js";
@@ -163,7 +163,6 @@ describe("session-stop hook", () => {
     );
 
     // Verify prompt state tracks the second prompt as the last actionable
-    const { readFileSync } = require("node:fs");
     const state = JSON.parse(readFileSync(promptStatePath, "utf-8"));
     expect(state.last_actionable_prompt_id).toBe("sess-link:p1");
 
@@ -183,6 +182,6 @@ describe("session-stop hook", () => {
 
     // Session stop result should be valid
     expect(result).not.toBeNull();
-    expect(result.session_id).toBe("sess-link");
+    expect(result?.session_id).toBe("sess-link");
   });
 });

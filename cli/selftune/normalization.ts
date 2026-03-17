@@ -14,6 +14,7 @@
 
 import { createHash } from "node:crypto";
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -386,10 +387,24 @@ export function getLatestPromptIdentity(
 }
 
 export function appendCanonicalRecord(record: CanonicalRecord, logPath?: string): void {
+  // JSONL append (needed for prompt state recovery in reservePromptIdentity)
+  const path = logPath ?? CANONICAL_LOG;
+  const dir = dirname(path);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  appendFileSync(path, `${JSON.stringify(record)}\n`, "utf-8");
+  // SQLite write
   writeCanonicalToDb(record);
 }
 
 export function appendCanonicalRecords(records: CanonicalRecord[], logPath?: string): void {
+  // JSONL append (needed for prompt state recovery in reservePromptIdentity)
+  const path = logPath ?? CANONICAL_LOG;
+  const dir = dirname(path);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  for (const record of records) {
+    appendFileSync(path, `${JSON.stringify(record)}\n`, "utf-8");
+  }
+  // SQLite batch write
   writeCanonicalBatchToDb(records);
 }
 
