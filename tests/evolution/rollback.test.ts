@@ -4,24 +4,29 @@
  * Verifies that rollback restores SKILL.md to pre-evolution state,
  * records audit trail entries, handles missing proposals gracefully,
  * and supports both backup-file and audit-trail restoration strategies.
+ *
+ * Uses in-memory SQLite databases via _setTestDb() for full isolation.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appendAuditEntry } from "../../cli/selftune/evolution/audit.js";
+import { appendAuditEntry, readAuditTrail } from "../../cli/selftune/evolution/audit.js";
 import { rollback } from "../../cli/selftune/evolution/rollback.js";
+import { _setTestDb, openDb } from "../../cli/selftune/localdb/db.js";
 import type { EvolutionAuditEntry } from "../../cli/selftune/types.js";
-import { readJsonl } from "../../cli/selftune/utils/jsonl.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
+let counter = 0;
+
 function makeAuditEntry(overrides: Partial<EvolutionAuditEntry> = {}): EvolutionAuditEntry {
+  counter += 1;
   return {
-    timestamp: "2026-02-28T12:00:00Z",
+    timestamp: `2026-02-28T12:${String(counter).padStart(2, "0")}:00Z`,
     proposal_id: "evo-test-001",
     action: "created",
     details: "Proposal created for test-skill evolution",
@@ -34,19 +39,22 @@ function makeAuditEntry(overrides: Partial<EvolutionAuditEntry> = {}): Evolution
 // ---------------------------------------------------------------------------
 
 let tmpDir: string;
-let logPath: string;
 let skillDir: string;
 let skillPath: string;
 
 beforeEach(() => {
+  counter = 0;
   tmpDir = mkdtempSync(join(tmpdir(), "selftune-rollback-test-"));
-  logPath = join(tmpDir, "evolution_audit_log.jsonl");
   skillDir = join(tmpDir, "skills", "test-skill");
   mkdirSync(skillDir, { recursive: true });
   skillPath = join(skillDir, "SKILL.md");
+
+  const testDb = openDb(":memory:");
+  _setTestDb(testDb);
 });
 
 afterEach(() => {
+  _setTestDb(null);
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -59,24 +67,20 @@ describe("rollback from backup file", () => {
     const originalContent = "# Original Skill\nThis is the original description.";
     const evolvedContent = "# Evolved Skill\nThis is the evolved description.";
 
-    // Write the evolved SKILL.md and the backup
     writeFileSync(skillPath, evolvedContent, "utf-8");
     writeFileSync(`${skillPath}.bak`, originalContent, "utf-8");
 
-    // Seed audit trail with a deployed entry
     appendAuditEntry(
       makeAuditEntry({
         proposal_id: "evo-test-001",
         action: "deployed",
         details: "Deployed proposal for test-skill evolution",
       }),
-      logPath,
     );
 
     const result = await rollback({
       skillName: "test-skill",
       skillPath,
-      logPath,
     });
 
     expect(result.rolledBack).toBe(true);
@@ -96,10 +100,9 @@ describe("rollback from backup file", () => {
         action: "deployed",
         details: "Deployed proposal for test-skill",
       }),
-      logPath,
     );
 
-    await rollback({ skillName: "test-skill", skillPath, logPath });
+    await rollback({ skillName: "test-skill", skillPath });
 
     expect(existsSync(`${skillPath}.bak`)).toBe(false);
   });
@@ -116,14 +119,12 @@ describe("rollback from audit trail", () => {
 
     writeFileSync(skillPath, evolvedContent, "utf-8");
 
-    // Seed audit trail: created entry stores original_description in details
     appendAuditEntry(
       makeAuditEntry({
         proposal_id: "evo-test-001",
         action: "created",
         details: `original_description:${originalDescription}`,
       }),
-      logPath,
     );
     appendAuditEntry(
       makeAuditEntry({
@@ -131,17 +132,14 @@ describe("rollback from audit trail", () => {
         action: "deployed",
         details: "Deployed proposal for test-skill evolution",
       }),
-      logPath,
     );
 
     const result = await rollback({
       skillName: "test-skill",
       skillPath,
-      logPath,
     });
 
     expect(result.rolledBack).toBe(true);
-    // Description section is replaced, but heading and subheading structure is preserved
     const restoredContent = readFileSync(skillPath, "utf-8");
     expect(restoredContent).toContain("# Test Skill");
     expect(restoredContent).toContain(originalDescription);
@@ -169,12 +167,11 @@ describe("audit trail recording", () => {
         action: "deployed",
         details: "Deployed proposal for test-skill evolution",
       }),
-      logPath,
     );
 
-    await rollback({ skillName: "test-skill", skillPath, logPath });
+    await rollback({ skillName: "test-skill", skillPath });
 
-    const entries = readJsonl<EvolutionAuditEntry>(logPath);
+    const entries = readAuditTrail();
     const rollbackEntries = entries.filter((e) => e.action === "rolled_back");
     expect(rollbackEntries).toHaveLength(1);
     expect(rollbackEntries[0].proposal_id).toBe("evo-test-001");
@@ -191,19 +188,16 @@ describe("no deployed proposal", () => {
   test("returns rolledBack false when no deployed proposal exists", async () => {
     writeFileSync(skillPath, "# Some content", "utf-8");
 
-    // Only a created entry, not deployed
     appendAuditEntry(
       makeAuditEntry({
         action: "created",
         details: "Created proposal for test-skill",
       }),
-      logPath,
     );
 
     const result = await rollback({
       skillName: "test-skill",
       skillPath,
-      logPath,
     });
 
     expect(result.rolledBack).toBe(false);
@@ -217,7 +211,6 @@ describe("no deployed proposal", () => {
     const result = await rollback({
       skillName: "test-skill",
       skillPath,
-      logPath,
     });
 
     expect(result.rolledBack).toBe(false);
@@ -238,23 +231,19 @@ describe("rollback specific proposal by ID", () => {
     writeFileSync(skillPath, evolvedContent, "utf-8");
     writeFileSync(`${skillPath}.bak`, "# Should not be used for explicit proposalId", "utf-8");
 
-    // Created entry with original_description for the target proposal
     appendAuditEntry(
       makeAuditEntry({
         proposal_id: "evo-test-001",
         action: "created",
         details: `original_description:${originalDescription}`,
       }),
-      logPath,
     );
-    // Two deployed proposals
     appendAuditEntry(
       makeAuditEntry({
         proposal_id: "evo-test-001",
         action: "deployed",
         details: "Deployed first proposal for test-skill",
       }),
-      logPath,
     );
     appendAuditEntry(
       makeAuditEntry({
@@ -262,14 +251,12 @@ describe("rollback specific proposal by ID", () => {
         action: "deployed",
         details: "Deployed second proposal for test-skill",
       }),
-      logPath,
     );
 
     const result = await rollback({
       skillName: "test-skill",
       skillPath,
       proposalId: "evo-test-001",
-      logPath,
     });
 
     expect(result.rolledBack).toBe(true);
@@ -284,7 +271,7 @@ describe("rollback specific proposal by ID", () => {
     expect(restoredContent).not.toContain("Evolved description");
 
     // Audit entry should reference the specific proposal ID
-    const entries = readJsonl<EvolutionAuditEntry>(logPath);
+    const entries = readAuditTrail();
     const rollbackEntries = entries.filter((e) => e.action === "rolled_back");
     expect(rollbackEntries[0].proposal_id).toBe("evo-test-001");
   });
@@ -298,14 +285,12 @@ describe("rollback specific proposal by ID", () => {
         action: "deployed",
         details: "Deployed proposal for test-skill",
       }),
-      logPath,
     );
 
     const result = await rollback({
       skillName: "test-skill",
       skillPath,
       proposalId: "evo-nonexistent-999",
-      logPath,
     });
 
     expect(result.rolledBack).toBe(false);
@@ -322,20 +307,17 @@ describe("no restoration source", () => {
   test("returns rolledBack false when no .bak and no created entry in audit", async () => {
     writeFileSync(skillPath, "# Evolved content", "utf-8");
 
-    // Deployed entry exists, but no "created" entry with original_description
     appendAuditEntry(
       makeAuditEntry({
         proposal_id: "evo-test-001",
         action: "deployed",
         details: "Deployed proposal for test-skill evolution",
       }),
-      logPath,
     );
 
     const result = await rollback({
       skillName: "test-skill",
       skillPath,
-      logPath,
     });
 
     expect(result.rolledBack).toBe(false);
@@ -357,13 +339,11 @@ describe("edge cases", () => {
         action: "deployed",
         details: "Deployed proposal for test-skill",
       }),
-      logPath,
     );
 
     const result = await rollback({
       skillName: "test-skill",
       skillPath: missingPath,
-      logPath,
     });
 
     expect(result.rolledBack).toBe(false);

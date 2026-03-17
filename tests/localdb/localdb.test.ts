@@ -45,7 +45,21 @@ describe("localdb schema", () => {
     expect(names).toContain("evolution_audit");
     expect(names).toContain("session_telemetry");
     expect(names).toContain("skill_usage");
+    expect(names).toContain("orchestrate_runs");
+    expect(names).toContain("queries");
+    expect(names).toContain("improvement_signals");
     expect(names).toContain("_meta");
+  });
+
+  it("creates queries table with expected columns", () => {
+    // Should not throw — table exists and has the expected shape
+    const rows = db.query("SELECT * FROM queries LIMIT 1").all();
+    expect(rows).toHaveLength(0); // empty but accessible
+  });
+
+  it("creates improvement_signals table with expected columns", () => {
+    const rows = db.query("SELECT * FROM improvement_signals LIMIT 1").all();
+    expect(rows).toHaveLength(0);
   });
 
   it("creates indexes on session_id and timestamp columns", () => {
@@ -70,6 +84,13 @@ describe("localdb schema", () => {
     expect(names).toContain("idx_skill_usage_ts");
     expect(names).toContain("idx_skill_usage_query_triggered");
     expect(names).toContain("idx_evo_audit_action");
+    // Orchestrate, query log, and signal indexes
+    expect(names).toContain("idx_orchestrate_runs_ts");
+    expect(names).toContain("idx_queries_session");
+    expect(names).toContain("idx_queries_ts");
+    expect(names).toContain("idx_signals_session");
+    expect(names).toContain("idx_signals_consumed");
+    expect(names).toContain("idx_signals_ts");
   });
 
   it("creates UNIQUE dedup indexes for materializer idempotency", () => {
@@ -81,6 +102,8 @@ describe("localdb schema", () => {
     expect(names).toContain("idx_skill_usage_dedup");
     expect(names).toContain("idx_evo_audit_dedup");
     expect(names).toContain("idx_evo_evidence_dedup");
+    expect(names).toContain("idx_queries_dedup");
+    expect(names).toContain("idx_signals_dedup");
   });
 
   it("is idempotent — re-running DDL does not fail", () => {

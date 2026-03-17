@@ -30,7 +30,6 @@ import {
   TELEMETRY_LOG,
 } from "../constants.js";
 import type { OrchestrateRunReport } from "../dashboard-contract.js";
-import { readEvidenceTrail } from "../evolution/evidence.js";
 import type {
   EvolutionAuditEntry,
   EvolutionEvidenceEntry,
@@ -175,7 +174,7 @@ export function materializeIncremental(
   const evidencePath = options?.evolutionEvidencePath ?? EVOLUTION_EVIDENCE_LOG;
   let filteredEvidence: EvolutionEvidenceEntry[];
   if (!since) {
-    filteredEvidence = readEvidenceTrail(undefined, evidencePath);
+    filteredEvidence = readJsonl<EvolutionEvidenceEntry>(evidencePath);
   } else {
     const { records, newOffset } = readJsonlFrom<EvolutionEvidenceEntry>(evidencePath, getOffset(evidencePath));
     filteredEvidence = records;

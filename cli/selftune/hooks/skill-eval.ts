@@ -24,7 +24,7 @@ import {
   getLatestPromptIdentity,
 } from "../normalization.js";
 import type { PostToolUsePayload, SkillUsageRecord } from "../types.js";
-import { writeSkillUsageToDb } from "../localdb/direct-write.js";
+
 import { classifySkillPath } from "../utils/skill-discovery.js";
 import { getLastUserMessage } from "../utils/transcript.js";
 
@@ -103,15 +103,15 @@ export function countSkillToolInvocations(transcriptPath: string, skillName: str
  * preceded by an actual Skill tool invocation in the same transcript.
  * If not, the record is still logged but marked as triggered: false.
  */
-export function processToolUse(
+export async function processToolUse(
   payload: PostToolUsePayload,
   logPath: string = SKILL_LOG,
   canonicalLogPath: string = CANONICAL_LOG,
   promptStatePath?: string,
-): SkillUsageRecord | null {
+): Promise<SkillUsageRecord | null> {
   // Handle Skill tool invocations (e.g., Skill(selftune))
   if (payload.tool_name === "Skill") {
-    return processSkillToolUse(payload, logPath, canonicalLogPath, promptStatePath);
+    return await processSkillToolUse(payload, logPath, canonicalLogPath, promptStatePath);
   }
 
   // Only care about Read tool for SKILL.md detection
@@ -146,8 +146,11 @@ export function processToolUse(
     source: "claude_code",
   };
 
-  // Write to SQLite (fail-open)
-  try { writeSkillUsageToDb(record); } catch { /* hooks must never block */ }
+  // Write to SQLite (fail-open, dynamic import to reduce hook startup cost)
+  try {
+    const { writeSkillUsageToDb } = await import("../localdb/direct-write.js");
+    writeSkillUsageToDb(record);
+  } catch { /* hooks must never block */ }
 
   const baseInput: CanonicalBaseInput = {
     platform: "claude_code",
@@ -246,12 +249,12 @@ function detectAgentType(transcriptPath: string): string {
   }
 }
 
-function processSkillToolUse(
+async function processSkillToolUse(
   payload: PostToolUsePayload,
   logPath: string,
   canonicalLogPath: string,
   promptStatePath?: string,
-): SkillUsageRecord | null {
+): Promise<SkillUsageRecord | null> {
   const rawSkill = payload.tool_input?.skill;
   const skillName = typeof rawSkill === "string" ? rawSkill : null;
   if (!skillName) return null;
@@ -276,8 +279,11 @@ function processSkillToolUse(
     source: "claude_code",
   };
 
-  // Write to SQLite (fail-open)
-  try { writeSkillUsageToDb(record); } catch { /* hooks must never block */ }
+  // Write to SQLite (fail-open, dynamic import to reduce hook startup cost)
+  try {
+    const { writeSkillUsageToDb } = await import("../localdb/direct-write.js");
+    writeSkillUsageToDb(record);
+  } catch { /* hooks must never block */ }
 
   const baseInput: CanonicalBaseInput = {
     platform: "claude_code",
@@ -322,7 +328,7 @@ function processSkillToolUse(
 if (import.meta.main) {
   try {
     const payload: PostToolUsePayload = JSON.parse(await Bun.stdin.text());
-    processToolUse(payload);
+    await processToolUse(payload);
   } catch {
     // silent — hooks must never block Claude
   }

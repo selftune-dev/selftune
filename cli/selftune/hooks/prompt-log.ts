@@ -20,7 +20,7 @@ import {
   reservePromptIdentity,
 } from "../normalization.js";
 import type { ImprovementSignalRecord, PromptSubmitPayload, QueryLogRecord } from "../types.js";
-import { writeImprovementSignalToDb, writeQueryToDb } from "../localdb/direct-write.js";
+
 
 // ---------------------------------------------------------------------------
 // Installed skill name cache
@@ -147,13 +147,13 @@ export function detectImprovementSignal(
  * Core processing logic, exported for testability.
  * Returns the record that was appended, or null if skipped.
  */
-export function processPrompt(
+export async function processPrompt(
   payload: PromptSubmitPayload,
   _logPath?: string,
   canonicalLogPath: string = CANONICAL_LOG,
   promptStatePath?: string,
   _signalLogPath?: string,
-): QueryLogRecord | null {
+): Promise<QueryLogRecord | null> {
   const query = (payload.user_prompt ?? "").trim();
 
   if (!query) return null;
@@ -170,8 +170,11 @@ export function processPrompt(
     query,
   };
 
-  // Write to SQLite
-  try { writeQueryToDb(record); } catch { /* hooks must never block */ }
+  // Write to SQLite (dynamic import to reduce hook startup cost)
+  try {
+    const { writeQueryToDb } = await import("../localdb/direct-write.js");
+    writeQueryToDb(record);
+  } catch { /* hooks must never block */ }
 
   // Emit canonical prompt record (additive)
   const baseInput: CanonicalBaseInput = {
@@ -198,10 +201,11 @@ export function processPrompt(
   });
   appendCanonicalRecord(canonical, canonicalLogPath);
 
-  // Detect and log improvement signals (never throws)
+  // Detect and log improvement signals (never throws, dynamic import to reduce hook startup cost)
   try {
     const signal = detectImprovementSignal(query, record.session_id);
     if (signal) {
+      const { writeImprovementSignalToDb } = await import("../localdb/direct-write.js");
       writeImprovementSignalToDb(signal);
     }
   } catch {
@@ -215,7 +219,7 @@ export function processPrompt(
 if (import.meta.main) {
   try {
     const payload: PromptSubmitPayload = JSON.parse(await Bun.stdin.text());
-    processPrompt(payload);
+    await processPrompt(payload);
   } catch {
     // silent — hooks must never block Claude
   }

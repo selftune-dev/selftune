@@ -1,54 +1,32 @@
 /**
  * Evolution audit trail: append, read, and query audit entries.
+ *
+ * Uses SQLite as the primary store via getDb(). Tests inject an in-memory
+ * database via _setTestDb() for isolation.
  */
 
-import { EVOLUTION_AUDIT_LOG } from "../constants.js";
 import type { EvolutionAuditEntry } from "../types.js";
 import { getDb } from "../localdb/db.js";
 import { writeEvolutionAuditToDb } from "../localdb/direct-write.js";
 import { queryEvolutionAudit } from "../localdb/queries.js";
-import { appendJsonl, readJsonl } from "../utils/jsonl.js";
 
-/** Append an audit entry to the evolution audit log. */
+/** Append an audit entry to the evolution audit log (SQLite). */
 export function appendAuditEntry(
   entry: EvolutionAuditEntry,
-  logPath: string = EVOLUTION_AUDIT_LOG,
+  _logPath?: string,
 ): void {
-  // JSONL backup (append-only)
-  appendJsonl(logPath, entry);
-  // SQLite primary (fail-open)
-  try {
-    writeEvolutionAuditToDb(entry);
-  } catch {
-    /* fail-open */
-  }
+  writeEvolutionAuditToDb(entry);
 }
 
 /**
  * Read all audit entries, optionally filtered by skill name.
  *
- * When logPath differs from the default, reads from JSONL for backward
- * compatibility (tests pass custom temp paths). Otherwise reads from SQLite.
- *
  * @param skillName - Optional skill name to filter by
- * @param logPath - JSONL path; when non-default, reads from JSONL instead of SQLite
  */
 export function readAuditTrail(
   skillName?: string,
-  logPath: string = EVOLUTION_AUDIT_LOG,
+  _logPath?: string,
 ): EvolutionAuditEntry[] {
-  // Non-default path → read from JSONL (test isolation / custom paths)
-  if (logPath !== EVOLUTION_AUDIT_LOG) {
-    const entries = readJsonl<EvolutionAuditEntry>(logPath);
-    if (!skillName) return entries;
-    const needle = skillName.toLowerCase();
-    return entries.filter((e) =>
-      (e.skill_name ?? "").toLowerCase() === needle ||
-      (e.details ?? "").toLowerCase().includes(needle),
-    );
-  }
-
-  // Default path → read from SQLite (production)
   const db = getDb();
   const entries = queryEvolutionAudit(db, skillName) as EvolutionAuditEntry[];
   if (!skillName) return entries;
@@ -68,9 +46,10 @@ export function readAuditTrail(
  */
 export function getLastDeployedProposal(
   skillName: string,
-  logPath: string = EVOLUTION_AUDIT_LOG,
+  _logPath?: string,
 ): EvolutionAuditEntry | null {
-  const entries = readAuditTrail(skillName, logPath);
+  const entries = readAuditTrail(skillName);
   const deployed = entries.filter((e) => e.action === "deployed");
-  return deployed.length > 0 ? deployed[deployed.length - 1] : null;
+  // Results are DESC-ordered from SQLite, so first match is most recent
+  return deployed.length > 0 ? deployed[0] : null;
 }

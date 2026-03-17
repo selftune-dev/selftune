@@ -24,7 +24,7 @@ export interface RollbackOptions {
   skillName: string;
   skillPath: string;
   proposalId?: string; // rollback specific proposal, or last deployed
-  logPath?: string; // optional override for audit log path (testing)
+  logPath?: string; // deprecated — ignored, kept for backward compat
 }
 
 export interface RollbackResult {
@@ -71,8 +71,8 @@ function findLatestBackup(skillPath: string): string | null {
  * Find the "created" audit entry for a given proposal ID and extract
  * the original_description from its details field.
  */
-function findOriginalFromAudit(proposalId: string, logPath?: string): string | null {
-  const entries = readAuditTrail(undefined, logPath);
+function findOriginalFromAudit(proposalId: string): string | null {
+  const entries = readAuditTrail();
   const createdEntry = entries.find((e) => e.proposal_id === proposalId && e.action === "created");
   if (!createdEntry) return null;
 
@@ -93,9 +93,8 @@ function findOriginalFromAudit(proposalId: string, logPath?: string): string | n
 function findDeployedEntry(
   proposalId: string,
   skillName: string,
-  logPath?: string,
 ): EvolutionAuditEntry | null {
-  const entries = readAuditTrail(skillName, logPath);
+  const entries = readAuditTrail(skillName);
   return entries.find((e) => e.proposal_id === proposalId && e.action === "deployed") ?? null;
 }
 
@@ -104,7 +103,7 @@ function findDeployedEntry(
 // ---------------------------------------------------------------------------
 
 export async function rollback(options: RollbackOptions): Promise<RollbackResult> {
-  const { skillName, skillPath, proposalId, logPath } = options;
+  const { skillName, skillPath, proposalId } = options;
 
   const noRollback = (reason: string): RollbackResult => ({
     rolledBack: false,
@@ -123,14 +122,14 @@ export async function rollback(options: RollbackOptions): Promise<RollbackResult
 
   if (proposalId) {
     // Verify the specific proposal exists in audit trail
-    const entry = findDeployedEntry(proposalId, skillName, logPath);
+    const entry = findDeployedEntry(proposalId, skillName);
     if (!entry) {
       return noRollback(`Proposal ${proposalId} not found as deployed entry in audit trail`);
     }
     targetProposalId = proposalId;
   } else {
     // Use the most recent deployed proposal
-    const lastDeployed = getLastDeployedProposal(skillName, logPath);
+    const lastDeployed = getLastDeployedProposal(skillName);
     if (!lastDeployed) {
       return noRollback(`No deployed proposal found for skill "${skillName}"`);
     }
@@ -152,7 +151,7 @@ export async function rollback(options: RollbackOptions): Promise<RollbackResult
       action: "rolled_back",
       details: `Rolled back ${skillName} from backup file`,
     };
-    appendAuditEntry(auditEntry, logPath);
+    appendAuditEntry(auditEntry);
 
     const backupResult: RollbackResult = {
       rolledBack: true,
@@ -170,7 +169,7 @@ export async function rollback(options: RollbackOptions): Promise<RollbackResult
   }
 
   // Strategy 2: Restore from audit trail's created entry (description only)
-  const originalFromAudit = findOriginalFromAudit(targetProposalId, logPath);
+  const originalFromAudit = findOriginalFromAudit(targetProposalId);
   if (originalFromAudit) {
     // Replace only the description section in SKILL.md, preserving structure
     const currentContent = readFileSync(skillPath, "utf-8");
@@ -184,7 +183,7 @@ export async function rollback(options: RollbackOptions): Promise<RollbackResult
       action: "rolled_back",
       details: `Rolled back ${skillName} from audit trail`,
     };
-    appendAuditEntry(auditEntry, logPath);
+    appendAuditEntry(auditEntry);
 
     const auditResult: RollbackResult = {
       rolledBack: true,

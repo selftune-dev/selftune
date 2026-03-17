@@ -136,14 +136,14 @@ describe("signal detection integration with processPrompt", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  test("appends signal record when correction detected", () => {
+  test("appends signal record when correction detected", async () => {
     const payload: PromptSubmitPayload = {
       user_prompt: "why didn't you use the commit skill?",
       session_id: "sess-int-1",
     };
 
     // processPrompt writes signals to SQLite (not JSONL); verify via detectImprovementSignal
-    const result = processPrompt(payload, logPath, canonicalLogPath, promptStatePath, signalLogPath);
+    const result = await processPrompt(payload, logPath, canonicalLogPath, promptStatePath, signalLogPath);
     expect(result).not.toBeNull();
 
     // Verify signal detection directly
@@ -155,13 +155,13 @@ describe("signal detection integration with processPrompt", () => {
     expect(signal!.consumed).toBe(false);
   });
 
-  test("does not append signal for normal queries", () => {
+  test("does not append signal for normal queries", async () => {
     const payload: PromptSubmitPayload = {
       user_prompt: "help me refactor this module",
       session_id: "sess-int-2",
     };
 
-    processPrompt(payload, logPath, canonicalLogPath, promptStatePath, signalLogPath);
+    await processPrompt(payload, logPath, canonicalLogPath, promptStatePath, signalLogPath);
 
     const signals = readJsonl<ImprovementSignalRecord>(signalLogPath);
     expect(signals).toHaveLength(0);

@@ -11,9 +11,7 @@
 import { execSync } from "node:child_process";
 import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { CANONICAL_LOG, ORCHESTRATE_LOCK, TELEMETRY_LOG } from "../constants.js";
-import { getDb } from "../localdb/db.js";
-import { writeSessionTelemetryToDb } from "../localdb/direct-write.js";
-import { queryImprovementSignals } from "../localdb/queries.js";
+
 import {
   appendCanonicalRecords,
   buildCanonicalExecutionFact,
@@ -33,12 +31,14 @@ const LOCK_STALE_MS = 30 * 60 * 1000;
  *
  * Returns true if a process was spawned, false otherwise.
  */
-export function maybeSpawnReactiveOrchestrate(
+export async function maybeSpawnReactiveOrchestrate(
   _signalLogPath?: string,
   lockPath: string = ORCHESTRATE_LOCK,
-): boolean {
+): Promise<boolean> {
   try {
-    // Read pending signals from SQLite
+    // Read pending signals from SQLite (dynamic import to reduce hook startup cost)
+    const { getDb } = await import("../localdb/db.js");
+    const { queryImprovementSignals } = await import("../localdb/queries.js");
     const db = getDb();
     const pending = queryImprovementSignals(db, false) as ImprovementSignalRecord[];
     if (pending.length === 0) return false;
@@ -98,12 +98,12 @@ export function maybeSpawnReactiveOrchestrate(
  * Core processing logic, exported for testability.
  * Returns the record that was appended.
  */
-export function processSessionStop(
+export async function processSessionStop(
   payload: StopPayload,
   logPath: string = TELEMETRY_LOG,
   canonicalLogPath: string = CANONICAL_LOG,
   promptStatePath?: string,
-): SessionTelemetryRecord {
+): Promise<SessionTelemetryRecord> {
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : "unknown";
   const transcriptPath = typeof payload.transcript_path === "string" ? payload.transcript_path : "";
   const cwd = typeof payload.cwd === "string" ? payload.cwd : "";
@@ -122,8 +122,11 @@ export function processSessionStop(
   // JSONL backup (append-only)
   appendJsonl(logPath, record);
 
-  // Dual-write to SQLite (fail-open)
-  try { writeSessionTelemetryToDb(record); } catch { /* hooks must never block */ }
+  // Dual-write to SQLite (fail-open, dynamic import to reduce hook startup cost)
+  try {
+    const { writeSessionTelemetryToDb } = await import("../localdb/direct-write.js");
+    writeSessionTelemetryToDb(record);
+  } catch { /* hooks must never block */ }
 
   // Emit canonical session + execution fact records (additive)
   const baseInput: CanonicalBaseInput = {
@@ -190,7 +193,7 @@ export function processSessionStop(
 
   // Reactive: spawn focused orchestrate if pending improvement signals exist
   try {
-    maybeSpawnReactiveOrchestrate();
+    await maybeSpawnReactiveOrchestrate();
   } catch {
     // silent — hooks must never block
   }
@@ -202,7 +205,7 @@ export function processSessionStop(
 if (import.meta.main) {
   try {
     const payload: StopPayload = JSON.parse(await Bun.stdin.text());
-    processSessionStop(payload);
+    await processSessionStop(payload);
   } catch (err) {
     // silent — hooks must never block Claude
     if (process.env.DEBUG || process.env.NODE_ENV === "development") {

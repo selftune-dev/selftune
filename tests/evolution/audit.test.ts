@@ -2,27 +2,28 @@
  * Tests for evolution audit trail (TASK-06).
  *
  * Verifies appendAuditEntry, readAuditTrail, and getLastDeployedProposal
- * using temp files for full isolation.
+ * using in-memory SQLite databases for full isolation.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   appendAuditEntry,
   getLastDeployedProposal,
   readAuditTrail,
 } from "../../cli/selftune/evolution/audit.js";
+import { _setTestDb, openDb } from "../../cli/selftune/localdb/db.js";
 import type { EvolutionAuditEntry } from "../../cli/selftune/types.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
+let counter = 0;
+
 function makeEntry(overrides: Partial<EvolutionAuditEntry> = {}): EvolutionAuditEntry {
+  counter += 1;
   return {
-    timestamp: "2026-02-28T12:00:00Z",
+    timestamp: `2026-02-28T12:${String(counter).padStart(2, "0")}:00Z`,
     proposal_id: "evo-pptx-001",
     action: "created",
     details: "Proposal created for pptx skill evolution",
@@ -34,16 +35,14 @@ function makeEntry(overrides: Partial<EvolutionAuditEntry> = {}): EvolutionAudit
 // Setup / teardown
 // ---------------------------------------------------------------------------
 
-let tmpDir: string;
-let logPath: string;
-
 beforeEach(() => {
-  tmpDir = mkdtempSync(join(tmpdir(), "selftune-audit-test-"));
-  logPath = join(tmpDir, "evolution_audit_log.jsonl");
+  counter = 0;
+  const testDb = openDb(":memory:");
+  _setTestDb(testDb);
 });
 
 afterEach(() => {
-  rmSync(tmpDir, { recursive: true, force: true });
+  _setTestDb(null);
 });
 
 // ---------------------------------------------------------------------------
@@ -51,25 +50,15 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("appendAuditEntry", () => {
-  test("writes entry as JSONL to temp file", () => {
+  test("writes entry to SQLite", () => {
     const entry = makeEntry();
-    appendAuditEntry(entry, logPath);
+    appendAuditEntry(entry);
 
-    const content = readFileSync(logPath, "utf-8").trim();
-    const parsed = JSON.parse(content);
-    expect(parsed.proposal_id).toBe("evo-pptx-001");
-    expect(parsed.action).toBe("created");
-    expect(parsed.details).toBe("Proposal created for pptx skill evolution");
-  });
-
-  test("creates parent directory if needed", () => {
-    const nestedPath = join(tmpDir, "nested", "deep", "audit.jsonl");
-    const entry = makeEntry();
-    appendAuditEntry(entry, nestedPath);
-
-    const content = readFileSync(nestedPath, "utf-8").trim();
-    const parsed = JSON.parse(content);
-    expect(parsed.proposal_id).toBe("evo-pptx-001");
+    const entries = readAuditTrail();
+    expect(entries).toHaveLength(1);
+    expect(entries[0].proposal_id).toBe("evo-pptx-001");
+    expect(entries[0].action).toBe("created");
+    expect(entries[0].details).toBe("Proposal created for pptx skill evolution");
   });
 });
 
@@ -78,32 +67,29 @@ describe("appendAuditEntry", () => {
 // ---------------------------------------------------------------------------
 
 describe("readAuditTrail", () => {
-  test("reads all entries from file", () => {
-    appendAuditEntry(makeEntry({ proposal_id: "evo-001" }), logPath);
-    appendAuditEntry(makeEntry({ proposal_id: "evo-002" }), logPath);
-    appendAuditEntry(makeEntry({ proposal_id: "evo-003" }), logPath);
+  test("reads all entries", () => {
+    appendAuditEntry(makeEntry({ proposal_id: "evo-001" }));
+    appendAuditEntry(makeEntry({ proposal_id: "evo-002" }));
+    appendAuditEntry(makeEntry({ proposal_id: "evo-003" }));
 
-    const entries = readAuditTrail(undefined, logPath);
+    const entries = readAuditTrail();
     expect(entries).toHaveLength(3);
-    expect(entries[0].proposal_id).toBe("evo-001");
-    expect(entries[2].proposal_id).toBe("evo-003");
   });
 
   test("filters by skill name in details (case-insensitive)", () => {
-    appendAuditEntry(makeEntry({ details: "Proposal for pptx skill improvement" }), logPath);
-    appendAuditEntry(makeEntry({ details: "Proposal for csv-parser skill fix" }), logPath);
-    appendAuditEntry(makeEntry({ details: "Another PPTX evolution step" }), logPath);
+    appendAuditEntry(makeEntry({ proposal_id: "evo-001", details: "Proposal for pptx skill improvement" }));
+    appendAuditEntry(makeEntry({ proposal_id: "evo-002", details: "Proposal for csv-parser skill fix" }));
+    appendAuditEntry(makeEntry({ proposal_id: "evo-003", details: "Another PPTX evolution step" }));
 
-    const pptxEntries = readAuditTrail("pptx", logPath);
+    const pptxEntries = readAuditTrail("pptx");
     expect(pptxEntries).toHaveLength(2);
 
-    const csvEntries = readAuditTrail("csv-parser", logPath);
+    const csvEntries = readAuditTrail("csv-parser");
     expect(csvEntries).toHaveLength(1);
   });
 
-  test("returns empty array for missing log file (no crash)", () => {
-    const missing = join(tmpDir, "does_not_exist.jsonl");
-    const entries = readAuditTrail(undefined, missing);
+  test("returns empty array for empty database (no crash)", () => {
+    const entries = readAuditTrail();
     expect(entries).toEqual([]);
   });
 });
@@ -120,7 +106,6 @@ describe("getLastDeployedProposal", () => {
         details: "Proposal created for pptx skill",
         timestamp: "2026-02-28T10:00:00Z",
       }),
-      logPath,
     );
     appendAuditEntry(
       makeEntry({
@@ -129,7 +114,6 @@ describe("getLastDeployedProposal", () => {
         details: "Deployed first version of pptx evolution",
         timestamp: "2026-02-28T11:00:00Z",
       }),
-      logPath,
     );
     appendAuditEntry(
       makeEntry({
@@ -138,10 +122,9 @@ describe("getLastDeployedProposal", () => {
         details: "Deployed second version of pptx evolution",
         timestamp: "2026-02-28T12:00:00Z",
       }),
-      logPath,
     );
 
-    const result = getLastDeployedProposal("pptx", logPath);
+    const result = getLastDeployedProposal("pptx");
     expect(result).not.toBeNull();
     expect(result?.proposal_id).toBe("evo-pptx-002");
     expect(result?.action).toBe("deployed");
@@ -154,23 +137,20 @@ describe("getLastDeployedProposal", () => {
         action: "created",
         details: "Proposal created for pptx skill",
       }),
-      logPath,
     );
     appendAuditEntry(
       makeEntry({
         action: "validated",
         details: "Validated pptx proposal",
       }),
-      logPath,
     );
 
-    const result = getLastDeployedProposal("pptx", logPath);
+    const result = getLastDeployedProposal("pptx");
     expect(result).toBeNull();
   });
 
-  test("returns null for missing log file", () => {
-    const missing = join(tmpDir, "nope.jsonl");
-    const result = getLastDeployedProposal("pptx", missing);
+  test("returns null for empty database", () => {
+    const result = getLastDeployedProposal("pptx");
     expect(result).toBeNull();
   });
 });
@@ -181,14 +161,12 @@ describe("getLastDeployedProposal", () => {
 
 describe("mixed action filtering", () => {
   test("multiple entries with different actions, correct filtering", () => {
-    // Seed entries for two different skills with various actions
     appendAuditEntry(
       makeEntry({
         proposal_id: "evo-pptx-001",
         action: "created",
         details: "Created proposal for pptx",
       }),
-      logPath,
     );
     appendAuditEntry(
       makeEntry({
@@ -196,7 +174,6 @@ describe("mixed action filtering", () => {
         action: "created",
         details: "Created proposal for csv-parser",
       }),
-      logPath,
     );
     appendAuditEntry(
       makeEntry({
@@ -204,7 +181,6 @@ describe("mixed action filtering", () => {
         action: "validated",
         details: "Validated pptx proposal",
       }),
-      logPath,
     );
     appendAuditEntry(
       makeEntry({
@@ -212,7 +188,6 @@ describe("mixed action filtering", () => {
         action: "deployed",
         details: "Deployed pptx proposal",
       }),
-      logPath,
     );
     appendAuditEntry(
       makeEntry({
@@ -220,29 +195,28 @@ describe("mixed action filtering", () => {
         action: "rejected",
         details: "Rejected csv-parser proposal",
       }),
-      logPath,
     );
 
     // All entries
-    const all = readAuditTrail(undefined, logPath);
+    const all = readAuditTrail();
     expect(all).toHaveLength(5);
 
     // pptx entries only
-    const pptx = readAuditTrail("pptx", logPath);
+    const pptx = readAuditTrail("pptx");
     expect(pptx).toHaveLength(3);
 
     // csv entries only
-    const csv = readAuditTrail("csv-parser", logPath);
+    const csv = readAuditTrail("csv-parser");
     expect(csv).toHaveLength(2);
 
     // Last deployed for pptx
-    const deployed = getLastDeployedProposal("pptx", logPath);
+    const deployed = getLastDeployedProposal("pptx");
     expect(deployed).not.toBeNull();
     expect(deployed?.proposal_id).toBe("evo-pptx-001");
     expect(deployed?.action).toBe("deployed");
 
     // No deployed for csv-parser (it was rejected, not deployed)
-    const csvDeployed = getLastDeployedProposal("csv-parser", logPath);
+    const csvDeployed = getLastDeployedProposal("csv-parser");
     expect(csvDeployed).toBeNull();
   });
 });

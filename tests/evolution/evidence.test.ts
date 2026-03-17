@@ -1,22 +1,24 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { appendEvidenceEntry, readEvidenceTrail } from "../../cli/selftune/evolution/evidence.js";
+import { _setTestDb, openDb } from "../../cli/selftune/localdb/db.js";
 import type { EvolutionEvidenceEntry } from "../../cli/selftune/types.js";
 
-let tempDir = "";
+let counter = 0;
+
+beforeEach(() => {
+  counter = 0;
+  const testDb = openDb(":memory:");
+  _setTestDb(testDb);
+});
 
 afterEach(() => {
-  if (tempDir) {
-    rmSync(tempDir, { recursive: true, force: true });
-    tempDir = "";
-  }
+  _setTestDb(null);
 });
 
 function makeEntry(overrides: Partial<EvolutionEvidenceEntry> = {}): EvolutionEvidenceEntry {
+  counter += 1;
   return {
-    timestamp: "2026-03-09T12:00:00Z",
+    timestamp: `2026-03-09T12:${String(counter).padStart(2, "0")}:00Z`,
     proposal_id: "evo-test-001",
     skill_name: "test-skill",
     skill_path: "/tmp/test-skill/SKILL.md",
@@ -32,49 +34,36 @@ function makeEntry(overrides: Partial<EvolutionEvidenceEntry> = {}): EvolutionEv
 
 describe("evidence trail", () => {
   test("appends and reads evidence entries", () => {
-    tempDir = mkdtempSync(join(tmpdir(), "selftune-evidence-test-"));
-    const logPath = join(tempDir, "evidence.jsonl");
+    appendEvidenceEntry(makeEntry());
+    appendEvidenceEntry(makeEntry({ proposal_id: "evo-test-002", stage: "validated" }));
 
-    appendEvidenceEntry(makeEntry(), logPath);
-    appendEvidenceEntry(makeEntry({ proposal_id: "evo-test-002", stage: "validated" }), logPath);
-
-    const entries = readEvidenceTrail(undefined, logPath);
+    const entries = readEvidenceTrail();
     expect(entries).toHaveLength(2);
-    expect(entries[0].proposal_id).toBe("evo-test-001");
-    expect(entries[1].stage).toBe("validated");
+    // DESC order from SQLite — newest first
+    expect(entries[0].proposal_id).toBe("evo-test-002");
+    expect(entries[0].stage).toBe("validated");
+    expect(entries[1].proposal_id).toBe("evo-test-001");
   });
 
   test("filters by exact skill name", () => {
-    tempDir = mkdtempSync(join(tmpdir(), "selftune-evidence-test-"));
-    const logPath = join(tempDir, "evidence.jsonl");
+    appendEvidenceEntry(makeEntry({ skill_name: "skill-a" }));
+    appendEvidenceEntry(makeEntry({ proposal_id: "evo-test-002", skill_name: "skill-b" }));
 
-    appendEvidenceEntry(makeEntry({ skill_name: "skill-a" }), logPath);
-    appendEvidenceEntry(makeEntry({ proposal_id: "evo-test-002", skill_name: "skill-b" }), logPath);
-
-    const filtered = readEvidenceTrail("skill-b", logPath);
+    const filtered = readEvidenceTrail("skill-b");
     expect(filtered).toHaveLength(1);
     expect(filtered[0].skill_name).toBe("skill-b");
   });
 
-  test("returns empty when the evidence log does not exist", () => {
-    tempDir = mkdtempSync(join(tmpdir(), "selftune-evidence-test-"));
-    const logPath = join(tempDir, "missing.jsonl");
-
-    expect(readEvidenceTrail(undefined, logPath)).toEqual([]);
+  test("returns empty when the database has no evidence entries", () => {
+    expect(readEvidenceTrail()).toEqual([]);
   });
 
-  test("skips malformed JSONL entries while preserving valid evidence", () => {
-    tempDir = mkdtempSync(join(tmpdir(), "selftune-evidence-test-"));
-    const logPath = join(tempDir, "evidence.jsonl");
+  test("handles multiple entries with same proposal_id but different stages", () => {
+    appendEvidenceEntry(makeEntry({ stage: "created" }));
+    appendEvidenceEntry(makeEntry({ stage: "validated" }));
+    appendEvidenceEntry(makeEntry({ stage: "deployed" }));
 
-    writeFileSync(
-      logPath,
-      `${JSON.stringify(makeEntry())}\n{"malformed"\n${JSON.stringify(makeEntry({ proposal_id: "evo-test-002" }))}\n`,
-      "utf-8",
-    );
-
-    const entries = readEvidenceTrail(undefined, logPath);
-    expect(entries).toHaveLength(2);
-    expect(entries.map((entry) => entry.proposal_id)).toEqual(["evo-test-001", "evo-test-002"]);
+    const entries = readEvidenceTrail();
+    expect(entries).toHaveLength(3);
   });
 });
