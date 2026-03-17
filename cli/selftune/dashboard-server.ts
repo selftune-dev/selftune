@@ -547,3 +547,9 @@ export async function startDashboardServer(
     port: boundPort,
   };
 }
+
+// -- Direct execution (bun run dashboard-server.ts --port XXXX) ---------------
+if (import.meta.main) {
+  const port = Number(process.argv.find((_, i, a) => a[i - 1] === "--port")) || 7888;
+  startDashboardServer({ port, openBrowser: false });
+}
