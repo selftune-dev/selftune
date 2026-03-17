@@ -360,7 +360,18 @@ export async function startDashboardServer(
       // ---- POST /api/actions/{watch,evolve,rollback} ----
       if (url.pathname.startsWith("/api/actions/") && req.method === "POST") {
         const action = url.pathname.slice("/api/actions/".length);
-        const body = (await req.json()) as Record<string, unknown>;
+        let body: Record<string, unknown> = {};
+        try {
+          const parsed = await req.json();
+          if (typeof parsed === "object" && parsed !== null) {
+            body = parsed as Record<string, unknown>;
+          }
+        } catch {
+          return Response.json(
+            { success: false, error: "Malformed JSON body. Retry with a JSON object containing skill and skillPath." },
+            { status: 400, headers: corsHeaders() },
+          );
+        }
         return withCors(await handleAction(action, body, executeAction));
       }
 

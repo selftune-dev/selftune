@@ -12,7 +12,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname } from "node:path";
 import { CANONICAL_LOG, SKILL_LOG } from "../constants.js";
 import {
   appendCanonicalRecord,
@@ -255,8 +255,12 @@ function detectAgentType(transcriptPath: string): string {
     if (!/[/\\]subagents[/\\]/.test(transcriptPath)) return "main";
     const metaPath = transcriptPath.replace(/\.jsonl$/, ".meta.json");
     if (existsSync(metaPath)) {
-      const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
-      return meta.agentType ?? "subagent";
+      const meta: unknown = JSON.parse(readFileSync(metaPath, "utf-8"));
+      const agentType =
+        typeof meta === "object" && meta !== null
+          ? (meta as Record<string, unknown>).agentType
+          : undefined;
+      return typeof agentType === "string" ? agentType : "subagent";
     }
     return "subagent";
   } catch {

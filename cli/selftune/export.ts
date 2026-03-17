@@ -47,8 +47,9 @@ export function exportToJsonl(options: ExportOptions = {}): { files: string[]; r
   for (const tableName of selectedTables) {
     const table = tables[tableName];
     if (!table) {
-      console.warn(`Unknown table: ${tableName} (available: ${Object.keys(tables).join(", ")})`);
-      continue;
+      throw new Error(
+        `Unknown export table: ${tableName}. Run 'selftune export --help' for available tables: ${Object.keys(tables).join(", ")}`,
+      );
     }
 
     let records = table.query();
