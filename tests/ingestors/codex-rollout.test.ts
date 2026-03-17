@@ -575,6 +575,8 @@ describe("ingestFile", () => {
     const invocation = canonicalRecords.find((r) => r.record_kind === "skill_invocation");
     const executionFact = canonicalRecords.find((r) => r.record_kind === "execution_fact");
     expect(prompt).toBeUndefined();
+    expect(invocation).toBeTruthy();
+    expect(executionFact).toBeTruthy();
     expect((invocation as Record<string, unknown>)?.matched_prompt_id).toBeUndefined();
     expect((executionFact as Record<string, unknown>)?.prompt_id).toBeUndefined();
   });

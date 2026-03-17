@@ -64,7 +64,7 @@ export function materializeFull(db: Database, options?: MaterializeOptions): Mat
     db.run(`DELETE FROM ${table}`);
   }
   // Clear byte offsets so full rebuild reads from start of each file
-  db.run(`DELETE FROM _meta WHERE key LIKE '${META_OFFSET_PREFIX}%'`);
+  db.run("DELETE FROM _meta WHERE key LIKE ?", [`${META_OFFSET_PREFIX}%`]);
 
   return materializeIncremental(db, { ...options, since: null });
 }

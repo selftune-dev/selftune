@@ -161,8 +161,8 @@ describe("prompt-log hook", () => {
     expect(r2?.query).toBe("Second real prompt");
 
     // Verify prompt state file tracks the session counter (2 prompts = next index 2)
-    const { readFileSync } = require("node:fs");
-    const state = JSON.parse(readFileSync(promptStatePath, "utf-8"));
+    const { readFileSync: readFs } = await import("node:fs");
+    const state = JSON.parse(readFs(promptStatePath, "utf-8"));
     expect(state.next_prompt_index).toBe(2);
     expect(state.last_prompt_id).toBe("sess-ordered:p1");
   });
