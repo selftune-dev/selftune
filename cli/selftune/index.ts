@@ -296,10 +296,16 @@ Run 'selftune eval <action> --help' for action-specific options.`);
         const logPath = values["telemetry-log"] ?? TELEMETRY_LOG;
         let telemetry: unknown[];
         if (logPath === TELEMETRY_LOG) {
-          const { getDb } = await import("./localdb/db.js");
-          const { querySessionTelemetry } = await import("./localdb/queries.js");
-          const db = getDb();
-          telemetry = querySessionTelemetry(db);
+          try {
+            const { getDb } = await import("./localdb/db.js");
+            const { querySessionTelemetry } = await import("./localdb/queries.js");
+            const db = getDb();
+            telemetry = querySessionTelemetry(db);
+          } catch {
+            // DB unavailable — fall back to JSONL
+            const { readJsonl } = await import("./utils/jsonl.js");
+            telemetry = readJsonl(logPath);
+          }
         } else {
           const { readJsonl } = await import("./utils/jsonl.js");
           telemetry = readJsonl(logPath);
@@ -519,12 +525,19 @@ Options:
     const outputDir = (values.output as string | undefined) ?? process.cwd();
     const since = values.since as string | undefined;
     const tables = positionals.length > 0 ? positionals : undefined;
-    const result = exportToJsonl({ outputDir, since, tables });
-    console.log(
-      `Exported ${result.records} records to ${result.files.length} files in ${outputDir}`,
-    );
-    for (const file of result.files) {
-      console.log(`  ${file}`);
+    try {
+      const result = exportToJsonl({ outputDir, since, tables });
+      console.log(
+        `Exported ${result.records} records to ${result.files.length} files in ${outputDir}`,
+      );
+      for (const file of result.files) {
+        console.log(`  ${file}`);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`Export failed: ${message}`);
+      console.error("Ensure the SQLite database exists. Run 'selftune sync' first if needed.");
+      process.exit(1);
     }
     break;
   }

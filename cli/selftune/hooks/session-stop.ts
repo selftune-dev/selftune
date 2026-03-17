@@ -19,7 +19,7 @@ import {
   type CanonicalBaseInput,
   getLatestPromptIdentity,
 } from "../normalization.js";
-import type { ImprovementSignalRecord, SessionTelemetryRecord, StopPayload } from "../types.js";
+import type { SessionTelemetryRecord, StopPayload } from "../types.js";
 import { appendJsonl } from "../utils/jsonl.js";
 import { parseTranscript } from "../utils/transcript.js";
 
@@ -32,7 +32,6 @@ const LOCK_STALE_MS = 30 * 60 * 1000;
  * Returns true if a process was spawned, false otherwise.
  */
 export async function maybeSpawnReactiveOrchestrate(
-  _signalLogPath?: string,
   lockPath: string = ORCHESTRATE_LOCK,
 ): Promise<boolean> {
   try {
@@ -40,7 +39,7 @@ export async function maybeSpawnReactiveOrchestrate(
     const { getDb } = await import("../localdb/db.js");
     const { queryImprovementSignals } = await import("../localdb/queries.js");
     const db = getDb();
-    const pending = queryImprovementSignals(db, false) as ImprovementSignalRecord[];
+    const pending = queryImprovementSignals(db, false);
     if (pending.length === 0) return false;
 
     // Atomically claim the lock — openSync with "wx" fails if file exists

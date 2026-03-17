@@ -23,7 +23,7 @@ import type { BadgeFormat } from "./badge/badge-svg.js";
 import { EVOLUTION_AUDIT_LOG, QUERY_LOG, TELEMETRY_LOG } from "./constants.js";
 import type { OverviewResponse, SkillReportResponse } from "./dashboard-contract.js";
 import { readEvidenceTrail } from "./evolution/evidence.js";
-import { getDb } from "./localdb/db.js";
+import { closeSingleton, getDb } from "./localdb/db.js";
 import { materializeIncremental } from "./localdb/materialize.js";
 import {
   queryEvolutionAudit,
@@ -501,7 +501,7 @@ export async function startDashboardServer(
     }
     sseClients.clear();
     if (fsDebounceTimer) clearTimeout(fsDebounceTimer);
-    db?.close();
+    closeSingleton();
     server.stop();
   };
 
