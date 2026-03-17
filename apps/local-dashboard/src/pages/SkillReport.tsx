@@ -126,7 +126,6 @@ export function SkillReport() {
     data.evidence.length === 0 &&
     data.evolution.length === 0 &&
     data.pending_proposals.length === 0 &&
-    data.recent_invocations.length === 0 &&
     (data.canonical_invocations?.length ?? 0) === 0 &&
     (data.prompt_samples?.length ?? 0) === 0 &&
     (data.session_metadata?.length ?? 0) === 0
@@ -145,7 +144,6 @@ export function SkillReport() {
 
   const {
     usage,
-    recent_invocations,
     evidence,
     evolution,
     pending_proposals,
@@ -194,7 +192,7 @@ export function SkillReport() {
           <Tooltip>
             <TooltipTrigger render={<TabsTrigger value="invocations" />}>
               Invocations
-              <Badge variant="secondary" className="text-[10px]">{recent_invocations.length}</Badge>
+              <Badge variant="secondary" className="text-[10px]">{canonical_invocations?.length ?? 0}</Badge>
             </TooltipTrigger>
             <TooltipContent>Recent skill triggers and their outcomes</TooltipContent>
           </Tooltip>
@@ -390,16 +388,13 @@ export function SkillReport() {
               </TabsContent>
             )}
 
-            {/* Invocations tab — now with confidence from canonical_invocations */}
+            {/* Invocations tab — unified from skill_invocations table */}
             <TabsContent value="invocations">
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm">Recent Invocations</CardTitle>
                   <CardDescription>
-                    {recent_invocations.length} usage records
-                    {canonical_invocations && canonical_invocations.length > 0 && (
-                      <> · {canonical_invocations.length} canonical</>
-                    )}
+                    {canonical_invocations?.length ?? 0} invocation records
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -442,39 +437,8 @@ export function SkillReport() {
                         </TableBody>
                       </Table>
                     </div>
-                  ) : recent_invocations.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-8">No invocation records yet.</p>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Time</TableHead>
-                            <TableHead>Query</TableHead>
-                            <TableHead>Triggered</TableHead>
-                            <TableHead>Source</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {recent_invocations.map((rec, i) => (
-                            <TableRow key={`${rec.session_id}-${i}`} className={rec.triggered ? "" : "bg-red-50/50 dark:bg-red-950/30"}>
-                              <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
-                                {timeAgo(rec.timestamp)}
-                              </TableCell>
-                              <TableCell className="max-w-[500px] truncate">{rec.query}</TableCell>
-                              <TableCell>
-                                <Badge variant={rec.triggered ? "outline" : "destructive"} className="text-[10px]">
-                                  {rec.triggered ? "Yes" : "No"}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="font-mono text-xs text-muted-foreground">
-                                {rec.source ?? "--"}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
+                    <p className="text-sm text-muted-foreground text-center py-8">No invocation records yet.</p>
                   )}
                 </CardContent>
               </Card>
