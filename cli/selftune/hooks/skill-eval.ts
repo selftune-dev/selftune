@@ -252,7 +252,7 @@ function detectAgentType(transcriptPath: string): string {
   if (!transcriptPath) return "main";
   try {
     // Subagent transcripts live under .../subagents/agent-<id>.jsonl
-    if (!transcriptPath.includes("/subagents/")) return "main";
+    if (!/[/\\]subagents[/\\]/.test(transcriptPath)) return "main";
     const metaPath = transcriptPath.replace(/\.jsonl$/, ".meta.json");
     if (existsSync(metaPath)) {
       const meta = JSON.parse(readFileSync(metaPath, "utf-8"));

@@ -62,7 +62,7 @@
     "build:dashboard": "cd apps/local-dashboard && bun install && bunx vite build",
     "prepublishOnly": "bun run build:dashboard",
     "typecheck:dashboard": "cd apps/local-dashboard && bunx tsc --noEmit",
-    "check": "bun run lint && bun run lint:arch && bun run typecheck:dashboard && bun test",
+    "check": "bun run lint && bun run lint:arch && bun run typecheck:dashboard && bun run test",
     "start": "bun run cli/selftune/index.ts --help"
   },
   "workspaces": [

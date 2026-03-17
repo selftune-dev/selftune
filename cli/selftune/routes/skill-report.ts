@@ -89,7 +89,7 @@ export function handleSkillReport(db: Database, skillName: string): Response {
     .query(
       `SELECT si.occurred_at as timestamp, si.session_id, si.skill_name,
               si.invocation_mode, si.triggered, si.confidence, si.tool_name,
-              si.agent_type
+              si.agent_type, si.query, si.source
        FROM skill_invocations si
        WHERE si.skill_name = ?
        ORDER BY si.occurred_at DESC
@@ -104,6 +104,8 @@ export function handleSkillReport(db: Database, skillName: string): Response {
     confidence: number | null;
     tool_name: string | null;
     agent_type: string | null;
+    query: string | null;
+    source: string | null;
   }>;
 
   // Not-found check — after all enrichment queries so evidence-only skills aren't 404'd

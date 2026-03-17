@@ -11,7 +11,7 @@
 import { readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { CANONICAL_LOG, SKIP_PREFIXES } from "../constants.js";
+import { CANONICAL_LOG, QUERY_LOG, SKIP_PREFIXES } from "../constants.js";
 import {
   appendCanonicalRecord,
   buildCanonicalPrompt,
@@ -20,6 +20,7 @@ import {
   reservePromptIdentity,
 } from "../normalization.js";
 import type { ImprovementSignalRecord, PromptSubmitPayload, QueryLogRecord } from "../types.js";
+import { appendJsonl } from "../utils/jsonl.js";
 
 // ---------------------------------------------------------------------------
 // Installed skill name cache
@@ -148,7 +149,7 @@ export function detectImprovementSignal(
  */
 export async function processPrompt(
   payload: PromptSubmitPayload,
-  _logPath?: string,
+  logPath: string = QUERY_LOG,
   canonicalLogPath: string = CANONICAL_LOG,
   promptStatePath?: string,
   _signalLogPath?: string,
@@ -176,6 +177,9 @@ export async function processPrompt(
   } catch {
     /* hooks must never block */
   }
+
+  // JSONL backup (best-effort, hooks must never block)
+  try { appendJsonl(logPath, record); } catch { /* hooks must never block */ }
 
   // Emit canonical prompt record (additive)
   const baseInput: CanonicalBaseInput = {

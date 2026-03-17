@@ -137,8 +137,6 @@ describe("signal detection integration with processPrompt", () => {
   });
 
   afterEach(() => {
-    const db = getDb();
-    db?.close?.();
     _setTestDb(null);
     rmSync(tmpDir, { recursive: true, force: true });
   });

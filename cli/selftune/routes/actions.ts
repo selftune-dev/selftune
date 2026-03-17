@@ -59,13 +59,16 @@ export async function handleAction(
     const skill = body.skill as string | undefined;
     const skillPath = body.skillPath as string | undefined;
     const proposalId = body.proposalId as string | undefined;
-    if (!skill || !skillPath || !proposalId) {
+    if (!skill || !skillPath) {
       return Response.json(
-        { success: false, error: "Missing required fields: skill, skillPath, proposalId" },
+        { success: false, error: "Missing required fields: skill, skillPath" },
         { status: 400 },
       );
     }
-    const args = ["--skill", skill, "--skill-path", skillPath, "--proposal-id", proposalId];
+    const args = ["--skill", skill, "--skill-path", skillPath];
+    if (proposalId) {
+      args.push("--proposal-id", proposalId);
+    }
     const result = await executeAction(action, args);
     return Response.json(result);
   }

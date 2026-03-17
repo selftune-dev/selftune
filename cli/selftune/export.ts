@@ -3,7 +3,7 @@
  * Replaces the removed JSONL write path -- use this when you need
  * JSONL files for debugging, the contribute workflow, or external tools.
  */
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDb } from "./localdb/db.js";
 import {
@@ -25,6 +25,7 @@ export interface ExportOptions {
 export function exportToJsonl(options: ExportOptions = {}): { files: string[]; records: number } {
   const db = getDb();
   const outDir = options.outputDir ?? process.cwd();
+  mkdirSync(outDir, { recursive: true });
   const files: string[] = [];
   let totalRecords = 0;
 
@@ -36,7 +37,7 @@ export function exportToJsonl(options: ExportOptions = {}): { files: string[]; r
     evidence: { query: () => queryEvolutionEvidence(db), filename: "evolution_evidence_log.jsonl" },
     signals: { query: () => queryImprovementSignals(db), filename: "signal_log.jsonl" },
     orchestrate: {
-      query: () => getOrchestrateRuns(db, 10000),
+      query: () => getOrchestrateRuns(db),
       filename: "orchestrate_run_log.jsonl",
     },
   };
