@@ -106,12 +106,12 @@ Result:
 
 ### 6. CLI/operator guidance is inconsistent
 
-- `db.ts` and comments still mention `selftune rebuild-db`
-- there is no user-facing `rebuild-db` command in `cli/selftune/index.ts`
+- the nonexistent `selftune rebuild-db` guidance was removed from code paths
+- the remaining operator task is to keep docs aligned around the export-first recovery flow
 
 Result:
 
-- recovery guidance is misleading right when the operator most needs trustworthy instructions
+- recovery guidance still needs active maintenance right when the operator most needs trustworthy instructions
 
 ---
 

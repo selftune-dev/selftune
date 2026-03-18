@@ -147,7 +147,7 @@ When modifying JSONL log schemas or adding new fields, update all of these to ke
 | Symptom | Fix |
 |---------|-----|
 | Dashboard shows stale data | `selftune sync --force` |
-| SQLite schema mismatch after code change | `rm ~/.selftune/selftune.db && selftune sync --force` (materializer rebuilds from JSONL) |
+| SQLite schema mismatch after code change | `selftune export` first, then `rm ~/.selftune/selftune.db && selftune sync --force` |
 | Missing invocations after hook changes | Verify `~/.claude/settings.json` matchers, then `selftune doctor` |
 | Need to backfill from transcripts | `selftune ingest claude --force` |
 

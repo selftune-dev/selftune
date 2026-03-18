@@ -10,7 +10,7 @@
 // NOTE: With dual-write active (Phase 1+), hooks insert directly into SQLite.
 // The materializer is only needed for:
 //   1. Initial startup (to catch pre-existing JSONL data from before dual-write)
-//   2. Manual rebuild via `selftune rebuild-db`
+//   2. Manual recovery after exporting JSONL and recreating the DB file
 //   3. Backfill from batch ingestors that don't yet dual-write
 
 import type { Database } from "bun:sqlite";

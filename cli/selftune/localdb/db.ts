@@ -4,8 +4,8 @@
  * Uses Bun's built-in SQLite driver. The database file lives at
  * ~/.selftune/selftune.db. In dual-write mode (Phase 1+), hooks write
  * directly to SQLite alongside JSONL. The database is the primary query
- * store; JSONL serves as an append-only backup that can rebuild the DB
- * via `selftune rebuild-db`.
+ * store; JSONL serves as an append-only backup that can be exported and
+ * used to repopulate a fresh DB when a manual recovery is required.
  */
 
 import { Database } from "bun:sqlite";
@@ -52,7 +52,9 @@ export function openDb(dbPath: string = DB_PATH): Database {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("duplicate column")) continue; // expected on subsequent runs
-        throw new Error(`Schema migration failed: ${msg}. Run: selftune rebuild-db`);
+        throw new Error(
+          `Schema migration failed: ${msg}. Export first with 'selftune export', then remove '~/.selftune/selftune.db' and rerun 'selftune sync --force' or 'selftune dashboard'.`,
+        );
       }
     }
 
@@ -63,7 +65,9 @@ export function openDb(dbPath: string = DB_PATH): Database {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("already exists")) continue; // expected on subsequent runs
-        throw new Error(`Schema index creation failed: ${msg}. Run: selftune rebuild-db`);
+        throw new Error(
+          `Schema index creation failed: ${msg}. Export first with 'selftune export', then remove '~/.selftune/selftune.db' and rerun 'selftune sync --force' or 'selftune dashboard'.`,
+        );
       }
     }
   } catch (err) {
