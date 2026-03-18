@@ -37,6 +37,15 @@ Do NOT include any text outside the JSON object.`;
 // Prompt builder
 // ---------------------------------------------------------------------------
 
+/** Execution telemetry context for body evolution proposals. */
+export interface ExecutionContext {
+  avgToolCalls: number;
+  avgErrors: number;
+  avgTurns: number;
+  commonTools: string[];
+  failureTools: string[];
+}
+
 /** Build the user prompt for full body generation. */
 export function buildBodyGenerationPrompt(
   currentContent: string,
@@ -44,6 +53,7 @@ export function buildBodyGenerationPrompt(
   missedQueries: string[],
   skillName: string,
   fewShotExamples?: string[],
+  executionContext?: ExecutionContext,
 ): string {
   const patternLines = failurePatterns.map((p) => {
     const queries = p.missed_queries.map((q) => `    - "${q}"`).join("\n");
@@ -66,6 +76,11 @@ export function buildBodyGenerationPrompt(
   const feedbackSection =
     feedbackLines.length > 0 ? `\n\nStructured Failure Analysis:\n${feedbackLines.join("\n")}` : "";
 
+  // Build execution telemetry section if provided
+  const executionSection = executionContext
+    ? `\n\nExecution Profile (from recent sessions using this skill):\n  Average tool calls per session: ${executionContext.avgToolCalls.toFixed(1)}\n  Average errors per session: ${executionContext.avgErrors.toFixed(1)}\n  Average assistant turns: ${executionContext.avgTurns.toFixed(1)}\n  Most-used tools in successful sessions: ${executionContext.commonTools.join(", ") || "none"}\n  Tools correlated with failures: ${executionContext.failureTools.join(", ") || "none"}`
+    : "";
+
   // Build few-shot examples section if provided
   const fewShotSection =
     fewShotExamples && fewShotExamples.length > 0
@@ -81,7 +96,7 @@ Failure Patterns:
 ${patternLines.join("\n\n")}
 
 All Missed Queries:
-${missedLines}${feedbackSection}${fewShotSection}
+${missedLines}${feedbackSection}${executionSection}${fewShotSection}
 
 Generate an improved full body for the "${skillName}" skill that would correctly handle the missed queries listed above. The body should include everything below the # Title line: description, ## Workflow Routing table, and any other sections. Output ONLY a JSON object with "proposed_body", "rationale", and "confidence" fields.`;
 }
@@ -144,6 +159,7 @@ export async function generateBodyProposal(
   agent: string,
   modelFlag?: string,
   fewShotExamples?: string[],
+  executionContext?: ExecutionContext,
 ): Promise<BodyEvolutionProposal> {
   const prompt = buildBodyGenerationPrompt(
     currentContent,
@@ -151,6 +167,7 @@ export async function generateBodyProposal(
     missedQueries,
     skillName,
     fewShotExamples,
+    executionContext,
   );
   const rawResponse = await callLlm(BODY_GENERATOR_SYSTEM, prompt, agent, modelFlag);
   const { proposed_body, rationale, confidence } = parseBodyProposalResponse(rawResponse);
