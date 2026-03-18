@@ -12,6 +12,8 @@ Bootstrap selftune for first-time use or after changing environments.
 
 ```bash
 selftune init [--agent <type>] [--cli-path <path>] [--force]
+selftune init --alpha --alpha-email <email> [--alpha-name "Name"] [--force]
+selftune init --no-alpha [--force]
 ```
 
 ## Options
@@ -21,6 +23,10 @@ selftune init [--agent <type>] [--cli-path <path>] [--force]
 | `--agent <type>` | Agent platform: `claude`, `codex`, `opencode` | Auto-detected |
 | `--cli-path <path>` | Override auto-detected CLI entry-point path | Auto-detected |
 | `--force` | Reinitialize even if config already exists | Off |
+| `--alpha` | Enroll in the selftune alpha program | Off |
+| `--no-alpha` | Unenroll from the alpha program (preserves user_id) | Off |
+| `--alpha-email <email>` | Email for alpha enrollment (required with `--alpha`) | - |
+| `--alpha-name <name>` | Display name for alpha enrollment | - |
 
 ## Output Format
 
@@ -33,7 +39,14 @@ Creates `~/.selftune/config.json`:
   "llm_mode": "agent",
   "agent_cli": "claude",
   "hooks_installed": true,
-  "initialized_at": "2026-02-28T10:00:00Z"
+  "initialized_at": "2026-02-28T10:00:00Z",
+  "alpha": {
+    "enrolled": true,
+    "user_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+    "email": "user@example.com",
+    "display_name": "User Name",
+    "consent_timestamp": "2026-02-28T10:00:00Z"
+  }
 }
 ```
 
@@ -47,6 +60,12 @@ Creates `~/.selftune/config.json`:
 | `agent_cli` | string | CLI binary name for the detected agent |
 | `hooks_installed` | boolean | Whether telemetry hooks are installed |
 | `initialized_at` | string | ISO 8601 timestamp |
+| `alpha` | object? | Alpha program enrollment (present only if enrolled) |
+| `alpha.enrolled` | boolean | Whether the user is currently enrolled |
+| `alpha.user_id` | string | Stable UUID, generated once, preserved across reinits |
+| `alpha.email` | string? | Email provided at enrollment |
+| `alpha.display_name` | string? | Optional display name |
+| `alpha.consent_timestamp` | string | ISO 8601 timestamp of consent |
 
 ## Steps
 
@@ -174,6 +193,42 @@ For complex project structures (monorepos, multi-skill repos, mixed agent
 platforms), spawn the `integration-guide` agent as a subagent for guided
 setup. This agent handles project-type detection, per-package configuration,
 and verification steps that go beyond what the basic init workflow covers.
+
+## Alpha Enrollment
+
+Enroll the user in the selftune alpha program for early access features.
+
+### Enroll
+
+```bash
+selftune init --alpha --alpha-email user@example.com --alpha-name "User Name" --force
+```
+
+The `--alpha-email` flag is required. The command will:
+1. Generate a stable UUID (preserved across reinits)
+2. Write the alpha block to `~/.selftune/config.json`
+3. Print an `alpha_enrolled` JSON message to stdout
+4. Print the consent notice to stderr
+
+### Unenroll
+
+```bash
+selftune init --no-alpha --force
+```
+
+Sets `enrolled: false` in the alpha block but preserves the `user_id` so re-enrollment does not create a new identity.
+
+### Error Handling
+
+If `--alpha` is passed without `--alpha-email`, the CLI throws a JSON error:
+
+```json
+{
+  "error": "alpha_email_required",
+  "message": "The --alpha-email flag is required for alpha enrollment.",
+  "next_command": "selftune init --alpha --alpha-email <email>"
+}
+```
 
 ## Common Patterns
 
