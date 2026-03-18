@@ -27,6 +27,7 @@ import type {
 } from "../types.js";
 
 import { appendAuditEntry } from "./audit.js";
+import { checkConstitutionSizeOnly } from "./constitutional.js";
 import { parseSkillSections, replaceBody, replaceSection } from "./deploy-proposal.js";
 import { appendEvidenceEntry } from "./evidence.js";
 import { extractFailurePatterns } from "./extract-patterns.js";
@@ -289,6 +290,26 @@ export async function evolveBody(
         proposed_text: proposal.proposed_body,
         eval_set: evalSet,
       });
+
+      // Constitutional size check (deterministic, pre-validation — body only)
+      const constitution = checkConstitutionSizeOnly(
+        proposal.proposed_body,
+        proposal.original_body,
+      );
+      if (!constitution.passed) {
+        const reason = `Constitutional: ${constitution.violations.join("; ")}`;
+        recordAudit(proposal.proposal_id, "rejected", reason);
+        if (iteration === maxIterations - 1) {
+          return {
+            proposal: lastProposal,
+            validation: null,
+            deployed: false,
+            auditEntries,
+            reason,
+          };
+        }
+        continue;
+      }
 
       // Check confidence threshold
       if (proposal.confidence < confidenceThreshold) {
