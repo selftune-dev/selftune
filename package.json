@@ -61,6 +61,7 @@
     "test:slow": "bun test tests/evolution/evolve.test.ts tests/evolution/integration.test.ts tests/monitoring/integration.test.ts tests/dashboard/dashboard-server.test.ts",
     "build:dashboard": "cd apps/local-dashboard && bun install && bunx vite build",
     "sync-version": "bun run scripts/sync-skill-version.ts",
+    "validate:subagents": "bun run scripts/validate-subagent-docs.ts",
     "prepublishOnly": "bun run sync-version && bun run build:dashboard",
     "typecheck:dashboard": "cd apps/local-dashboard && bunx tsc --noEmit",
     "check": "bun run lint && bun run lint:arch && bun run typecheck:dashboard && bun run test",

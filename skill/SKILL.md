@@ -170,12 +170,17 @@ selftune bundles focused agents in `agents/`. When you need deeper analysis,
 read the relevant agent file and follow its instructions — either inline or
 by spawning a subagent with those instructions as its prompt.
 
+Treat these as worker-style subagents:
+- pass the required inputs from the parent agent
+- expect a structured report back
+- do not have them question the user directly unless you explicitly want that
+
 | Trigger keywords | Agent file | When to use |
 |------------------|-----------|-------------|
-| diagnose, root cause, why failing, debug performance | `agents/diagnosis-analyst.md` | After doctor finds persistent issues or grades are consistently low |
-| patterns, conflicts, cross-skill, overlap, optimize skills | `agents/pattern-analyst.md` | When composability scores indicate moderate-to-severe conflicts |
-| review evolution, check proposal, safe to deploy | `agents/evolution-reviewer.md` | Before deploying high-stakes or low-confidence proposals |
-| set up selftune, integrate, configure project | `agents/integration-guide.md` | For complex project structures (monorepo, multi-skill, mixed platforms) |
+| diagnose, root cause, why failing, debug performance | `agents/diagnosis-analyst.md` | When one skill has recurring low grades, regressions, or unclear failures after basic doctor/status review |
+| patterns, conflicts, cross-skill, overlap, optimize skills | `agents/pattern-analyst.md` | When multiple skills may overlap, misroute, or interfere, especially after composability flags conflict |
+| review evolution, check proposal, safe to deploy | `agents/evolution-reviewer.md` | Before deploying a dry-run or pending proposal, especially for high-stakes skills or marginal improvements |
+| set up selftune, integrate, configure project | `agents/integration-guide.md` | For complex setup and verification work in monorepos, multi-skill repos, or mixed-platform environments |
 
 ## Examples
 
