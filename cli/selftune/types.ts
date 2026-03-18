@@ -6,6 +6,14 @@
 // Config types (written to ~/.selftune/config.json)
 // ---------------------------------------------------------------------------
 
+export interface AlphaIdentity {
+  enrolled: boolean;
+  user_id: string;
+  email?: string;
+  display_name?: string;
+  consent_timestamp: string;
+}
+
 export interface SelftuneConfig {
   agent_type: "claude_code" | "codex" | "opencode" | "openclaw" | "unknown";
   cli_path: string;
@@ -14,6 +22,7 @@ export interface SelftuneConfig {
   hooks_installed: boolean;
   initialized_at: string;
   analytics_disabled?: boolean;
+  alpha?: AlphaIdentity;
 }
 
 // ---------------------------------------------------------------------------

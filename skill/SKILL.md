@@ -116,7 +116,7 @@ selftune export    [TABLE...] [--output/-o DIR] [--since DATE]
 | ingest, import, codex logs, opencode, openclaw, wrap codex | Ingest | Workflows/Ingest.md |
 | replay, backfill, claude transcripts, historical sessions | Replay | Workflows/Replay.md |
 | contribute, share, community, export data, anonymized, give back | Contribute | Workflows/Contribute.md |
-| init, setup, set up, bootstrap, first time, install, configure selftune | Initialize | Workflows/Initialize.md |
+| init, setup, set up, bootstrap, first time, install, configure selftune, alpha, enroll, alpha enrollment | Initialize | Workflows/Initialize.md |
 | cron, schedule, autonomous, automate evolution, run automatically | Cron | Workflows/Cron.md |
 | auto-activate, suggestions, activation rules, nag, why suggest | AutoActivation | Workflows/AutoActivation.md |
 | dashboard, visual, open dashboard, show dashboard, serve dashboard, live dashboard | Dashboard | Workflows/Dashboard.md |

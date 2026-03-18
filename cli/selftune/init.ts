@@ -23,9 +23,15 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import {
+  ALPHA_CONSENT_NOTICE,
+  generateUserId,
+  readAlphaIdentity,
+  writeAlphaIdentity,
+} from "./alpha-identity.js";
 import { TELEMETRY_NOTICE } from "./analytics.js";
 import { CLAUDE_CODE_HOOK_KEYS, SELFTUNE_CONFIG_DIR, SELFTUNE_CONFIG_PATH } from "./constants.js";
-import type { SelftuneConfig } from "./types.js";
+import type { AlphaIdentity, SelftuneConfig } from "./types.js";
 import { hookKeyHasSelftuneEntry } from "./utils/hooks.js";
 import { detectAgent } from "./utils/llm-call.js";
 
@@ -408,6 +414,10 @@ export interface InitOptions {
   agentOverride?: string;
   cliPathOverride?: string;
   homeDir?: string;
+  alpha?: boolean;
+  noAlpha?: boolean;
+  alphaEmail?: string;
+  alphaName?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -432,6 +442,9 @@ export function runInit(opts: InitOptions): SelftuneConfig {
       );
     }
   }
+
+  // Capture existing alpha identity before overwriting config (for user_id preservation)
+  const existingAlphaBeforeOverwrite = readAlphaIdentity(configPath);
 
   // Detect agent type
   const agentType = detectAgentType(opts.agentOverride, opts.homeDir);
@@ -494,6 +507,42 @@ export function runInit(opts: InitOptions): SelftuneConfig {
     }
   }
 
+  // Handle alpha enrollment
+  if (opts.alpha) {
+    if (!opts.alphaEmail) {
+      throw new Error(
+        JSON.stringify({
+          error: "alpha_email_required",
+          message: "The --alpha-email flag is required for alpha enrollment. Run: selftune init --alpha --alpha-email user@example.com",
+          next_command: "selftune init --alpha --alpha-email <email>",
+        }),
+      );
+    }
+
+    // Preserve existing user_id across reinits
+    const userId = existingAlphaBeforeOverwrite?.user_id ?? generateUserId();
+
+    const identity: AlphaIdentity = {
+      enrolled: true,
+      user_id: userId,
+      email: opts.alphaEmail,
+      display_name: opts.alphaName,
+      consent_timestamp: new Date().toISOString(),
+    };
+
+    config.alpha = identity;
+    writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+  } else if (opts.noAlpha) {
+    if (existingAlphaBeforeOverwrite) {
+      const identity: AlphaIdentity = {
+        ...existingAlphaBeforeOverwrite,
+        enrolled: false,
+      };
+      config.alpha = identity;
+      writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+    }
+  }
+
   return config;
 }
 
@@ -509,6 +558,10 @@ export async function cliMain(): Promise<void> {
       force: { type: "boolean", default: false },
       "enable-autonomy": { type: "boolean", default: false },
       "schedule-format": { type: "string" },
+      alpha: { type: "boolean", default: false },
+      "no-alpha": { type: "boolean", default: false },
+      "alpha-email": { type: "string" },
+      "alpha-name": { type: "string" },
     },
     strict: true,
   });
@@ -539,9 +592,35 @@ export async function cliMain(): Promise<void> {
     force,
     agentOverride: values.agent,
     cliPathOverride: values["cli-path"],
+    alpha: values.alpha ?? false,
+    noAlpha: values["no-alpha"] ?? false,
+    alphaEmail: values["alpha-email"],
+    alphaName: values["alpha-name"],
   });
 
   console.log(JSON.stringify(config, null, 2));
+
+  // Alpha enrollment output
+  if (values.alpha) {
+    console.log(
+      JSON.stringify({
+        level: "info",
+        code: "alpha_enrolled",
+        user_id: config.alpha?.user_id,
+        email: config.alpha?.email,
+        enrolled: true,
+      }),
+    );
+    console.error(ALPHA_CONSENT_NOTICE);
+  } else if (values["no-alpha"]) {
+    console.log(
+      JSON.stringify({
+        level: "info",
+        code: "alpha_unenrolled",
+        enrolled: false,
+      }),
+    );
+  }
 
   // Detect workspace type and report
   const workspace = detectWorkspaceType(process.cwd());
