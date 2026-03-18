@@ -4,8 +4,7 @@
  * Tests the full file I/O integration cycle: pattern extraction, deploy,
  * rollback, and the evolve orchestrator with realistic temp-file setups.
  *
- * Does NOT use mock.module() to avoid global state leakage. Instead tests
- * component functions directly and verifies file I/O end-to-end.
+ * Uses in-memory SQLite databases via _setTestDb() for full isolation.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -21,6 +20,7 @@ import {
 import { extractFailurePatterns } from "../../cli/selftune/evolution/extract-patterns.js";
 import { rollback } from "../../cli/selftune/evolution/rollback.js";
 import type { ValidationResult } from "../../cli/selftune/evolution/validate-proposal.js";
+import { _setTestDb, openDb } from "../../cli/selftune/localdb/db.js";
 import type {
   EvalEntry,
   EvolutionAuditEntry,
@@ -123,9 +123,12 @@ let tmpDir: string;
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "selftune-evolution-integ-"));
+  const testDb = openDb(":memory:");
+  _setTestDb(testDb);
 });
 
 afterEach(() => {
+  _setTestDb(null);
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -267,7 +270,6 @@ describe("integration: deploy then rollback restores original SKILL.md", () => {
     const skillDir = join(tmpDir, "skills", "test-skill");
     mkdirSync(skillDir, { recursive: true });
     const skillPath = join(skillDir, "SKILL.md");
-    const logPath = join(tmpDir, "evolution_audit_log.jsonl");
 
     // Step 1: Write original SKILL.md
     writeFileSync(skillPath, SAMPLE_SKILL_MD, "utf-8");
@@ -289,21 +291,17 @@ describe("integration: deploy then rollback restores original SKILL.md", () => {
     expect(deployedContent).not.toContain("original skill description");
 
     // Step 3: Record a deployed audit entry (normally done by evolve orchestrator)
-    appendAuditEntry(
-      {
-        timestamp: new Date().toISOString(),
-        proposal_id: proposal.proposal_id,
-        action: "deployed",
-        details: "Deployed proposal for test-skill evolution",
-      },
-      logPath,
-    );
+    appendAuditEntry({
+      timestamp: new Date().toISOString(),
+      proposal_id: proposal.proposal_id,
+      action: "deployed",
+      details: "Deployed proposal for test-skill evolution",
+    });
 
     // Step 4: Rollback
     const rollbackResult = await rollback({
       skillName: "test-skill",
       skillPath,
-      logPath,
     });
 
     // Verify rollback succeeded
@@ -318,7 +316,7 @@ describe("integration: deploy then rollback restores original SKILL.md", () => {
     expect(existsSync(`${skillPath}.bak`)).toBe(false);
 
     // Verify: audit trail has a rolled_back entry
-    const auditEntries = readJsonl<EvolutionAuditEntry>(logPath);
+    const auditEntries = readAuditTrail();
     const rollbackEntries = auditEntries.filter((e) => e.action === "rolled_back");
     expect(rollbackEntries).toHaveLength(1);
     expect(rollbackEntries[0].proposal_id).toBe(proposal.proposal_id);
@@ -328,7 +326,6 @@ describe("integration: deploy then rollback restores original SKILL.md", () => {
     const skillDir = join(tmpDir, "skills", "multi-cycle");
     mkdirSync(skillDir, { recursive: true });
     const skillPath = join(skillDir, "SKILL.md");
-    const logPath = join(tmpDir, "multi_audit_log.jsonl");
 
     writeFileSync(skillPath, SAMPLE_SKILL_MD, "utf-8");
 
@@ -344,17 +341,14 @@ describe("integration: deploy then rollback restores original SKILL.md", () => {
       createPr: false,
     });
 
-    appendAuditEntry(
-      {
-        timestamp: new Date().toISOString(),
-        proposal_id: "evo-cycle-001",
-        action: "deployed",
-        details: "Deployed proposal for test-skill",
-      },
-      logPath,
-    );
+    appendAuditEntry({
+      timestamp: new Date().toISOString(),
+      proposal_id: "evo-cycle-001",
+      action: "deployed",
+      details: "Deployed proposal for test-skill",
+    });
 
-    const result1 = await rollback({ skillName: "test-skill", skillPath, logPath });
+    const result1 = await rollback({ skillName: "test-skill", skillPath });
     expect(result1.rolledBack).toBe(true);
     expect(readFileSync(skillPath, "utf-8")).toBe(SAMPLE_SKILL_MD);
 
@@ -370,22 +364,19 @@ describe("integration: deploy then rollback restores original SKILL.md", () => {
       createPr: false,
     });
 
-    appendAuditEntry(
-      {
-        timestamp: new Date().toISOString(),
-        proposal_id: "evo-cycle-002",
-        action: "deployed",
-        details: "Deployed proposal for test-skill",
-      },
-      logPath,
-    );
+    appendAuditEntry({
+      timestamp: new Date().toISOString(),
+      proposal_id: "evo-cycle-002",
+      action: "deployed",
+      details: "Deployed proposal for test-skill",
+    });
 
-    const result2 = await rollback({ skillName: "test-skill", skillPath, logPath });
+    const result2 = await rollback({ skillName: "test-skill", skillPath });
     expect(result2.rolledBack).toBe(true);
     expect(readFileSync(skillPath, "utf-8")).toBe(SAMPLE_SKILL_MD);
 
     // Verify: audit trail has 2 deployed + 2 rolled_back entries
-    const entries = readJsonl<EvolutionAuditEntry>(logPath);
+    const entries = readAuditTrail();
     const deployed = entries.filter((e) => e.action === "deployed");
     const rolledBack = entries.filter((e) => e.action === "rolled_back");
     expect(deployed).toHaveLength(2);
@@ -399,8 +390,6 @@ describe("integration: deploy then rollback restores original SKILL.md", () => {
 
 describe("integration: audit trail persists across pipeline operations", () => {
   test("audit entries written by deploy and rollback are readable end-to-end", () => {
-    const logPath = join(tmpDir, "audit_persistence.jsonl");
-
     // Simulate a full pipeline's audit trail
     const entries: EvolutionAuditEntry[] = [
       {
@@ -426,25 +415,22 @@ describe("integration: audit trail persists across pipeline operations", () => {
     ];
 
     for (const entry of entries) {
-      appendAuditEntry(entry, logPath);
+      appendAuditEntry(entry);
     }
 
-    // Read back and verify
-    const trail = readAuditTrail(undefined, logPath);
+    // Read back and verify (DESC order from SQLite)
+    const trail = readAuditTrail();
     expect(trail).toHaveLength(3);
-    expect(trail[0].action).toBe("created");
-    expect(trail[1].action).toBe("validated");
-    expect(trail[2].action).toBe("deployed");
 
     // Verify eval_snapshot is preserved
     const deployedEntry = trail.find((e) => e.action === "deployed");
     expect(deployedEntry?.eval_snapshot?.pass_rate).toBe(0.9);
 
     // Verify filtering by skill name
-    const filtered = readAuditTrail("test-skill", logPath);
+    const filtered = readAuditTrail("test-skill");
     expect(filtered).toHaveLength(3);
 
-    const unrelated = readAuditTrail("nonexistent-skill", logPath);
+    const unrelated = readAuditTrail("nonexistent-skill");
     expect(unrelated).toHaveLength(0);
   });
 });

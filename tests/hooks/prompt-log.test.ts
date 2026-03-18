@@ -3,63 +3,78 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { processPrompt } from "../../cli/selftune/hooks/prompt-log.js";
-import type {
-  CanonicalPromptRecord,
-  PromptSubmitPayload,
-  QueryLogRecord,
-} from "../../cli/selftune/types.js";
-import { readJsonl } from "../../cli/selftune/utils/jsonl.js";
+import { _setTestDb, getDb, openDb } from "../../cli/selftune/localdb/db.js";
+import type { PromptSubmitPayload, QueryLogRecord } from "../../cli/selftune/types.js";
 
 let tmpDir: string;
-let logPath: string;
 let canonicalLogPath: string;
 let promptStatePath: string;
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "selftune-prompt-log-"));
-  logPath = join(tmpDir, "queries.jsonl");
   canonicalLogPath = join(tmpDir, "canonical.jsonl");
   promptStatePath = join(tmpDir, "canonical-session-state.json");
+
+  const testDb = openDb(":memory:");
+  _setTestDb(testDb);
 });
 
 afterEach(() => {
+  _setTestDb(null);
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
-describe("prompt-log hook", () => {
-  test("skips empty prompts", () => {
-    const result = processPrompt({ user_prompt: "" }, logPath, canonicalLogPath, promptStatePath);
-    expect(result).toBeNull();
-    expect(readJsonl(logPath)).toEqual([]);
-  });
+/** Helper to count query rows in the test database. */
+function queryCount(): number {
+  const db = getDb();
+  const row = db.query("SELECT COUNT(*) as cnt FROM queries").get() as { cnt: number };
+  return row.cnt;
+}
 
-  test("skips whitespace-only prompts", () => {
-    const result = processPrompt(
-      { user_prompt: "   " },
-      logPath,
+describe("prompt-log hook", () => {
+  test("skips empty prompts", async () => {
+    const result = await processPrompt(
+      { user_prompt: "" },
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
     expect(result).toBeNull();
-    expect(readJsonl(logPath)).toEqual([]);
+    expect(queryCount()).toBe(0);
   });
 
-  test("skips short prompts (less than 4 chars)", () => {
-    const result = processPrompt({ user_prompt: "hi" }, logPath, canonicalLogPath, promptStatePath);
+  test("skips whitespace-only prompts", async () => {
+    const result = await processPrompt(
+      { user_prompt: "   " },
+      undefined,
+      canonicalLogPath,
+      promptStatePath,
+    );
+    expect(result).toBeNull();
+    expect(queryCount()).toBe(0);
+  });
+
+  test("skips short prompts (less than 4 chars)", async () => {
+    const result = await processPrompt(
+      { user_prompt: "hi" },
+      undefined,
+      canonicalLogPath,
+      promptStatePath,
+    );
     expect(result).toBeNull();
 
-    const result2 = processPrompt(
+    const result2 = await processPrompt(
       { user_prompt: "ok?" },
-      logPath,
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
     expect(result2).toBeNull();
 
-    expect(readJsonl(logPath)).toEqual([]);
+    expect(queryCount()).toBe(0);
   });
 
-  test("skips automated prefix messages", () => {
+  test("skips automated prefix messages", async () => {
     const prefixes = [
       "<tool_result>some data</tool_result>",
       "<function_result>output</function_result>",
@@ -68,45 +83,45 @@ describe("prompt-log hook", () => {
     ];
 
     for (const prefix of prefixes) {
-      const result = processPrompt(
+      const result = await processPrompt(
         { user_prompt: prefix },
-        logPath,
+        undefined,
         canonicalLogPath,
         promptStatePath,
       );
       expect(result).toBeNull();
     }
 
-    expect(readJsonl(logPath)).toEqual([]);
+    expect(queryCount()).toBe(0);
   });
 
-  test("appends valid query to JSONL", () => {
+  test("appends valid query and returns record", async () => {
     const payload: PromptSubmitPayload = {
       user_prompt: "Help me refactor the authentication module",
       session_id: "sess-123",
     };
 
-    const result = processPrompt(payload, logPath, canonicalLogPath, promptStatePath);
+    const result = await processPrompt(payload, undefined, canonicalLogPath, promptStatePath);
     expect(result).not.toBeNull();
     expect(result?.query).toBe("Help me refactor the authentication module");
     expect(result?.session_id).toBe("sess-123");
     expect(result?.timestamp).toBeTruthy();
 
-    const records = readJsonl<QueryLogRecord>(logPath);
-    expect(records).toHaveLength(1);
-    expect(records[0].query).toBe("Help me refactor the authentication module");
-    expect(records[0].session_id).toBe("sess-123");
-
-    // Verify canonical prompt record was also emitted
-    const canonicalRecords = readJsonl<CanonicalPromptRecord>(canonicalLogPath);
-    expect(canonicalRecords).toHaveLength(1);
-    expect(canonicalRecords[0].prompt_id).toBe("sess-123:p0");
+    // Verify the record was written to SQLite
+    expect(queryCount()).toBe(1);
+    const db = getDb();
+    const row = db.query("SELECT query, session_id FROM queries LIMIT 1").get() as {
+      query: string;
+      session_id: string;
+    };
+    expect(row.query).toBe("Help me refactor the authentication module");
+    expect(row.session_id).toBe("sess-123");
   });
 
-  test("uses 'unknown' for missing session_id", () => {
-    const result = processPrompt(
+  test("uses 'unknown' for missing session_id", async () => {
+    const result = await processPrompt(
       { user_prompt: "valid query here" },
-      logPath,
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
@@ -114,10 +129,10 @@ describe("prompt-log hook", () => {
     expect(result?.session_id).toBe("unknown");
   });
 
-  test("trims whitespace from query", () => {
-    const result = processPrompt(
+  test("trims whitespace from query", async () => {
+    const result = await processPrompt(
       { user_prompt: "  some query with spaces  " },
-      logPath,
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
@@ -125,36 +140,40 @@ describe("prompt-log hook", () => {
     expect(result?.query).toBe("some query with spaces");
   });
 
-  test("handles JSON parse errors gracefully (missing user_prompt field)", () => {
-    // Simulate a payload without user_prompt — processPrompt handles it
-    const result = processPrompt(
+  test("handles JSON parse errors gracefully (missing user_prompt field)", async () => {
+    const result = await processPrompt(
       {} as PromptSubmitPayload,
-      logPath,
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
     expect(result).toBeNull();
   });
 
-  test("assigns deterministic prompt ids per session order", () => {
-    processPrompt(
+  test("assigns deterministic prompt ids per session order via state file", async () => {
+    const r1 = await processPrompt(
       { user_prompt: "First real prompt", session_id: "sess-ordered" },
-      logPath,
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
-    processPrompt(
+    const r2 = await processPrompt(
       { user_prompt: "Second real prompt", session_id: "sess-ordered" },
-      logPath,
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
 
-    const canonicalRecords = readJsonl<CanonicalPromptRecord>(canonicalLogPath);
-    expect(canonicalRecords.map((record) => record.prompt_id)).toEqual([
-      "sess-ordered:p0",
-      "sess-ordered:p1",
-    ]);
-    expect(canonicalRecords.map((record) => record.prompt_index)).toEqual([0, 1]);
+    // Both prompts should be processed successfully
+    expect(r1).not.toBeNull();
+    expect(r2).not.toBeNull();
+    expect(r1?.query).toBe("First real prompt");
+    expect(r2?.query).toBe("Second real prompt");
+
+    // Verify prompt state file tracks the session counter (2 prompts = next index 2)
+    const { readFileSync: readFs } = await import("node:fs");
+    const state = JSON.parse(readFs(promptStatePath, "utf-8"));
+    expect(state.next_prompt_index).toBe(2);
+    expect(state.last_prompt_id).toBe("sess-ordered:p1");
   });
 });

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +8,7 @@ import {
   evolve,
 } from "../../cli/selftune/evolution/evolve.js";
 import type { ValidationResult } from "../../cli/selftune/evolution/validate-proposal.js";
+import { _setTestDb, openDb } from "../../cli/selftune/localdb/db.js";
 import type {
   EvalEntry,
   EvolutionAuditEntry,
@@ -176,7 +177,13 @@ function createTempEvalSet(entries: EvalEntry[]): string {
   return evalPath;
 }
 
+beforeEach(() => {
+  _setTestDb(openDb(":memory:"));
+});
+
 afterEach(() => {
+  _setTestDb(null);
+
   // Reset all mocks to default behavior
   mockExtractFailurePatterns.mockReset();
   mockExtractFailurePatterns.mockImplementation(

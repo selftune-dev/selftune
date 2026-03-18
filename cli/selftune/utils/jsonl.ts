@@ -2,7 +2,17 @@
  * JSONL read/write/append utilities.
  */
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  closeSync,
+  existsSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
 import { createLogger } from "./logging.js";
 import type { LogType } from "./schema-validator.js";
@@ -26,6 +36,53 @@ export function readJsonl<T = Record<string, unknown>>(path: string): T[] {
     }
   }
   return records;
+}
+
+/**
+ * Read new records from a JSONL file starting at the given byte offset.
+ * Returns the parsed records and the new byte offset (end of file).
+ * This is used for incremental materialization to avoid re-reading
+ * hundreds of megabytes of append-only log data on every refresh.
+ *
+ * Uses Node fs with a file descriptor + read to only load the tail
+ * of the file into memory, keeping the hot path lightweight.
+ */
+export function readJsonlFrom<T = Record<string, unknown>>(
+  path: string,
+  byteOffset: number,
+): { records: T[]; newOffset: number } {
+  if (!existsSync(path)) return { records: [], newOffset: 0 };
+  const fd = openSync(path, "r");
+  try {
+    const fileSize = fstatSync(fd).size;
+    // Handle file shrinkage (e.g. truncation) — reset offset to current EOF
+    if (fileSize < byteOffset) return { records: [], newOffset: fileSize };
+    if (fileSize === byteOffset) return { records: [], newOffset: byteOffset };
+
+    const tailSize = fileSize - byteOffset;
+    const buf = Buffer.alloc(tailSize);
+    const bytesRead = readSync(fd, buf, 0, tailSize, byteOffset);
+    const content = buf.subarray(0, bytesRead).toString("utf-8");
+
+    // Only process up to the last complete newline to avoid splitting partial records
+    const lastNewline = content.lastIndexOf("\n");
+    if (lastNewline === -1) return { records: [], newOffset: byteOffset };
+    const completeContent = content.slice(0, lastNewline + 1);
+
+    const records: T[] = [];
+    for (const line of completeContent.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        records.push(JSON.parse(trimmed) as T);
+      } catch {
+        // skip malformed lines
+      }
+    }
+    return { records, newOffset: byteOffset + Buffer.byteLength(completeContent, "utf-8") };
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /**

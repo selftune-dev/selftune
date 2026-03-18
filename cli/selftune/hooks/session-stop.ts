@@ -4,11 +4,14 @@
  *
  * Fires when a Claude Code session ends. Reads the session's transcript JSONL
  * and extracts process-level telemetry (tool calls, errors, skills triggered, etc).
- * Appends one record per session to ~/.claude/session_telemetry_log.jsonl.
+ * Writes one record per session to SQLite via writeSessionTelemetryToDb(),
+ * with a JSONL backup to session_telemetry_log.jsonl.
  */
 
+import { execSync } from "node:child_process";
 import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { CANONICAL_LOG, ORCHESTRATE_LOCK, SIGNAL_LOG, TELEMETRY_LOG } from "../constants.js";
+import { CANONICAL_LOG, ORCHESTRATE_LOCK, TELEMETRY_LOG } from "../constants.js";
+
 import {
   appendCanonicalRecords,
   buildCanonicalExecutionFact,
@@ -16,8 +19,8 @@ import {
   type CanonicalBaseInput,
   getLatestPromptIdentity,
 } from "../normalization.js";
-import type { ImprovementSignalRecord, SessionTelemetryRecord, StopPayload } from "../types.js";
-import { appendJsonl, readJsonl } from "../utils/jsonl.js";
+import type { SessionTelemetryRecord, StopPayload } from "../types.js";
+import { appendJsonl } from "../utils/jsonl.js";
 import { parseTranscript } from "../utils/transcript.js";
 
 const LOCK_STALE_MS = 30 * 60 * 1000;
@@ -28,14 +31,15 @@ const LOCK_STALE_MS = 30 * 60 * 1000;
  *
  * Returns true if a process was spawned, false otherwise.
  */
-export function maybeSpawnReactiveOrchestrate(
-  signalLogPath: string = SIGNAL_LOG,
+export async function maybeSpawnReactiveOrchestrate(
   lockPath: string = ORCHESTRATE_LOCK,
-): boolean {
+): Promise<boolean> {
   try {
-    // Read pending signals
-    const signals = readJsonl<ImprovementSignalRecord>(signalLogPath);
-    const pending = signals.filter((s) => !s.consumed);
+    // Read pending signals from SQLite (dynamic import to reduce hook startup cost)
+    const { getDb } = await import("../localdb/db.js");
+    const { queryImprovementSignals } = await import("../localdb/queries.js");
+    const db = getDb();
+    const pending = queryImprovementSignals(db, false);
     if (pending.length === 0) return false;
 
     // Atomically claim the lock — openSync with "wx" fails if file exists
@@ -93,12 +97,12 @@ export function maybeSpawnReactiveOrchestrate(
  * Core processing logic, exported for testability.
  * Returns the record that was appended.
  */
-export function processSessionStop(
+export async function processSessionStop(
   payload: StopPayload,
   logPath: string = TELEMETRY_LOG,
   canonicalLogPath: string = CANONICAL_LOG,
   promptStatePath?: string,
-): SessionTelemetryRecord {
+): Promise<SessionTelemetryRecord> {
   const sessionId = typeof payload.session_id === "string" ? payload.session_id : "unknown";
   const transcriptPath = typeof payload.transcript_path === "string" ? payload.transcript_path : "";
   const cwd = typeof payload.cwd === "string" ? payload.cwd : "";
@@ -114,7 +118,20 @@ export function processSessionStop(
     ...metrics,
   };
 
-  appendJsonl(logPath, record);
+  // SQLite is the primary store (write first so it's never skipped)
+  try {
+    const { writeSessionTelemetryToDb } = await import("../localdb/direct-write.js");
+    writeSessionTelemetryToDb(record);
+  } catch {
+    /* hooks must never block */
+  }
+
+  // JSONL backup (append-only, fail-open)
+  try {
+    appendJsonl(logPath, record);
+  } catch {
+    /* JSONL is a backup — never block on failure */
+  }
 
   // Emit canonical session + execution fact records (additive)
   const baseInput: CanonicalBaseInput = {
@@ -129,9 +146,55 @@ export function processSessionStop(
   };
   const latestPrompt = getLatestPromptIdentity(sessionId, promptStatePath, canonicalLogPath);
 
+  // Extract git metadata from workspace (silent on failure)
+  let branch: string | undefined;
+  let repoRemote: string | undefined;
+  if (cwd) {
+    try {
+      branch =
+        execSync("git rev-parse --abbrev-ref HEAD", {
+          cwd,
+          timeout: 3000,
+          stdio: ["ignore", "pipe", "ignore"],
+        })
+          .toString()
+          .trim() || undefined;
+    } catch {
+      /* not a git repo or git not available */
+    }
+    try {
+      const rawRemote =
+        execSync("git remote get-url origin", {
+          cwd,
+          timeout: 3000,
+          stdio: ["ignore", "pipe", "ignore"],
+        })
+          .toString()
+          .trim() || undefined;
+      if (rawRemote) {
+        try {
+          const parsed = new URL(rawRemote);
+          parsed.username = "";
+          parsed.password = "";
+          repoRemote = `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+        } catch {
+          repoRemote = rawRemote; // SSH or non-URL format, safe as-is
+        }
+      }
+    } catch {
+      /* no remote configured */
+    }
+  }
+
   const canonicalSession = buildCanonicalSession({
     ...baseInput,
     workspace_path: cwd || undefined,
+    model: metrics.model,
+    started_at: metrics.started_at,
+    ended_at: metrics.ended_at ?? record.timestamp,
+    branch,
+    repo_remote: repoRemote,
+    agent_cli: "claude-code",
   });
 
   const canonicalFact = buildCanonicalExecutionFact({
@@ -151,7 +214,7 @@ export function processSessionStop(
 
   // Reactive: spawn focused orchestrate if pending improvement signals exist
   try {
-    maybeSpawnReactiveOrchestrate();
+    await maybeSpawnReactiveOrchestrate();
   } catch {
     // silent — hooks must never block
   }
@@ -163,7 +226,7 @@ export function processSessionStop(
 if (import.meta.main) {
   try {
     const payload: StopPayload = JSON.parse(await Bun.stdin.text());
-    processSessionStop(payload);
+    await processSessionStop(payload);
   } catch (err) {
     // silent — hooks must never block Claude
     if (process.env.DEBUG || process.env.NODE_ENV === "development") {

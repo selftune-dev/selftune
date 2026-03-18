@@ -17,6 +17,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { EVOLUTION_AUDIT_LOG, SELFTUNE_CONFIG_DIR } from "../constants.js";
+
 import type { PreToolUsePayload } from "../types.js";
 import { readJsonl } from "../utils/jsonl.js";
 
@@ -44,11 +45,27 @@ function extractSkillName(filePath: string): string {
  * A skill is "actively monitored" if its last audit action is "deployed".
  * If the last action is "rolled_back", it's no longer monitored.
  */
-export function checkActiveMonitoring(skillName: string, auditLogPath: string): boolean {
-  const entries = readJsonl<{
-    skill_name?: string;
-    action: string;
-  }>(auditLogPath);
+export async function checkActiveMonitoring(
+  skillName: string,
+  auditLogPath: string,
+): Promise<boolean> {
+  // Try SQLite first, fall back to JSONL for non-default paths (e.g., tests)
+  let entries: Array<{ skill_name?: string; action: string }>;
+  if (auditLogPath === EVOLUTION_AUDIT_LOG) {
+    try {
+      const { getDb } = await import("../localdb/db.js");
+      const { queryEvolutionAudit } = await import("../localdb/queries.js");
+      const db = getDb();
+      entries = queryEvolutionAudit(db, skillName) as Array<{
+        skill_name?: string;
+        action: string;
+      }>;
+    } catch {
+      entries = readJsonl<{ skill_name?: string; action: string }>(auditLogPath);
+    }
+  } else {
+    entries = readJsonl<{ skill_name?: string; action: string }>(auditLogPath);
+  }
 
   // Filter entries for this skill by skill_name field
   const skillEntries = entries.filter((e) => e.skill_name === skillName);
@@ -115,10 +132,10 @@ export interface GuardOptions {
  * Process a PreToolUse payload. Returns null if the write should be allowed,
  * or a GuardResult with exitCode 2 if the write should be blocked.
  */
-export function processEvolutionGuard(
+export async function processEvolutionGuard(
   payload: PreToolUsePayload,
   options: GuardOptions,
-): GuardResult | null {
+): Promise<GuardResult | null> {
   const filePath =
     typeof payload.tool_input?.file_path === "string" ? payload.tool_input.file_path : "";
 
@@ -128,7 +145,7 @@ export function processEvolutionGuard(
   const { auditLogPath, selftuneDir, maxSnapshotAgeHours = 24 } = options;
 
   // Check if this skill is under active monitoring
-  if (!checkActiveMonitoring(skillName, auditLogPath)) return null;
+  if (!(await checkActiveMonitoring(skillName, auditLogPath))) return null;
 
   // Check if there's a recent watch snapshot
   if (hasRecentWatchSnapshot(skillName, selftuneDir, maxSnapshotAgeHours)) return null;
@@ -148,7 +165,7 @@ if (import.meta.main) {
   try {
     const payload: PreToolUsePayload = JSON.parse(await Bun.stdin.text());
 
-    const result = processEvolutionGuard(payload, {
+    const result = await processEvolutionGuard(payload, {
       auditLogPath: EVOLUTION_AUDIT_LOG,
       selftuneDir: SELFTUNE_CONFIG_DIR,
     });

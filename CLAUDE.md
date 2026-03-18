@@ -1,0 +1,3 @@
+# Project Configuration
+
+@AGENTS.md

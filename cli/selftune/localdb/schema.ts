@@ -47,6 +47,11 @@ CREATE TABLE IF NOT EXISTS skill_invocations (
   confidence          REAL,
   tool_name           TEXT,
   matched_prompt_id   TEXT,
+  agent_type          TEXT,
+  query               TEXT,
+  skill_path          TEXT,
+  skill_scope         TEXT,
+  source              TEXT,
   FOREIGN KEY (session_id) REFERENCES sessions(session_id)
 )`;
 
@@ -151,6 +156,32 @@ CREATE TABLE IF NOT EXISTS orchestrate_runs (
   skill_actions_json TEXT NOT NULL
 )`;
 
+// -- Query log table (from all_queries_log.jsonl) ----------------------------
+
+export const CREATE_QUERIES = `
+CREATE TABLE IF NOT EXISTS queries (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp   TEXT NOT NULL,
+  session_id  TEXT NOT NULL,
+  query       TEXT NOT NULL,
+  source      TEXT
+)`;
+
+// -- Improvement signal table (from signal_log.jsonl) ------------------------
+
+export const CREATE_IMPROVEMENT_SIGNALS = `
+CREATE TABLE IF NOT EXISTS improvement_signals (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  timestamp       TEXT NOT NULL,
+  session_id      TEXT NOT NULL,
+  query           TEXT NOT NULL,
+  signal_type     TEXT NOT NULL,
+  mentioned_skill TEXT,
+  consumed        INTEGER NOT NULL DEFAULT 0,
+  consumed_at     TEXT,
+  consumed_by_run TEXT
+)`;
+
 // -- Metadata table -----------------------------------------------------------
 
 export const CREATE_META = `
@@ -167,6 +198,7 @@ export const CREATE_INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_prompts_occurred ON prompts(occurred_at)`,
   `CREATE INDEX IF NOT EXISTS idx_skill_inv_session ON skill_invocations(session_id)`,
   `CREATE INDEX IF NOT EXISTS idx_skill_inv_name ON skill_invocations(skill_name)`,
+  `CREATE INDEX IF NOT EXISTS idx_skill_inv_ts ON skill_invocations(occurred_at)`,
   `CREATE INDEX IF NOT EXISTS idx_exec_facts_session ON execution_facts(session_id)`,
   `CREATE INDEX IF NOT EXISTS idx_evo_evidence_proposal ON evolution_evidence(proposal_id)`,
   `CREATE INDEX IF NOT EXISTS idx_evo_evidence_skill ON evolution_evidence(skill_name)`,
@@ -186,6 +218,34 @@ export const CREATE_INDEXES = [
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_evo_evidence_dedup ON evolution_evidence(proposal_id, stage, timestamp)`,
   // -- Orchestrate run indexes -----------------------------------------------
   `CREATE INDEX IF NOT EXISTS idx_orchestrate_runs_ts ON orchestrate_runs(timestamp)`,
+  // -- Query log indexes ------------------------------------------------------
+  `CREATE INDEX IF NOT EXISTS idx_queries_session ON queries(session_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_queries_ts ON queries(timestamp)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_queries_dedup ON queries(session_id, query, timestamp)`,
+  // -- Improvement signal indexes ---------------------------------------------
+  `CREATE INDEX IF NOT EXISTS idx_signals_session ON improvement_signals(session_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_signals_consumed ON improvement_signals(consumed)`,
+  `CREATE INDEX IF NOT EXISTS idx_signals_ts ON improvement_signals(timestamp)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_signals_dedup ON improvement_signals(session_id, query, signal_type, timestamp)`,
+];
+
+/**
+ * Schema migrations — ALTER TABLE statements for columns added after initial release.
+ * Each is safe to re-run: SQLite throws "duplicate column" which openDb() catches.
+ */
+export const MIGRATIONS = [
+  // skill_invocations consolidation (skill_usage columns merged in)
+  `ALTER TABLE skill_invocations ADD COLUMN query TEXT`,
+  `ALTER TABLE skill_invocations ADD COLUMN skill_path TEXT`,
+  `ALTER TABLE skill_invocations ADD COLUMN skill_scope TEXT`,
+  `ALTER TABLE skill_invocations ADD COLUMN source TEXT`,
+];
+
+/** Indexes that depend on migration columns — must run AFTER MIGRATIONS. */
+export const POST_MIGRATION_INDEXES = [
+  `CREATE INDEX IF NOT EXISTS idx_skill_inv_query_triggered ON skill_invocations(query, triggered)`,
+  `CREATE INDEX IF NOT EXISTS idx_skill_inv_scope ON skill_invocations(skill_name, skill_scope, occurred_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_skill_inv_dedup ON skill_invocations(session_id, skill_name, query, occurred_at, triggered)`,
 ];
 
 /** All DDL statements in creation order. */
@@ -199,6 +259,8 @@ export const ALL_DDL = [
   CREATE_SESSION_TELEMETRY,
   CREATE_SKILL_USAGE,
   CREATE_ORCHESTRATE_RUNS,
+  CREATE_QUERIES,
+  CREATE_IMPROVEMENT_SIGNALS,
   CREATE_META,
   ...CREATE_INDEXES,
 ];

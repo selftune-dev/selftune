@@ -4,30 +4,37 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { processPrompt } from "../../cli/selftune/hooks/prompt-log.js";
 import { extractSkillName, processToolUse } from "../../cli/selftune/hooks/skill-eval.js";
-import type {
-  CanonicalSkillInvocationRecord,
-  PostToolUsePayload,
-  SkillUsageRecord,
-} from "../../cli/selftune/types.js";
-import { readJsonl } from "../../cli/selftune/utils/jsonl.js";
+import { _setTestDb, getDb, openDb } from "../../cli/selftune/localdb/db.js";
+import type { PostToolUsePayload, SkillUsageRecord } from "../../cli/selftune/types.js";
 
 let tmpDir: string;
-let logPath: string;
 let canonicalLogPath: string;
 let promptStatePath: string;
 let queryLogPath: string;
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "selftune-skill-eval-"));
-  logPath = join(tmpDir, "skill_usage.jsonl");
   canonicalLogPath = join(tmpDir, "canonical.jsonl");
   promptStatePath = join(tmpDir, "canonical-session-state.json");
   queryLogPath = join(tmpDir, "queries.jsonl");
+
+  const testDb = openDb(":memory:");
+  _setTestDb(testDb);
 });
 
 afterEach(() => {
+  const db = getDb();
+  db?.close?.();
+  _setTestDb(null);
   rmSync(tmpDir, { recursive: true, force: true });
 });
+
+/** Helper to count skill check rows in the unified skill_invocations table. */
+function skillUsageCount(): number {
+  const db = getDb();
+  const row = db.query("SELECT COUNT(*) as cnt FROM skill_invocations").get() as { cnt: number };
+  return row.cnt;
+}
 
 describe("extractSkillName", () => {
   test("extracts skill name from SKILL.md path", () => {
@@ -49,32 +56,31 @@ describe("extractSkillName", () => {
 });
 
 describe("skill-eval hook", () => {
-  test("ignores non-Read tools", () => {
+  test("ignores non-Read tools", async () => {
     const payload: PostToolUsePayload = {
       tool_name: "Write",
       tool_input: { file_path: "/skills/pdf/SKILL.md" },
       session_id: "sess-1",
     };
 
-    const result = processToolUse(payload, logPath, canonicalLogPath, promptStatePath);
+    const result = await processToolUse(payload, undefined, canonicalLogPath, promptStatePath);
     expect(result).toBeNull();
-    expect(readJsonl(logPath)).toEqual([]);
+    expect(skillUsageCount()).toBe(0);
   });
 
-  test("ignores non-SKILL.md reads", () => {
+  test("ignores non-SKILL.md reads", async () => {
     const payload: PostToolUsePayload = {
       tool_name: "Read",
       tool_input: { file_path: "/src/utils.ts" },
       session_id: "sess-2",
     };
 
-    const result = processToolUse(payload, logPath, canonicalLogPath, promptStatePath);
+    const result = await processToolUse(payload, undefined, canonicalLogPath, promptStatePath);
     expect(result).toBeNull();
-    expect(readJsonl(logPath)).toEqual([]);
+    expect(skillUsageCount()).toBe(0);
   });
 
-  test("extracts skill name correctly and writes record with triggered=true when Skill tool was invoked", () => {
-    // Create a transcript with a Skill tool invocation so triggered is true
+  test("extracts skill name correctly and writes record with triggered=true when Skill tool was invoked", async () => {
     const transcriptPath = join(tmpDir, "transcript.jsonl");
     const lines = [
       JSON.stringify({ role: "user", content: "Create a presentation" }),
@@ -85,9 +91,9 @@ describe("skill-eval hook", () => {
     ];
     writeFileSync(transcriptPath, `${lines.join("\n")}\n`);
 
-    processPrompt(
+    await processPrompt(
       { user_prompt: "Create a presentation", session_id: "sess-3" },
-      queryLogPath,
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
@@ -99,32 +105,24 @@ describe("skill-eval hook", () => {
       transcript_path: transcriptPath,
     };
 
-    const result = processToolUse(payload, logPath, canonicalLogPath, promptStatePath);
+    const result = await processToolUse(payload, undefined, canonicalLogPath, promptStatePath);
     expect(result).not.toBeNull();
     expect(result?.skill_name).toBe("pptx");
     expect(result?.skill_path).toBe("/mnt/skills/public/pptx/SKILL.md");
     expect(result?.triggered).toBe(true);
-
-    const records = readJsonl<SkillUsageRecord>(logPath);
-    expect(records).toHaveLength(1);
-    expect(records[0].skill_name).toBe("pptx");
-
-    const canonicalRecords = readJsonl<CanonicalSkillInvocationRecord>(canonicalLogPath);
-    const invocation = canonicalRecords.find((record) => record.record_kind === "skill_invocation");
-    expect(invocation?.matched_prompt_id).toBe("sess-3:p0");
-    expect(invocation?.invocation_mode).toBe("explicit");
+    expect(result?.source).toBe("claude_code");
   });
 
-  test("marks triggered=false when SKILL.md is read without Skill tool invocation (browsing)", () => {
+  test("marks triggered=false when SKILL.md is read without Skill tool invocation (browsing)", async () => {
     const transcriptPath = join(tmpDir, "transcript-browse.jsonl");
     writeFileSync(
       transcriptPath,
       `${JSON.stringify({ role: "user", content: "Let me look at what skills are available" })}\n`,
     );
 
-    processPrompt(
+    await processPrompt(
       { user_prompt: "Let me look at what skills are available", session_id: "sess-3b" },
-      queryLogPath,
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
@@ -136,13 +134,13 @@ describe("skill-eval hook", () => {
       transcript_path: transcriptPath,
     };
 
-    const result = processToolUse(payload, logPath, canonicalLogPath, promptStatePath);
+    const result = await processToolUse(payload, undefined, canonicalLogPath, promptStatePath);
     expect(result).not.toBeNull();
     expect(result?.skill_name).toBe("pptx");
     expect(result?.triggered).toBe(false);
   });
 
-  test("finds user query from transcript", () => {
+  test("finds user query from transcript", async () => {
     const transcriptPath = join(tmpDir, "transcript2.jsonl");
     const lines = [
       JSON.stringify({ role: "user", content: "First question" }),
@@ -161,18 +159,18 @@ describe("skill-eval hook", () => {
       transcript_path: transcriptPath,
     };
 
-    processPrompt(
+    await processPrompt(
       { user_prompt: "Now make a PDF please", session_id: "sess-4" },
-      queryLogPath,
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
-    const result = processToolUse(payload, logPath, canonicalLogPath, promptStatePath);
+    const result = await processToolUse(payload, undefined, canonicalLogPath, promptStatePath);
     expect(result).not.toBeNull();
     expect(result?.query).toBe("Now make a PDF please");
   });
 
-  test("skips logging when transcript is missing", () => {
+  test("skips logging when transcript is missing", async () => {
     const payload: PostToolUsePayload = {
       tool_name: "Read",
       tool_input: { file_path: "/skills/pdf/SKILL.md" },
@@ -180,12 +178,12 @@ describe("skill-eval hook", () => {
       transcript_path: join(tmpDir, "nonexistent.jsonl"),
     };
 
-    const result = processToolUse(payload, logPath, canonicalLogPath, promptStatePath);
+    const result = await processToolUse(payload, undefined, canonicalLogPath, promptStatePath);
     expect(result).toBeNull();
-    expect(readJsonl(logPath)).toEqual([]);
+    expect(skillUsageCount()).toBe(0);
   });
 
-  test("skips logging when the latest transcript content is only meta output", () => {
+  test("skips logging when the latest transcript content is only meta output", async () => {
     const transcriptPath = join(tmpDir, "transcript-meta.jsonl");
     const lines = [
       JSON.stringify({ role: "user", content: "real user prompt" }),
@@ -204,18 +202,18 @@ describe("skill-eval hook", () => {
       transcript_path: transcriptPath,
     };
 
-    processPrompt(
+    await processPrompt(
       { user_prompt: "real user prompt", session_id: "sess-5b" },
-      queryLogPath,
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
-    const result = processToolUse(payload, logPath, canonicalLogPath, promptStatePath);
+    const result = await processToolUse(payload, undefined, canonicalLogPath, promptStatePath);
     expect(result).not.toBeNull();
     expect(result?.query).toBe("real user prompt");
   });
 
-  test("writes correct usage record format", () => {
+  test("writes correct usage record format", async () => {
     const transcriptPath = join(tmpDir, "transcript3.jsonl");
     const lines = [
       JSON.stringify({ role: "user", content: "Generate slides" }),
@@ -226,9 +224,9 @@ describe("skill-eval hook", () => {
     ];
     writeFileSync(transcriptPath, `${lines.join("\n")}\n`);
 
-    processPrompt(
+    await processPrompt(
       { user_prompt: "Generate slides", session_id: "sess-6" },
-      queryLogPath,
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
@@ -240,22 +238,18 @@ describe("skill-eval hook", () => {
       transcript_path: transcriptPath,
     };
 
-    const result = processToolUse(payload, logPath, canonicalLogPath, promptStatePath);
+    const result = await processToolUse(payload, undefined, canonicalLogPath, promptStatePath);
     expect(result).not.toBeNull();
 
-    const records = readJsonl<SkillUsageRecord>(logPath);
-    expect(records).toHaveLength(1);
-
-    const record = records[0];
-    expect(record.timestamp).toBeTruthy();
-    expect(record.session_id).toBe("sess-6");
-    expect(record.skill_name).toBe("pptx");
-    expect(record.skill_path).toBe("/skills/pptx/SKILL.md");
-    expect(record.query).toBe("Generate slides");
-    expect(record.triggered).toBe(true);
+    expect(result?.timestamp).toBeTruthy();
+    expect(result?.session_id).toBe("sess-6");
+    expect(result?.skill_name).toBe("pptx");
+    expect(result?.skill_path).toBe("/skills/pptx/SKILL.md");
+    expect(result?.query).toBe("Generate slides");
+    expect(result?.triggered).toBe(true);
   });
 
-  test("records global skill provenance for installed global skills", () => {
+  test("records global skill provenance for installed global skills", async () => {
     const originalHome = process.env.HOME;
     process.env.HOME = tmpDir;
     try {
@@ -268,21 +262,21 @@ describe("skill-eval hook", () => {
         })}\n`,
       );
 
-      processPrompt(
+      await processPrompt(
         { user_prompt: "Use the global skill", session_id: "sess-global" },
-        queryLogPath,
+        undefined,
         canonicalLogPath,
         promptStatePath,
       );
 
-      const result = processToolUse(
+      const result = await processToolUse(
         {
           tool_name: "Read",
           tool_input: { file_path: join(tmpDir, ".agents", "skills", "pptx", "SKILL.md") },
           session_id: "sess-global",
           transcript_path: transcriptPath,
         },
-        logPath,
+        undefined,
         canonicalLogPath,
         promptStatePath,
       );

@@ -45,13 +45,13 @@ export function getOverviewPayload(db: Database): OverviewPayload {
   // Skill usage (bounded to most recent 2000)
   const skillRows = db
     .query(
-      `SELECT timestamp, session_id, skill_name, skill_path, query, triggered, source
-       FROM skill_usage
-       ORDER BY timestamp DESC
+      `SELECT occurred_at, session_id, skill_name, skill_path, query, triggered, source
+       FROM skill_invocations
+       ORDER BY occurred_at DESC
        LIMIT 2000`,
     )
     .all() as Array<{
-    timestamp: string;
+    occurred_at: string;
     session_id: string;
     skill_name: string;
     skill_path: string;
@@ -61,7 +61,7 @@ export function getOverviewPayload(db: Database): OverviewPayload {
   }>;
 
   const skills = skillRows.map((row) => ({
-    timestamp: row.timestamp,
+    timestamp: row.occurred_at,
     session_id: row.session_id,
     skill_name: row.skill_name,
     skill_path: row.skill_path,
@@ -90,7 +90,7 @@ export function getOverviewPayload(db: Database): OverviewPayload {
     .query(
       `SELECT
          (SELECT COUNT(*) FROM session_telemetry) as telemetry,
-         (SELECT COUNT(*) FROM skill_usage) as skills,
+         (SELECT COUNT(*) FROM skill_invocations) as skills,
          (SELECT COUNT(*) FROM evolution_audit) as evolution,
          (SELECT COUNT(*) FROM evolution_evidence) as evidence,
          (SELECT COUNT(*) FROM sessions) as sessions,
@@ -105,18 +105,18 @@ export function getOverviewPayload(db: Database): OverviewPayload {
     prompts: number;
   };
 
-  // Unmatched queries: skill_usage entries where triggered = 0 and no other
+  // Unmatched queries: skill_invocations entries where triggered = 0 and no other
   // record for the same query text triggered
   const unmatchedRows = db
     .query(
-      `SELECT su.timestamp, su.session_id, su.query
-       FROM skill_usage su
-       WHERE su.triggered = 0
+      `SELECT si.occurred_at AS timestamp, si.session_id, si.query
+       FROM skill_invocations si
+       WHERE si.triggered = 0
          AND NOT EXISTS (
-           SELECT 1 FROM skill_usage su2
-           WHERE su2.query = su.query AND su2.triggered = 1
+           SELECT 1 FROM skill_invocations si2
+           WHERE si2.query = si.query AND si2.triggered = 1
          )
-       ORDER BY su.timestamp DESC
+       ORDER BY si.occurred_at DESC
        LIMIT 500`,
     )
     .all() as Array<{ timestamp: string; session_id: string; query: string }>;
@@ -144,7 +144,7 @@ export function getSkillReportPayload(db: Database, skillName: string): SkillRep
       `SELECT
          COUNT(*) as total_checks,
          SUM(CASE WHEN triggered = 1 THEN 1 ELSE 0 END) as triggered_count
-       FROM skill_usage
+       FROM skill_invocations
        WHERE skill_name = ?`,
     )
     .get(skillName) as { total_checks: number; triggered_count: number };
@@ -156,14 +156,14 @@ export function getSkillReportPayload(db: Database, skillName: string): SkillRep
   // Recent invocations (last 100)
   const invocationRows = db
     .query(
-      `SELECT timestamp, session_id, query, triggered, source
-       FROM skill_usage
+      `SELECT occurred_at, session_id, query, triggered, source
+       FROM skill_invocations
        WHERE skill_name = ?
-       ORDER BY timestamp DESC
+       ORDER BY occurred_at DESC
        LIMIT 100`,
     )
     .all(skillName) as Array<{
-    timestamp: string;
+    occurred_at: string;
     session_id: string;
     query: string;
     triggered: number;
@@ -171,7 +171,7 @@ export function getSkillReportPayload(db: Database, skillName: string): SkillRep
   }>;
 
   const recent_invocations = invocationRows.map((row) => ({
-    timestamp: row.timestamp,
+    timestamp: row.occurred_at,
     session_id: row.session_id,
     query: row.query,
     triggered: row.triggered === 1,
@@ -218,7 +218,7 @@ export function getSkillReportPayload(db: Database, skillName: string): SkillRep
 
   // Unique sessions count
   const sessionsRow = db
-    .query(`SELECT COUNT(DISTINCT session_id) as c FROM skill_usage WHERE skill_name = ?`)
+    .query(`SELECT COUNT(DISTINCT session_id) as c FROM skill_invocations WHERE skill_name = ?`)
     .get(skillName) as { c: number };
 
   return {
@@ -241,16 +241,16 @@ export function getSkillsList(db: Database): SkillSummary[] {
   const rows = db
     .query(
       `SELECT
-         su.skill_name,
-         (SELECT s2.skill_scope FROM skill_usage s2
-          WHERE s2.skill_name = su.skill_name AND s2.skill_scope IS NOT NULL
-          ORDER BY s2.timestamp DESC LIMIT 1) as skill_scope,
+         si.skill_name,
+         (SELECT s2.skill_scope FROM skill_invocations s2
+          WHERE s2.skill_name = si.skill_name AND s2.skill_scope IS NOT NULL
+          ORDER BY s2.occurred_at DESC LIMIT 1) as skill_scope,
          COUNT(*) as total_checks,
-         SUM(CASE WHEN su.triggered = 1 THEN 1 ELSE 0 END) as triggered_count,
-         COUNT(DISTINCT su.session_id) as unique_sessions,
-         MAX(su.timestamp) as last_seen
-       FROM skill_usage su
-       GROUP BY su.skill_name
+         SUM(CASE WHEN si.triggered = 1 THEN 1 ELSE 0 END) as triggered_count,
+         COUNT(DISTINCT si.session_id) as unique_sessions,
+         MAX(si.occurred_at) as last_seen
+       FROM skill_invocations si
+       GROUP BY si.skill_name
        ORDER BY total_checks DESC`,
     )
     .all() as Array<{
@@ -354,9 +354,224 @@ export function getOrchestrateRuns(db: Database, limit = 20): OrchestrateRunRepo
   }));
 }
 
+// -- Generic read queries (Phase 3: replace readJsonl calls) ------------------
+
+/**
+ * Read all session telemetry records from SQLite.
+ * Replaces: readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG)
+ */
+export function querySessionTelemetry(db: Database): Array<{
+  timestamp: string;
+  session_id: string;
+  cwd: string;
+  transcript_path: string;
+  tool_calls: Record<string, number>;
+  total_tool_calls: number;
+  bash_commands: string[];
+  skills_triggered: string[];
+  skills_invoked?: string[];
+  assistant_turns: number;
+  errors_encountered: number;
+  transcript_chars: number;
+  last_user_query: string;
+  source?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+}> {
+  const rows = db.query(`SELECT * FROM session_telemetry ORDER BY timestamp DESC`).all() as Array<
+    Record<string, unknown>
+  >;
+  return rows.map((r) => ({
+    timestamp: r.timestamp as string,
+    session_id: r.session_id as string,
+    cwd: r.cwd as string,
+    transcript_path: r.transcript_path as string,
+    tool_calls: (safeParseJson(r.tool_calls_json as string) as Record<string, number>) ?? {},
+    total_tool_calls: r.total_tool_calls as number,
+    bash_commands: safeParseJsonArray<string>(r.bash_commands_json as string),
+    skills_triggered: safeParseJsonArray<string>(r.skills_triggered_json as string),
+    skills_invoked: r.skills_invoked_json
+      ? safeParseJsonArray<string>(r.skills_invoked_json as string)
+      : undefined,
+    assistant_turns: r.assistant_turns as number,
+    errors_encountered: r.errors_encountered as number,
+    transcript_chars: (r.transcript_chars as number) ?? 0,
+    last_user_query: (r.last_user_query as string) ?? "",
+    source: r.source as string | undefined,
+    input_tokens: r.input_tokens as number | undefined,
+    output_tokens: r.output_tokens as number | undefined,
+  }));
+}
+
+/**
+ * Read all skill invocation records from SQLite.
+ * Replaces: readEffectiveSkillUsageRecords()
+ */
+export function querySkillRecords(db: Database): Array<{
+  timestamp: string;
+  session_id: string;
+  skill_name: string;
+  skill_path: string;
+  skill_scope?: string;
+  query: string;
+  triggered: boolean;
+  source?: string;
+}> {
+  const rows = db
+    .query(
+      `SELECT occurred_at, session_id, skill_name, skill_path, skill_scope, query, triggered, source
+     FROM skill_invocations ORDER BY occurred_at DESC`,
+    )
+    .all() as Array<Record<string, unknown>>;
+  return rows.map((r) => ({
+    timestamp: r.occurred_at as string,
+    session_id: r.session_id as string,
+    skill_name: r.skill_name as string,
+    skill_path: r.skill_path as string,
+    skill_scope: r.skill_scope as string | undefined,
+    query: r.query as string,
+    triggered: (r.triggered as number) === 1,
+    source: r.source as string | undefined,
+  }));
+}
+
+/** @deprecated Use querySkillRecords instead. Kept for backward compatibility. */
+export const querySkillUsageRecords = querySkillRecords;
+
+/**
+ * Read all query log records from SQLite.
+ * Replaces: readJsonl<QueryLogRecord>(QUERY_LOG)
+ */
+export function queryQueryLog(db: Database): Array<{
+  timestamp: string;
+  session_id: string;
+  query: string;
+  source?: string;
+}> {
+  return db
+    .query(`SELECT timestamp, session_id, query, source FROM queries ORDER BY timestamp DESC`)
+    .all() as Array<{ timestamp: string; session_id: string; query: string; source?: string }>;
+}
+
+/**
+ * Read all evolution audit entries from SQLite.
+ * Replaces: readJsonl<EvolutionAuditEntry>(EVOLUTION_AUDIT_LOG)
+ */
+export function queryEvolutionAudit(
+  db: Database,
+  skillName?: string,
+): Array<{
+  timestamp: string;
+  proposal_id: string;
+  skill_name?: string;
+  action: string;
+  details: string;
+  eval_snapshot?: Record<string, unknown>;
+}> {
+  const sql = skillName
+    ? `SELECT * FROM evolution_audit WHERE skill_name = ? ORDER BY timestamp DESC`
+    : `SELECT * FROM evolution_audit ORDER BY timestamp DESC`;
+  const rows = (skillName ? db.query(sql).all(skillName) : db.query(sql).all()) as Array<
+    Record<string, unknown>
+  >;
+  return rows.map((r) => ({
+    timestamp: r.timestamp as string,
+    proposal_id: r.proposal_id as string,
+    skill_name: r.skill_name as string | undefined,
+    action: r.action as string,
+    details: r.details as string,
+    eval_snapshot: r.eval_snapshot_json
+      ? (safeParseJson(r.eval_snapshot_json as string) as Record<string, unknown>)
+      : undefined,
+  }));
+}
+
+/**
+ * Read all evolution evidence entries from SQLite.
+ * Replaces: readEvidenceTrail() / readJsonl<EvolutionEvidenceEntry>(EVOLUTION_EVIDENCE_LOG)
+ */
+export function queryEvolutionEvidence(
+  db: Database,
+  skillName?: string,
+): Array<{
+  timestamp: string;
+  proposal_id: string;
+  skill_name: string;
+  skill_path: string;
+  target: string;
+  stage: string;
+  rationale?: string;
+  confidence?: number;
+  details?: string;
+  original_text?: string;
+  proposed_text?: string;
+  eval_set?: Record<string, unknown>[];
+  validation?: Record<string, unknown>;
+}> {
+  const sql = skillName
+    ? `SELECT * FROM evolution_evidence WHERE skill_name = ? ORDER BY timestamp DESC`
+    : `SELECT * FROM evolution_evidence ORDER BY timestamp DESC`;
+  const rows = (skillName ? db.query(sql).all(skillName) : db.query(sql).all()) as Array<
+    Record<string, unknown>
+  >;
+  return rows.map((r) => ({
+    timestamp: r.timestamp as string,
+    proposal_id: r.proposal_id as string,
+    skill_name: r.skill_name as string,
+    skill_path: r.skill_path as string,
+    target: r.target as string,
+    stage: r.stage as string,
+    rationale: r.rationale as string | undefined,
+    confidence: r.confidence as number | undefined,
+    details: r.details as string | undefined,
+    original_text: r.original_text as string | undefined,
+    proposed_text: r.proposed_text as string | undefined,
+    eval_set: r.eval_set_json
+      ? safeParseJsonArray<Record<string, unknown>>(r.eval_set_json as string)
+      : undefined,
+    validation: r.validation_json
+      ? (safeParseJson(r.validation_json as string) as Record<string, unknown>)
+      : undefined,
+  }));
+}
+
+/**
+ * Read improvement signals from SQLite.
+ * Replaces: readJsonl<ImprovementSignalRecord>(SIGNAL_LOG)
+ */
+export function queryImprovementSignals(
+  db: Database,
+  consumedOnly?: boolean,
+): Array<{
+  timestamp: string;
+  session_id: string;
+  query: string;
+  signal_type: string;
+  mentioned_skill?: string;
+  consumed: boolean;
+  consumed_at?: string;
+  consumed_by_run?: string;
+}> {
+  const where =
+    consumedOnly === undefined ? "" : consumedOnly ? " WHERE consumed = 1" : " WHERE consumed = 0";
+  const rows = db
+    .query(`SELECT * FROM improvement_signals${where} ORDER BY timestamp DESC`)
+    .all() as Array<Record<string, unknown>>;
+  return rows.map((r) => ({
+    timestamp: r.timestamp as string,
+    session_id: r.session_id as string,
+    query: r.query as string,
+    signal_type: r.signal_type as string,
+    mentioned_skill: r.mentioned_skill as string | undefined,
+    consumed: (r.consumed as number) === 1,
+    consumed_at: r.consumed_at as string | undefined,
+    consumed_by_run: r.consumed_by_run as string | undefined,
+  }));
+}
+
 // -- Helpers ------------------------------------------------------------------
 
-function safeParseJsonArray<T = string>(json: string | null): T[] {
+export function safeParseJsonArray<T = string>(json: string | null): T[] {
   if (!json) return [];
   try {
     const parsed = JSON.parse(json);
@@ -366,7 +581,7 @@ function safeParseJsonArray<T = string>(json: string | null): T[] {
   }
 }
 
-function safeParseJson(json: string | null): Record<string, unknown> | null {
+export function safeParseJson(json: string | null): Record<string, unknown> | null {
   if (!json) return null;
   try {
     return JSON.parse(json);

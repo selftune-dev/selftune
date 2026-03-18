@@ -4,14 +4,13 @@
  * Lightweight, no LLM calls.
  */
 
-import { QUERY_LOG, TELEMETRY_LOG } from "./constants.js";
+import { getDb } from "./localdb/db.js";
+import { queryQueryLog, querySessionTelemetry, querySkillUsageRecords } from "./localdb/queries.js";
 import type { QueryLogRecord, SessionTelemetryRecord, SkillUsageRecord } from "./types.js";
-import { readJsonl } from "./utils/jsonl.js";
 import {
   filterActionableQueryRecords,
   filterActionableSkillUsageRecords,
 } from "./utils/query-filter.js";
-import { readEffectiveSkillUsageRecords } from "./utils/skill-log.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -132,9 +131,10 @@ export function formatInsight(insight: LastSessionInsight): string {
 
 /** CLI main: reads logs, prints insight. */
 export function cliMain(): void {
-  const telemetry = readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG);
-  const skillRecords = readEffectiveSkillUsageRecords();
-  const queryRecords = readJsonl<QueryLogRecord>(QUERY_LOG);
+  const db = getDb();
+  const telemetry = querySessionTelemetry(db) as SessionTelemetryRecord[];
+  const skillRecords = querySkillUsageRecords(db) as SkillUsageRecord[];
+  const queryRecords = queryQueryLog(db) as QueryLogRecord[];
 
   const insight = computeLastInsight(telemetry, skillRecords, queryRecords);
   if (!insight) {

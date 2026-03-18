@@ -24,12 +24,12 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("checkActiveMonitoring", () => {
-  test("returns false when audit log does not exist", () => {
-    const result = checkActiveMonitoring("pdf", join(tmpDir, "missing.jsonl"));
+  test("returns false when audit log does not exist", async () => {
+    const result = await checkActiveMonitoring("pdf", join(tmpDir, "missing.jsonl"));
     expect(result).toBe(false);
   });
 
-  test("returns false when audit log has no deployed entries for skill", () => {
+  test("returns false when audit log has no deployed entries for skill", async () => {
     const logPath = join(tmpDir, "audit.jsonl");
     const entries = [
       {
@@ -49,11 +49,11 @@ describe("checkActiveMonitoring", () => {
     ];
     writeFileSync(logPath, `${entries.map((e) => JSON.stringify(e)).join("\n")}\n`, "utf-8");
 
-    const result = checkActiveMonitoring("pdf", logPath);
+    const result = await checkActiveMonitoring("pdf", logPath);
     expect(result).toBe(false);
   });
 
-  test("returns true when audit log has deployed entry for skill", () => {
+  test("returns true when audit log has deployed entry for skill", async () => {
     const logPath = join(tmpDir, "audit.jsonl");
     const entries = [
       {
@@ -73,11 +73,11 @@ describe("checkActiveMonitoring", () => {
     ];
     writeFileSync(logPath, `${entries.map((e) => JSON.stringify(e)).join("\n")}\n`, "utf-8");
 
-    const result = checkActiveMonitoring("pdf", logPath);
+    const result = await checkActiveMonitoring("pdf", logPath);
     expect(result).toBe(true);
   });
 
-  test("returns false when last action for skill is rolled_back", () => {
+  test("returns false when last action for skill is rolled_back", async () => {
     const logPath = join(tmpDir, "audit.jsonl");
     const entries = [
       {
@@ -97,14 +97,14 @@ describe("checkActiveMonitoring", () => {
     ];
     writeFileSync(logPath, `${entries.map((e) => JSON.stringify(e)).join("\n")}\n`, "utf-8");
 
-    const result = checkActiveMonitoring("pdf", logPath);
+    const result = await checkActiveMonitoring("pdf", logPath);
     expect(result).toBe(false);
   });
 
-  test("handles corrupt audit log gracefully", () => {
+  test("handles corrupt audit log gracefully", async () => {
     const logPath = join(tmpDir, "bad-audit.jsonl");
     writeFileSync(logPath, "not json at all!!!\n", "utf-8");
-    const result = checkActiveMonitoring("pdf", logPath);
+    const result = await checkActiveMonitoring("pdf", logPath);
     expect(result).toBe(false);
   });
 });
@@ -191,33 +191,33 @@ describe("processEvolutionGuard", () => {
     };
   }
 
-  test("returns null for non-Write/Edit tools", () => {
-    const result = processEvolutionGuard(makePayload({ tool_name: "Read" }), {
+  test("returns null for non-Write/Edit tools", async () => {
+    const result = await processEvolutionGuard(makePayload({ tool_name: "Read" }), {
       auditLogPath: join(tmpDir, "audit.jsonl"),
       selftuneDir: tmpDir,
     });
     expect(result).toBeNull();
   });
 
-  test("returns null for non-SKILL.md files", () => {
-    const result = processEvolutionGuard(
+  test("returns null for non-SKILL.md files", async () => {
+    const result = await processEvolutionGuard(
       makePayload({ tool_input: { file_path: "/src/auth.ts" } }),
       { auditLogPath: join(tmpDir, "audit.jsonl"), selftuneDir: tmpDir },
     );
     expect(result).toBeNull();
   });
 
-  test("returns null when skill is not under active monitoring", () => {
+  test("returns null when skill is not under active monitoring", async () => {
     const auditLogPath = join(tmpDir, "audit.jsonl");
     // No audit log = not monitored
-    const result = processEvolutionGuard(makePayload(), {
+    const result = await processEvolutionGuard(makePayload(), {
       auditLogPath,
       selftuneDir: tmpDir,
     });
     expect(result).toBeNull();
   });
 
-  test("returns null when skill has a recent watch snapshot", () => {
+  test("returns null when skill has a recent watch snapshot", async () => {
     // Set up active monitoring
     const auditLogPath = join(tmpDir, "audit.jsonl");
     writeFileSync(
@@ -245,14 +245,14 @@ describe("processEvolutionGuard", () => {
       "utf-8",
     );
 
-    const result = processEvolutionGuard(makePayload(), {
+    const result = await processEvolutionGuard(makePayload(), {
       auditLogPath,
       selftuneDir: tmpDir,
     });
     expect(result).toBeNull();
   });
 
-  test("returns block message when monitored skill has no recent watch", () => {
+  test("returns block message when monitored skill has no recent watch", async () => {
     // Set up active monitoring
     const auditLogPath = join(tmpDir, "audit.jsonl");
     writeFileSync(
@@ -268,7 +268,7 @@ describe("processEvolutionGuard", () => {
     );
 
     // No snapshot file = no recent watch
-    const result = processEvolutionGuard(makePayload(), {
+    const result = await processEvolutionGuard(makePayload(), {
       auditLogPath,
       selftuneDir: tmpDir,
     });
@@ -278,7 +278,7 @@ describe("processEvolutionGuard", () => {
     expect(result?.exitCode).toBe(2);
   });
 
-  test("returns block message for Edit tool too", () => {
+  test("returns block message for Edit tool too", async () => {
     const auditLogPath = join(tmpDir, "audit.jsonl");
     writeFileSync(
       auditLogPath,
@@ -292,7 +292,7 @@ describe("processEvolutionGuard", () => {
       "utf-8",
     );
 
-    const result = processEvolutionGuard(
+    const result = await processEvolutionGuard(
       makePayload({
         tool_name: "Edit",
         tool_input: { file_path: "/skills/pptx/SKILL.md", old_string: "x", new_string: "y" },
@@ -304,15 +304,15 @@ describe("processEvolutionGuard", () => {
     expect(result?.message).toContain("pptx");
   });
 
-  test("handles missing file_path gracefully", () => {
-    const result = processEvolutionGuard(makePayload({ tool_input: {} }), {
+  test("handles missing file_path gracefully", async () => {
+    const result = await processEvolutionGuard(makePayload({ tool_input: {} }), {
       auditLogPath: join(tmpDir, "audit.jsonl"),
       selftuneDir: tmpDir,
     });
     expect(result).toBeNull();
   });
 
-  test("returns block when snapshot is stale (older than maxAgeHours)", () => {
+  test("returns block when snapshot is stale (older than maxAgeHours)", async () => {
     const auditLogPath = join(tmpDir, "audit.jsonl");
     writeFileSync(
       auditLogPath,
@@ -339,7 +339,7 @@ describe("processEvolutionGuard", () => {
       "utf-8",
     );
 
-    const result = processEvolutionGuard(makePayload(), {
+    const result = await processEvolutionGuard(makePayload(), {
       auditLogPath,
       selftuneDir: tmpDir,
       maxSnapshotAgeHours: 24,

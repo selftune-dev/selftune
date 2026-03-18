@@ -54,6 +54,8 @@ import {
   readSessionsFromSqlite,
   writeSession as writeOpenCodeSession,
 } from "./ingestors/opencode-ingest.js";
+import { getDb } from "./localdb/db.js";
+import { querySkillUsageRecords } from "./localdb/queries.js";
 import {
   rebuildSkillUsageFromCodexRollouts,
   rebuildSkillUsageFromTranscripts,
@@ -356,7 +358,17 @@ function rebuildSkillUsageOverlay(
     `repairing from ${transcriptPaths.length} transcripts${reusedClaude}, ${rolloutPaths.length} rollouts${reusedCodex}`,
   );
 
-  const rawSkillRecords = readJsonl<SkillUsageRecord>(options.skillLogPath);
+  let rawSkillRecords: SkillUsageRecord[];
+  if (options.skillLogPath === SKILL_LOG) {
+    try {
+      const db = getDb();
+      rawSkillRecords = querySkillUsageRecords(db) as SkillUsageRecord[];
+    } catch {
+      rawSkillRecords = readJsonl<SkillUsageRecord>(options.skillLogPath);
+    }
+  } else {
+    rawSkillRecords = readJsonl<SkillUsageRecord>(options.skillLogPath);
+  }
   const { repairedRecords, repairedSessionIds } = rebuildSkillUsageFromTranscripts(
     transcriptPaths,
     rawSkillRecords,

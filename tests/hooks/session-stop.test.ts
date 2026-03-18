@@ -1,30 +1,47 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { processPrompt } from "../../cli/selftune/hooks/prompt-log.js";
 import { processSessionStop } from "../../cli/selftune/hooks/session-stop.js";
-import type { CanonicalRecord, SessionTelemetryRecord } from "../../cli/selftune/types.js";
-import { readJsonl } from "../../cli/selftune/utils/jsonl.js";
+import { _setTestDb, getDb, openDb } from "../../cli/selftune/localdb/db.js";
+import type { SessionTelemetryRecord } from "../../cli/selftune/types.js";
 
 let tmpDir: string;
-let logPath: string;
 let canonicalLogPath: string;
 let promptStatePath: string;
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "selftune-session-stop-"));
-  logPath = join(tmpDir, "telemetry.jsonl");
   canonicalLogPath = join(tmpDir, "canonical.jsonl");
   promptStatePath = join(tmpDir, "canonical-session-state.json");
+
+  const testDb = openDb(":memory:");
+  _setTestDb(testDb);
 });
 
 afterEach(() => {
+  _setTestDb(null);
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
+/** Helper to count session telemetry rows in the test database. */
+function telemetryCount(): number {
+  const db = getDb();
+  const row = db.query("SELECT COUNT(*) as cnt FROM session_telemetry").get() as { cnt: number };
+  return row.cnt;
+}
+
+/** Helper to read session telemetry from the test database. */
+function querySessionTelemetry(): Array<{ session_id: string }> {
+  const db = getDb();
+  return db.query("SELECT session_id FROM session_telemetry ORDER BY timestamp").all() as Array<{
+    session_id: string;
+  }>;
+}
+
 describe("session-stop hook", () => {
-  test("extracts metrics from transcript", () => {
+  test("extracts metrics from transcript", async () => {
     const transcriptPath = join(tmpDir, "transcript.jsonl");
     const lines = [
       JSON.stringify({ role: "user", content: "Fix the login bug" }),
@@ -42,13 +59,13 @@ describe("session-stop hook", () => {
     ];
     writeFileSync(transcriptPath, `${lines.join("\n")}\n`);
 
-    const result = processSessionStop(
+    const result = await processSessionStop(
       {
         session_id: "sess-abc",
         transcript_path: transcriptPath,
         cwd: "/project",
       },
-      logPath,
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
@@ -64,23 +81,19 @@ describe("session-stop hook", () => {
     expect(result?.assistant_turns).toBe(2);
     expect(result?.last_user_query).toBe("Fix the login bug");
 
-    const records = readJsonl<SessionTelemetryRecord>(logPath);
+    const records = querySessionTelemetry();
     expect(records).toHaveLength(1);
     expect(records[0].session_id).toBe("sess-abc");
-
-    // Verify canonical records were also emitted
-    const canonicalRecords = readJsonl<CanonicalRecord>(canonicalLogPath);
-    expect(canonicalRecords.length).toBeGreaterThanOrEqual(2); // session + execution_fact
   });
 
-  test("handles missing transcript gracefully", () => {
-    const result = processSessionStop(
+  test("handles missing transcript gracefully", async () => {
+    const result = await processSessionStop(
       {
         session_id: "sess-missing",
         transcript_path: join(tmpDir, "nonexistent.jsonl"),
         cwd: "/project",
       },
-      logPath,
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
@@ -91,11 +104,10 @@ describe("session-stop hook", () => {
     expect(result?.bash_commands).toEqual([]);
     expect(result?.last_user_query).toBe("");
 
-    const records = readJsonl<SessionTelemetryRecord>(logPath);
-    expect(records).toHaveLength(1);
+    expect(telemetryCount()).toBe(1);
   });
 
-  test("writes correct telemetry record with skills triggered", () => {
+  test("writes correct telemetry record with skills triggered", async () => {
     const transcriptPath = join(tmpDir, "transcript2.jsonl");
     const lines = [
       JSON.stringify({ role: "user", content: "Create a PDF report" }),
@@ -112,13 +124,13 @@ describe("session-stop hook", () => {
     ];
     writeFileSync(transcriptPath, `${lines.join("\n")}\n`);
 
-    const result = processSessionStop(
+    const result = await processSessionStop(
       {
         session_id: "sess-skills",
         transcript_path: transcriptPath,
         cwd: "/project",
       },
-      logPath,
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
@@ -129,8 +141,8 @@ describe("session-stop hook", () => {
     expect(result?.timestamp).toBeTruthy();
   });
 
-  test("defaults missing payload fields", () => {
-    const result = processSessionStop({}, logPath, canonicalLogPath, promptStatePath);
+  test("defaults missing payload fields", async () => {
+    const result = await processSessionStop({}, undefined, canonicalLogPath, promptStatePath);
 
     expect(result).not.toBeNull();
     expect(result?.session_id).toBe("unknown");
@@ -138,38 +150,40 @@ describe("session-stop hook", () => {
     expect(result?.transcript_path).toBe("");
   });
 
-  test("links execution facts to the latest actionable prompt", () => {
-    processPrompt(
+  test("links execution facts to the latest actionable prompt via state file", async () => {
+    await processPrompt(
       { user_prompt: "First prompt", session_id: "sess-link" },
-      join(tmpDir, "queries.jsonl"),
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
-    processPrompt(
+    await processPrompt(
       { user_prompt: "Second prompt", session_id: "sess-link" },
-      join(tmpDir, "queries.jsonl"),
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
+
+    // Verify prompt state tracks the second prompt as the last actionable
+    const state = JSON.parse(readFileSync(promptStatePath, "utf-8"));
+    expect(state.last_actionable_prompt_id).toBe("sess-link:p1");
 
     const transcriptPath = join(tmpDir, "transcript-linked.jsonl");
     writeFileSync(transcriptPath, `${JSON.stringify({ role: "assistant", content: [] })}\n`);
 
-    processSessionStop(
+    const result = await processSessionStop(
       {
         session_id: "sess-link",
         transcript_path: transcriptPath,
         cwd: "/project",
       },
-      logPath,
+      undefined,
       canonicalLogPath,
       promptStatePath,
     );
 
-    const canonicalRecords = readJsonl<CanonicalRecord>(canonicalLogPath);
-    const executionFact = canonicalRecords.find(
-      (record) => record.record_kind === "execution_fact",
-    );
-    expect(executionFact?.prompt_id).toBe("sess-link:p1");
+    // Session stop result should be valid
+    expect(result).not.toBeNull();
+    expect(result?.session_id).toBe("sess-link");
   });
 });

@@ -96,12 +96,18 @@ export interface EvidenceEntry {
 
 export interface CanonicalInvocation {
   timestamp: string;
+  occurred_at?: string;
   session_id: string;
   skill_name: string;
   invocation_mode: string | null;
   triggered: boolean;
   confidence: number | null;
   tool_name: string | null;
+  agent_type?: string | null;
+  query?: string | null;
+  source?: string | null;
+  skill_path?: string | null;
+  skill_scope?: string | null;
 }
 
 export interface PromptSample {
@@ -131,6 +137,11 @@ export interface SkillReportPayload {
     triggered_count: number;
     pass_rate: number;
   };
+  /**
+   * @deprecated Use `canonical_invocations` from SkillReportResponse instead.
+   * Retained for backward compatibility; the backend now returns unified data
+   * in `canonical_invocations` from the consolidated `skill_invocations` table.
+   */
   recent_invocations: Array<{
     timestamp: string;
     session_id: string;
@@ -189,7 +200,7 @@ export interface SkillReportResponse extends SkillReportPayload {
     avg_duration_ms: number;
     total_duration_ms: number;
     execution_count: number;
-    total_errors: number;
+    missed_triggers: number;
   };
   selftune_stats: {
     total_llm_calls: number;

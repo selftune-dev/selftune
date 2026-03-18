@@ -14,10 +14,11 @@ import { dirname } from "node:path";
 import { parseArgs } from "node:util";
 
 import { AGENT_CANDIDATES, TELEMETRY_LOG } from "../constants.js";
-import type { GradingResult, SessionTelemetryRecord } from "../types.js";
+import { getDb } from "../localdb/db.js";
+import { querySessionTelemetry, querySkillUsageRecords } from "../localdb/queries.js";
+import type { GradingResult, SessionTelemetryRecord, SkillUsageRecord } from "../types.js";
 import { readJsonl } from "../utils/jsonl.js";
 import { detectAgent as _detectAgent } from "../utils/llm-call.js";
-import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
 import { readExcerpt } from "../utils/transcript.js";
 import {
   buildDefaultGradingOutputPath,
@@ -93,8 +94,16 @@ Options:
 
   // --- Auto-find session ---
   const telemetryLog = values["telemetry-log"] ?? TELEMETRY_LOG;
-  const telRecords = readJsonl<SessionTelemetryRecord>(telemetryLog);
-  const skillUsageRecords = readEffectiveSkillUsageRecords();
+  let telRecords: SessionTelemetryRecord[];
+  let skillUsageRecords: SkillUsageRecord[];
+  if (telemetryLog === TELEMETRY_LOG) {
+    const db = getDb();
+    telRecords = querySessionTelemetry(db) as SessionTelemetryRecord[];
+    skillUsageRecords = querySkillUsageRecords(db) as SkillUsageRecord[];
+  } else {
+    telRecords = readJsonl<SessionTelemetryRecord>(telemetryLog);
+    skillUsageRecords = [];
+  }
 
   let telemetry: SessionTelemetryRecord;
   let sessionId: string;

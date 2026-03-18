@@ -33,6 +33,11 @@ import {
   TELEMETRY_LOG,
 } from "../constants.js";
 import {
+  writeQueryToDb,
+  writeSessionTelemetryToDb,
+  writeSkillCheckToDb,
+} from "../localdb/direct-write.js";
+import {
   appendCanonicalRecords,
   buildCanonicalExecutionFact,
   buildCanonicalPrompt,
@@ -47,10 +52,9 @@ import type {
   CanonicalRecord,
   QueryLogRecord,
   SessionTelemetryRecord,
-  SkillUsageRecord,
   TranscriptMetrics,
 } from "../types.js";
-import { appendJsonl, loadMarker, saveMarker } from "../utils/jsonl.js";
+import { loadMarker, saveMarker } from "../utils/jsonl.js";
 import { isActionableQueryText } from "../utils/query-filter.js";
 import {
   extractActionableUserQueries,
@@ -150,7 +154,7 @@ export function writeSession(
     return;
   }
 
-  // Write ONE query record per user query
+  // Write ONE query record per user query to SQLite
   for (const uq of session.user_queries) {
     const queryRecord: QueryLogRecord = {
       timestamp: uq.timestamp || session.timestamp,
@@ -158,10 +162,14 @@ export function writeSession(
       query: uq.query,
       source: "claude_code_replay",
     };
-    appendJsonl(queryLogPath, queryRecord, "all_queries");
+    try {
+      writeQueryToDb(queryRecord);
+    } catch {
+      /* fail-open */
+    }
   }
 
-  // Write ONE telemetry record per session
+  // Write ONE telemetry record per session to SQLite
   const telemetry: SessionTelemetryRecord = {
     timestamp: session.timestamp,
     session_id: session.session_id,
@@ -178,7 +186,11 @@ export function writeSession(
     last_user_query: session.metrics.last_user_query,
     source: "claude_code_replay",
   };
-  appendJsonl(telemetryLogPath, telemetry, "session_telemetry");
+  try {
+    writeSessionTelemetryToDb(telemetry);
+  } catch {
+    /* fail-open */
+  }
 
   // Write ONE skill record per invoked/triggered skill.
   // Prefer skills_invoked (actual Skill tool calls) for high-confidence records.
@@ -189,20 +201,33 @@ export function writeSession(
     session.user_queries[session.user_queries.length - 1]?.query.trim() ??
     session.metrics.last_user_query.trim();
 
-  for (const skillName of skillSource) {
+  for (let i = 0; i < skillSource.length; i++) {
+    const skillName = skillSource[i];
     const skillQuery = latestActionableQuery;
     if (!isActionableQueryText(skillQuery)) continue;
 
-    const skillRecord: SkillUsageRecord = {
-      timestamp: session.timestamp,
-      session_id: session.session_id,
-      skill_name: skillName,
-      skill_path: `(claude_code:${skillName})`,
-      query: skillQuery,
-      triggered: true,
-      source: "claude_code_replay",
-    };
-    appendJsonl(skillLogPath, skillRecord, "skill_usage");
+    const { invocation_mode, confidence } = deriveInvocationMode({
+      has_skill_tool_call: invoked.length > 0,
+      has_skill_md_read: invoked.length === 0,
+    });
+
+    try {
+      writeSkillCheckToDb({
+        skill_invocation_id: deriveSkillInvocationId(session.session_id, skillName, i),
+        session_id: session.session_id,
+        occurred_at: session.timestamp,
+        skill_name: skillName,
+        invocation_mode,
+        triggered: true,
+        confidence,
+        platform: "claude_code",
+        query: skillQuery,
+        skill_path: `(claude_code:${skillName})`,
+        source: "claude_code_replay",
+      });
+    } catch {
+      /* fail-open */
+    }
   }
 
   // --- Canonical normalization records (additive) ---
@@ -233,7 +258,9 @@ export function buildCanonicalRecordsFromReplay(session: ParsedSession): Canonic
   records.push(
     buildCanonicalSession({
       ...baseInput,
-      started_at: session.timestamp,
+      started_at: session.metrics.started_at ?? session.timestamp,
+      ended_at: session.metrics.ended_at,
+      model: session.metrics.model,
     }),
   );
 

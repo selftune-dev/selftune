@@ -10,14 +10,14 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { TELEMETRY_LOG } from "../constants.js";
+import { getDb } from "../localdb/db.js";
+import { querySessionTelemetry, querySkillUsageRecords } from "../localdb/queries.js";
 import type {
   CodifiedWorkflow,
   SessionTelemetryRecord,
+  SkillUsageRecord,
   WorkflowDiscoveryReport,
 } from "../types.js";
-import { readJsonl } from "../utils/jsonl.js";
-import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
 import { discoverWorkflows } from "./discover.js";
 import { appendWorkflow } from "./skill-md-writer.js";
 
@@ -87,9 +87,10 @@ export async function cliMain(): Promise<void> {
     process.exit(1);
   }
 
-  // Read telemetry and skill usage logs
-  const telemetry = readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG);
-  const usage = readEffectiveSkillUsageRecords();
+  // Read telemetry and skill usage logs from SQLite
+  const db = getDb();
+  const telemetry = querySessionTelemetry(db) as SessionTelemetryRecord[];
+  const usage = querySkillUsageRecords(db) as SkillUsageRecord[];
 
   // Discover workflows
   const report = discoverWorkflows(telemetry, usage, {

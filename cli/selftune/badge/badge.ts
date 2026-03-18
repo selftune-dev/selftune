@@ -8,12 +8,21 @@
 
 import { writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
-import { EVOLUTION_AUDIT_LOG, QUERY_LOG, TELEMETRY_LOG } from "../constants.js";
+import { getDb } from "../localdb/db.js";
+import {
+  queryEvolutionAudit,
+  queryQueryLog,
+  querySessionTelemetry,
+  querySkillUsageRecords,
+} from "../localdb/queries.js";
 import { doctor } from "../observability.js";
 import { computeStatus } from "../status.js";
-import type { EvolutionAuditEntry, QueryLogRecord, SessionTelemetryRecord } from "../types.js";
-import { readJsonl } from "../utils/jsonl.js";
-import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
+import type {
+  EvolutionAuditEntry,
+  QueryLogRecord,
+  SessionTelemetryRecord,
+  SkillUsageRecord,
+} from "../types.js";
 import type { BadgeFormat } from "./badge-data.js";
 import { findSkillBadgeData } from "./badge-data.js";
 import { formatBadgeOutput } from "./badge-svg.js";
@@ -64,11 +73,12 @@ export async function cliMain(): Promise<void> {
       ? (values.format as BadgeFormat)
       : "svg";
 
-  // Read log files
-  const telemetry = readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG);
-  const skillRecords = readEffectiveSkillUsageRecords();
-  const queryRecords = readJsonl<QueryLogRecord>(QUERY_LOG);
-  const auditEntries = readJsonl<EvolutionAuditEntry>(EVOLUTION_AUDIT_LOG);
+  // Read log files from SQLite
+  const db = getDb();
+  const telemetry = querySessionTelemetry(db) as SessionTelemetryRecord[];
+  const skillRecords = querySkillUsageRecords(db) as SkillUsageRecord[];
+  const queryRecords = queryQueryLog(db) as QueryLogRecord[];
+  const auditEntries = queryEvolutionAudit(db) as EvolutionAuditEntry[];
 
   // Run doctor for system health
   const doctorResult = await doctor();

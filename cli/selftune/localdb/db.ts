@@ -2,15 +2,17 @@
  * SQLite database lifecycle for selftune local materialized view store.
  *
  * Uses Bun's built-in SQLite driver. The database file lives at
- * ~/.selftune/selftune.db and is treated as a disposable cache —
- * it can always be rebuilt from the authoritative JSONL logs.
+ * ~/.selftune/selftune.db. In dual-write mode (Phase 1+), hooks write
+ * directly to SQLite alongside JSONL. The database is the primary query
+ * store; JSONL serves as an append-only backup that can rebuild the DB
+ * via `selftune rebuild-db`.
  */
 
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { SELFTUNE_CONFIG_DIR } from "../constants.js";
-import { ALL_DDL } from "./schema.js";
+import { ALL_DDL, MIGRATIONS, POST_MIGRATION_INDEXES } from "./schema.js";
 
 /** Default database file path. */
 export const DB_PATH = join(SELFTUNE_CONFIG_DIR, "selftune.db");
@@ -33,21 +35,95 @@ export function openDb(dbPath: string = DB_PATH): Database {
 
   const db = new Database(dbPath);
 
-  // Enable WAL mode for better concurrent access
-  db.run("PRAGMA journal_mode = WAL");
-  db.run("PRAGMA foreign_keys = ON");
+  try {
+    // Enable WAL mode for better concurrent access
+    db.run("PRAGMA journal_mode = WAL");
+    db.run("PRAGMA foreign_keys = ON");
 
-  // Run all DDL statements
-  for (const ddl of ALL_DDL) {
-    db.run(ddl);
+    // Run all DDL statements
+    for (const ddl of ALL_DDL) {
+      db.run(ddl);
+    }
+
+    // Run migrations (ALTER TABLE ADD COLUMN — safe to re-run, fails silently if column exists)
+    for (const migration of MIGRATIONS) {
+      try {
+        db.run(migration);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("duplicate column")) continue; // expected on subsequent runs
+        throw new Error(`Schema migration failed: ${msg}. Run: selftune rebuild-db`);
+      }
+    }
+
+    // Create indexes that depend on migration columns
+    for (const idx of POST_MIGRATION_INDEXES) {
+      try {
+        db.run(idx);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("already exists")) continue; // expected on subsequent runs
+        throw new Error(`Schema index creation failed: ${msg}. Run: selftune rebuild-db`);
+      }
+    }
+  } catch (err) {
+    try {
+      db.close();
+    } catch {
+      /* best-effort cleanup */
+    }
+    throw err;
   }
 
   return db;
 }
 
+// -- Singleton ----------------------------------------------------------------
+
+let _singletonDb: Database | null = null;
+
 /**
- * Get a metadata value from the _meta table.
+ * Get (or create) the shared singleton database connection.
+ * Hooks, ingestors, and CLI commands should use this instead of openDb()
+ * to avoid repeated open/close overhead (~0.5ms per cycle).
  */
+export function getDb(): Database {
+  if (_singletonDb) return _singletonDb;
+  _singletonDb = openDb();
+  return _singletonDb;
+}
+
+/**
+ * Close the singleton connection. Called on process exit or server shutdown.
+ */
+export function closeSingleton(): void {
+  const db = _singletonDb;
+  _singletonDb = null;
+  if (db) {
+    try {
+      db.close();
+    } catch {
+      /* already nulled — safe to ignore */
+    }
+  }
+}
+
+/**
+ * Test escape hatch — inject a memory db (or null to reset).
+ * Use with `openDb(":memory:")` for isolated test databases.
+ */
+export function _setTestDb(db: Database | null): void {
+  if (_singletonDb && _singletonDb !== db) {
+    try {
+      _singletonDb.close();
+    } catch {
+      /* no-op in tests */
+    }
+  }
+  _singletonDb = db;
+}
+
+/** Get a metadata value from the _meta table. */
 export function getMeta(db: Database, key: string): string | null {
   const row = db.query("SELECT value FROM _meta WHERE key = ?").get(key) as {
     value: string;

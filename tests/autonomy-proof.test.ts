@@ -25,10 +25,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appendAuditEntry } from "../cli/selftune/evolution/audit.js";
+import { appendAuditEntry, readAuditTrail } from "../cli/selftune/evolution/audit.js";
 import { type EvolveOptions, evolve } from "../cli/selftune/evolution/evolve.js";
 import { rollback } from "../cli/selftune/evolution/rollback.js";
 import type { ValidationResult } from "../cli/selftune/evolution/validate-proposal.js";
+import { _setTestDb, openDb } from "../cli/selftune/localdb/db.js";
 import type { WatchOptions, WatchResult } from "../cli/selftune/monitoring/watch.js";
 import { watch } from "../cli/selftune/monitoring/watch.js";
 import {
@@ -242,9 +243,12 @@ let tmpDir: string;
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "selftune-autonomy-proof-"));
+  const testDb = openDb(":memory:");
+  _setTestDb(testDb);
 });
 
 afterEach(() => {
+  _setTestDb(null);
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -294,7 +298,7 @@ describe("autonomy proof: autonomous deploy end-to-end", () => {
           extractFailurePatterns: () => [makeFailurePattern()],
           generateProposal: async () => proposal,
           validateProposal: async () => validation,
-          appendAuditEntry: (entry) => appendAuditEntry(entry, auditLogPath),
+          appendAuditEntry: (entry) => appendAuditEntry(entry),
           appendEvidenceEntry: () => {},
           buildEvalSet: () => makeEvalSet(),
           updateContextAfterEvolve: () => {},
@@ -373,7 +377,7 @@ describe("autonomy proof: autonomous deploy end-to-end", () => {
     expect(backupContent).toBe(SKILL_MD_ORIGINAL);
 
     // --- Assert: audit trail has created + validated + deployed entries ---
-    const auditEntries = readJsonl<EvolutionAuditEntry>(auditLogPath);
+    const auditEntries = readAuditTrail();
     const actions = auditEntries.map((e) => e.action);
     expect(actions).toContain("created");
     expect(actions).toContain("validated");
@@ -488,27 +492,23 @@ describe("autonomy proof: watch detects regression", () => {
         }) as QueryLogRecord,
     );
 
-    // Audit log with a deployed entry establishing 0.8 baseline
-    const auditEntries: EvolutionAuditEntry[] = [
-      {
-        timestamp: "2026-03-14T10:00:00Z",
-        proposal_id: "evo-autonomy-proof-001",
-        action: "deployed",
-        details: "Deployed test-autonomy proposal",
-        skill_name: "test-autonomy",
-        eval_snapshot: { total: 10, passed: 8, failed: 2, pass_rate: 0.8 },
-      },
-    ];
+    // Write deployed audit entry to SQLite establishing 0.8 baseline
+    appendAuditEntry({
+      timestamp: "2026-03-14T10:00:00Z",
+      proposal_id: "evo-autonomy-proof-001",
+      action: "deployed",
+      details: "Deployed test-autonomy proposal",
+      skill_name: "test-autonomy",
+      eval_snapshot: { total: 10, passed: 8, failed: 2, pass_rate: 0.8 },
+    });
 
     const telemetryPath = join(tmpDir, "telemetry.jsonl");
     const skillLogPath = join(tmpDir, "skill_usage.jsonl");
     const queryLogPath = join(tmpDir, "queries.jsonl");
-    const auditLogPath = join(tmpDir, "audit.jsonl");
 
     writeJsonl(telemetry, telemetryPath);
     writeJsonl(skillRecords, skillLogPath);
     writeJsonl(queryRecords, queryLogPath);
-    writeJsonl(auditEntries, auditLogPath);
 
     const result: WatchResult = await watch({
       skillName: "test-autonomy",
@@ -519,7 +519,6 @@ describe("autonomy proof: watch detects regression", () => {
       _telemetryLogPath: telemetryPath,
       _skillLogPath: skillLogPath,
       _queryLogPath: queryLogPath,
-      _auditLogPath: auditLogPath,
     } as unknown as WatchOptions);
 
     // Regression: 0.1 pass rate < 0.8 - 0.1 = 0.7 threshold
@@ -555,26 +554,23 @@ describe("autonomy proof: watch detects regression", () => {
         }) as QueryLogRecord,
     );
 
-    const auditEntries: EvolutionAuditEntry[] = [
-      {
-        timestamp: "2026-03-14T10:00:00Z",
-        proposal_id: "evo-autonomy-proof-001",
-        action: "deployed",
-        details: "Deployed test-autonomy proposal",
-        skill_name: "test-autonomy",
-        eval_snapshot: { total: 10, passed: 8, failed: 2, pass_rate: 0.8 },
-      },
-    ];
+    // Write deployed audit entry to SQLite
+    appendAuditEntry({
+      timestamp: "2026-03-14T10:00:00Z",
+      proposal_id: "evo-autonomy-proof-001",
+      action: "deployed",
+      details: "Deployed test-autonomy proposal",
+      skill_name: "test-autonomy",
+      eval_snapshot: { total: 10, passed: 8, failed: 2, pass_rate: 0.8 },
+    });
 
     const telemetryPath = join(tmpDir, "stable-telemetry.jsonl");
     const skillLogPath = join(tmpDir, "stable-skill.jsonl");
     const queryLogPath = join(tmpDir, "stable-queries.jsonl");
-    const auditLogPath = join(tmpDir, "stable-audit.jsonl");
 
     writeJsonl(telemetry, telemetryPath);
     writeJsonl(skillRecords, skillLogPath);
     writeJsonl(queryRecords, queryLogPath);
-    writeJsonl(auditEntries, auditLogPath);
 
     const result: WatchResult = await watch({
       skillName: "test-autonomy",
@@ -585,7 +581,6 @@ describe("autonomy proof: watch detects regression", () => {
       _telemetryLogPath: telemetryPath,
       _skillLogPath: skillLogPath,
       _queryLogPath: queryLogPath,
-      _auditLogPath: auditLogPath,
     } as unknown as WatchOptions);
 
     expect(result.snapshot.regression_detected).toBe(false);
@@ -624,7 +619,7 @@ describe("autonomy proof: automatic rollback on regression", () => {
         extractFailurePatterns: () => [makeFailurePattern()],
         generateProposal: async () => proposal,
         validateProposal: async () => makeValidation(),
-        appendAuditEntry: (entry) => appendAuditEntry(entry, auditLogPath),
+        appendAuditEntry: (entry) => appendAuditEntry(entry),
         appendEvidenceEntry: () => {},
         buildEvalSet: () => makeEvalSet(),
         updateContextAfterEvolve: () => {},
@@ -683,7 +678,6 @@ describe("autonomy proof: automatic rollback on regression", () => {
         return rollback({
           skillName: opts.skillName,
           skillPath: opts.skillPath,
-          logPath: auditLogPath,
         });
       },
     } as unknown as WatchOptions);
@@ -705,8 +699,8 @@ describe("autonomy proof: automatic rollback on regression", () => {
     expect(existsSync(`${skillPath}.bak`)).toBe(false);
 
     // --- Assert: audit trail records the full lifecycle ---
-    const auditEntries = readJsonl<EvolutionAuditEntry>(auditLogPath);
-    const actions = auditEntries.map((e) => e.action);
+    const auditEntries2 = readAuditTrail();
+    const actions = auditEntries2.map((e) => e.action);
     expect(actions).toContain("created");
     expect(actions).toContain("validated");
     expect(actions).toContain("deployed");
@@ -736,7 +730,7 @@ describe("autonomy proof: automatic rollback on regression", () => {
         extractFailurePatterns: () => [makeFailurePattern()],
         generateProposal: async () => ({ ...proposal, skill_path: skillPath }),
         validateProposal: async () => makeValidation(),
-        appendAuditEntry: (entry) => appendAuditEntry(entry, auditLogPath),
+        appendAuditEntry: (entry) => appendAuditEntry(entry),
         appendEvidenceEntry: () => {},
         buildEvalSet: () => makeEvalSet(),
         updateContextAfterEvolve: () => {},

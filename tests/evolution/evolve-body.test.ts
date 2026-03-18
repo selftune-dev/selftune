@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +7,7 @@ import {
   type EvolveBodyOptions,
   evolveBody,
 } from "../../cli/selftune/evolution/evolve-body.js";
+import { _setTestDb, openDb } from "../../cli/selftune/localdb/db.js";
 import type {
   BodyEvolutionProposal,
   BodyValidationResult,
@@ -186,7 +187,13 @@ function createTempSkill(
   return { skillPath, skillDir };
 }
 
+beforeEach(() => {
+  _setTestDb(openDb(":memory:"));
+});
+
 afterEach(() => {
+  _setTestDb(null);
+
   // Reset all mocks
   mockExtractFailurePatterns.mockReset();
   mockExtractFailurePatterns.mockImplementation(() => [makeFailurePattern()]);

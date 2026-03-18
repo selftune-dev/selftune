@@ -2,7 +2,7 @@
  * Canonical telemetry normalization helpers.
  *
  * This module provides shared functions that all platform adapters call
- * to produce canonical records alongside their raw JSONL output.
+ * to produce canonical records written to SQLite via writeCanonicalToDb().
  *
  * Contract rules (from telemetry-field-map.md):
  *   1. Normalization is additive — raw capture is preserved separately.
@@ -25,6 +25,7 @@ import {
 } from "node:fs";
 import { basename, dirname } from "node:path";
 import { CANONICAL_LOG, canonicalSessionStatePath } from "./constants.js";
+import { writeCanonicalBatchToDb, writeCanonicalToDb } from "./localdb/direct-write.js";
 import {
   CANONICAL_SCHEMA_VERSION,
   type CanonicalCaptureMode,
@@ -81,9 +82,46 @@ function defaultPromptSessionState(sessionId: string): CanonicalPromptSessionSta
 
 function derivePromptSessionStateFromCanonicalLog(
   sessionId: string,
-  canonicalLogPath: string = CANONICAL_LOG,
+  _canonicalLogPath: string = CANONICAL_LOG,
 ): CanonicalPromptSessionState {
   const recovered = defaultPromptSessionState(sessionId);
+
+  // Try SQLite first — canonical records now go to the local DB.
+  // Uses dynamic require + try/catch so this remains fail-safe during
+  // hook execution when the DB module may not be loadable.
+  try {
+    const { getDb } = require("./localdb/db.js") as {
+      getDb: () => import("bun:sqlite").Database;
+    };
+    const db = getDb();
+    const rows = db
+      .query(
+        "SELECT prompt_id, prompt_index, is_actionable FROM prompts WHERE session_id = ? ORDER BY prompt_index DESC LIMIT 1",
+      )
+      .all(sessionId) as Array<{
+      prompt_id: string;
+      prompt_index: number;
+      is_actionable: number;
+    }>;
+    if (rows.length > 0) {
+      const row = rows[0];
+      recovered.next_prompt_index = row.prompt_index + 1;
+      recovered.last_prompt_id = row.prompt_id;
+      // Get last actionable
+      const actionable = db
+        .query(
+          "SELECT prompt_id, prompt_index FROM prompts WHERE session_id = ? AND is_actionable = 1 ORDER BY prompt_index DESC LIMIT 1",
+        )
+        .get(sessionId) as { prompt_id: string; prompt_index: number } | null;
+      if (actionable) recovered.last_actionable_prompt_id = actionable.prompt_id;
+      return recovered;
+    }
+  } catch {
+    // DB unavailable — fall through to JSONL recovery below.
+  }
+
+  // Fallback: scan canonical JSONL log (legacy path or DB unavailable).
+  const canonicalLogPath = _canonicalLogPath;
   let maxPromptIndex = -1;
   let maxActionablePromptIndex = -1;
 
@@ -346,22 +384,32 @@ export function getLatestPromptIdentity(
   };
 }
 
-export function appendCanonicalRecord(
-  record: CanonicalRecord,
-  logPath: string = CANONICAL_LOG,
-): void {
-  const dir = dirname(logPath);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+export function appendCanonicalRecord(record: CanonicalRecord, logPath?: string): void {
+  writeCanonicalToDb(record);
+  // JSONL append — best-effort backup for prompt state recovery
+  try {
+    const path = logPath ?? CANONICAL_LOG;
+    const dir = dirname(path);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    appendFileSync(path, `${JSON.stringify(record)}\n`, "utf-8");
+  } catch {
+    /* best-effort only */
   }
-  appendFileSync(logPath, `${JSON.stringify(record)}\n`, "utf-8");
 }
 
-export function appendCanonicalRecords(
-  records: CanonicalRecord[],
-  logPath: string = CANONICAL_LOG,
-): void {
-  for (const record of records) appendCanonicalRecord(record, logPath);
+export function appendCanonicalRecords(records: CanonicalRecord[], logPath?: string): void {
+  writeCanonicalBatchToDb(records);
+  // JSONL append — best-effort backup for prompt state recovery
+  try {
+    const path = logPath ?? CANONICAL_LOG;
+    const dir = dirname(path);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    for (const record of records) {
+      appendFileSync(path, `${JSON.stringify(record)}\n`, "utf-8");
+    }
+  } catch {
+    /* best-effort only */
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -439,14 +487,34 @@ export interface InvocationClassification {
 
 /**
  * Classify how a skill was invoked.
+ *
+ * When `hook_invocation_type` is provided (from the skill-eval hook's
+ * classifyInvocationType), it takes precedence over the legacy heuristics:
+ *   - "explicit"   → user typed /skill (slash command)            → explicit,  confidence 1.0
+ *   - "implicit"   → user named the skill, Claude invoked it      → implicit,  confidence 0.85
+ *   - "inferred"   → Claude chose skill autonomously               → inferred,  confidence 0.6
+ *   - "contextual" → SKILL.md was read (Read tool, not Skill tool) → inferred,  confidence 0.5
  */
 export function deriveInvocationMode(opts: {
   has_skill_tool_call?: boolean;
   has_skill_md_read?: boolean;
   is_text_mention_only?: boolean;
   is_repaired?: boolean;
+  hook_invocation_type?: "explicit" | "implicit" | "inferred" | "contextual";
 }): InvocationClassification {
   if (opts.is_repaired) return { invocation_mode: "repaired", confidence: 0.9 };
+
+  // Prefer hook-level classification when available
+  if (opts.hook_invocation_type === "explicit")
+    return { invocation_mode: "explicit", confidence: 1.0 };
+  if (opts.hook_invocation_type === "implicit")
+    return { invocation_mode: "implicit", confidence: 0.85 };
+  if (opts.hook_invocation_type === "inferred")
+    return { invocation_mode: "inferred", confidence: 0.6 };
+  if (opts.hook_invocation_type === "contextual")
+    return { invocation_mode: "inferred", confidence: 0.5 };
+
+  // Legacy fallback for callers that don't pass hook_invocation_type
   if (opts.has_skill_tool_call) return { invocation_mode: "explicit", confidence: 1.0 };
   if (opts.has_skill_md_read) return { invocation_mode: "implicit", confidence: 0.7 };
   if (opts.is_text_mention_only) return { invocation_mode: "inferred", confidence: 0.4 };
@@ -613,6 +681,7 @@ export interface BuildSkillInvocationInput extends CanonicalBaseInput {
   confidence: number;
   tool_name?: string;
   tool_call_id?: string;
+  agent_type?: string;
 }
 
 export function buildCanonicalSkillInvocation(
@@ -636,6 +705,7 @@ export function buildCanonicalSkillInvocation(
   if (input.skill_version_hash !== undefined) record.skill_version_hash = input.skill_version_hash;
   if (input.tool_name !== undefined) record.tool_name = input.tool_name;
   if (input.tool_call_id !== undefined) record.tool_call_id = input.tool_call_id;
+  if (input.agent_type !== undefined) record.agent_type = input.agent_type;
 
   return record;
 }

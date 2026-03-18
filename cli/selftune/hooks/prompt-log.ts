@@ -3,7 +3,7 @@
  * Claude Code UserPromptSubmit hook: prompt-log.ts
  *
  * Fires on every user message before Claude processes it.
- * Logs the query to ~/.claude/all_queries_log.jsonl so that
+ * Writes the query to SQLite via writeQueryToDb() so that
  * hooks-to-evals can identify prompts that did NOT trigger
  * a skill — the raw material for false-negative eval entries.
  */
@@ -11,7 +11,7 @@
 import { readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { CANONICAL_LOG, QUERY_LOG, SIGNAL_LOG, SKIP_PREFIXES } from "../constants.js";
+import { CANONICAL_LOG, QUERY_LOG, SKIP_PREFIXES } from "../constants.js";
 import {
   appendCanonicalRecord,
   buildCanonicalPrompt,
@@ -147,13 +147,13 @@ export function detectImprovementSignal(
  * Core processing logic, exported for testability.
  * Returns the record that was appended, or null if skipped.
  */
-export function processPrompt(
+export async function processPrompt(
   payload: PromptSubmitPayload,
   logPath: string = QUERY_LOG,
   canonicalLogPath: string = CANONICAL_LOG,
   promptStatePath?: string,
-  signalLogPath: string = SIGNAL_LOG,
-): QueryLogRecord | null {
+  _signalLogPath?: string,
+): Promise<QueryLogRecord | null> {
   const query = (payload.user_prompt ?? "").trim();
 
   if (!query) return null;
@@ -170,7 +170,20 @@ export function processPrompt(
     query,
   };
 
-  appendJsonl(logPath, record);
+  // Write to SQLite (dynamic import to reduce hook startup cost)
+  try {
+    const { writeQueryToDb } = await import("../localdb/direct-write.js");
+    writeQueryToDb(record);
+  } catch {
+    /* hooks must never block */
+  }
+
+  // JSONL backup (best-effort, hooks must never block)
+  try {
+    appendJsonl(logPath, record);
+  } catch {
+    /* hooks must never block */
+  }
 
   // Emit canonical prompt record (additive)
   const baseInput: CanonicalBaseInput = {
@@ -197,11 +210,12 @@ export function processPrompt(
   });
   appendCanonicalRecord(canonical, canonicalLogPath);
 
-  // Detect and log improvement signals (never throws)
+  // Detect and log improvement signals (never throws, dynamic import to reduce hook startup cost)
   try {
     const signal = detectImprovementSignal(query, record.session_id);
     if (signal) {
-      appendJsonl(signalLogPath, signal);
+      const { writeImprovementSignalToDb } = await import("../localdb/direct-write.js");
+      writeImprovementSignalToDb(signal);
     }
   } catch {
     // silent — hooks must never block Claude
@@ -214,7 +228,7 @@ export function processPrompt(
 if (import.meta.main) {
   try {
     const payload: PromptSubmitPayload = JSON.parse(await Bun.stdin.text());
-    processPrompt(payload);
+    await processPrompt(payload);
   } catch {
     // silent — hooks must never block Claude
   }

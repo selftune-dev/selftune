@@ -14,6 +14,12 @@ import type { BaselineMeasurement } from "../eval/baseline.js";
 import { measureBaseline } from "../eval/baseline.js";
 import { buildEvalSet } from "../eval/hooks-to-evals.js";
 import { readGradingResultsForSkill } from "../grading/results.js";
+import { getDb } from "../localdb/db.js";
+import {
+  queryQueryLog,
+  querySessionTelemetry,
+  querySkillUsageRecords,
+} from "../localdb/queries.js";
 import { updateContextAfterEvolve } from "../memory/writer.js";
 import type { SyncResult } from "../sync.js";
 import type {
@@ -31,8 +37,7 @@ import type {
   SkillUsageRecord,
 } from "../types.js";
 import { parseFrontmatter, replaceFrontmatterDescription } from "../utils/frontmatter.js";
-import { readJsonl } from "../utils/jsonl.js";
-import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
+
 import { createEvolveTUI } from "../utils/tui.js";
 import { appendAuditEntry } from "./audit.js";
 import { appendEvidenceEntry } from "./evidence.js";
@@ -190,7 +195,12 @@ export async function evolve(
   const _buildEvalSet = _deps.buildEvalSet ?? buildEvalSet;
   const _updateContextAfterEvolve = _deps.updateContextAfterEvolve ?? updateContextAfterEvolve;
   const _measureBaseline = _deps.measureBaseline ?? measureBaseline;
-  const _readSkillUsageLog = _deps.readSkillUsageLog ?? (() => readEffectiveSkillUsageRecords());
+  const _readSkillUsageLog =
+    _deps.readSkillUsageLog ??
+    (() => {
+      const db = getDb();
+      return querySkillUsageRecords(db) as SkillUsageRecord[];
+    });
 
   const auditEntries: EvolutionAuditEntry[] = [];
   let syncResult: SyncResult | undefined;
@@ -316,7 +326,8 @@ export async function evolve(
       }
     } else {
       // Build from logs
-      const queryRecords = readJsonl<QueryLogRecord>(QUERY_LOG);
+      const dbForQuery = getDb();
+      const queryRecords = queryQueryLog(dbForQuery) as QueryLogRecord[];
       evalSet = _buildEvalSet(skillUsage, queryRecords, skillName);
     }
 
@@ -394,7 +405,12 @@ export async function evolve(
     const tokenEfficiencyEnabled = options.tokenEfficiencyEnabled ?? false;
     const telemetryRecords =
       options.telemetryRecords ??
-      (tokenEfficiencyEnabled ? readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG) : undefined);
+      (tokenEfficiencyEnabled
+        ? (() => {
+            const dbTel = getDb();
+            return querySessionTelemetry(dbTel) as SessionTelemetryRecord[];
+          })()
+        : undefined);
 
     // Compute token efficiency score if enabled and telemetry is available
     let tokenEffScore: number | undefined;
@@ -1001,7 +1017,8 @@ Options:
 
   // If no eval-set provided, check that log files exist for auto-generation
   if (!evalSetPath && !(values["sync-first"] ?? false)) {
-    const hasSkillLog = readEffectiveSkillUsageRecords().length > 0;
+    const dbCheck = getDb();
+    const hasSkillLog = querySkillUsageRecords(dbCheck).length > 0;
     const hasQueryLog = existsSync(QUERY_LOG);
     if (!hasSkillLog && !hasQueryLog) {
       console.error("[ERROR] No eval set provided and no telemetry logs found.");
@@ -1016,7 +1033,8 @@ Options:
   const tokenEfficiencyEnabled = values["token-efficiency"] ?? false;
   let telemetryRecords: SessionTelemetryRecord[] | undefined;
   if (tokenEfficiencyEnabled && !(values["sync-first"] ?? false)) {
-    telemetryRecords = readJsonl<SessionTelemetryRecord>(TELEMETRY_LOG);
+    const dbTel2 = getDb();
+    telemetryRecords = querySessionTelemetry(dbTel2) as SessionTelemetryRecord[];
   }
   const gradingResults = readGradingResultsForSkill(values.skill);
 
