@@ -232,6 +232,18 @@ export const CREATE_INDEXES = [
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_signals_dedup ON improvement_signals(session_id, query, signal_type, timestamp)`,
 ];
 
+/**
+ * Schema migrations — ALTER TABLE statements for columns added after initial release.
+ * Each is safe to re-run: SQLite throws "duplicate column" which openDb() catches.
+ */
+export const MIGRATIONS = [
+  // skill_invocations consolidation (skill_usage columns merged in)
+  `ALTER TABLE skill_invocations ADD COLUMN query TEXT`,
+  `ALTER TABLE skill_invocations ADD COLUMN skill_path TEXT`,
+  `ALTER TABLE skill_invocations ADD COLUMN skill_scope TEXT`,
+  `ALTER TABLE skill_invocations ADD COLUMN source TEXT`,
+];
+
 /** All DDL statements in creation order. */
 export const ALL_DDL = [
   CREATE_SESSIONS,

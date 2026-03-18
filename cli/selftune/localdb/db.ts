@@ -12,7 +12,7 @@ import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { SELFTUNE_CONFIG_DIR } from "../constants.js";
-import { ALL_DDL } from "./schema.js";
+import { ALL_DDL, MIGRATIONS } from "./schema.js";
 
 /** Default database file path. */
 export const DB_PATH = join(SELFTUNE_CONFIG_DIR, "selftune.db");
@@ -42,6 +42,15 @@ export function openDb(dbPath: string = DB_PATH): Database {
   // Run all DDL statements
   for (const ddl of ALL_DDL) {
     db.run(ddl);
+  }
+
+  // Run migrations (ALTER TABLE ADD COLUMN — safe to re-run, fails silently if column exists)
+  for (const migration of MIGRATIONS) {
+    try {
+      db.run(migration);
+    } catch {
+      // Column already exists — expected on subsequent runs
+    }
   }
 
   return db;
