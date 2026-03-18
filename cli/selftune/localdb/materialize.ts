@@ -465,8 +465,8 @@ function insertEvolutionAudit(db: Database, records: EvolutionAuditEntry[]): num
   // (idx_evo_audit_dedup defined in schema.ts).
   const stmt = db.prepare(`
     INSERT OR IGNORE INTO evolution_audit
-      (timestamp, proposal_id, skill_name, action, details, eval_snapshot_json)
-    VALUES (?, ?, ?, ?, ?, ?)
+      (timestamp, proposal_id, skill_name, action, details, eval_snapshot_json, iterations_used)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
 
   let count = 0;
@@ -478,6 +478,7 @@ function insertEvolutionAudit(db: Database, records: EvolutionAuditEntry[]): num
       r.action,
       r.details,
       r.eval_snapshot ? JSON.stringify(r.eval_snapshot) : null,
+      r.iterations_used ?? null,
     );
     count++;
   }

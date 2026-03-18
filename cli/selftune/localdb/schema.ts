@@ -239,6 +239,8 @@ export const MIGRATIONS = [
   `ALTER TABLE skill_invocations ADD COLUMN skill_path TEXT`,
   `ALTER TABLE skill_invocations ADD COLUMN skill_scope TEXT`,
   `ALTER TABLE skill_invocations ADD COLUMN source TEXT`,
+  // Track how many iteration loops each evolution run used
+  `ALTER TABLE evolution_audit ADD COLUMN iterations_used INTEGER`,
 ];
 
 /** Indexes that depend on migration columns — must run AFTER MIGRATIONS. */

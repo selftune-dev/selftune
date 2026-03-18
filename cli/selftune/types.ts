@@ -311,6 +311,7 @@ export interface EvolutionAuditEntry {
   action: "created" | "validated" | "deployed" | "rolled_back" | "rejected";
   details: string;
   eval_snapshot?: EvalPassRate;
+  iterations_used?: number;
 }
 
 export interface EvolutionEvidenceValidation {

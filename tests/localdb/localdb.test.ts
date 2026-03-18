@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
  * All tests use :memory: databases — no filesystem side effects.
  */
 
-import { getMeta, openDb, setMeta } from "../../cli/selftune/localdb/db.js";
+import { _setTestDb, getMeta, openDb, setMeta } from "../../cli/selftune/localdb/db.js";
+import { writeEvolutionAuditToDb } from "../../cli/selftune/localdb/direct-write.js";
 import {
   getOverviewPayload,
   getSkillReportPayload,
@@ -407,6 +408,56 @@ describe("localdb queries", () => {
         expect(skill.last_seen).not.toBeNull();
       }
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Direct-write: iterations_used column
+// ---------------------------------------------------------------------------
+
+describe("writeEvolutionAuditToDb iterations_used", () => {
+  let db: Database;
+
+  beforeEach(() => {
+    db = openDb(":memory:");
+    _setTestDb(db);
+  });
+
+  afterEach(() => {
+    _setTestDb(null);
+  });
+
+  it("persists iterations_used and reads it back", () => {
+    const ok = writeEvolutionAuditToDb({
+      timestamp: "2026-03-18T12:00:00Z",
+      proposal_id: "prop-iter-1",
+      skill_name: "TestSkill",
+      action: "deployed",
+      details: "Deployed after 3 iterations",
+      iterations_used: 3,
+    });
+    expect(ok).toBe(true);
+
+    const row = db
+      .query("SELECT iterations_used FROM evolution_audit WHERE proposal_id = ?")
+      .get("prop-iter-1") as { iterations_used: number | null };
+    expect(row.iterations_used).toBe(3);
+  });
+
+  it("stores null when iterations_used is omitted", () => {
+    const ok = writeEvolutionAuditToDb({
+      timestamp: "2026-03-18T12:01:00Z",
+      proposal_id: "prop-iter-2",
+      skill_name: "TestSkill",
+      action: "created",
+      details: "No iterations yet",
+    });
+    expect(ok).toBe(true);
+
+    const row = db
+      .query("SELECT iterations_used FROM evolution_audit WHERE proposal_id = ?")
+      .get("prop-iter-2") as { iterations_used: number | null };
+    expect(row.iterations_used).toBeNull();
   });
 });
 

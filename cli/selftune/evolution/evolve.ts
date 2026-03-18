@@ -129,6 +129,7 @@ function createAuditEntry(
   details: string,
   evalSnapshot?: EvalPassRate,
   skillName?: string,
+  iterationsUsed?: number,
 ): EvolutionAuditEntry {
   return {
     timestamp: new Date().toISOString(),
@@ -137,6 +138,7 @@ function createAuditEntry(
     details,
     ...(skillName ? { skill_name: skillName } : {}),
     ...(evalSnapshot ? { eval_snapshot: evalSnapshot } : {}),
+    ...(iterationsUsed != null ? { iterations_used: iterationsUsed } : {}),
   };
 }
 
@@ -210,8 +212,9 @@ export async function evolve(
     action: EvolutionAuditEntry["action"],
     details: string,
     evalSnapshot?: EvalPassRate,
+    iterationsUsed?: number,
   ): void {
-    const entry = createAuditEntry(proposalId, action, details, evalSnapshot, skillName);
+    const entry = createAuditEntry(proposalId, action, details, evalSnapshot, skillName, iterationsUsed);
     auditEntries.push(entry);
     try {
       _appendAuditEntry(entry);
@@ -423,6 +426,8 @@ export async function evolve(
       );
     }
 
+    let iterationsCompleted = 0;
+
     if (paretoEnabled && candidateCount > 1) {
       // Generate N candidates in parallel
       const candidates = await generateMultipleProposals(
@@ -537,6 +542,7 @@ export async function evolve(
 
       lastProposal = best.proposal;
       lastValidation = best.validation;
+      iterationsCompleted = 1; // Pareto selection is a single-pass
 
       // Skip the standard retry loop — we already have our result
     } else {
@@ -544,6 +550,7 @@ export async function evolve(
       let feedbackReason = "";
 
       for (let iteration = 0; iteration < maxIterations; iteration++) {
+        iterationsCompleted = iteration + 1;
         // Step 7: Generate proposal
         const effectiveMissedQueries = feedbackReason
           ? [...missedQueries, `[Previous attempt failed: ${feedbackReason}]`]
@@ -831,7 +838,7 @@ export async function evolve(
         passed: Math.round(lastValidation.after_pass_rate * evalSet.length),
         failed: evalSet.length - Math.round(lastValidation.after_pass_rate * evalSet.length),
         pass_rate: lastValidation.after_pass_rate,
-      });
+      }, iterationsCompleted);
       recordEvidence({
         timestamp: new Date().toISOString(),
         proposal_id: lastProposal.proposal_id,
