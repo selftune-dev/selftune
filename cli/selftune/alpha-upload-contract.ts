@@ -73,3 +73,31 @@ export interface AlphaUploadResult {
   rejected: number;
   errors: string[];
 }
+
+// -- Queue types (used by flush engine) ---------------------------------------
+
+export type QueueItemStatus = "pending" | "sending" | "sent" | "failed";
+
+export interface QueueItem {
+  id: number;
+  payload_type: string;
+  payload_json: string;
+  status: QueueItemStatus;
+  attempts: number;
+  created_at: string;
+  updated_at: string;
+  last_error: string | null;
+}
+
+export interface QueueOperations {
+  getPending(limit: number): QueueItem[];
+  markSending(id: number): void;
+  markSent(id: number): void;
+  markFailed(id: number, error?: string): void;
+}
+
+export interface FlushSummary {
+  sent: number;
+  failed: number;
+  skipped: number;
+}
