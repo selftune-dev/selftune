@@ -196,6 +196,20 @@ CREATE TABLE IF NOT EXISTS upload_queue (
   last_error    TEXT
 )`;
 
+// -- Canonical upload staging -------------------------------------------------
+
+export const CREATE_CANONICAL_UPLOAD_STAGING = `
+CREATE TABLE IF NOT EXISTS canonical_upload_staging (
+  local_seq     INTEGER PRIMARY KEY AUTOINCREMENT,
+  record_kind   TEXT NOT NULL,
+  record_id     TEXT NOT NULL,
+  record_json   TEXT NOT NULL,
+  session_id    TEXT,
+  prompt_id     TEXT,
+  normalized_at TEXT,
+  staged_at     TEXT NOT NULL
+)`;
+
 export const CREATE_UPLOAD_WATERMARKS = `
 CREATE TABLE IF NOT EXISTS upload_watermarks (
   payload_type     TEXT PRIMARY KEY,
@@ -251,6 +265,10 @@ export const CREATE_INDEXES = [
   // -- Alpha upload queue indexes ---------------------------------------------
   `CREATE INDEX IF NOT EXISTS idx_upload_queue_status ON upload_queue(status)`,
   `CREATE INDEX IF NOT EXISTS idx_upload_queue_type_status ON upload_queue(payload_type, status)`,
+  // -- Canonical upload staging indexes ---------------------------------------
+  `CREATE INDEX IF NOT EXISTS idx_staging_kind ON canonical_upload_staging(record_kind)`,
+  `CREATE INDEX IF NOT EXISTS idx_staging_session ON canonical_upload_staging(session_id)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_staging_dedup ON canonical_upload_staging(record_kind, record_id)`,
 ];
 
 /**
@@ -289,6 +307,7 @@ export const ALL_DDL = [
   CREATE_IMPROVEMENT_SIGNALS,
   CREATE_UPLOAD_QUEUE,
   CREATE_UPLOAD_WATERMARKS,
+  CREATE_CANONICAL_UPLOAD_STAGING,
   CREATE_META,
   ...CREATE_INDEXES,
 ];

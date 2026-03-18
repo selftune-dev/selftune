@@ -2,10 +2,11 @@
  * Alpha upload orchestration module.
  *
  * Coordinates the full upload cycle:
- *   1. Read new rows since watermark from SQLite (all 5 canonical tables)
- *   2. Build a single V2 canonical push payload
- *   3. Enqueue it in the local upload queue
- *   4. Flush the queue to POST /api/v1/push
+ *   1. Stage canonical records from JSONL + evolution evidence into staging table
+ *   2. Read new staged records since watermark via single cursor
+ *   3. Build a V2 canonical push payload
+ *   4. Enqueue it in the local upload queue
+ *   5. Flush the queue to POST /api/v1/push
  *
  * Guards:
  *   - Only runs when alpha enrolled (config.alpha?.enrolled === true)
@@ -16,7 +17,8 @@
 import type { Database } from "bun:sqlite";
 
 import type { FlushSummary, QueueItem as ContractQueueItem, QueueOperations } from "../alpha-upload-contract.js";
-import { buildV2PushPayload, type Watermarks } from "./build-payloads.js";
+import { stageCanonicalRecords } from "./stage-canonical.js";
+import { buildV2PushPayload } from "./build-payloads.js";
 import { enqueueUpload, readWatermark, writeWatermark, getPendingUploads, markSending, markSent, markFailed } from "./queue.js";
 import { flushQueue } from "./flush.js";
 
@@ -43,6 +45,8 @@ export interface UploadCycleOptions {
   endpoint?: string;
   dryRun?: boolean;
   apiKey?: string;
+  /** Override canonical log path (for testing). */
+  canonicalLogPath?: string;
 }
 
 export interface UploadCycleSummary {
@@ -54,63 +58,42 @@ export interface UploadCycleSummary {
 }
 
 // ---------------------------------------------------------------------------
-// Watermark helpers
-// ---------------------------------------------------------------------------
-
-/** Read all per-table watermarks from the upload_watermarks table. */
-function readAllWatermarks(db: Database): Watermarks {
-  return {
-    sessions: readWatermark(db, "sessions") ?? undefined,
-    prompts: readWatermark(db, "prompts") ?? undefined,
-    invocations: readWatermark(db, "invocations") ?? undefined,
-    execution_facts: readWatermark(db, "execution_facts") ?? undefined,
-    evolution_evidence: readWatermark(db, "evolution_evidence") ?? undefined,
-  };
-}
-
-/** Write updated watermarks back to the upload_watermarks table. */
-function writeAllWatermarks(db: Database, watermarks: Watermarks): void {
-  if (watermarks.sessions !== undefined) writeWatermark(db, "sessions", watermarks.sessions);
-  if (watermarks.prompts !== undefined) writeWatermark(db, "prompts", watermarks.prompts);
-  if (watermarks.invocations !== undefined) writeWatermark(db, "invocations", watermarks.invocations);
-  if (watermarks.execution_facts !== undefined) writeWatermark(db, "execution_facts", watermarks.execution_facts);
-  if (watermarks.evolution_evidence !== undefined) writeWatermark(db, "evolution_evidence", watermarks.evolution_evidence);
-}
-
-// ---------------------------------------------------------------------------
-// prepareUploads -- read new rows, build V2 payload, enqueue it
+// prepareUploads -- stage, build V2 payload, enqueue
 // ---------------------------------------------------------------------------
 
 /**
- * Read new rows since watermark from SQLite, build a single V2 push
- * payload, and enqueue it into the upload queue. Never throws.
+ * Stage canonical records, read new staged rows since watermark,
+ * build a single V2 push payload, and enqueue it. Never throws.
  */
 export function prepareUploads(
   db: Database,
   _userId: string,
   _agentType: string,
   _selftuneVersion: string,
+  canonicalLogPath?: string,
 ): PrepareResult {
   const result: PrepareResult = { enqueued: 0, types: [] };
 
   try {
-    const watermarks = readAllWatermarks(db);
-    const build = buildV2PushPayload(db, watermarks);
+    // Step 1: Stage canonical records from JSONL + evolution evidence
+    stageCanonicalRecords(db, canonicalLogPath);
+
+    // Step 2: Read watermark (single cursor for all record types)
+    const afterSeq = readWatermark(db, "canonical") ?? undefined;
+
+    // Step 3: Build payload from staging table
+    const build = buildV2PushPayload(db, afterSeq);
 
     if (!build) return result;
 
+    // Step 4: Enqueue the payload
     const ok = enqueueUpload(db, "push", JSON.stringify(build.payload));
     if (ok) {
       result.enqueued = 1;
-      // Report which table types had new data
-      const wm = build.newWatermarks;
-      if (wm.sessions !== undefined) result.types.push("sessions");
-      if (wm.prompts !== undefined) result.types.push("prompts");
-      if (wm.invocations !== undefined) result.types.push("invocations");
-      if (wm.execution_facts !== undefined) result.types.push("execution_facts");
-      if (wm.evolution_evidence !== undefined) result.types.push("evolution_evidence");
+      result.types.push("canonical");
 
-      writeAllWatermarks(db, build.newWatermarks);
+      // Step 5: Advance the watermark
+      writeWatermark(db, "canonical", build.lastSeq);
     }
   } catch (err) {
     if (process.env.DEBUG || process.env.NODE_ENV === "development") {
@@ -126,7 +109,7 @@ export function prepareUploads(
 // ---------------------------------------------------------------------------
 
 /**
- * Run a full upload cycle: read new data, enqueue it, flush to remote.
+ * Run a full upload cycle: stage + read new data, enqueue it, flush to remote.
  * Guards on enrollment -- returns empty summary if not enrolled.
  * Never throws.
  */
@@ -158,8 +141,8 @@ export async function runUploadCycle(
     const dryRun = options.dryRun ?? false;
     const apiKey = options.apiKey;
 
-    // Step 1: Prepare -- read new rows, build V2 payload, enqueue
-    const prepared = prepareUploads(db, userId, agentType, selftuneVersion);
+    // Step 1: Prepare -- stage, build V2 payload, enqueue
+    const prepared = prepareUploads(db, userId, agentType, selftuneVersion, options.canonicalLogPath);
 
     // Step 2: Flush -- drain the queue to the remote endpoint
     const queueOps: QueueOperations = {
