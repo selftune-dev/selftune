@@ -51,7 +51,7 @@ export function openDb(dbPath: string = DB_PATH): Database {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("duplicate column")) continue; // expected on subsequent runs
-      throw err; // real failure — surface it
+      throw new Error(`Schema migration failed: ${msg}. Run: selftune rebuild-db`);
     }
   }
 
@@ -63,9 +63,6 @@ export function openDb(dbPath: string = DB_PATH): Database {
   return db;
 }
 
-/**
- * Get a metadata value from the _meta table.
- */
 // -- Singleton ----------------------------------------------------------------
 
 let _singletonDb: Database | null = null;
@@ -106,6 +103,7 @@ export function _setTestDb(db: Database | null): void {
   _singletonDb = db;
 }
 
+/** Get a metadata value from the _meta table. */
 export function getMeta(db: Database, key: string): string | null {
   const row = db.query("SELECT value FROM _meta WHERE key = ?").get(key) as {
     value: string;
