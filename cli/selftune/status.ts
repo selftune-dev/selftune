@@ -9,11 +9,16 @@
 
 import { getDb } from "./localdb/db.js";
 import {
+  getLastUploadError,
+  getLastUploadSuccess,
   queryEvolutionAudit,
   queryQueryLog,
   querySessionTelemetry,
   querySkillUsageRecords,
 } from "./localdb/queries.js";
+import { getQueueStats } from "./alpha-upload/queue.js";
+import { readAlphaIdentity } from "./alpha-identity.js";
+import { SELFTUNE_CONFIG_PATH } from "./constants.js";
 import { computeMonitoringSnapshot, MIN_MONITORING_SKILL_CHECKS } from "./monitoring/watch.js";
 import { doctor } from "./observability.js";
 import type {
@@ -53,6 +58,17 @@ export interface StatusResult {
     fail: number;
     warn: number;
   };
+}
+
+// ---------------------------------------------------------------------------
+// Alpha upload status types
+// ---------------------------------------------------------------------------
+
+export interface AlphaStatusInfo {
+  enrolled: boolean;
+  stats: { pending: number; sending: number; sent: number; failed: number };
+  lastError: { last_error: string | null; updated_at: string } | null;
+  lastSuccess: { updated_at: string } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -325,6 +341,52 @@ function colorize(text: string, hex: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Alpha upload status formatting
+// ---------------------------------------------------------------------------
+
+/**
+ * Format the alpha upload status section for CLI output.
+ * Returns a multi-line string to append to the status output.
+ * Pass null when user is not enrolled.
+ */
+export function formatAlphaStatus(info: AlphaStatusInfo | null): string {
+  const lines: string[] = [];
+  lines.push("");
+  lines.push("Alpha Upload");
+  lines.push("\u2500".repeat(15));
+
+  if (!info) {
+    lines.push("  Status:             not enrolled");
+    return lines.join("\n");
+  }
+
+  lines.push("  Status:             enrolled");
+  lines.push(`  Pending:            ${info.stats.pending}`);
+  lines.push(`  Failed:             ${info.stats.failed}`);
+  lines.push(`  Sent:               ${info.stats.sent}`);
+
+  if (info.lastError) {
+    lines.push(`  Last error:         ${info.lastError.last_error ?? "unknown"}`);
+  }
+
+  if (info.lastSuccess) {
+    const d = new Date(info.lastSuccess.updated_at);
+    const formatted = d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+    const time = d.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    lines.push(`  Last upload:        ${formatted}, ${time}`);
+  }
+
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // cliMain — reads logs, runs doctor, prints output
 // ---------------------------------------------------------------------------
 
@@ -340,6 +402,20 @@ export async function cliMain(): Promise<void> {
     const result = computeStatus(telemetry, skillRecords, queryRecords, auditEntries, doctorResult);
     const output = formatStatus(result);
     console.log(output);
+
+    // Alpha upload status section
+    const alphaIdentity = readAlphaIdentity(SELFTUNE_CONFIG_PATH);
+    let alphaInfo: AlphaStatusInfo | null = null;
+    if (alphaIdentity?.enrolled) {
+      alphaInfo = {
+        enrolled: true,
+        stats: getQueueStats(db),
+        lastError: getLastUploadError(db),
+        lastSuccess: getLastUploadSuccess(db),
+      };
+    }
+    console.log(formatAlphaStatus(alphaInfo));
+
     process.exit(0);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

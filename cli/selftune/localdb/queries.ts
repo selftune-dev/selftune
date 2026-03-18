@@ -575,6 +575,77 @@ export function queryImprovementSignals(
   }));
 }
 
+// -- Alpha upload query helpers -----------------------------------------------
+
+/**
+ * Get the most recent failed queue item's error and timestamp.
+ * Returns null if no failed items exist.
+ */
+export function getLastUploadError(
+  db: Database,
+): { last_error: string | null; updated_at: string } | null {
+  try {
+    const row = db
+      .query(
+        `SELECT last_error, updated_at
+         FROM upload_queue
+         WHERE status = 'failed'
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+      )
+      .get() as { last_error: string | null; updated_at: string } | null;
+    return row ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the most recent sent queue item's timestamp.
+ * Returns null if no sent items exist.
+ */
+export function getLastUploadSuccess(
+  db: Database,
+): { updated_at: string } | null {
+  try {
+    const row = db
+      .query(
+        `SELECT updated_at
+         FROM upload_queue
+         WHERE status = 'sent'
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+      )
+      .get() as { updated_at: string } | null;
+    return row ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the age in seconds of the oldest pending queue item.
+ * Returns null if no pending items exist.
+ */
+export function getOldestPendingAge(db: Database): number | null {
+  try {
+    const row = db
+      .query(
+        `SELECT created_at
+         FROM upload_queue
+         WHERE status = 'pending'
+         ORDER BY created_at ASC
+         LIMIT 1`,
+      )
+      .get() as { created_at: string } | null;
+    if (!row) return null;
+    const ageMs = Date.now() - new Date(row.created_at).getTime();
+    return Math.floor(ageMs / 1000);
+  } catch {
+    return null;
+  }
+}
+
 // -- Helpers ------------------------------------------------------------------
 
 export function safeParseJsonArray<T = string>(json: string | null): T[] {

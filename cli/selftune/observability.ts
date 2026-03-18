@@ -263,6 +263,77 @@ export async function checkVersionHealth(): Promise<HealthCheck[]> {
   return [check];
 }
 
+// ---------------------------------------------------------------------------
+// Alpha upload queue health checks
+// ---------------------------------------------------------------------------
+
+const ALPHA_STUCK_THRESHOLD_SECONDS = 3600; // 1 hour
+const ALPHA_FAILURE_THRESHOLD = 50;
+
+export interface AlphaQueueCheckOptions {
+  stuckThresholdSeconds?: number;
+  failureThreshold?: number;
+}
+
+/**
+ * Check alpha upload queue health.
+ * Returns empty array when not enrolled (checks are skipped).
+ */
+export function checkAlphaQueueHealth(
+  db: import("bun:sqlite").Database,
+  enrolled: boolean,
+  opts?: AlphaQueueCheckOptions,
+): HealthCheck[] {
+  if (!enrolled) return [];
+
+  const { getQueueStats } = require("./alpha-upload/queue.js") as typeof import("./alpha-upload/queue.js");
+  const { getOldestPendingAge } = require("./localdb/queries.js") as typeof import("./localdb/queries.js");
+
+  const checks: HealthCheck[] = [];
+  const stuckThreshold = opts?.stuckThresholdSeconds ?? ALPHA_STUCK_THRESHOLD_SECONDS;
+  const failureThreshold = opts?.failureThreshold ?? ALPHA_FAILURE_THRESHOLD;
+
+  // Check for stuck pending items
+  const stuckCheck: HealthCheck = {
+    name: "alpha_queue_stuck",
+    path: "upload_queue",
+    status: "pass",
+    message: "",
+  };
+
+  const oldestAge = getOldestPendingAge(db);
+  if (oldestAge !== null && oldestAge > stuckThreshold) {
+    stuckCheck.status = "warn";
+    const hours = Math.floor(oldestAge / 3600);
+    const minutes = Math.floor((oldestAge % 3600) / 60);
+    stuckCheck.message = `Oldest pending upload is ${hours}h ${minutes}m old (threshold: ${Math.floor(stuckThreshold / 3600)}h)`;
+  } else {
+    stuckCheck.message = oldestAge !== null
+      ? `Oldest pending item: ${Math.floor(oldestAge / 60)}m old`
+      : "No pending items";
+  }
+  checks.push(stuckCheck);
+
+  // Check for excessive failures
+  const failCheck: HealthCheck = {
+    name: "alpha_queue_failures",
+    path: "upload_queue",
+    status: "pass",
+    message: "",
+  };
+
+  const stats = getQueueStats(db);
+  if (stats.failed > failureThreshold) {
+    failCheck.status = "warn";
+    failCheck.message = `${stats.failed} failed uploads (threshold: ${failureThreshold})`;
+  } else {
+    failCheck.message = `${stats.failed} failed uploads`;
+  }
+  checks.push(failCheck);
+
+  return checks;
+}
+
 export function checkSkillVersionSync(): HealthCheck[] {
   const check: HealthCheck = {
     name: "skill_version_sync",

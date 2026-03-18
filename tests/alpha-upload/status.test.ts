@@ -1,0 +1,270 @@
+/**
+ * Tests for alpha upload status integration in `selftune status`
+ * and alpha-related doctor checks in observability.
+ */
+
+import { Database } from "bun:sqlite";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { ALL_DDL, CREATE_INDEXES } from "../../cli/selftune/localdb/schema.js";
+import {
+  getLastUploadError,
+  getLastUploadSuccess,
+  getOldestPendingAge,
+} from "../../cli/selftune/localdb/queries.js";
+import { getQueueStats } from "../../cli/selftune/alpha-upload/queue.js";
+import {
+  checkAlphaQueueHealth,
+  type AlphaQueueCheckOptions,
+} from "../../cli/selftune/observability.js";
+import {
+  formatAlphaStatus,
+  type AlphaStatusInfo,
+} from "../../cli/selftune/status.js";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function createTestDb(): Database {
+  const db = new Database(":memory:");
+  for (const ddl of ALL_DDL) {
+    db.run(ddl);
+  }
+  return db;
+}
+
+function insertQueueItem(
+  db: Database,
+  opts: {
+    payload_type?: string;
+    status?: string;
+    created_at?: string;
+    updated_at?: string;
+    last_error?: string | null;
+    attempts?: number;
+  } = {},
+): void {
+  const now = new Date().toISOString();
+  db.run(
+    `INSERT INTO upload_queue (payload_type, payload_json, status, attempts, created_at, updated_at, last_error)
+     VALUES (?, '{}', ?, ?, ?, ?, ?)`,
+    [
+      opts.payload_type ?? "sessions",
+      opts.status ?? "pending",
+      opts.attempts ?? 0,
+      opts.created_at ?? now,
+      opts.updated_at ?? now,
+      opts.last_error ?? null,
+    ],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Query helper tests
+// ---------------------------------------------------------------------------
+
+describe("getLastUploadError", () => {
+  let db: Database;
+  beforeEach(() => { db = createTestDb(); });
+  afterEach(() => { db.close(); });
+
+  test("returns null when no failed items exist", () => {
+    const result = getLastUploadError(db);
+    expect(result).toBeNull();
+  });
+
+  test("returns most recent failed item error and timestamp", () => {
+    insertQueueItem(db, {
+      status: "failed",
+      last_error: "old error",
+      updated_at: "2025-01-01T00:00:00Z",
+    });
+    insertQueueItem(db, {
+      status: "failed",
+      last_error: "newest error",
+      updated_at: "2025-01-02T00:00:00Z",
+    });
+    insertQueueItem(db, {
+      status: "sent",
+      updated_at: "2025-01-03T00:00:00Z",
+    });
+
+    const result = getLastUploadError(db);
+    expect(result).not.toBeNull();
+    expect(result!.last_error).toBe("newest error");
+    expect(result!.updated_at).toBe("2025-01-02T00:00:00Z");
+  });
+});
+
+describe("getLastUploadSuccess", () => {
+  let db: Database;
+  beforeEach(() => { db = createTestDb(); });
+  afterEach(() => { db.close(); });
+
+  test("returns null when no sent items exist", () => {
+    const result = getLastUploadSuccess(db);
+    expect(result).toBeNull();
+  });
+
+  test("returns most recent sent item timestamp", () => {
+    insertQueueItem(db, {
+      status: "sent",
+      updated_at: "2025-01-01T00:00:00Z",
+    });
+    insertQueueItem(db, {
+      status: "sent",
+      updated_at: "2025-01-02T00:00:00Z",
+    });
+
+    const result = getLastUploadSuccess(db);
+    expect(result).not.toBeNull();
+    expect(result!.updated_at).toBe("2025-01-02T00:00:00Z");
+  });
+});
+
+describe("getOldestPendingAge", () => {
+  let db: Database;
+  beforeEach(() => { db = createTestDb(); });
+  afterEach(() => { db.close(); });
+
+  test("returns null when no pending items exist", () => {
+    const result = getOldestPendingAge(db);
+    expect(result).toBeNull();
+  });
+
+  test("returns age in seconds of oldest pending item", () => {
+    const twoHoursAgo = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+    const oneHourAgo = new Date(Date.now() - 1 * 3600 * 1000).toISOString();
+
+    insertQueueItem(db, { status: "pending", created_at: twoHoursAgo });
+    insertQueueItem(db, { status: "pending", created_at: oneHourAgo });
+
+    const age = getOldestPendingAge(db);
+    expect(age).not.toBeNull();
+    // Should be approximately 7200 seconds (2 hours), allow some tolerance
+    expect(age!).toBeGreaterThan(7100);
+    expect(age!).toBeLessThan(7300);
+  });
+
+  test("ignores non-pending items", () => {
+    const longAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+    insertQueueItem(db, { status: "sent", created_at: longAgo });
+    insertQueueItem(db, { status: "failed", created_at: longAgo });
+
+    const result = getOldestPendingAge(db);
+    expect(result).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Doctor check tests
+// ---------------------------------------------------------------------------
+
+describe("checkAlphaQueueHealth", () => {
+  let db: Database;
+  beforeEach(() => { db = createTestDb(); });
+  afterEach(() => { db.close(); });
+
+  test("returns empty array when not enrolled", () => {
+    const checks = checkAlphaQueueHealth(db, false);
+    expect(checks).toHaveLength(0);
+  });
+
+  test("returns pass checks when queue is healthy", () => {
+    const checks = checkAlphaQueueHealth(db, true);
+    expect(checks.length).toBeGreaterThan(0);
+    expect(checks.every((c) => c.status === "pass")).toBe(true);
+  });
+
+  test("warns when pending items older than 1 hour (alpha_queue_stuck)", () => {
+    const twoHoursAgo = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
+    insertQueueItem(db, { status: "pending", created_at: twoHoursAgo });
+
+    const checks = checkAlphaQueueHealth(db, true);
+    const stuckCheck = checks.find((c) => c.name === "alpha_queue_stuck");
+    expect(stuckCheck).toBeDefined();
+    expect(stuckCheck!.status).toBe("warn");
+  });
+
+  test("passes when pending items are recent", () => {
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    insertQueueItem(db, { status: "pending", created_at: fiveMinutesAgo });
+
+    const checks = checkAlphaQueueHealth(db, true);
+    const stuckCheck = checks.find((c) => c.name === "alpha_queue_stuck");
+    expect(stuckCheck).toBeDefined();
+    expect(stuckCheck!.status).toBe("pass");
+  });
+
+  test("warns when failed count exceeds 50 (alpha_queue_failures)", () => {
+    for (let i = 0; i < 51; i++) {
+      insertQueueItem(db, { status: "failed", last_error: `error ${i}` });
+    }
+
+    const checks = checkAlphaQueueHealth(db, true);
+    const failCheck = checks.find((c) => c.name === "alpha_queue_failures");
+    expect(failCheck).toBeDefined();
+    expect(failCheck!.status).toBe("warn");
+  });
+
+  test("passes when failed count is under threshold", () => {
+    for (let i = 0; i < 10; i++) {
+      insertQueueItem(db, { status: "failed", last_error: `error ${i}` });
+    }
+
+    const checks = checkAlphaQueueHealth(db, true);
+    const failCheck = checks.find((c) => c.name === "alpha_queue_failures");
+    expect(failCheck).toBeDefined();
+    expect(failCheck!.status).toBe("pass");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Status formatting tests
+// ---------------------------------------------------------------------------
+
+describe("formatAlphaStatus", () => {
+  test("returns 'not enrolled' line when not enrolled", () => {
+    const output = formatAlphaStatus(null);
+    expect(output).toContain("not enrolled");
+  });
+
+  test("shows enrolled status with queue stats", () => {
+    const info: AlphaStatusInfo = {
+      enrolled: true,
+      stats: { pending: 5, sending: 1, sent: 100, failed: 2 },
+      lastError: { last_error: "network timeout", updated_at: "2025-01-15T10:00:00Z" },
+      lastSuccess: { updated_at: "2025-01-15T09:00:00Z" },
+    };
+    const output = formatAlphaStatus(info);
+    expect(output).toContain("enrolled");
+    expect(output).toContain("5");    // pending
+    expect(output).toContain("2");    // failed
+    expect(output).toContain("100");  // sent
+    expect(output).toContain("network timeout");
+  });
+
+  test("shows enrolled status with no errors", () => {
+    const info: AlphaStatusInfo = {
+      enrolled: true,
+      stats: { pending: 0, sending: 0, sent: 50, failed: 0 },
+      lastError: null,
+      lastSuccess: { updated_at: "2025-01-15T09:00:00Z" },
+    };
+    const output = formatAlphaStatus(info);
+    expect(output).toContain("enrolled");
+    expect(output).not.toContain("error");
+  });
+
+  test("shows enrolled status with no successful uploads yet", () => {
+    const info: AlphaStatusInfo = {
+      enrolled: true,
+      stats: { pending: 3, sending: 0, sent: 0, failed: 0 },
+      lastError: null,
+      lastSuccess: null,
+    };
+    const output = formatAlphaStatus(info);
+    expect(output).toContain("enrolled");
+    expect(output).toContain("3"); // pending
+  });
+});
