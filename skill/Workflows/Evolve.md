@@ -203,6 +203,26 @@ The command groups missed queries by invocation type:
 
 See `references/invocation-taxonomy.md` for the taxonomy.
 
+### 4b. Constitutional Pre-Validation Gate
+
+Before any LLM-based validation, each proposal passes through a
+deterministic constitutional check that rejects obviously bad proposals
+at zero cost. Four principles are enforced:
+
+1. **Size constraint** — description must be ≤1024 characters and within
+   0.3x–3.0x word count of the original.
+2. **No XML injection** — reject proposals containing XML/HTML tags.
+3. **No unbounded broadening** — reject bare "all", "any", "every",
+   "everything" unless qualified by enumeration markers ("including",
+   "such as", "like", "e.g.", or a comma-separated list).
+4. **Anchor preservation** — if the original contains `USE WHEN` trigger
+   phrases or `$skillName` references, those must appear in the proposal.
+
+If a proposal fails any principle, it is rejected with a descriptive
+violation message and the pipeline retries (if iterations remain).
+
+For body evolution (`evolve body`), only the size constraint applies.
+
 ### 5. Propose Description Changes
 
 An LLM generates a candidate description that would catch the missed

@@ -40,6 +40,7 @@ import { parseFrontmatter, replaceFrontmatterDescription } from "../utils/frontm
 
 import { createEvolveTUI } from "../utils/tui.js";
 import { appendAuditEntry } from "./audit.js";
+import { checkConstitution } from "./constitutional.js";
 import { appendEvidenceEntry } from "./evidence.js";
 import { extractFailurePatterns } from "./extract-patterns.js";
 import {
@@ -591,6 +592,28 @@ export async function evolve(
           proposed_text: proposal.proposed_description,
           eval_set: evalSet,
         });
+
+        // Step 8b: Constitutional check (deterministic, pre-validation)
+        const constitution = checkConstitution(
+          proposal.proposed_description,
+          currentDescription,
+          skillName,
+        );
+        if (!constitution.passed) {
+          feedbackReason = `Constitutional: ${constitution.violations.join("; ")}`;
+          recordAudit(proposal.proposal_id, "rejected", feedbackReason);
+          if (iteration === maxIterations - 1) {
+            finishTui();
+            return withStats({
+              proposal: lastProposal,
+              validation: null,
+              deployed: false,
+              auditEntries,
+              reason: feedbackReason,
+            });
+          }
+          continue;
+        }
 
         // Step 9: Check confidence threshold
         if (proposal.confidence < confidenceThreshold) {
