@@ -127,10 +127,16 @@ selftune eval generate --skill pptx --synthetic --skill-path /path/to/skills/ppt
 
 The command:
 1. Reads the SKILL.md file content
-2. Sends it to an LLM with a prompt requesting realistic test queries
-3. Parses the response into eval entries with invocation type annotations
-4. Classifies each positive query using the deterministic `classifyInvocation()` heuristic
-5. Writes the eval set to the output file
+2. Loads real user queries from the database (if available) as few-shot style examples so synthetic queries match real phrasing patterns
+3. Sends skill content and real examples to an LLM with a prompt requesting realistic test queries
+4. Parses the response into eval entries with invocation type annotations
+5. Classifies each positive query using the deterministic `classifyInvocation()` heuristic
+6. Writes the eval set to the output file
+
+**Note:** When real query data exists in the database, synthetic generation
+automatically includes high-confidence positive triggers and general queries as
+phrasing references. This produces more natural-sounding eval queries. If no
+database is available, generation proceeds without real examples (fail-open).
 
 Use `--model` to override the default LLM model:
 
