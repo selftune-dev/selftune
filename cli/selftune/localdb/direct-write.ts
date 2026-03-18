@@ -231,11 +231,11 @@ export function writeEvolutionAuditToDb(record: EvolutionAuditEntry): boolean {
   return safeWrite("evolution-audit", (db) => {
     getStmt(
       db,
-      "evolution-audit",
+      "evolution-audit-v2",
       `
       INSERT OR IGNORE INTO evolution_audit
-        (timestamp, proposal_id, skill_name, action, details, eval_snapshot_json)
-      VALUES (?, ?, ?, ?, ?, ?)
+        (timestamp, proposal_id, skill_name, action, details, eval_snapshot_json, iterations_used)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
     ).run(
       record.timestamp,
@@ -244,6 +244,7 @@ export function writeEvolutionAuditToDb(record: EvolutionAuditEntry): boolean {
       record.action,
       record.details,
       record.eval_snapshot ? JSON.stringify(record.eval_snapshot) : null,
+      record.iterations_used ?? null,
     );
   });
 }
