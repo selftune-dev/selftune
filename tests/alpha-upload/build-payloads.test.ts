@@ -1,25 +1,18 @@
 /**
- * Tests for alpha upload payload builder.
+ * Tests for V2 canonical push payload builder.
  *
- * Validates that buildSessionPayloads, buildInvocationPayloads, and
- * buildEvolutionPayloads correctly read SQLite rows and map them into
- * AlphaUploadEnvelope payloads.
+ * Validates that buildV2PushPayload correctly reads SQLite rows from
+ * all 5 canonical tables and assembles them into a V2 push payload
+ * via buildPushPayloadV2().
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
 import { ALL_DDL, MIGRATIONS, POST_MIGRATION_INDEXES } from "../../cli/selftune/localdb/schema.js";
 import {
-  buildSessionPayloads,
-  buildInvocationPayloads,
-  buildEvolutionPayloads,
+  buildV2PushPayload,
+  type Watermarks,
 } from "../../cli/selftune/alpha-upload/build-payloads.js";
-import type {
-  AlphaUploadEnvelope,
-  AlphaSessionPayload,
-  AlphaInvocationPayload,
-  AlphaEvolutionPayload,
-} from "../../cli/selftune/alpha-upload-contract.js";
 
 // -- Test helpers -------------------------------------------------------------
 
@@ -43,6 +36,7 @@ function insertSession(db: Database, overrides: Partial<{
   model: string;
   completion_status: string;
   workspace_path: string;
+  source_session_kind: string;
 }> = {}): void {
   const s = {
     session_id: overrides.session_id ?? `sess-${Math.random().toString(36).slice(2)}`,
@@ -52,34 +46,37 @@ function insertSession(db: Database, overrides: Partial<{
     model: overrides.model ?? "opus",
     completion_status: overrides.completion_status ?? "completed",
     workspace_path: overrides.workspace_path ?? "/home/user/project",
+    source_session_kind: overrides.source_session_kind ?? "interactive",
   };
   db.run(
-    `INSERT INTO sessions (session_id, started_at, ended_at, platform, model, completion_status, workspace_path)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [s.session_id, s.started_at, s.ended_at, s.platform, s.model, s.completion_status, s.workspace_path],
+    `INSERT INTO sessions (session_id, started_at, ended_at, platform, model, completion_status, workspace_path, source_session_kind)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [s.session_id, s.started_at, s.ended_at, s.platform, s.model, s.completion_status, s.workspace_path, s.source_session_kind],
   );
 }
 
-function insertSessionTelemetry(db: Database, overrides: Partial<{
+function insertPrompt(db: Database, overrides: Partial<{
+  prompt_id: string;
   session_id: string;
-  timestamp: string;
-  total_tool_calls: number;
-  assistant_turns: number;
-  errors_encountered: number;
-  skills_triggered_json: string;
+  occurred_at: string;
+  prompt_kind: string;
+  is_actionable: number;
+  prompt_index: number;
+  prompt_text: string;
 }> = {}): void {
-  const t = {
-    session_id: overrides.session_id ?? `sess-${Math.random().toString(36).slice(2)}`,
-    timestamp: overrides.timestamp ?? "2026-03-18T10:05:00Z",
-    total_tool_calls: overrides.total_tool_calls ?? 5,
-    assistant_turns: overrides.assistant_turns ?? 3,
-    errors_encountered: overrides.errors_encountered ?? 0,
-    skills_triggered_json: overrides.skills_triggered_json ?? '["selftune"]',
+  const p = {
+    prompt_id: overrides.prompt_id ?? `prompt-${Math.random().toString(36).slice(2)}`,
+    session_id: overrides.session_id ?? "sess-1",
+    occurred_at: overrides.occurred_at ?? "2026-03-18T10:01:00Z",
+    prompt_kind: overrides.prompt_kind ?? "user",
+    is_actionable: overrides.is_actionable ?? 1,
+    prompt_index: overrides.prompt_index ?? 0,
+    prompt_text: overrides.prompt_text ?? "improve my skills",
   };
   db.run(
-    `INSERT INTO session_telemetry (session_id, timestamp, total_tool_calls, assistant_turns, errors_encountered, skills_triggered_json)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [t.session_id, t.timestamp, t.total_tool_calls, t.assistant_turns, t.errors_encountered, t.skills_triggered_json],
+    `INSERT INTO prompts (prompt_id, session_id, occurred_at, prompt_kind, is_actionable, prompt_index, prompt_text)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [p.prompt_id, p.session_id, p.occurred_at, p.prompt_kind, p.is_actionable, p.prompt_index, p.prompt_text],
   );
 }
 
@@ -114,71 +111,107 @@ function insertInvocation(db: Database, overrides: Partial<{
   );
 }
 
-function insertEvolutionAudit(db: Database, overrides: Partial<{
+function insertExecutionFact(db: Database, overrides: Partial<{
+  session_id: string;
+  occurred_at: string;
+  prompt_id: string;
+  tool_calls_json: string;
+  total_tool_calls: number;
+  assistant_turns: number;
+  errors_encountered: number;
+  input_tokens: number;
+  output_tokens: number;
+  duration_ms: number;
+  completion_status: string;
+}> = {}): void {
+  const ef = {
+    session_id: overrides.session_id ?? "sess-1",
+    occurred_at: overrides.occurred_at ?? "2026-03-18T10:02:00Z",
+    prompt_id: overrides.prompt_id ?? null,
+    tool_calls_json: overrides.tool_calls_json ?? '{"Read":3,"Edit":2}',
+    total_tool_calls: overrides.total_tool_calls ?? 5,
+    assistant_turns: overrides.assistant_turns ?? 3,
+    errors_encountered: overrides.errors_encountered ?? 0,
+    input_tokens: overrides.input_tokens ?? 1000,
+    output_tokens: overrides.output_tokens ?? 500,
+    duration_ms: overrides.duration_ms ?? 30000,
+    completion_status: overrides.completion_status ?? "completed",
+  };
+  db.run(
+    `INSERT INTO execution_facts (session_id, occurred_at, prompt_id, tool_calls_json, total_tool_calls, assistant_turns, errors_encountered, input_tokens, output_tokens, duration_ms, completion_status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [ef.session_id, ef.occurred_at, ef.prompt_id, ef.tool_calls_json, ef.total_tool_calls, ef.assistant_turns, ef.errors_encountered, ef.input_tokens, ef.output_tokens, ef.duration_ms, ef.completion_status],
+  );
+}
+
+function insertEvolutionEvidence(db: Database, overrides: Partial<{
   timestamp: string;
   proposal_id: string;
   skill_name: string;
-  action: string;
+  skill_path: string;
+  target: string;
+  stage: string;
+  rationale: string;
+  confidence: number;
   details: string;
-  eval_snapshot_json: string;
+  original_text: string;
+  proposed_text: string;
+  eval_set_json: string;
+  validation_json: string;
 }> = {}): void {
   const e = {
     timestamp: overrides.timestamp ?? "2026-03-18T10:10:00Z",
     proposal_id: overrides.proposal_id ?? `prop-${Math.random().toString(36).slice(2)}`,
     skill_name: overrides.skill_name ?? "selftune",
-    action: overrides.action ?? "deployed",
-    details: overrides.details ?? "improved pass rate from 0.6 to 0.8",
-    eval_snapshot_json: overrides.eval_snapshot_json ?? '{"total":10,"passed":8,"failed":2,"pass_rate":0.8}',
+    skill_path: overrides.skill_path ?? "/path/to/SKILL.md",
+    target: overrides.target ?? "description",
+    stage: overrides.stage ?? "deployed",
+    rationale: overrides.rationale ?? "improved routing accuracy",
+    confidence: overrides.confidence ?? 0.85,
+    details: overrides.details ?? "pass rate improved",
+    original_text: overrides.original_text ?? "old description",
+    proposed_text: overrides.proposed_text ?? "new description",
+    eval_set_json: overrides.eval_set_json ?? null,
+    validation_json: overrides.validation_json ?? null,
   };
   db.run(
-    `INSERT INTO evolution_audit (timestamp, proposal_id, skill_name, action, details, eval_snapshot_json)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [e.timestamp, e.proposal_id, e.skill_name, e.action, e.details, e.eval_snapshot_json],
+    `INSERT INTO evolution_evidence (timestamp, proposal_id, skill_name, skill_path, target, stage, rationale, confidence, details, original_text, proposed_text, eval_set_json, validation_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [e.timestamp, e.proposal_id, e.skill_name, e.skill_path, e.target, e.stage, e.rationale, e.confidence, e.details, e.original_text, e.proposed_text, e.eval_set_json, e.validation_json],
   );
 }
 
-const TEST_USER_ID = "alpha-user-001";
-const TEST_AGENT_TYPE = "claude_code";
-const TEST_VERSION = "0.2.7";
-
 // -- Tests --------------------------------------------------------------------
 
-describe("buildSessionPayloads", () => {
+describe("buildV2PushPayload", () => {
   let db: Database;
 
   beforeEach(() => { db = createTestDb(); });
   afterEach(() => { db.close(); });
 
-  test("returns null when no sessions exist", () => {
-    const result = buildSessionPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION);
+  test("returns null when no data exists", () => {
+    const result = buildV2PushPayload(db, {});
     expect(result).toBeNull();
   });
 
-  test("returns null when no sessions after afterId", () => {
+  test("returns null when all watermarks are past existing data", () => {
     insertSession(db, { session_id: "sess-1" });
-    insertSessionTelemetry(db, { session_id: "sess-1" });
-    // Use a high afterId that no row exceeds
-    const result = buildSessionPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION, 999999);
+    const result = buildV2PushPayload(db, { sessions: 999999 });
     expect(result).toBeNull();
   });
 
-  test("builds envelope with correct metadata", () => {
+  test("builds V2 payload with correct schema_version", () => {
     insertSession(db, { session_id: "sess-1" });
-    insertSessionTelemetry(db, { session_id: "sess-1" });
-
-    const result = buildSessionPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION);
+    const result = buildV2PushPayload(db, {});
     expect(result).not.toBeNull();
 
-    const env = result!.envelope;
-    expect(env.schema_version).toBe("alpha-1.0");
-    expect(env.user_id).toBe(TEST_USER_ID);
-    expect(env.agent_type).toBe(TEST_AGENT_TYPE);
-    expect(env.selftune_version).toBe(TEST_VERSION);
-    expect(env.payload_type).toBe("sessions");
-    expect(env.uploaded_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    const payload = result!.payload;
+    expect(payload.schema_version).toBe("2.0");
+    expect(payload.push_id).toBeDefined();
+    expect(typeof payload.push_id).toBe("string");
   });
 
-  test("maps session fields correctly", () => {
+  test("includes sessions in canonical.sessions", () => {
     insertSession(db, {
       session_id: "sess-map",
       platform: "claude_code",
@@ -186,219 +219,175 @@ describe("buildSessionPayloads", () => {
       started_at: "2026-03-18T10:00:00Z",
       ended_at: "2026-03-18T10:05:00Z",
       completion_status: "completed",
-      workspace_path: "/home/user/project",
     });
-    insertSessionTelemetry(db, {
-      session_id: "sess-map",
+
+    const result = buildV2PushPayload(db, {});
+    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const sessions = canonical.sessions;
+
+    expect(sessions).toHaveLength(1);
+    const s = sessions[0] as Record<string, unknown>;
+    expect(s.record_kind).toBe("session");
+    expect(s.schema_version).toBe("2.0");
+    expect(s.session_id).toBe("sess-map");
+    expect(s.platform).toBe("claude_code");
+    expect(s.model).toBe("opus");
+    expect(s.started_at).toBe("2026-03-18T10:00:00Z");
+    expect(s.ended_at).toBe("2026-03-18T10:05:00Z");
+  });
+
+  test("includes prompts in canonical.prompts", () => {
+    insertPrompt(db, {
+      prompt_id: "p-1",
+      session_id: "sess-1",
+      occurred_at: "2026-03-18T10:01:00Z",
+      prompt_text: "improve my skills",
+      prompt_kind: "user",
+    });
+
+    const result = buildV2PushPayload(db, {});
+    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const prompts = canonical.prompts;
+
+    expect(prompts).toHaveLength(1);
+    const p = prompts[0] as Record<string, unknown>;
+    expect(p.record_kind).toBe("prompt");
+    expect(p.prompt_id).toBe("p-1");
+    expect(p.prompt_text).toBe("improve my skills");
+  });
+
+  test("includes skill_invocations in canonical.skill_invocations", () => {
+    insertInvocation(db, {
+      skill_invocation_id: "inv-1",
+      skill_name: "selftune",
+      triggered: 1,
+      confidence: 0.95,
+    });
+
+    const result = buildV2PushPayload(db, {});
+    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const invocations = canonical.skill_invocations;
+
+    expect(invocations).toHaveLength(1);
+    const inv = invocations[0] as Record<string, unknown>;
+    expect(inv.record_kind).toBe("skill_invocation");
+    expect(inv.skill_name).toBe("selftune");
+    expect(inv.triggered).toBe(true);
+    expect(inv.confidence).toBe(0.95);
+  });
+
+  test("includes execution_facts in canonical.execution_facts", () => {
+    insertExecutionFact(db, {
+      session_id: "sess-1",
       total_tool_calls: 12,
       assistant_turns: 4,
       errors_encountered: 1,
-      skills_triggered_json: '["selftune","dev"]',
     });
 
-    const result = buildSessionPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION);
-    const payloads = result!.envelope.payload as AlphaSessionPayload[];
+    const result = buildV2PushPayload(db, {});
+    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const facts = canonical.execution_facts;
 
-    expect(payloads).toHaveLength(1);
-    const p = payloads[0];
-    expect(p.session_id).toBe("sess-map");
-    expect(p.platform).toBe("claude_code");
-    expect(p.model).toBe("opus");
-    expect(p.started_at).toBe("2026-03-18T10:00:00Z");
-    expect(p.ended_at).toBe("2026-03-18T10:05:00Z");
-    expect(p.total_tool_calls).toBe(12);
-    expect(p.assistant_turns).toBe(4);
-    expect(p.errors_encountered).toBe(1);
-    expect(p.skills_triggered).toEqual(["selftune", "dev"]);
-    expect(p.completion_status).toBe("completed");
-    // workspace_hash should be a SHA256 hex string, not the raw path
-    expect(p.workspace_hash).not.toBe("/home/user/project");
-    expect(p.workspace_hash).toHaveLength(64); // SHA256 hex
+    expect(facts).toHaveLength(1);
+    const f = facts[0] as Record<string, unknown>;
+    expect(f.record_kind).toBe("execution_fact");
+    expect(f.total_tool_calls).toBe(12);
+    expect(f.assistant_turns).toBe(4);
+    expect(f.errors_encountered).toBe(1);
   });
 
-  test("respects limit parameter", () => {
-    for (let i = 0; i < 5; i++) {
-      const sid = `sess-limit-${i}`;
-      insertSession(db, { session_id: sid });
-      insertSessionTelemetry(db, { session_id: sid });
-    }
-
-    const result = buildSessionPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION, undefined, 3);
-    const payloads = result!.envelope.payload as AlphaSessionPayload[];
-    expect(payloads.length).toBeLessThanOrEqual(3);
-  });
-
-  test("returns lastId for pagination", () => {
-    insertSession(db, { session_id: "sess-page-1" });
-    insertSessionTelemetry(db, { session_id: "sess-page-1" });
-    insertSession(db, { session_id: "sess-page-2" });
-    insertSessionTelemetry(db, { session_id: "sess-page-2" });
-
-    const result = buildSessionPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION);
-    expect(result!.lastId).toBeGreaterThan(0);
-  });
-});
-
-describe("buildInvocationPayloads", () => {
-  let db: Database;
-
-  beforeEach(() => { db = createTestDb(); });
-  afterEach(() => { db.close(); });
-
-  test("returns null when no invocations exist", () => {
-    const result = buildInvocationPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION);
-    expect(result).toBeNull();
-  });
-
-  test("builds envelope with correct payload_type", () => {
-    insertInvocation(db);
-    const result = buildInvocationPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION);
-    expect(result).not.toBeNull();
-    expect(result!.envelope.payload_type).toBe("invocations");
-  });
-
-  test("maps invocation fields correctly", () => {
-    insertInvocation(db, {
-      skill_invocation_id: "inv-map",
-      session_id: "sess-inv",
-      occurred_at: "2026-03-18T10:01:00Z",
+  test("includes evolution_evidence in canonical.evolution_evidence", () => {
+    insertEvolutionEvidence(db, {
+      proposal_id: "prop-1",
       skill_name: "selftune",
-      invocation_mode: "implicit",
-      triggered: 1,
-      confidence: 0.95,
-      query: "improve my skills",
-      skill_scope: "global",
-      source: "hook",
+      target: "description",
+      stage: "deployed",
+      original_text: "old text",
+      proposed_text: "new text",
     });
 
-    const result = buildInvocationPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION);
-    const payloads = result!.envelope.payload as AlphaInvocationPayload[];
+    const result = buildV2PushPayload(db, {});
+    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const evidence = canonical.evolution_evidence;
 
-    expect(payloads).toHaveLength(1);
-    const p = payloads[0];
-    expect(p.session_id).toBe("sess-inv");
-    expect(p.occurred_at).toBe("2026-03-18T10:01:00Z");
-    expect(p.skill_name).toBe("selftune");
-    expect(p.invocation_mode).toBe("implicit");
-    expect(p.triggered).toBe(true);
-    expect(p.confidence).toBe(0.95);
-    expect(p.query_text).toBe("improve my skills"); // raw, no hashing
-    expect(p.skill_scope).toBe("global");
-    expect(p.source).toBe("hook");
+    expect(evidence).toHaveLength(1);
+    const e = evidence[0] as Record<string, unknown>;
+    expect(e.skill_name).toBe("selftune");
+    expect(e.proposal_id).toBe("prop-1");
+    expect(e.original_text).toBe("old text");
+    expect(e.proposed_text).toBe("new text");
   });
 
-  test("query_text passes through unchanged", () => {
-    const rawQuery = "set up selftune for my /Users/dan/secret-project";
-    insertInvocation(db, { query: rawQuery });
+  test("returns watermarks for all table types with data", () => {
+    insertSession(db, { session_id: "sess-1" });
+    insertPrompt(db, { prompt_id: "p-1" });
+    insertInvocation(db, { skill_invocation_id: "inv-1" });
+    insertExecutionFact(db);
+    insertEvolutionEvidence(db, { proposal_id: "prop-1" });
 
-    const result = buildInvocationPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION);
-    const payloads = result!.envelope.payload as AlphaInvocationPayload[];
-    expect(payloads[0].query_text).toBe(rawQuery);
+    const result = buildV2PushPayload(db, {});
+    const wm = result!.newWatermarks;
+
+    expect(wm.sessions).toBeGreaterThan(0);
+    expect(wm.prompts).toBeGreaterThan(0);
+    expect(wm.invocations).toBeGreaterThan(0);
+    expect(wm.execution_facts).toBeGreaterThan(0);
+    expect(wm.evolution_evidence).toBeGreaterThan(0);
   });
 
-  test("handles null confidence and source", () => {
-    db.run(
-      `INSERT INTO skill_invocations (skill_invocation_id, session_id, occurred_at, skill_name, triggered, query)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      ["inv-null", "sess-null", "2026-03-18T10:01:00Z", "selftune", 0, "test"],
-    );
+  test("respects watermarks -- skips already-uploaded rows", () => {
+    insertSession(db, { session_id: "sess-1" });
+    insertSession(db, { session_id: "sess-2" });
 
-    const result = buildInvocationPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION);
-    const payloads = result!.envelope.payload as AlphaInvocationPayload[];
-    expect(payloads[0].confidence).toBeNull();
-    expect(payloads[0].source).toBeNull();
+    // First call gets both
+    const first = buildV2PushPayload(db, {});
+    expect(first).not.toBeNull();
+    const canonical1 = first!.payload.canonical as Record<string, unknown[]>;
+    expect(canonical1.sessions).toHaveLength(2);
+
+    // Second call with watermark from first should get nothing
+    const second = buildV2PushPayload(db, { sessions: first!.newWatermarks.sessions });
+    // Should be null since only sessions had data and those are past watermark
+    expect(second).toBeNull();
   });
 
-  test("respects afterId for pagination", () => {
-    insertInvocation(db, { skill_invocation_id: "inv-1", query: "first" });
-    insertInvocation(db, { skill_invocation_id: "inv-2", query: "second" });
+  test("handles mixed data -- some tables have data, others do not", () => {
+    insertSession(db, { session_id: "sess-1" });
+    insertInvocation(db, { skill_invocation_id: "inv-1" });
+    // No prompts, execution_facts, or evolution_evidence
 
-    // Get the rowid for the first invocation
-    const firstRow = db.query("SELECT rowid FROM skill_invocations WHERE skill_invocation_id = 'inv-1'").get() as { rowid: number };
-
-    const result = buildInvocationPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION, firstRow.rowid);
-    const payloads = result!.envelope.payload as AlphaInvocationPayload[];
-    // Should only return inv-2
-    expect(payloads).toHaveLength(1);
-    expect(payloads[0].query_text).toBe("second");
-  });
-});
-
-describe("buildEvolutionPayloads", () => {
-  let db: Database;
-
-  beforeEach(() => { db = createTestDb(); });
-  afterEach(() => { db.close(); });
-
-  test("returns null when no evolution audit entries exist", () => {
-    const result = buildEvolutionPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION);
-    expect(result).toBeNull();
-  });
-
-  test("builds envelope with correct payload_type", () => {
-    insertEvolutionAudit(db);
-    const result = buildEvolutionPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION);
+    const result = buildV2PushPayload(db, {});
     expect(result).not.toBeNull();
-    expect(result!.envelope.payload_type).toBe("evolution");
+
+    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    expect(canonical.sessions).toHaveLength(1);
+    expect(canonical.skill_invocations).toHaveLength(1);
+    expect(canonical.prompts).toHaveLength(0);
+    expect(canonical.execution_facts).toHaveLength(0);
+    expect(canonical.evolution_evidence).toHaveLength(0);
+
+    // Watermarks only set for tables with data
+    expect(result!.newWatermarks.sessions).toBeGreaterThan(0);
+    expect(result!.newWatermarks.invocations).toBeGreaterThan(0);
+    expect(result!.newWatermarks.prompts).toBeUndefined();
+    expect(result!.newWatermarks.execution_facts).toBeUndefined();
+    expect(result!.newWatermarks.evolution_evidence).toBeUndefined();
   });
 
-  test("maps evolution fields correctly", () => {
-    insertEvolutionAudit(db, {
-      proposal_id: "prop-map",
-      skill_name: "selftune",
-      action: "deployed",
-      timestamp: "2026-03-18T10:10:00Z",
-      eval_snapshot_json: '{"total":10,"passed":8,"failed":2,"pass_rate":0.8}',
-    });
+  test("canonical records have required base fields", () => {
+    insertSession(db, { session_id: "sess-fields" });
 
-    const result = buildEvolutionPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION);
-    const payloads = result!.envelope.payload as AlphaEvolutionPayload[];
+    const result = buildV2PushPayload(db, {});
+    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const session = canonical.sessions[0] as Record<string, unknown>;
 
-    expect(payloads).toHaveLength(1);
-    const p = payloads[0];
-    expect(p.proposal_id).toBe("prop-map");
-    expect(p.skill_name).toBe("selftune");
-    expect(p.action).toBe("deployed");
-    expect(p.timestamp).toBe("2026-03-18T10:10:00Z");
-    expect(p.deployed).toBe(true);
-    expect(p.rolled_back).toBe(false);
-    expect(p.after_pass_rate).toBe(0.8);
-  });
-
-  test("maps rolled_back action correctly", () => {
-    insertEvolutionAudit(db, {
-      action: "rolled_back",
-      eval_snapshot_json: '{"total":10,"passed":5,"failed":5,"pass_rate":0.5}',
-    });
-
-    const result = buildEvolutionPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION);
-    const payloads = result!.envelope.payload as AlphaEvolutionPayload[];
-    expect(payloads[0].deployed).toBe(false);
-    expect(payloads[0].rolled_back).toBe(true);
-  });
-
-  test("handles null eval_snapshot_json", () => {
-    db.run(
-      `INSERT INTO evolution_audit (timestamp, proposal_id, skill_name, action, details)
-       VALUES (?, ?, ?, ?, ?)`,
-      ["2026-03-18T10:10:00Z", "prop-null", "selftune", "created", "initial proposal"],
-    );
-
-    const result = buildEvolutionPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION);
-    const payloads = result!.envelope.payload as AlphaEvolutionPayload[];
-    expect(payloads[0].before_pass_rate).toBeNull();
-    expect(payloads[0].after_pass_rate).toBeNull();
-    expect(payloads[0].net_change).toBeNull();
-  });
-
-  test("respects limit", () => {
-    for (let i = 0; i < 5; i++) {
-      insertEvolutionAudit(db, { proposal_id: `prop-${i}` });
-    }
-
-    const result = buildEvolutionPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION, undefined, 2);
-    const payloads = result!.envelope.payload as AlphaEvolutionPayload[];
-    expect(payloads).toHaveLength(2);
+    expect(session.record_kind).toBe("session");
+    expect(session.schema_version).toBe("2.0");
+    expect(session.normalizer_version).toBeDefined();
+    expect(session.normalized_at).toBeDefined();
+    expect(session.platform).toBeDefined();
+    expect(session.capture_mode).toBeDefined();
+    expect(session.raw_source_ref).toBeDefined();
   });
 });
 
@@ -408,7 +397,7 @@ describe("batch size cap", () => {
   beforeEach(() => { db = createTestDb(); });
   afterEach(() => { db.close(); });
 
-  test("default limit caps at 100 records", () => {
+  test("default limit caps at 100 records per table", () => {
     for (let i = 0; i < 120; i++) {
       insertInvocation(db, {
         skill_invocation_id: `inv-cap-${i}`,
@@ -416,8 +405,9 @@ describe("batch size cap", () => {
       });
     }
 
-    const result = buildInvocationPayloads(db, TEST_USER_ID, TEST_AGENT_TYPE, TEST_VERSION);
-    const payloads = result!.envelope.payload as AlphaInvocationPayload[];
-    expect(payloads).toHaveLength(100);
+    const result = buildV2PushPayload(db, {});
+    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    // Should cap at 100
+    expect(canonical.skill_invocations).toHaveLength(100);
   });
 });

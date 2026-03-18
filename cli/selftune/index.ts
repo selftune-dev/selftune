@@ -625,6 +625,7 @@ Output:
           agentType: "claude_code",
           selftuneVersion: "0.2.7",
           dryRun: values["dry-run"] ?? false,
+          apiKey: identity.api_key,
         });
 
         console.log(JSON.stringify(result, null, 2));

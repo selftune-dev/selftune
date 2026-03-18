@@ -4,15 +4,18 @@
  * Drains the local upload queue by reading pending items, uploading
  * them via the HTTP client, and updating their status. Implements
  * retry with exponential backoff for transient (5xx/network) failures.
- * Client errors (4xx) are not retried.
+ *
+ * Special status handling:
+ *   - 409 (duplicate push_id) is treated as success
+ *   - 401/403 (auth failures) are non-retryable with descriptive errors
+ *   - 4xx (client errors) are not retried
  */
 
 import type {
-  AlphaUploadEnvelope,
   FlushSummary,
   QueueOperations,
 } from "../alpha-upload-contract.js";
-import { uploadEnvelope } from "./client.js";
+import { uploadPushPayload } from "./client.js";
 
 // ---------------------------------------------------------------------------
 // Options
@@ -26,6 +29,8 @@ export interface FlushOptions {
   maxRetries?: number;
   /** When true, log what would be sent without making HTTP calls (default: false). */
   dryRun?: boolean;
+  /** API key for Bearer auth on the cloud endpoint. */
+  apiKey?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -46,6 +51,11 @@ function isRetryable(status: number): boolean {
   return status === 0 || status === 429 || status >= 500;
 }
 
+/** Returns true for auth errors that should not be retried. */
+function isAuthError(status: number): boolean {
+  return status === 401 || status === 403;
+}
+
 /** Sleep for the given number of milliseconds. */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -57,7 +67,7 @@ function backoffMs(attempt: number): number {
   return Math.min(ms, MAX_BACKOFF_MS);
 }
 
-/** Extract HTTP status from result (may be on _status for error responses). */
+/** Extract HTTP status from result. */
 function getStatus(result: Record<string, unknown>): number {
   return (result as { _status?: number })._status ?? (result.success ? 200 : 0);
 }
@@ -67,7 +77,7 @@ function getStatus(result: Record<string, unknown>): number {
 // ---------------------------------------------------------------------------
 
 /**
- * Flush the upload queue — read pending items, upload them, update status.
+ * Flush the upload queue -- read pending items, upload them, update status.
  */
 export async function flushQueue(
   queue: QueueOperations,
@@ -77,6 +87,7 @@ export async function flushQueue(
   const batchSize = options?.batchSize ?? DEFAULT_BATCH_SIZE;
   const maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
   const dryRun = options?.dryRun ?? false;
+  const apiKey = options?.apiKey;
 
   const summary: FlushSummary = { sent: 0, failed: 0, skipped: 0 };
 
@@ -97,11 +108,11 @@ export async function flushQueue(
       continue;
     }
 
-    let envelope: AlphaUploadEnvelope;
+    let payload: Record<string, unknown>;
     try {
-      envelope = JSON.parse(item.payload_json) as AlphaUploadEnvelope;
+      payload = JSON.parse(item.payload_json) as Record<string, unknown>;
     } catch {
-      queue.markFailed(item.id, "corrupt envelope JSON");
+      queue.markFailed(item.id, "corrupt payload JSON");
       summary.failed++;
       continue;
     }
@@ -116,12 +127,31 @@ export async function flushQueue(
         await sleep(backoffMs(attempt - 1));
       }
 
-      const result = await uploadEnvelope(envelope, endpoint);
+      const result = await uploadPushPayload(payload, endpoint, apiKey);
       const status = getStatus(result as unknown as Record<string, unknown>);
 
       if (result.success) {
         queue.markSent(item.id);
         summary.sent++;
+        succeeded = true;
+        break;
+      }
+
+      // 409 Conflict = duplicate push_id, treat as success
+      if (status === 409) {
+        queue.markSent(item.id);
+        summary.sent++;
+        succeeded = true;
+        break;
+      }
+
+      // Auth errors are non-retryable
+      if (isAuthError(status)) {
+        const authMessage = status === 401
+          ? "Authentication failed: invalid or missing API key. Run 'selftune init --alpha --alpha-key <key>' to set your API key."
+          : "Authorization denied: your API key does not have permission to upload. Contact support or verify your enrollment.";
+        queue.markFailed(item.id, authMessage);
+        summary.failed++;
         succeeded = true;
         break;
       }

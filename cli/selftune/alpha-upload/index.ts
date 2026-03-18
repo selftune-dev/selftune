@@ -2,10 +2,10 @@
  * Alpha upload orchestration module.
  *
  * Coordinates the full upload cycle:
- *   1. Read new rows since watermark from SQLite
- *   2. Build AlphaUploadEnvelope payloads
- *   3. Enqueue them in the local upload queue
- *   4. Flush the queue to the remote endpoint
+ *   1. Read new rows since watermark from SQLite (all 5 canonical tables)
+ *   2. Build a single V2 canonical push payload
+ *   3. Enqueue it in the local upload queue
+ *   4. Flush the queue to POST /api/v1/push
  *
  * Guards:
  *   - Only runs when alpha enrolled (config.alpha?.enrolled === true)
@@ -16,11 +16,7 @@
 import type { Database } from "bun:sqlite";
 
 import type { FlushSummary, QueueItem as ContractQueueItem, QueueOperations } from "../alpha-upload-contract.js";
-import {
-  buildSessionPayloads,
-  buildInvocationPayloads,
-  buildEvolutionPayloads,
-} from "./build-payloads.js";
+import { buildV2PushPayload, type Watermarks } from "./build-payloads.js";
 import { enqueueUpload, readWatermark, writeWatermark, getPendingUploads, markSending, markSent, markFailed } from "./queue.js";
 import { flushQueue } from "./flush.js";
 
@@ -28,7 +24,7 @@ import { flushQueue } from "./flush.js";
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEFAULT_ENDPOINT = "https://alpha-ingest.selftune.dev/ingest";
+const DEFAULT_ENDPOINT = "https://api.selftune.dev/api/v1/push";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,6 +42,7 @@ export interface UploadCycleOptions {
   selftuneVersion?: string;
   endpoint?: string;
   dryRun?: boolean;
+  apiKey?: string;
 }
 
 export interface UploadCycleSummary {
@@ -57,86 +54,63 @@ export interface UploadCycleSummary {
 }
 
 // ---------------------------------------------------------------------------
-// prepareUploads — read new rows, build payloads, enqueue them
+// Watermark helpers
+// ---------------------------------------------------------------------------
+
+/** Read all per-table watermarks from the upload_watermarks table. */
+function readAllWatermarks(db: Database): Watermarks {
+  return {
+    sessions: readWatermark(db, "sessions") ?? undefined,
+    prompts: readWatermark(db, "prompts") ?? undefined,
+    invocations: readWatermark(db, "invocations") ?? undefined,
+    execution_facts: readWatermark(db, "execution_facts") ?? undefined,
+    evolution_evidence: readWatermark(db, "evolution_evidence") ?? undefined,
+  };
+}
+
+/** Write updated watermarks back to the upload_watermarks table. */
+function writeAllWatermarks(db: Database, watermarks: Watermarks): void {
+  if (watermarks.sessions !== undefined) writeWatermark(db, "sessions", watermarks.sessions);
+  if (watermarks.prompts !== undefined) writeWatermark(db, "prompts", watermarks.prompts);
+  if (watermarks.invocations !== undefined) writeWatermark(db, "invocations", watermarks.invocations);
+  if (watermarks.execution_facts !== undefined) writeWatermark(db, "execution_facts", watermarks.execution_facts);
+  if (watermarks.evolution_evidence !== undefined) writeWatermark(db, "evolution_evidence", watermarks.evolution_evidence);
+}
+
+// ---------------------------------------------------------------------------
+// prepareUploads -- read new rows, build V2 payload, enqueue it
 // ---------------------------------------------------------------------------
 
 /**
- * Read new rows since watermark from SQLite, build payloads, and enqueue
- * them into the upload queue. Never throws.
+ * Read new rows since watermark from SQLite, build a single V2 push
+ * payload, and enqueue it into the upload queue. Never throws.
  */
 export function prepareUploads(
   db: Database,
-  userId: string,
-  agentType: string,
-  selftuneVersion: string,
+  _userId: string,
+  _agentType: string,
+  _selftuneVersion: string,
 ): PrepareResult {
   const result: PrepareResult = { enqueued: 0, types: [] };
 
   try {
-    // -- Sessions ----------------------------------------------------------
-    const sessionWm = readWatermark(db, "sessions") ?? undefined;
-    const sessionBuild = buildSessionPayloads(
-      db,
-      userId,
-      agentType,
-      selftuneVersion,
-      sessionWm,
-    );
-    if (sessionBuild) {
-      const ok = enqueueUpload(
-        db,
-        "sessions",
-        JSON.stringify(sessionBuild.envelope),
-      );
-      if (ok) {
-        result.enqueued++;
-        result.types.push("sessions");
-        writeWatermark(db, "sessions", sessionBuild.lastId);
-      }
-    }
+    const watermarks = readAllWatermarks(db);
+    const build = buildV2PushPayload(db, watermarks);
 
-    // -- Invocations -------------------------------------------------------
-    const invocationWm = readWatermark(db, "invocations") ?? undefined;
-    const invocationBuild = buildInvocationPayloads(
-      db,
-      userId,
-      agentType,
-      selftuneVersion,
-      invocationWm,
-    );
-    if (invocationBuild) {
-      const ok = enqueueUpload(
-        db,
-        "invocations",
-        JSON.stringify(invocationBuild.envelope),
-      );
-      if (ok) {
-        result.enqueued++;
-        result.types.push("invocations");
-        writeWatermark(db, "invocations", invocationBuild.lastId);
-      }
-    }
+    if (!build) return result;
 
-    // -- Evolution ---------------------------------------------------------
-    const evolutionWm = readWatermark(db, "evolution") ?? undefined;
-    const evolutionBuild = buildEvolutionPayloads(
-      db,
-      userId,
-      agentType,
-      selftuneVersion,
-      evolutionWm,
-    );
-    if (evolutionBuild) {
-      const ok = enqueueUpload(
-        db,
-        "evolution",
-        JSON.stringify(evolutionBuild.envelope),
-      );
-      if (ok) {
-        result.enqueued++;
-        result.types.push("evolution");
-        writeWatermark(db, "evolution", evolutionBuild.lastId);
-      }
+    const ok = enqueueUpload(db, "push", JSON.stringify(build.payload));
+    if (ok) {
+      result.enqueued = 1;
+      // Report which table types had new data
+      const wm = build.newWatermarks;
+      if (wm.sessions !== undefined) result.types.push("sessions");
+      if (wm.prompts !== undefined) result.types.push("prompts");
+      if (wm.invocations !== undefined) result.types.push("invocations");
+      if (wm.execution_facts !== undefined) result.types.push("execution_facts");
+      if (wm.evolution_evidence !== undefined) result.types.push("evolution_evidence");
+
+      writeAllWatermarks(db, build.newWatermarks);
     }
   } catch (err) {
     if (process.env.DEBUG || process.env.NODE_ENV === "development") {
@@ -148,12 +122,12 @@ export function prepareUploads(
 }
 
 // ---------------------------------------------------------------------------
-// runUploadCycle — the full cycle: prepare → flush → return summary
+// runUploadCycle -- the full cycle: prepare -> flush -> return summary
 // ---------------------------------------------------------------------------
 
 /**
  * Run a full upload cycle: read new data, enqueue it, flush to remote.
- * Guards on enrollment — returns empty summary if not enrolled.
+ * Guards on enrollment -- returns empty summary if not enrolled.
  * Never throws.
  */
 export async function runUploadCycle(
@@ -182,11 +156,12 @@ export async function runUploadCycle(
       options.endpoint ??
       DEFAULT_ENDPOINT;
     const dryRun = options.dryRun ?? false;
+    const apiKey = options.apiKey;
 
-    // Step 1: Prepare — read new rows, build payloads, enqueue
+    // Step 1: Prepare -- read new rows, build V2 payload, enqueue
     const prepared = prepareUploads(db, userId, agentType, selftuneVersion);
 
-    // Step 2: Flush — drain the queue to the remote endpoint
+    // Step 2: Flush -- drain the queue to the remote endpoint
     const queueOps: QueueOperations = {
       getPending: (limit: number) => getPendingUploads(db, limit) as ContractQueueItem[],
       markSending: (id: number) => { markSending(db, [id]); },
@@ -196,6 +171,7 @@ export async function runUploadCycle(
 
     const flush: FlushSummary = await flushQueue(queueOps, endpoint, {
       dryRun,
+      apiKey,
     });
 
     return {

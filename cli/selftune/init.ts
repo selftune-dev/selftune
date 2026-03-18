@@ -417,6 +417,7 @@ export interface InitOptions {
   noAlpha?: boolean;
   alphaEmail?: string;
   alphaName?: string;
+  alphaKey?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -532,6 +533,7 @@ export function runInit(opts: InitOptions): SelftuneConfig {
       email: opts.alphaEmail,
       display_name: opts.alphaName,
       consent_timestamp: new Date().toISOString(),
+      ...(opts.alphaKey ? { api_key: opts.alphaKey } : {}),
     };
 
     config.alpha = identity;
@@ -566,6 +568,7 @@ export async function cliMain(): Promise<void> {
       "no-alpha": { type: "boolean", default: false },
       "alpha-email": { type: "string" },
       "alpha-name": { type: "string" },
+      "alpha-key": { type: "string" },
     },
     strict: true,
   });
@@ -600,6 +603,7 @@ export async function cliMain(): Promise<void> {
     noAlpha: values["no-alpha"] ?? false,
     alphaEmail: values["alpha-email"],
     alphaName: values["alpha-name"],
+    alphaKey: values["alpha-key"],
   });
 
   console.log(JSON.stringify(config, null, 2));

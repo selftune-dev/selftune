@@ -1,41 +1,46 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type {
-  AlphaUploadEnvelope,
   FlushSummary,
+  PushUploadResult,
   QueueItem,
   QueueOperations,
 } from "../../cli/selftune/alpha-upload-contract.js";
-import { uploadEnvelope } from "../../cli/selftune/alpha-upload/client.js";
+import { uploadPushPayload } from "../../cli/selftune/alpha-upload/client.js";
 import { flushQueue, type FlushOptions } from "../../cli/selftune/alpha-upload/flush.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeEnvelope(overrides?: Partial<AlphaUploadEnvelope>): AlphaUploadEnvelope {
+function makePayload(overrides?: Record<string, unknown>): Record<string, unknown> {
   return {
-    schema_version: "alpha-1.0",
-    user_id: "test-user",
-    agent_type: "claude_code",
-    selftune_version: "0.2.7",
-    uploaded_at: new Date().toISOString(),
-    payload_type: "sessions",
-    payload: [],
+    schema_version: "2.0",
+    push_id: "test-push-id",
+    client_version: "0.2.7",
+    normalizer_version: "1.0.0",
+    canonical: {
+      sessions: [],
+      prompts: [],
+      skill_invocations: [],
+      execution_facts: [],
+      normalization_runs: [],
+      evolution_evidence: [],
+    },
     ...overrides,
   };
 }
 
 function makeQueueItem(id: number, overrides?: Partial<QueueItem>): QueueItem {
-  const envelope = makeEnvelope();
+  const payload = makePayload();
   return {
     id,
-    payload_type: "sessions",
+    payload_type: "push",
     status: "pending",
     attempts: 0,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     last_error: null,
-    payload_json: JSON.stringify(envelope),
+    payload_json: JSON.stringify(payload),
     ...overrides,
   };
 }
@@ -71,10 +76,10 @@ function createMockQueue(items: QueueItem[]): QueueOperations & { calls: Record<
 }
 
 // ---------------------------------------------------------------------------
-// uploadEnvelope tests
+// uploadPushPayload tests
 // ---------------------------------------------------------------------------
 
-describe("uploadEnvelope", () => {
+describe("uploadPushPayload", () => {
   const originalFetch = globalThis.fetch;
 
   afterEach(() => {
@@ -82,79 +87,95 @@ describe("uploadEnvelope", () => {
   });
 
   test("returns success result on 200 response", async () => {
-    const envelope = makeEnvelope();
+    const payload = makePayload();
     globalThis.fetch = mock(async () =>
-      new Response(JSON.stringify({ success: true, accepted: 0, rejected: 0, errors: [] }), { status: 200 }),
+      new Response(JSON.stringify({ success: true, push_id: "test-push-id", errors: [] }), { status: 200 }),
     );
 
-    const result = await uploadEnvelope(envelope, "https://api.example.com/upload");
+    const result = await uploadPushPayload(payload, "https://api.example.com/api/v1/push");
     expect(result.success).toBe(true);
     expect(result.errors).toEqual([]);
   });
 
-  test("sends correct headers", async () => {
-    const envelope = makeEnvelope();
+  test("sends correct headers without API key", async () => {
+    const payload = makePayload();
     let capturedHeaders: Headers | null = null;
 
     globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
       capturedHeaders = new Headers(init?.headers);
-      return new Response(JSON.stringify({ success: true, accepted: 0, rejected: 0, errors: [] }), { status: 200 });
+      return new Response(JSON.stringify({ success: true, push_id: "id", errors: [] }), { status: 200 });
     });
 
-    await uploadEnvelope(envelope, "https://api.example.com/upload");
+    await uploadPushPayload(payload, "https://api.example.com/api/v1/push");
 
     expect(capturedHeaders).not.toBeNull();
     expect(capturedHeaders!.get("Content-Type")).toBe("application/json");
     expect(capturedHeaders!.get("User-Agent")).toMatch(/^selftune\//);
+    expect(capturedHeaders!.get("Authorization")).toBeNull();
   });
 
-  test("sends POST with JSON body", async () => {
-    const envelope = makeEnvelope();
+  test("sends Authorization header when API key is provided", async () => {
+    const payload = makePayload();
+    let capturedHeaders: Headers | null = null;
+
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedHeaders = new Headers(init?.headers);
+      return new Response(JSON.stringify({ success: true, push_id: "id", errors: [] }), { status: 200 });
+    });
+
+    await uploadPushPayload(payload, "https://api.example.com/api/v1/push", "my-secret-key");
+
+    expect(capturedHeaders!.get("Authorization")).toBe("Bearer my-secret-key");
+  });
+
+  test("sends POST with JSON body containing schema_version 2.0", async () => {
+    const payload = makePayload();
     let capturedMethod: string | undefined;
     let capturedBody: string | undefined;
 
     globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
       capturedMethod = init?.method;
       capturedBody = init?.body as string;
-      return new Response(JSON.stringify({ success: true, accepted: 0, rejected: 0, errors: [] }), { status: 200 });
+      return new Response(JSON.stringify({ success: true, push_id: "id", errors: [] }), { status: 200 });
     });
 
-    await uploadEnvelope(envelope, "https://api.example.com/upload");
+    await uploadPushPayload(payload, "https://api.example.com/api/v1/push");
 
     expect(capturedMethod).toBe("POST");
     const parsed = JSON.parse(capturedBody!);
-    expect(parsed.schema_version).toBe("alpha-1.0");
+    expect(parsed.schema_version).toBe("2.0");
+    expect(parsed.canonical).toBeDefined();
   });
 
   test("returns error result on 4xx response", async () => {
-    const envelope = makeEnvelope();
+    const payload = makePayload();
     globalThis.fetch = mock(async () =>
       new Response("Bad Request", { status: 400 }),
     );
 
-    const result = await uploadEnvelope(envelope, "https://api.example.com/upload");
+    const result = await uploadPushPayload(payload, "https://api.example.com/api/v1/push");
     expect(result.success).toBe(false);
     expect(result.errors.length).toBeGreaterThan(0);
   });
 
   test("returns error result on 5xx response", async () => {
-    const envelope = makeEnvelope();
+    const payload = makePayload();
     globalThis.fetch = mock(async () =>
       new Response("Internal Server Error", { status: 500 }),
     );
 
-    const result = await uploadEnvelope(envelope, "https://api.example.com/upload");
+    const result = await uploadPushPayload(payload, "https://api.example.com/api/v1/push");
     expect(result.success).toBe(false);
     expect(result.errors.length).toBeGreaterThan(0);
   });
 
   test("returns error result on network failure without throwing", async () => {
-    const envelope = makeEnvelope();
+    const payload = makePayload();
     globalThis.fetch = mock(async () => {
       throw new Error("Network unreachable");
     });
 
-    const result = await uploadEnvelope(envelope, "https://api.example.com/upload");
+    const result = await uploadPushPayload(payload, "https://api.example.com/api/v1/push");
     expect(result.success).toBe(false);
     expect(result.errors[0]).toContain("Network unreachable");
   });
@@ -173,7 +194,7 @@ describe("flushQueue", () => {
 
   test("returns zero summary when queue is empty", async () => {
     const queue = createMockQueue([]);
-    const summary = await flushQueue(queue, "https://api.example.com/upload");
+    const summary = await flushQueue(queue, "https://api.example.com/api/v1/push");
     expect(summary).toEqual({ sent: 0, failed: 0, skipped: 0 });
   });
 
@@ -182,16 +203,92 @@ describe("flushQueue", () => {
     const queue = createMockQueue(items);
 
     globalThis.fetch = mock(async () =>
-      new Response(JSON.stringify({ success: true, accepted: 0, rejected: 0, errors: [] }), { status: 200 }),
+      new Response(JSON.stringify({ success: true, push_id: "id", errors: [] }), { status: 200 }),
     );
 
-    const summary = await flushQueue(queue, "https://api.example.com/upload");
+    const summary = await flushQueue(queue, "https://api.example.com/api/v1/push");
 
     expect(summary.sent).toBe(3);
     expect(summary.failed).toBe(0);
     expect(summary.skipped).toBe(0);
     expect(queue.calls.markSending.length).toBe(3);
     expect(queue.calls.markSent.length).toBe(3);
+  });
+
+  test("treats 409 (duplicate push_id) as success", async () => {
+    const items = [makeQueueItem(1)];
+    const queue = createMockQueue(items);
+
+    globalThis.fetch = mock(async () =>
+      new Response("Conflict: duplicate push_id", { status: 409 }),
+    );
+
+    const summary = await flushQueue(queue, "https://api.example.com/api/v1/push", {
+      maxRetries: 3,
+    });
+
+    expect(summary.sent).toBe(1);
+    expect(summary.failed).toBe(0);
+    expect(queue.calls.markSent.length).toBe(1);
+  });
+
+  test("treats 401 as non-retryable auth error", async () => {
+    const items = [makeQueueItem(1)];
+    const queue = createMockQueue(items);
+    let callCount = 0;
+
+    globalThis.fetch = mock(async () => {
+      callCount++;
+      return new Response("Unauthorized", { status: 401 });
+    });
+
+    const summary = await flushQueue(queue, "https://api.example.com/api/v1/push", {
+      maxRetries: 3,
+    });
+
+    expect(summary.failed).toBe(1);
+    expect(callCount).toBe(1); // No retries
+    expect(queue.calls.markFailed.length).toBe(1);
+    const errorMsg = queue.calls.markFailed[0]![1] as string;
+    expect(errorMsg).toContain("Authentication failed");
+    expect(errorMsg).toContain("API key");
+  });
+
+  test("treats 403 as non-retryable auth error", async () => {
+    const items = [makeQueueItem(1)];
+    const queue = createMockQueue(items);
+    let callCount = 0;
+
+    globalThis.fetch = mock(async () => {
+      callCount++;
+      return new Response("Forbidden", { status: 403 });
+    });
+
+    const summary = await flushQueue(queue, "https://api.example.com/api/v1/push", {
+      maxRetries: 3,
+    });
+
+    expect(summary.failed).toBe(1);
+    expect(callCount).toBe(1); // No retries
+    const errorMsg = queue.calls.markFailed[0]![1] as string;
+    expect(errorMsg).toContain("Authorization denied");
+  });
+
+  test("passes API key through to uploadPushPayload", async () => {
+    const items = [makeQueueItem(1)];
+    const queue = createMockQueue(items);
+    let capturedHeaders: Headers | null = null;
+
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedHeaders = new Headers(init?.headers);
+      return new Response(JSON.stringify({ success: true, push_id: "id", errors: [] }), { status: 200 });
+    });
+
+    await flushQueue(queue, "https://api.example.com/api/v1/push", {
+      apiKey: "test-api-key",
+    });
+
+    expect(capturedHeaders!.get("Authorization")).toBe("Bearer test-api-key");
   });
 
   test("marks items as failed when upload fails", async () => {
@@ -202,7 +299,7 @@ describe("flushQueue", () => {
       new Response("Server Error", { status: 500 }),
     );
 
-    const summary = await flushQueue(queue, "https://api.example.com/upload", {
+    const summary = await flushQueue(queue, "https://api.example.com/api/v1/push", {
       maxRetries: 1,
     });
 
@@ -216,10 +313,10 @@ describe("flushQueue", () => {
     const queue = createMockQueue(items);
 
     globalThis.fetch = mock(async () =>
-      new Response(JSON.stringify({ success: true, accepted: 0, rejected: 0, errors: [] }), { status: 200 }),
+      new Response(JSON.stringify({ success: true, push_id: "id", errors: [] }), { status: 200 }),
     );
 
-    const summary = await flushQueue(queue, "https://api.example.com/upload", {
+    const summary = await flushQueue(queue, "https://api.example.com/api/v1/push", {
       maxRetries: 5,
     });
 
@@ -233,10 +330,10 @@ describe("flushQueue", () => {
     const queue = createMockQueue(items);
 
     globalThis.fetch = mock(async () =>
-      new Response(JSON.stringify({ success: true, accepted: 0, rejected: 0, errors: [] }), { status: 200 }),
+      new Response(JSON.stringify({ success: true, push_id: "id", errors: [] }), { status: 200 }),
     );
 
-    await flushQueue(queue, "https://api.example.com/upload", { batchSize: 2 });
+    await flushQueue(queue, "https://api.example.com/api/v1/push", { batchSize: 2 });
 
     expect(queue.calls.getPending[0]![0]).toBe(2);
   });
@@ -248,10 +345,10 @@ describe("flushQueue", () => {
 
     globalThis.fetch = mock(async () => {
       fetchCallCount++;
-      return new Response(JSON.stringify({ success: true, accepted: 0, rejected: 0, errors: [] }), { status: 200 });
+      return new Response(JSON.stringify({ success: true, push_id: "id", errors: [] }), { status: 200 });
     });
 
-    const summary = await flushQueue(queue, "https://api.example.com/upload", { dryRun: true });
+    const summary = await flushQueue(queue, "https://api.example.com/api/v1/push", { dryRun: true });
 
     expect(fetchCallCount).toBe(0);
     expect(summary.sent).toBe(0);
@@ -270,17 +367,17 @@ describe("flushQueue", () => {
       if (callCount === 1) {
         return new Response("Server Error", { status: 500 });
       }
-      return new Response(JSON.stringify({ success: true, accepted: 0, rejected: 0, errors: [] }), { status: 200 });
+      return new Response(JSON.stringify({ success: true, push_id: "id", errors: [] }), { status: 200 });
     });
 
-    const summary = await flushQueue(queue, "https://api.example.com/upload", { maxRetries: 3 });
+    const summary = await flushQueue(queue, "https://api.example.com/api/v1/push", { maxRetries: 3 });
 
     expect(summary.sent).toBe(1);
     expect(summary.failed).toBe(0);
     expect(callCount).toBe(2);
   });
 
-  test("does not retry on 4xx client errors", async () => {
+  test("does not retry on 4xx client errors (except 401/403/409)", async () => {
     const items = [makeQueueItem(1)];
     const queue = createMockQueue(items);
     let callCount = 0;
@@ -290,7 +387,7 @@ describe("flushQueue", () => {
       return new Response("Bad Request", { status: 400 });
     });
 
-    const summary = await flushQueue(queue, "https://api.example.com/upload", { maxRetries: 3 });
+    const summary = await flushQueue(queue, "https://api.example.com/api/v1/push", { maxRetries: 3 });
 
     expect(summary.failed).toBe(1);
     expect(callCount).toBe(1);

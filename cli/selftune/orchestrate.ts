@@ -1009,6 +1009,7 @@ export async function orchestrate(
           agentType: "claude_code",
           selftuneVersion: "0.2.7",
           dryRun: options.dryRun,
+          apiKey: alphaIdentity.api_key,
         });
         result.uploadSummary = uploadSummary;
         console.error(

@@ -12,6 +12,7 @@ export interface AlphaIdentity {
   email?: string;
   display_name?: string;
   consent_timestamp: string;
+  api_key?: string;
 }
 
 export interface SelftuneConfig {
