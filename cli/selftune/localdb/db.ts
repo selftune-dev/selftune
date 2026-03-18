@@ -35,29 +35,44 @@ export function openDb(dbPath: string = DB_PATH): Database {
 
   const db = new Database(dbPath);
 
-  // Enable WAL mode for better concurrent access
-  db.run("PRAGMA journal_mode = WAL");
-  db.run("PRAGMA foreign_keys = ON");
+  try {
+    // Enable WAL mode for better concurrent access
+    db.run("PRAGMA journal_mode = WAL");
+    db.run("PRAGMA foreign_keys = ON");
 
-  // Run all DDL statements
-  for (const ddl of ALL_DDL) {
-    db.run(ddl);
-  }
-
-  // Run migrations (ALTER TABLE ADD COLUMN — safe to re-run, fails silently if column exists)
-  for (const migration of MIGRATIONS) {
-    try {
-      db.run(migration);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("duplicate column")) continue; // expected on subsequent runs
-      throw new Error(`Schema migration failed: ${msg}. Run: selftune rebuild-db`);
+    // Run all DDL statements
+    for (const ddl of ALL_DDL) {
+      db.run(ddl);
     }
-  }
 
-  // Create indexes that depend on migration columns
-  for (const idx of POST_MIGRATION_INDEXES) {
-    db.run(idx);
+    // Run migrations (ALTER TABLE ADD COLUMN — safe to re-run, fails silently if column exists)
+    for (const migration of MIGRATIONS) {
+      try {
+        db.run(migration);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("duplicate column")) continue; // expected on subsequent runs
+        throw new Error(`Schema migration failed: ${msg}. Run: selftune rebuild-db`);
+      }
+    }
+
+    // Create indexes that depend on migration columns
+    for (const idx of POST_MIGRATION_INDEXES) {
+      try {
+        db.run(idx);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("already exists")) continue; // expected on subsequent runs
+        throw new Error(`Schema index creation failed: ${msg}. Run: selftune rebuild-db`);
+      }
+    }
+  } catch (err) {
+    try {
+      db.close();
+    } catch {
+      /* best-effort cleanup */
+    }
+    throw err;
   }
 
   return db;
@@ -82,9 +97,14 @@ export function getDb(): Database {
  * Close the singleton connection. Called on process exit or server shutdown.
  */
 export function closeSingleton(): void {
-  if (_singletonDb) {
-    _singletonDb.close();
-    _singletonDb = null;
+  const db = _singletonDb;
+  _singletonDb = null;
+  if (db) {
+    try {
+      db.close();
+    } catch {
+      /* already nulled — safe to ignore */
+    }
   }
 }
 
