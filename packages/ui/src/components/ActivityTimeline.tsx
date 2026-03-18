@@ -7,6 +7,7 @@ import {
   CardTitle,
 } from "../primitives/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../primitives/tabs"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../primitives/tooltip"
 import type { EvolutionEntry, PendingProposal, UnmatchedQuery } from "../types"
 import { timeAgo } from "../lib/format"
 import {
@@ -75,30 +76,38 @@ export function ActivityPanel({
                 : "unmatched"
           }
         >
-          <TabsList className="w-full">
-            {pendingProposals.length > 0 && (
-              <TabsTrigger value="pending" className="flex-1 gap-1.5">
-                <GitPullRequestArrowIcon className="size-3.5" />
-                Pending
-                <Badge variant="secondary" className="ml-1 h-4 px-1.5 text-[10px]">
-                  {pendingProposals.length}
-                </Badge>
-              </TabsTrigger>
-            )}
-            <TabsTrigger value="timeline" className="flex-1 gap-1.5">
-              <ClockIcon className="size-3.5" />
-              Timeline
-            </TabsTrigger>
-            {unmatchedQueries.length > 0 && (
-              <TabsTrigger value="unmatched" className="flex-1 gap-1.5">
-                <SearchXIcon className="size-3.5" />
-                Unmatched
-                <Badge variant="destructive" className="ml-1 h-4 px-1.5 text-[10px]">
-                  {unmatchedQueries.length}
-                </Badge>
-              </TabsTrigger>
-            )}
-          </TabsList>
+          <TooltipProvider>
+            <TabsList className="w-full">
+              {pendingProposals.length > 0 && (
+                <Tooltip>
+                  <TooltipTrigger render={<TabsTrigger value="pending" className="flex-1 gap-1.5" />}>
+                    <GitPullRequestArrowIcon className="size-3.5" />
+                    <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                      {pendingProposals.length}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>Pending proposals</TooltipContent>
+                </Tooltip>
+              )}
+              <Tooltip>
+                <TooltipTrigger render={<TabsTrigger value="timeline" className="flex-1" />}>
+                  <ClockIcon className="size-3.5" />
+                </TooltipTrigger>
+                <TooltipContent>Timeline</TooltipContent>
+              </Tooltip>
+              {unmatchedQueries.length > 0 && (
+                <Tooltip>
+                  <TooltipTrigger render={<TabsTrigger value="unmatched" className="flex-1 gap-1.5" />}>
+                    <SearchXIcon className="size-3.5" />
+                    <Badge variant="destructive" className="h-4 px-1 text-[10px]">
+                      {unmatchedQueries.length}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>Unmatched queries</TooltipContent>
+                </Tooltip>
+              )}
+            </TabsList>
+          </TooltipProvider>
 
           {pendingProposals.length > 0 && (
             <TabsContent value="pending" className="mt-4 space-y-3">
