@@ -98,9 +98,15 @@ selftune/
 │   └── src/hooks/           # Data-fetching hooks against dashboard-server
 ├── bin/                     # npm/node CLI entry point
 │   └── selftune.cjs
-├── skill/                   # Agent-facing selftune skill
-│   ├── SKILL.md             # Skill definition
+├── skill/                   # Agent-facing selftune skill (self-contained)
+│   ├── SKILL.md             # Skill definition + routing
 │   ├── settings_snippet.json
+│   ├── agents/              # Specialized subagents (bundled, copied to ~/.claude/agents/ on init)
+│   │   ├── diagnosis-analyst.md
+│   │   ├── evolution-reviewer.md
+│   │   ├── integration-guide.md
+│   │   └── pattern-analyst.md
+│   ├── assets/              # Config templates (activation rules, settings)
 │   ├── Workflows/           # Skill workflow routing docs
 │   │   ├── Contribute.md
 │   │   ├── Cron.md
@@ -120,6 +126,7 @@ selftune/
 │   │   └── Watch.md
 │   └── references/
 │       ├── grading-methodology.md
+│       ├── interactive-config.md
 │       ├── invocation-taxonomy.md
 │       └── logs.md
 ├── tests/                   # Test suite (bun test)
@@ -174,7 +181,7 @@ This prevents stale docs and broken contracts.
 | Dashboard contract (`dashboard-contract.ts`) | `apps/local-dashboard/src/types.ts`, dashboard components that consume the changed fields |
 | Hook behavior (`hooks/*.ts`) | `skill/Workflows/Initialize.md` hook table, `skill/settings_snippet.json` |
 | Orchestrate behavior | `skill/Workflows/Orchestrate.md`, `ARCHITECTURE.md` operating modes |
-| Agent files (`.claude/agents/*.md`) | `skill/SKILL.md` Specialized Agents table |
+| Agent files (`skill/agents/*.md`) | `skill/SKILL.md` Specialized Agents table, `.claude/agents/` (keep in sync) |
 | New workflow file | `skill/SKILL.md` Workflow Routing table + Resource Index |
 | Evolution pipeline changes | `skill/Workflows/Evolve.md`, `docs/design-docs/evolution-pipeline.md` |
 | Platform adapter (ingestor) changes | `skill/Workflows/Ingest.md`, `README.md` Platforms section |

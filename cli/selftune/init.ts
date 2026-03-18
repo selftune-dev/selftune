@@ -270,8 +270,12 @@ export function installClaudeCodeHooks(options?: {
 // Agent file installation
 // ---------------------------------------------------------------------------
 
-/** Bundled agent files directory (ships with the npm package). */
-const BUNDLED_AGENTS_DIR = resolve(dirname(import.meta.path), "..", "..", ".claude", "agents");
+/** Bundled agent files directory (ships with the npm package).
+ * Canonical location is skill/agents/; falls back to .claude/agents/ for
+ * backwards compatibility with older repo layouts. */
+const SKILL_AGENTS_DIR = resolve(dirname(import.meta.path), "..", "..", "skill", "agents");
+const LEGACY_AGENTS_DIR = resolve(dirname(import.meta.path), "..", "..", ".claude", "agents");
+const BUNDLED_AGENTS_DIR = existsSync(SKILL_AGENTS_DIR) ? SKILL_AGENTS_DIR : LEGACY_AGENTS_DIR;
 
 /**
  * Copy bundled agent markdown files to ~/.claude/agents/.

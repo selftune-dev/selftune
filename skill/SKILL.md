@@ -1,17 +1,19 @@
 ---
 name: selftune
 description: >
-  Self-improving skills toolkit. Use when the user wants to:
-  grade a session, generate evals, check undertriggering, evolve a skill
-  description or full body, evolve routing tables, rollback an evolution,
-  monitor post-deploy performance, check skill health status, view last
-  session insight, open the dashboard, serve the live dashboard, run health
-  checks, manage activation rules, ingest sessions from Codex/OpenCode/OpenClaw,
-  replay Claude Code transcripts, contribute anonymized data to the community,
-  set up autonomous cron jobs, manage evolution memory, configure auto-activation
-  suggestions, diagnose underperforming skills, analyze cross-skill patterns,
-  review evolution proposals, measure baseline lift, run skill unit tests,
-  analyze skill composability, or import SkillsBench evaluation corpora.
+  Self-improving skills toolkit that watches real agent sessions, detects missed
+  triggers, grades execution quality, and evolves skill descriptions to match how
+  users actually talk. Use when grading sessions, generating evals, evolving skill
+  descriptions or routing tables, checking skill health, viewing the dashboard,
+  ingesting sessions from other platforms, or running autonomous improvement loops.
+  Make sure to use this skill whenever the user mentions skill improvement, skill
+  performance, skill triggers, skill evolution, skill health, undertriggering,
+  overtriggering, session grading, or wants to know how their skills are doing —
+  even if they don't say "selftune" explicitly.
+metadata:
+  author: selftune-dev
+  version: 1.0.0
+  category: developer-tools
 ---
 
 # selftune
@@ -23,6 +25,25 @@ and evolve skill descriptions toward the language real users actually use.
 skill health autonomously. They will say things like "set up selftune",
 "improve my skills", or "how are my skills doing?" — and you route to the
 correct workflow below. The user does not run CLI commands directly; you do.
+
+## Why this matters
+
+Skills are only useful when they trigger at the right time with the right
+instructions. But user language drifts — the phrases people use to ask for help
+rarely match the trigger keywords a skill author imagined. selftune closes this
+gap by observing real sessions, finding where skills fail to activate or
+execute poorly, and rewriting descriptions to match actual usage patterns. The
+result: skills that get better over time without manual tuning.
+
+## Communicating with the user
+
+Users range from experienced developers who'll say "evolve the pptx description
+using the latest eval set" to non-technical users who'll say "make my skills
+better". Pay attention to context cues:
+
+- If they use terms like "eval set", "routing table", "JSONL" — match their precision
+- If they say "improve my skills" or "how's it going" — explain what you're doing in plain language, summarize results, and suggest next steps
+- When in doubt, briefly explain what a command does before running it
 
 ## Bootstrap
 
@@ -85,73 +106,43 @@ selftune export    [TABLE...] [--output/-o DIR] [--since DATE]
 
 | Trigger keywords | Workflow | File |
 |------------------|----------|------|
-| grade, score, evaluate, assess session, auto-grade | Grade † | Workflows/Grade.md |
+| grade, score, evaluate, assess session, auto-grade | Grade | Workflows/Grade.md |
 | evals, eval set, undertriggering, skill stats, eval generate | Evals | Workflows/Evals.md |
-| evolve, improve, optimize skills, make skills better, triggers, catch more queries | Evolve † | Workflows/Evolve.md |
-| evolve rollback, undo, restore, revert evolution, go back, undo last change | Rollback | Workflows/Rollback.md |
-| watch, monitor, regression, post-deploy, performing, keep an eye on | Watch † | Workflows/Watch.md |
-| doctor, health, hooks, broken, diagnose, not working, something wrong | Doctor | Workflows/Doctor.md |
-| ingest, import, codex logs, opencode, openclaw, wrap codex, ingest claude | Ingest † | Workflows/Ingest.md |
-| ingest claude, backfill, claude transcripts, historical sessions | Replay | Workflows/Replay.md |
-| contribute, share, community, export data, anonymized, give back, help others | Contribute | Workflows/Contribute.md |
-| init, setup, set up, bootstrap, first time, install, configure selftune | Initialize | Workflows/Initialize.md |
-| cron, schedule, autonomous, automate evolution, run automatically, run on its own | Cron | Workflows/Cron.md |
-| auto-activate, suggestions, activation rules, nag, why suggest | AutoActivation | Workflows/AutoActivation.md |
-| dashboard, visual, open dashboard, show dashboard, skill grid, serve dashboard, live dashboard | Dashboard | Workflows/Dashboard.md |
-| evolution memory, context memory, session continuity, what happened last | EvolutionMemory | Workflows/EvolutionMemory.md |
+| evolve, improve, optimize skills, make skills better, triggers, catch more queries | Evolve | Workflows/Evolve.md |
 | evolve body, evolve routing, full body evolution, rewrite skill, teacher student | EvolveBody | Workflows/EvolveBody.md |
+| evolve rollback, undo, restore, revert evolution, go back, undo last change | Rollback | Workflows/Rollback.md |
+| watch, monitor, regression, post-deploy, keep an eye on | Watch | Workflows/Watch.md |
+| doctor, health, hooks, broken, diagnose, not working, something wrong | Doctor | Workflows/Doctor.md |
+| ingest, import, codex logs, opencode, openclaw, wrap codex | Ingest | Workflows/Ingest.md |
+| replay, backfill, claude transcripts, historical sessions | Replay | Workflows/Replay.md |
+| contribute, share, community, export data, anonymized, give back | Contribute | Workflows/Contribute.md |
+| init, setup, set up, bootstrap, first time, install, configure selftune | Initialize | Workflows/Initialize.md |
+| cron, schedule, autonomous, automate evolution, run automatically | Cron | Workflows/Cron.md |
+| auto-activate, suggestions, activation rules, nag, why suggest | AutoActivation | Workflows/AutoActivation.md |
+| dashboard, visual, open dashboard, show dashboard, serve dashboard, live dashboard | Dashboard | Workflows/Dashboard.md |
+| evolution memory, session continuity, what happened last | EvolutionMemory | Workflows/EvolutionMemory.md |
 | grade baseline, baseline lift, adds value, skill value, no-skill comparison | Baseline | Workflows/Baseline.md |
-| eval unit-test, skill test, test skill, generate tests, run tests, assertions | UnitTest | Workflows/UnitTest.md |
-| eval composability, co-occurrence, skill conflicts, skills together, conflict score | Composability | Workflows/Composability.md |
-| eval import, skillsbench, external evals, benchmark tasks, import corpus | ImportSkillsBench | Workflows/ImportSkillsBench.md |
-| telemetry, analytics, disable analytics, opt out, usage data, tracking, privacy | Telemetry | Workflows/Telemetry.md |
-| export, dump, jsonl, export sqlite, export data, debug export | Export | *(direct command -- no workflow file)* |
-| status, health summary, skill health, pass rates, how are skills, skills working, skills doing, run selftune, start selftune | Status | *(direct command — no workflow file)* |
-| last, last session, recent session, what happened, what changed, what did selftune do | Last | *(direct command — no workflow file)* |
+| eval unit-test, skill test, test skill, generate tests, run tests | UnitTest | Workflows/UnitTest.md |
+| eval composability, co-occurrence, skill conflicts, skills together | Composability | Workflows/Composability.md |
+| eval import, skillsbench, external evals, benchmark tasks | ImportSkillsBench | Workflows/ImportSkillsBench.md |
+| telemetry, analytics, disable analytics, opt out, tracking, privacy | Telemetry | Workflows/Telemetry.md |
+| export, dump, jsonl, export sqlite, debug export | Export | *(direct command — no workflow file)* |
+| status, health summary, skill health, how are skills, skills doing, run selftune | Status | *(direct command — no workflow file)* |
+| last, last session, recent session, what happened, what changed | Last | *(direct command — no workflow file)* |
 
-Workflows marked with † also run autonomously via `selftune orchestrate` without user interaction.
+Workflows Grade, Evolve, Watch, and Ingest also run autonomously via `selftune orchestrate`.
 
 ## Interactive Configuration
 
-Before running mutating workflows (evolve, evolve-body, evals, baseline), present
-a pre-flight configuration prompt to the user. This gives them control over
-execution mode, model selection, and key parameters.
-
-### Pre-Flight Pattern
-
-Each mutating workflow has a **Pre-Flight Configuration** step. Follow this pattern:
-
-1. Present a brief summary of what the command will do
-2. Use the `AskUserQuestion` tool to present structured options (max 4 questions per call — split into multiple calls if needed). Mark recommended defaults in option text with `(recommended)`.
-3. Parse the user's selections from the tool response
-4. Show a confirmation summary of selected options before executing
-
-**IMPORTANT:** Always use `AskUserQuestion` for pre-flight — never present options as inline numbered text. The tool provides a structured UI that is easier for users to interact with. If `AskUserQuestion` is not available, fall back to inline numbered options.
-
-### Model Tier Reference
-
-When presenting model choices, use this table:
-
-| Tier | Model | Speed | Cost | Quality | Best for |
-|------|-------|-------|------|---------|----------|
-| Fast | `haiku` | ~2s/call | $ | Good | Iteration loops, bulk validation |
-| Balanced | `sonnet` | ~5s/call | $$ | Great | Single-pass proposals, gate checks |
-| Best | `opus` | ~10s/call | $$$ | Excellent | High-stakes final validation |
-
-### Quick Path
-
-If the user says "use defaults", "just do it", or similar — skip the pre-flight
-and run with recommended defaults. The pre-flight is for users who want control,
-not a mandatory gate.
-
-### Workflows That Skip Pre-Flight
-
-These read-only or simple workflows run immediately without prompting:
-`status`, `last`, `doctor`, `dashboard`, `watch`, `evolve rollback`,
-`grade auto`, `ingest *`, `contribute`, `cron`, `eval composability`,
-`eval unit-test`, `eval import`.
+Before running mutating workflows (evolve, evolve-body, evals, baseline), consult
+`references/interactive-config.md` for the pre-flight configuration pattern, model
+tier reference, and quick-path rules.
 
 ## The Feedback Loop
+
+The core idea: observe how users actually talk, find where skills miss, propose
+better descriptions, validate them, and deploy — with automatic rollback if things
+get worse. Every step produces evidence so you can explain *why* a change was made.
 
 ```text
 Observe --> Detect --> Diagnose --> Propose --> Validate --> Audit --> Deploy --> Watch --> Rollback
@@ -159,121 +150,148 @@ Observe --> Detect --> Diagnose --> Propose --> Validate --> Audit --> Deploy --
    +--------------------------------------------------------------------+
 ```
 
-1. **Observe** -- Hooks capture every session (queries, triggers, metrics)
-2. **Detect** -- `selftune eval generate` extracts missed-trigger patterns across invocation types
-3. **Diagnose** -- `selftune grade` evaluates session quality with evidence
-4. **Propose** -- `selftune evolve` generates description improvements
-5. **Validate** -- Evolution is tested against the eval set
-6. **Audit** -- Persist proposal, evidence, and decision metadata for traceability
-7. **Deploy** -- Updated description replaces the original (with backup)
-8. **Watch** -- `selftune watch` monitors for regressions post-deploy
-9. **Rollback** -- `selftune evolve rollback` restores the previous version when regressions are detected
-
-## Resource Index
-
-| Resource | Purpose |
-|----------|---------|
-| `SKILL.md` | This file -- routing, triggers, quick reference |
-| `references/logs.md` | Log file formats (telemetry, usage, queries, audit) |
-| `references/grading-methodology.md` | 3-tier grading model, evidence standards, grading.json schema |
-| `references/invocation-taxonomy.md` | 4 invocation types, coverage analysis, evolution connection |
-| `settings_snippet.json` | Claude Code hook configuration template |
-| `Workflows/Initialize.md` | First-time setup and config bootstrap |
-| `Workflows/Grade.md` | Grade a session with expectations and evidence |
-| `Workflows/Evals.md` | Generate eval sets, list skills, show stats |
-| `Workflows/Evolve.md` | Evolve a skill description from failure patterns |
-| `Workflows/Rollback.md` | Undo an evolution, restore previous description |
-| `Workflows/Watch.md` | Post-deploy regression monitoring |
-| `Workflows/Doctor.md` | Health checks on logs, hooks, schema |
-| `Workflows/Ingest.md` | Import sessions from Codex, OpenCode, and OpenClaw |
-| `Workflows/Replay.md` | Backfill logs from Claude Code transcripts |
-| `Workflows/Contribute.md` | Export anonymized data for community contribution |
-| `Workflows/Cron.md` | Scheduling & automation (cron/launchd/systemd/OpenClaw) |
-| `Workflows/AutoActivation.md` | Auto-activation hook behavior and rules |
-| `Workflows/Dashboard.md` | Dashboard modes: static, export, live server |
-| `Workflows/EvolutionMemory.md` | Evolution memory system for session continuity |
-| `Workflows/EvolveBody.md` | Full body and routing table evolution |
-| `Workflows/Baseline.md` | No-skill baseline comparison and lift measurement |
-| `Workflows/UnitTest.md` | Skill-level unit test runner and generator |
-| `Workflows/Composability.md` | Multi-skill co-occurrence conflict analysis |
-| `Workflows/ImportSkillsBench.md` | SkillsBench task corpus importer |
-| `Workflows/Telemetry.md` | Telemetry status, opt-in/opt-out, and privacy |
+1. **Observe** — Hooks capture every session (queries, triggers, metrics)
+2. **Detect** — `selftune eval generate` extracts missed-trigger patterns
+3. **Diagnose** — `selftune grade` evaluates session quality with evidence
+4. **Propose** — `selftune evolve` generates description improvements
+5. **Validate** — Evolution is tested against the eval set before deploying
+6. **Audit** — Persist proposal, evidence, and decision metadata for traceability
+7. **Deploy** — Updated description replaces the original (backup kept)
+8. **Watch** — `selftune watch` monitors for regressions post-deploy
+9. **Rollback** — `selftune evolve rollback` restores previous version if needed
 
 ## Specialized Agents
 
-selftune provides focused agents for deeper analysis. These live in
-`.claude/agents/` and can be spawned as subagents for specialized tasks.
+selftune bundles focused agents in `agents/` for deeper analysis. These are
+installed to `~/.claude/agents/` during `selftune init` so Claude Code can
+discover them. Read the agent file when you need to spawn one as a subagent.
 
-| Trigger keywords | Agent | Purpose | When to spawn |
-|------------------|-------|---------|---------------|
-| diagnose, root cause, why failing, skill failure, debug performance | diagnosis-analyst | Deep-dive analysis of underperforming skills | After doctor finds persistent issues, grades are consistently low, or status shows CRITICAL/WARNING |
-| patterns, conflicts, cross-skill, overlap, trigger conflicts, optimize skills | pattern-analyst | Cross-skill pattern analysis and conflict detection | When user asks about cross-skill conflicts or composability scores indicate moderate-to-severe conflicts |
-| review evolution, check proposal, safe to deploy, approve evolution | evolution-reviewer | Safety gate review of pending evolution proposals | Before deploying an evolution in interactive mode, especially for high-stakes or low-confidence proposals |
-| set up selftune, integrate, configure project, install selftune | integration-guide | Guided interactive setup for specific project types | For complex project structures (monorepo, multi-skill, mixed agent platforms) |
+| Trigger keywords | Agent file | When to spawn |
+|------------------|-----------|---------------|
+| diagnose, root cause, why failing, debug performance | `agents/diagnosis-analyst.md` | After doctor finds persistent issues or grades are consistently low |
+| patterns, conflicts, cross-skill, overlap, optimize skills | `agents/pattern-analyst.md` | When composability scores indicate moderate-to-severe conflicts |
+| review evolution, check proposal, safe to deploy | `agents/evolution-reviewer.md` | Before deploying high-stakes or low-confidence proposals |
+| set up selftune, integrate, configure project | `agents/integration-guide.md` | For complex project structures (monorepo, multi-skill, mixed platforms) |
 
 ## Examples
 
-- "Grade my last pptx session"
-- "What skills are undertriggering?"
-- "Generate evals for the pptx skill"
-- "Evolve the pptx skill to catch more queries"
-- "Rollback the last evolution"
-- "Is the skill performing well after the change?"
-- "Check selftune health"
-- "Ingest my codex logs"
-- "Show me skill stats"
-- "How are my skills performing?"
-- "What happened in my last session?"
-- "Open the selftune dashboard"
-- "Serve the dashboard at http://localhost:3141"
-- "Show skill health status"
-- "Replay my Claude Code transcripts"
-- "Backfill logs from historical sessions"
-- "Contribute my selftune data to the community"
-- "Share anonymized skill data"
-- "Set up cron jobs for autonomous evolution"
-- "Schedule selftune to run automatically"
-- "Ingest my OpenClaw sessions"
-- "Why is selftune suggesting things?"
-- "Customize activation rules"
-- "Start the live dashboard"
-- "Serve the dashboard on port 8080"
-- "What happened in the last evolution?"
-- "Read the evolution memory"
-- "Why is this skill underperforming?"
-- "Are there conflicts between my skills?"
-- "Review this evolution before deploying"
-- "Set up selftune for my project"
-- "Evolve the full body of the Research skill"
-- "Rewrite the routing table for pptx"
-- "Does this skill add value over no-skill baseline?"
-- "Measure baseline lift for the Research skill"
-- "Generate unit tests for the pptx skill"
-- "Run skill unit tests"
-- "Which skills conflict with each other?"
-- "Analyze composability for the Research skill"
-- "Import SkillsBench tasks for my skill"
-- "Install selftune"
-- "Configure selftune for this project"
-- "Make my skills better"
-- "Optimize my skills"
-- "Are my skills working?"
-- "Show me the dashboard"
-- "What changed since last time?"
-- "What did selftune do?"
-- "Run selftune"
-- "Start selftune"
-- "Go back to the previous version"
-- "Undo the last change"
+### Scenario 1: First-time setup
+
+User says: "Set up selftune" or "Install selftune"
+
+Actions:
+1. Read `Workflows/Initialize.md`
+2. Run `selftune init` to bootstrap config
+3. Install hooks via `settings_snippet.json`
+
+Result: Config at `~/.selftune/config.json`, hooks active, ready for session capture.
+
+### Scenario 2: Improve a skill
+
+User says: "Make the pptx skill catch more queries" or "Evolve the Research skill"
+
+Actions:
+1. `selftune eval generate --skill pptx` to find missed triggers
+2. `selftune evolve --skill pptx --skill-path <path>` to propose changes
+3. `selftune watch --skill pptx --skill-path <path>` to monitor post-deploy
+
+Result: Skill description updated to match real user language, with rollback available.
+
+### Scenario 3: Check skill health
+
+User says: "How are my skills doing?" or "Run selftune"
+
+Actions:
+1. `selftune status` for overall health summary
+2. `selftune last` for most recent session insight
+3. `selftune doctor` if issues detected
+
+Result: Pass rates, trend data, and actionable recommendations.
+
+### Scenario 4: Autonomous operation
+
+User says: "Set up cron jobs" or "Run selftune automatically"
+
+Actions:
+1. `selftune cron setup` to install OS-level scheduling
+2. Orchestrate loop runs: ingest → grade → evolve → watch
+
+Result: Skills improve continuously without manual intervention.
+
+## Troubleshooting
+
+### CLI not found
+
+Error: `command not found: selftune`
+
+Cause: CLI not installed or not on PATH.
+
+Solution:
+1. Run `npm install -g selftune` or check `bin/selftune.cjs` exists
+2. Verify with `which selftune`
+3. If using bun: `bun link` in the repo root
+
+### No sessions to grade
+
+Error: `selftune grade` returns empty results.
+
+Cause: Hooks not capturing sessions, or no sessions since last ingest.
+
+Solution:
+1. Run `selftune doctor` to verify hook installation
+2. Run `selftune ingest claude --force` to re-ingest
+3. Check `~/.claude/` for telemetry JSONL files
+
+### Evolution proposes no changes
+
+Cause: Eval set too small or skill already well-tuned.
+
+Solution:
+1. Run `selftune eval generate --skill <name> --max 50` for a larger eval set
+2. Check `selftune status` — if pass rate is >90%, evolution may not be needed
+3. Try `selftune evolve body` for deeper structural changes
+
+### Dashboard won't serve
+
+Error: Port already in use or blank page.
+
+Solution:
+1. Try a different port: `selftune dashboard --serve --port 3142`
+2. Check if another process holds the port: `lsof -i :3141`
+3. Use export mode instead: `selftune dashboard --export --out report.html`
 
 ## Negative Examples
 
-These should NOT trigger selftune:
+These should NOT trigger selftune — note that several are near-misses that
+share keywords but need different solutions:
 
-- "Fix this React hydration bug"
-- "Create a PowerPoint about Q3 results" (this is pptx, not selftune)
-- "Run my unit tests"
-- "What does this error mean?"
+- "Fix this React hydration bug" — general debugging, not skill improvement
+- "Create a PowerPoint about Q3 results" — this is pptx skill, not selftune
+- "Run my unit tests" — project tests, not skill eval tests (even though selftune has "eval unit-test", this is about *project* tests)
+- "How do I use the Research skill?" — skill *usage*, not skill *improvement* (route to the Research skill itself)
+- "Generate a report from this data" — content generation, not skill evolution
+- "My build is failing" — project issue, not selftune health issue (even though "failing" overlaps with skill diagnostics language)
+- "Evaluate this code for security issues" — "evaluate" here means code review, not session grading
+- "Improve this function's performance" — code optimization, not skill optimization (even though "improve" and "performance" are selftune keywords)
 
-Route to other skills or general workflows unless the user explicitly
-asks about grading, evals, evolution, monitoring, or skill observability.
+The key distinction: selftune is about improving *skills themselves* (their
+descriptions, triggers, and execution quality). If the user is trying to
+accomplish a task *using* a skill, route to that skill instead.
+
+## Resource Index
+
+| Resource | Purpose | When to read |
+|----------|---------|--------------|
+| `SKILL.md` | This file — routing, triggers, quick reference | Always loaded |
+| `Workflows/*.md` | Step-by-step instructions for each workflow | When routing to a workflow |
+| `agents/diagnosis-analyst.md` | Deep-dive skill failure analysis | Spawn when doctor/grades show persistent issues |
+| `agents/pattern-analyst.md` | Cross-skill conflict detection | Spawn when composability flags conflicts |
+| `agents/evolution-reviewer.md` | Safety gate for evolution proposals | Spawn before deploying high-stakes evolutions |
+| `agents/integration-guide.md` | Guided setup for complex projects | Spawn for monorepos, multi-skill setups |
+| `references/logs.md` | Log file formats (telemetry, usage, queries, audit) | When parsing or debugging log files |
+| `references/grading-methodology.md` | 3-tier grading model, evidence standards | When grading sessions or interpreting grades |
+| `references/invocation-taxonomy.md` | 4 invocation types, coverage analysis | When analyzing trigger coverage |
+| `references/interactive-config.md` | Pre-flight config pattern, model tiers | Before running mutating workflows |
+| `references/setup-patterns.md` | Platform-specific setup patterns | During complex setup scenarios |
+| `settings_snippet.json` | Claude Code hook configuration template | During initialization |
+| `assets/*.json` | Config templates (activation rules, settings) | During initialization |

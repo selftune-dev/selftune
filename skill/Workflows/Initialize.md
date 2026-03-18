@@ -137,8 +137,9 @@ to customize thresholds and skill mappings for your project.
 
 ### 7. Verify Agent Availability
 
-`selftune init` installs the specialized agent files to `~/.claude/agents/`
-automatically. Verify they are present:
+`selftune init` copies the specialized agent files from `skill/agents/` to
+`~/.claude/agents/` automatically. This makes them discoverable by Claude Code
+for spawning as subagents. Verify they are present:
 
 ```bash
 ls ~/.claude/agents/
@@ -147,7 +148,7 @@ ls ~/.claude/agents/
 Expected agents: `diagnosis-analyst.md`, `pattern-analyst.md`,
 `evolution-reviewer.md`, `integration-guide.md`. These are used by evolve
 and doctor workflows for deeper analysis. If missing, run `selftune init --force`
-to reinstall them.
+to reinstall them from the bundled copies in `skill/agents/`.
 
 ### 8. Verify with Doctor
 
