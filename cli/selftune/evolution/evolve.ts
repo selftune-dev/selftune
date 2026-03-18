@@ -817,6 +817,26 @@ export async function evolve(
       );
 
       if (!baselineResult.adds_value) {
+        recordAudit(
+          lastProposal.proposal_id,
+          "rejected",
+          `Baseline gate failed: lift=${baselineResult.lift.toFixed(3)} below 0.05 threshold`,
+        );
+        recordEvidence({
+          timestamp: new Date().toISOString(),
+          proposal_id: lastProposal.proposal_id,
+          skill_name: skillName,
+          skill_path: skillPath,
+          target: "description",
+          stage: "rejected",
+          rationale: lastProposal.rationale,
+          confidence: lastProposal.confidence,
+          details: `Baseline gate failed: lift=${baselineResult.lift.toFixed(3)} below 0.05 threshold`,
+          validation: {
+            improved: false,
+            net_change: baselineResult.lift,
+          },
+        });
         finishTui();
         return withStats({
           proposal: lastProposal,
@@ -840,13 +860,32 @@ export async function evolve(
         `Gate (${options.gateModel}): improved=${gateValidation.improved}, net_change=${gateValidation.net_change.toFixed(3)}`,
       );
 
-      recordAudit(
-        lastProposal.proposal_id,
-        "validated",
-        `Gate validation (${options.gateModel}): improved=${gateValidation.improved}, net_change=${gateValidation.net_change.toFixed(3)}`,
-      );
-
       if (!gateValidation.improved) {
+        recordAudit(
+          lastProposal.proposal_id,
+          "rejected",
+          `Gate validation failed (${options.gateModel}): net_change=${gateValidation.net_change.toFixed(3)}`,
+        );
+        recordEvidence({
+          timestamp: new Date().toISOString(),
+          proposal_id: lastProposal.proposal_id,
+          skill_name: skillName,
+          skill_path: skillPath,
+          target: "description",
+          stage: "rejected",
+          rationale: lastProposal.rationale,
+          confidence: lastProposal.confidence,
+          details: `Gate validation failed (${options.gateModel}): net_change=${gateValidation.net_change.toFixed(3)}`,
+          validation: {
+            improved: gateValidation.improved,
+            before_pass_rate: gateValidation.before_pass_rate,
+            after_pass_rate: gateValidation.after_pass_rate,
+            net_change: gateValidation.net_change,
+            regressions: gateValidation.regressions,
+            new_passes: gateValidation.new_passes,
+            per_entry_results: gateValidation.per_entry_results,
+          },
+        });
         finishTui();
         return withStats({
           proposal: lastProposal,
@@ -858,6 +897,12 @@ export async function evolve(
           ...(baselineResult ? { baselineResult } : {}),
         });
       }
+
+      recordAudit(
+        lastProposal.proposal_id,
+        "validated",
+        `Gate validation (${options.gateModel}): improved=${gateValidation.improved}, net_change=${gateValidation.net_change.toFixed(3)}`,
+      );
     }
 
     // -----------------------------------------------------------------------

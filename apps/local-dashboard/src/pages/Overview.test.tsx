@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 // Mock heavy external dependencies to avoid import timeouts
 vi.mock("@selftune/ui/components", () => ({
   ActivityPanel: () => null,
+  EvidenceViewer: () => null,
+  EvolutionTimeline: () => null,
+  InfoTip: () => null,
   OrchestrateRunsPanel: () => null,
   SectionCards: () => null,
   SkillHealthGrid: () => null,
@@ -18,14 +21,30 @@ vi.mock("@/components/ui/skeleton", () => ({
 
 vi.mock("react-router-dom", () => ({
   Link: () => null,
+  useNavigate: () => () => {},
+  useParams: () => ({ name: "test-skill" }),
+  useSearchParams: () => [new URLSearchParams(), () => {}],
 }));
 
 vi.mock("lucide-react", () => ({
   AlertCircleIcon: () => null,
+  AlertOctagonIcon: () => null,
+  ActivityIcon: () => null,
+  ArrowLeftIcon: () => null,
+  ChevronRightIcon: () => null,
+  ClockIcon: () => null,
+  CoinsIcon: () => null,
+  EyeIcon: () => null,
+  FlaskConicalIcon: () => null,
+  FolderIcon: () => null,
+  LayersIcon: () => null,
+  MessageSquareTextIcon: () => null,
   RefreshCwIcon: () => null,
   RocketIcon: () => null,
-  LayersIcon: () => null,
-  ActivityIcon: () => null,
+  ServerIcon: () => null,
+  TargetIcon: () => null,
+  TrendingDownIcon: () => null,
+  TrendingUpIcon: () => null,
   XIcon: () => null,
 }));
 

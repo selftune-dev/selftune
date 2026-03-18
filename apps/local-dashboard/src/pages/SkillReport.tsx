@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react"
-import { Link, useParams } from "react-router-dom"
+import { useState } from "react"
+import { Link, useParams, useSearchParams } from "react-router-dom"
 import {
   Badge,
   Button,
@@ -189,13 +189,8 @@ function SessionGroup({ sessionId, meta, invocations, defaultExpanded }: {
 
 export function SkillReport() {
   const { name } = useParams<{ name: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { data, isPending, isError, error, refetch } = useSkillReport(name)
-  const [selectedProposal, setSelectedProposal] = useState<string | null>(null)
-
-  // Reset local state when navigating between skills
-  useEffect(() => {
-    setSelectedProposal(null)
-  }, [name])
 
   if (!name) {
     return (
@@ -280,8 +275,17 @@ export function SkillReport() {
   const hasEvolution = (selftune_stats?.run_count ?? 0) > 0
   const missed = duration_stats?.missed_triggers ?? 0
 
-  // Auto-select first proposal if none selected
-  const activeProposal = selectedProposal ?? (evolution.length > 0 ? evolution[0].proposal_id : null)
+  const proposalIds = new Set(evolution.map((entry) => entry.proposal_id))
+  const requestedProposal = searchParams.get("proposal")
+  const activeProposal = requestedProposal && proposalIds.has(requestedProposal)
+    ? requestedProposal
+    : (evolution.length > 0 ? evolution[0].proposal_id : null)
+
+  const handleSelectProposal = (proposalId: string) => {
+    const next = new URLSearchParams(searchParams)
+    next.set("proposal", proposalId)
+    setSearchParams(next, { replace: true })
+  }
 
   // Unique models/platforms from session metadata
   const uniqueModels = [...new Set((session_metadata ?? []).map((s) => s.model).filter(Boolean))]
@@ -511,7 +515,7 @@ export function SkillReport() {
             <EvolutionTimeline
               entries={evolution}
               selectedProposalId={activeProposal}
-              onSelect={setSelectedProposal}
+              onSelect={handleSelectProposal}
             />
           </aside>
         )}

@@ -29,10 +29,12 @@ export function ActivityPanel({
   evolution,
   pendingProposals,
   unmatchedQueries,
+  onSelectProposal,
 }: {
   evolution: EvolutionEntry[]
   pendingProposals: PendingProposal[]
   unmatchedQueries: UnmatchedQuery[]
+  onSelectProposal?: (skillName: string, proposalId: string) => void
 }) {
   const hasActivity = evolution.length > 0 || pendingProposals.length > 0 || unmatchedQueries.length > 0
 
@@ -101,7 +103,15 @@ export function ActivityPanel({
           {pendingProposals.length > 0 && (
             <TabsContent value="pending" className="mt-4 space-y-3">
               {pendingProposals.slice(0, 10).map((p) => (
-                <div key={p.proposal_id} className="flex gap-3">
+                <button
+                  key={p.proposal_id}
+                  type="button"
+                  onClick={() => {
+                    if (p.skill_name && onSelectProposal) onSelectProposal(p.skill_name, p.proposal_id)
+                  }}
+                  disabled={!p.skill_name || !onSelectProposal}
+                  className="flex w-full gap-3 rounded-md p-1.5 text-left transition-colors enabled:hover:bg-accent/40 disabled:cursor-default"
+                >
                   <div className="mt-1 size-2 shrink-0 rounded-full bg-amber-400" />
                   <div className="flex-1 min-w-0 space-y-1">
                     <div className="flex items-center gap-2">
@@ -113,15 +123,28 @@ export function ActivityPanel({
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground line-clamp-2">{p.details}</p>
+                    {p.skill_name && (
+                      <span className="text-[10px] text-muted-foreground/60 font-mono">
+                        {p.skill_name} · #{p.proposal_id.slice(0, 8)}
+                      </span>
+                    )}
                   </div>
-                </div>
+                </button>
               ))}
             </TabsContent>
           )}
 
           <TabsContent value="timeline" className="mt-4 space-y-3">
             {evolution.slice(0, 30).map((entry, i) => (
-              <div key={`${entry.proposal_id}-${i}`} className="flex gap-3">
+              <button
+                key={`${entry.proposal_id}-${i}`}
+                type="button"
+                onClick={() => {
+                  if (entry.skill_name && onSelectProposal) onSelectProposal(entry.skill_name, entry.proposal_id)
+                }}
+                disabled={!entry.skill_name || !onSelectProposal}
+                className="flex w-full gap-3 rounded-md p-1.5 text-left transition-colors enabled:hover:bg-accent/40 disabled:cursor-default"
+              >
                 <div className={`mt-1 size-2 shrink-0 rounded-full ${
                   entry.action === "deployed" ? "bg-emerald-500"
                   : entry.action === "rejected" || entry.action === "rolled_back" ? "bg-red-500"
@@ -139,10 +162,10 @@ export function ActivityPanel({
                   </div>
                   <p className="text-xs text-muted-foreground line-clamp-2">{entry.details}</p>
                   <span className="text-[10px] text-muted-foreground/60 font-mono">
-                    #{entry.proposal_id.slice(0, 8)}
+                    {entry.skill_name ? `${entry.skill_name} · ` : ""}#{entry.proposal_id.slice(0, 8)}
                   </span>
                 </div>
-              </div>
+              </button>
             ))}
             {evolution.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-4">No timeline events</p>

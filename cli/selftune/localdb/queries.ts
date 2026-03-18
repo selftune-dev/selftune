@@ -73,7 +73,7 @@ export function getOverviewPayload(db: Database): OverviewPayload {
   // Evolution audit (bounded to most recent 500)
   const evolution = db
     .query(
-      `SELECT timestamp, proposal_id, action, details
+      `SELECT timestamp, proposal_id, skill_name, action, details
        FROM evolution_audit
        ORDER BY timestamp DESC
        LIMIT 500`,
@@ -81,6 +81,7 @@ export function getOverviewPayload(db: Database): OverviewPayload {
     .all() as Array<{
     timestamp: string;
     proposal_id: string;
+    skill_name: string | null;
     action: string;
     details: string;
   }>;
@@ -242,9 +243,14 @@ export function getSkillsList(db: Database): SkillSummary[] {
     .query(
       `SELECT
          si.skill_name,
-         (SELECT s2.skill_scope FROM skill_invocations s2
-          WHERE s2.skill_name = si.skill_name AND s2.skill_scope IS NOT NULL
-          ORDER BY s2.occurred_at DESC LIMIT 1) as skill_scope,
+         COALESCE(
+           (SELECT s2.skill_scope FROM skill_invocations s2
+            WHERE s2.skill_name = si.skill_name AND s2.skill_scope IS NOT NULL
+            ORDER BY s2.occurred_at DESC LIMIT 1),
+           (SELECT su.skill_scope FROM skill_usage su
+            WHERE su.skill_name = si.skill_name AND su.skill_scope IS NOT NULL
+            ORDER BY su.timestamp DESC LIMIT 1)
+         ) as skill_scope,
          COUNT(*) as total_checks,
          SUM(CASE WHEN si.triggered = 1 THEN 1 ELSE 0 END) as triggered_count,
          COUNT(DISTINCT si.session_id) as unique_sessions,
@@ -469,9 +475,9 @@ export function queryEvolutionAudit(
   eval_snapshot?: Record<string, unknown>;
 }> {
   const sql = skillName
-    ? `SELECT * FROM evolution_audit WHERE skill_name = ? ORDER BY timestamp DESC`
+    ? `SELECT * FROM evolution_audit WHERE skill_name = ? OR (skill_name IS NULL AND proposal_id LIKE '%' || ? || '%') ORDER BY timestamp DESC`
     : `SELECT * FROM evolution_audit ORDER BY timestamp DESC`;
-  const rows = (skillName ? db.query(sql).all(skillName) : db.query(sql).all()) as Array<
+  const rows = (skillName ? db.query(sql).all(skillName, skillName) : db.query(sql).all()) as Array<
     Record<string, unknown>
   >;
   return rows.map((r) => ({

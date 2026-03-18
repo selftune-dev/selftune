@@ -27,6 +27,7 @@ export interface EvalSnapshot {
 export interface EvolutionEntry {
   timestamp: string;
   proposal_id: string;
+  skill_name?: string;
   action: string;
   details: string;
   eval_snapshot?: EvalSnapshot | null;
