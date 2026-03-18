@@ -182,6 +182,27 @@ CREATE TABLE IF NOT EXISTS improvement_signals (
   consumed_by_run TEXT
 )`;
 
+// -- Alpha upload queue -------------------------------------------------------
+
+export const CREATE_UPLOAD_QUEUE = `
+CREATE TABLE IF NOT EXISTS upload_queue (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  payload_type  TEXT NOT NULL,
+  payload_json  TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'pending',
+  attempts      INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL,
+  last_error    TEXT
+)`;
+
+export const CREATE_UPLOAD_WATERMARKS = `
+CREATE TABLE IF NOT EXISTS upload_watermarks (
+  payload_type     TEXT PRIMARY KEY,
+  last_uploaded_id INTEGER NOT NULL,
+  updated_at       TEXT NOT NULL
+)`;
+
 // -- Metadata table -----------------------------------------------------------
 
 export const CREATE_META = `
@@ -227,6 +248,9 @@ export const CREATE_INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_signals_consumed ON improvement_signals(consumed)`,
   `CREATE INDEX IF NOT EXISTS idx_signals_ts ON improvement_signals(timestamp)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_signals_dedup ON improvement_signals(session_id, query, signal_type, timestamp)`,
+  // -- Alpha upload queue indexes ---------------------------------------------
+  `CREATE INDEX IF NOT EXISTS idx_upload_queue_status ON upload_queue(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_upload_queue_type_status ON upload_queue(payload_type, status)`,
 ];
 
 /**
@@ -263,6 +287,8 @@ export const ALL_DDL = [
   CREATE_ORCHESTRATE_RUNS,
   CREATE_QUERIES,
   CREATE_IMPROVEMENT_SIGNALS,
+  CREATE_UPLOAD_QUEUE,
+  CREATE_UPLOAD_WATERMARKS,
   CREATE_META,
   ...CREATE_INDEXES,
 ];
