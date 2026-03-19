@@ -77,7 +77,7 @@ export function isValidApiKeyFormat(key: string): boolean {
 export function getAlphaLinkState(identity: AlphaIdentity | null): AlphaLinkState {
   if (!identity) return "not_linked";
   if (!identity.enrolled) return identity.cloud_user_id ? "linked_not_enrolled" : "not_linked";
-  if (!identity.api_key) return "enrolled_no_credential";
+  if (!identity.api_key || !isValidApiKeyFormat(identity.api_key)) return "enrolled_no_credential";
   return "ready";
 }
 
@@ -108,8 +108,9 @@ IMPORTANT:
   If your prompt includes repository names, file paths, or secrets, that text
   may be included in the alpha data you choose to share.
 
-Your alpha identity (email, display name) is stored locally
-in ~/.selftune/config.json and used only for alpha coordination.
+Your alpha identity (email, display name, and any upload API key)
+is stored locally in ~/.selftune/config.json and used for alpha coordination
+and authenticated uploads.
 
 TO UNENROLL:
   selftune init --no-alpha

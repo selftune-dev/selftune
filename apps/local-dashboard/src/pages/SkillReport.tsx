@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import {
   Badge,
@@ -280,6 +280,21 @@ export function SkillReport() {
   const activeProposal = requestedProposal && proposalIds.has(requestedProposal)
     ? requestedProposal
     : (evolution.length > 0 ? evolution[0].proposal_id : null)
+
+  useEffect(() => {
+    const current = searchParams.get("proposal")
+    if (activeProposal && current !== activeProposal) {
+      const next = new URLSearchParams(searchParams)
+      next.set("proposal", activeProposal)
+      setSearchParams(next, { replace: true })
+      return
+    }
+    if (!activeProposal && current) {
+      const next = new URLSearchParams(searchParams)
+      next.delete("proposal")
+      setSearchParams(next, { replace: true })
+    }
+  }, [activeProposal, searchParams, setSearchParams])
 
   const handleSelectProposal = (proposalId: string) => {
     const next = new URLSearchParams(searchParams)

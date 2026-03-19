@@ -192,8 +192,8 @@ export function writeSessionTelemetryToDb(record: SessionTelemetryRecord): boole
         errors_encountered = excluded.errors_encountered,
         transcript_chars = excluded.transcript_chars,
         last_user_query = excluded.last_user_query,
-        input_tokens = excluded.input_tokens,
-        output_tokens = excluded.output_tokens
+        input_tokens = COALESCE(excluded.input_tokens, session_telemetry.input_tokens),
+        output_tokens = COALESCE(excluded.output_tokens, session_telemetry.output_tokens)
     `,
     ).run(
       record.session_id,

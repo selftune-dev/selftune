@@ -91,6 +91,7 @@ function preflightRebuildGuard(db: Database, options?: MaterializeOptions): void
 
     // Get newest timestamp from JSONL
     let jsonlMax: string | null = null;
+    let jsonlBoundaryCount = 0;
     try {
       const records = readJsonl<{ timestamp: string }>(jsonlLog);
       if (records.length > 0) {
@@ -98,6 +99,7 @@ function preflightRebuildGuard(db: Database, options?: MaterializeOptions): void
           (max, r) => (r.timestamp > max ? r.timestamp : max),
           records[0].timestamp,
         );
+        jsonlBoundaryCount = records.filter((record) => record.timestamp === jsonlMax).length;
       }
     } catch {
       // JSONL file doesn't exist or is empty — SQLite has data JSONL doesn't
@@ -105,6 +107,7 @@ function preflightRebuildGuard(db: Database, options?: MaterializeOptions): void
     }
 
     let newerCount = 0;
+    let sqliteBoundaryCount = 0;
     try {
       if (!jsonlMax) {
         const row = db.query(`SELECT COUNT(*) AS newer_count FROM ${table}`).get() as {
@@ -119,13 +122,22 @@ function preflightRebuildGuard(db: Database, options?: MaterializeOptions): void
         } | null;
         newerCount = row?.newer_count ?? 0;
       }
+      if (jsonlMax) {
+        const boundaryRow = db
+          .query(`SELECT COUNT(*) AS boundary_count FROM ${table} WHERE ${tsColumn} = ?`)
+          .get(jsonlMax) as {
+          boundary_count: number;
+        } | null;
+        sqliteBoundaryCount = boundaryRow?.boundary_count ?? 0;
+      }
     } catch {
       newerCount = 0;
+      sqliteBoundaryCount = 0;
     }
 
-    if (!jsonlMax || newerCount > 0) {
+    if (!jsonlMax || newerCount > 0 || sqliteBoundaryCount !== jsonlBoundaryCount) {
       warnings.push(
-        `  - ${table}: ${newerCount} SQLite-only row(s), SQLite max=${sqliteMax}, JSONL max=${jsonlMax ?? "(empty)"}`,
+        `  - ${table}: ${newerCount} SQLite-only row(s), SQLite max=${sqliteMax}, JSONL max=${jsonlMax ?? "(empty)"}, boundary_count(SQLite=${sqliteBoundaryCount}, JSONL=${jsonlBoundaryCount})`,
       );
     }
   }
@@ -501,8 +513,8 @@ function insertSessionTelemetry(db: Database, records: SessionTelemetryRecord[])
       errors_encountered = excluded.errors_encountered,
       transcript_chars = excluded.transcript_chars,
       last_user_query = excluded.last_user_query,
-      input_tokens = excluded.input_tokens,
-      output_tokens = excluded.output_tokens
+      input_tokens = COALESCE(excluded.input_tokens, session_telemetry.input_tokens),
+      output_tokens = COALESCE(excluded.output_tokens, session_telemetry.output_tokens)
     WHERE session_telemetry.timestamp IS NULL OR excluded.timestamp >= session_telemetry.timestamp
   `);
 

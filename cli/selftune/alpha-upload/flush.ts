@@ -95,8 +95,14 @@ export async function flushQueue(
   }
 
   for (const item of items) {
+    const markFailedSafely = (message: string): void => {
+      if (!queue.markFailed(item.id, message)) {
+        console.error(`[alpha upload] Failed to persist queue failure state for item ${item.id}`);
+      }
+    };
+
     if (item.attempts >= maxRetries) {
-      queue.markFailed(item.id, "exhausted retries");
+      markFailedSafely("exhausted retries");
       summary.failed++;
       continue;
     }
@@ -110,12 +116,16 @@ export async function flushQueue(
     try {
       payload = JSON.parse(item.payload_json) as Record<string, unknown>;
     } catch {
-      queue.markFailed(item.id, "corrupt payload JSON");
+      markFailedSafely("corrupt payload JSON");
       summary.failed++;
       continue;
     }
 
-    queue.markSending(item.id);
+    if (!queue.markSending(item.id)) {
+      console.error(`[alpha upload] Failed to mark queue item ${item.id} as sending`);
+      summary.failed++;
+      continue;
+    }
 
     let succeeded = false;
     const attemptsRemaining = maxRetries - item.attempts;
@@ -129,16 +139,24 @@ export async function flushQueue(
       const status = getStatus(result as unknown as Record<string, unknown>);
 
       if (result.success) {
-        queue.markSent(item.id);
-        summary.sent++;
+        if (!queue.markSent(item.id)) {
+          markFailedSafely("local queue state update failed after successful upload");
+          summary.failed++;
+        } else {
+          summary.sent++;
+        }
         succeeded = true;
         break;
       }
 
       // 409 Conflict = duplicate push_id, treat as success
       if (status === 409) {
-        queue.markSent(item.id);
-        summary.sent++;
+        if (!queue.markSent(item.id)) {
+          markFailedSafely("local queue state update failed after duplicate upload");
+          summary.failed++;
+        } else {
+          summary.sent++;
+        }
         succeeded = true;
         break;
       }
@@ -148,15 +166,15 @@ export async function flushQueue(
         const authMessage =
           status === 401
             ? "Authentication failed: invalid or missing API key. Run 'selftune init --alpha --alpha-key <key>' to set your API key."
-            : "Authorization denied: your API key does not have permission to upload. Contact support or verify your enrollment.";
-        queue.markFailed(item.id, authMessage);
+            : "Authorization denied: your API key does not have permission to upload. Run 'selftune doctor' to verify enrollment and cloud link, then re-run 'selftune init --alpha --alpha-email <email> --alpha-key <key>' if needed.";
+        markFailedSafely(authMessage);
         summary.failed++;
         succeeded = true;
         break;
       }
 
       if (!isRetryable(status)) {
-        queue.markFailed(item.id, result.errors[0]);
+        markFailedSafely(result.errors[0] ?? `Upload failed with HTTP ${status}`);
         summary.failed++;
         succeeded = true;
         break;
@@ -164,7 +182,7 @@ export async function flushQueue(
     }
 
     if (!succeeded) {
-      queue.markFailed(item.id, "exhausted retries");
+      markFailedSafely("exhausted retries");
       summary.failed++;
     }
   }

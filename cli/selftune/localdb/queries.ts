@@ -475,7 +475,10 @@ export function queryEvolutionAudit(
   eval_snapshot?: Record<string, unknown>;
 }> {
   const sql = skillName
-    ? `SELECT * FROM evolution_audit WHERE skill_name = ? OR (skill_name IS NULL AND proposal_id LIKE '%' || ? || '%') ORDER BY timestamp DESC`
+    ? `SELECT * FROM evolution_audit
+       WHERE skill_name = ?
+          OR (skill_name IS NULL AND proposal_id LIKE 'evo-' || ? || '-%')
+       ORDER BY timestamp DESC`
     : `SELECT * FROM evolution_audit ORDER BY timestamp DESC`;
   const rows = (skillName ? db.query(sql).all(skillName, skillName) : db.query(sql).all()) as Array<
     Record<string, unknown>

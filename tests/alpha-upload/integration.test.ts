@@ -15,7 +15,7 @@
  */
 
 import { Database } from "bun:sqlite";
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { enqueueUpload, getQueueStats } from "../../cli/selftune/alpha-upload/queue.js";
 import { ALL_DDL, MIGRATIONS, POST_MIGRATION_INDEXES } from "../../cli/selftune/localdb/schema.js";
 
@@ -32,8 +32,11 @@ function createTestDb(): Database {
   for (const migration of MIGRATIONS) {
     try {
       db.exec(migration);
-    } catch {
-      // Duplicate column errors are expected
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes("duplicate column")) {
+        throw error;
+      }
     }
   }
   for (const idx of POST_MIGRATION_INDEXES) {
@@ -165,6 +168,7 @@ function stageEvolutionEvidence(db: Database, count: number): void {
   for (let i = 0; i < count; i++) {
     const recordId = `prop-${i}:deployed:2026-01-01T00:00:00Z`;
     const record = {
+      timestamp: "2026-01-01T00:00:00.000Z",
       skill_name: "Research",
       proposal_id: `prop-${i}`,
       target: "description",
@@ -192,6 +196,10 @@ describe("alpha-upload/index -- prepareUploads (V2 staging)", () => {
 
   beforeEach(() => {
     db = createTestDb();
+  });
+
+  afterEach(() => {
+    db.close();
   });
 
   it("returns empty summary when no staged rows exist", async () => {
@@ -320,6 +328,10 @@ describe("alpha-upload/index -- runUploadCycle (V2 staging)", () => {
     db = createTestDb();
   });
 
+  afterEach(() => {
+    db.close();
+  });
+
   it("returns empty summary when unenrolled", async () => {
     const { runUploadCycle } = await import("../../cli/selftune/alpha-upload/index.js");
     const result = await runUploadCycle(db, {
@@ -379,17 +391,19 @@ describe("alpha-upload/index -- runUploadCycle (V2 staging)", () => {
       });
 
       expect(capturedHeaders).not.toBeNull();
-      expect(capturedHeaders!.get("Authorization")).toBe("Bearer test-secret-key");
+      if (capturedHeaders === null) {
+        throw new Error("fetch was not called - capturedHeaders is null");
+      }
+      expect(capturedHeaders.get("Authorization")).toBe("Bearer test-secret-key");
     } finally {
       globalThis.fetch = originalFetch;
     }
   });
 
   it("does not throw on upload errors", async () => {
-    stageSessions(db, 1);
     const { runUploadCycle } = await import("../../cli/selftune/alpha-upload/index.js");
 
-    // Pre-enqueue an item with corrupt JSON to force immediate failure
+    // Pre-enqueue an item with corrupt JSON to force the fail-open parse path.
     enqueueUpload(db, "push", "not-valid-json");
 
     const result = await runUploadCycle(db, {
@@ -397,8 +411,7 @@ describe("alpha-upload/index -- runUploadCycle (V2 staging)", () => {
       userId: "test-user",
       agentType: "claude_code",
       selftuneVersion: "0.2.7",
-      endpoint: "http://localhost:1/nonexistent",
-      dryRun: true,
+      endpoint: "https://api.selftune.dev/api/v1/push",
       canonicalLogPath: "/nonexistent/canonical.jsonl",
     });
 
@@ -414,31 +427,39 @@ describe("alpha-upload/index -- fail-open guarantees (V2 staging)", () => {
   it("prepareUploads never throws even with a broken database", async () => {
     const { prepareUploads } = await import("../../cli/selftune/alpha-upload/index.js");
     const db = new Database(":memory:");
-    // No schema applied -- all queries will fail
-    const result = prepareUploads(
-      db,
-      "test-user",
-      "claude_code",
-      "0.2.7",
-      "/nonexistent/canonical.jsonl",
-    );
-    expect(result.enqueued).toBe(0);
-    expect(result.types).toEqual([]);
+    try {
+      // No schema applied -- all queries will fail
+      const result = prepareUploads(
+        db,
+        "test-user",
+        "claude_code",
+        "0.2.7",
+        "/nonexistent/canonical.jsonl",
+      );
+      expect(result.enqueued).toBe(0);
+      expect(result.types).toEqual([]);
+    } finally {
+      db.close();
+    }
   });
 
   it("runUploadCycle never throws even with a broken database", async () => {
     const { runUploadCycle } = await import("../../cli/selftune/alpha-upload/index.js");
     const db = new Database(":memory:");
-    // No schema applied
-    const result = await runUploadCycle(db, {
-      enrolled: true,
-      userId: "test-user",
-      agentType: "claude_code",
-      selftuneVersion: "0.2.7",
-      endpoint: "https://api.selftune.dev/api/v1/push",
-      canonicalLogPath: "/nonexistent/canonical.jsonl",
-    });
-    expect(result.enrolled).toBe(true);
-    expect(result.prepared).toBe(0);
+    try {
+      // No schema applied
+      const result = await runUploadCycle(db, {
+        enrolled: true,
+        userId: "test-user",
+        agentType: "claude_code",
+        selftuneVersion: "0.2.7",
+        endpoint: "https://api.selftune.dev/api/v1/push",
+        canonicalLogPath: "/nonexistent/canonical.jsonl",
+      });
+      expect(result.enrolled).toBe(true);
+      expect(result.prepared).toBe(0);
+    } finally {
+      db.close();
+    }
   });
 });

@@ -7,9 +7,19 @@
  */
 
 import type { PushUploadResult } from "../alpha-upload-contract.js";
+import { getSelftuneVersion } from "../utils/selftune-meta.js";
 
-/** Selftune version for the User-Agent header. */
-const SELFTUNE_VERSION = "0.2.7";
+function isPushUploadResult(value: unknown): value is PushUploadResult {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.success === "boolean" &&
+    Array.isArray(record.errors) &&
+    record.errors.every((entry) => typeof entry === "string") &&
+    (record.push_id === undefined || typeof record.push_id === "string") &&
+    (record._status === undefined || typeof record._status === "number")
+  );
+}
 
 /**
  * Upload a single V2 push payload to the given endpoint.
@@ -25,11 +35,11 @@ export async function uploadPushPayload(
   try {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "User-Agent": `selftune/${SELFTUNE_VERSION}`,
+      "User-Agent": `selftune/${getSelftuneVersion()}`,
     };
 
     if (apiKey) {
-      headers["Authorization"] = `Bearer ${apiKey}`;
+      headers.Authorization = `Bearer ${apiKey}`;
     }
 
     const response = await fetch(endpoint, {
@@ -51,7 +61,15 @@ export async function uploadPushPayload(
         };
       }
       try {
-        return JSON.parse(body) as PushUploadResult;
+        const parsed: unknown = JSON.parse(body);
+        if (isPushUploadResult(parsed)) {
+          return parsed;
+        }
+        return {
+          success: false,
+          errors: ["Invalid JSON response shape for PushUploadResult"],
+          _status: response.status,
+        };
       } catch {
         return {
           success: false,

@@ -66,7 +66,7 @@ export interface StatusResult {
 // ---------------------------------------------------------------------------
 
 export interface AlphaStatusInfo {
-  enrolled: boolean;
+  enrolled: true;
   linkState?: AlphaLinkState;
   stats: { pending: number; sending: number; sent: number; failed: number };
   lastError: { last_error: string | null; updated_at: string } | null;
@@ -364,7 +364,7 @@ export function formatAlphaStatus(info: AlphaStatusInfo | null): string {
   lines.push("Alpha Upload");
   lines.push("\u2500".repeat(15));
 
-  if (!info) {
+  if (!info || !info.enrolled) {
     lines.push("  Status:             not enrolled");
     lines.push("  Cloud link:         not linked");
     return lines.join("\n");

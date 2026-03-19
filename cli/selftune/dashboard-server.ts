@@ -239,7 +239,7 @@ export async function startDashboardServer(
 
   // -- File watchers on JSONL logs for push-based updates ---------------------
   const WATCHED_LOGS = [TELEMETRY_LOG, QUERY_LOG, EVOLUTION_AUDIT_LOG];
-  const watcherMode: HealthResponse["watcher_mode"] = WATCHED_LOGS.length > 0 ? "jsonl" : "none";
+  const watchedLogPaths = new Set(WATCHED_LOGS);
 
   let fsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const FS_DEBOUNCE_MS = 500;
@@ -254,17 +254,43 @@ export async function startDashboardServer(
   }
 
   const fileWatchers: FSWatcher[] = [];
-  for (const logPath of WATCHED_LOGS) {
-    if (existsSync(logPath)) {
-      try {
-        fileWatchers.push(fsWatch(logPath, onLogFileChange));
-      } catch {
-        // Non-fatal: fall back to polling if watch fails
-      }
+  const watchedFiles = new Set<string>();
+  let directoryWatcherActive = false;
+
+  function registerFileWatcher(logPath: string): void {
+    if (watchedFiles.has(logPath) || !existsSync(logPath)) return;
+    try {
+      fileWatchers.push(fsWatch(logPath, onLogFileChange));
+      watchedFiles.add(logPath);
+    } catch {
+      // Non-fatal: fall back to polling if watch fails
     }
   }
 
-  if (runtimeMode !== "test" && watcherMode === "jsonl") {
+  for (const logPath of WATCHED_LOGS) {
+    registerFileWatcher(logPath);
+  }
+
+  try {
+    fileWatchers.push(
+      fsWatch(LOG_DIR, (_eventType, filename) => {
+        if (typeof filename !== "string" || filename.length === 0) return;
+        const fullPath = join(LOG_DIR, filename);
+        if (!watchedLogPaths.has(fullPath)) return;
+        registerFileWatcher(fullPath);
+        onLogFileChange();
+      }),
+    );
+    directoryWatcherActive = true;
+  } catch {
+    directoryWatcherActive = false;
+  }
+
+  function getWatcherMode(): HealthResponse["watcher_mode"] {
+    return directoryWatcherActive || watchedFiles.size > 0 ? "jsonl" : "none";
+  }
+
+  if (runtimeMode !== "test" && getWatcherMode() === "jsonl") {
     console.warn(
       "Dashboard freshness mode: JSONL watcher invalidation (legacy). Live updates can miss SQLite-only writes until WAL cutover lands.",
     );
@@ -328,7 +354,7 @@ export async function startDashboardServer(
           db_path: DB_PATH,
           log_dir: LOG_DIR,
           config_dir: SELFTUNE_CONFIG_DIR,
-          watcher_mode: watcherMode,
+          watcher_mode: getWatcherMode(),
           process_mode: runtimeMode,
           host: hostname,
           port: server.port,

@@ -150,6 +150,13 @@ describe("markSent", () => {
     const invocationWm = readWatermark(db, "invocation");
     expect(invocationWm).toBe(3);
   });
+
+  test("does not advance the watermark for rows that were never sending", () => {
+    enqueueUpload(db, "session", "{}");
+
+    expect(markSent(db, [1])).toBe(true);
+    expect(readWatermark(db, "session")).toBeNull();
+  });
 });
 
 // -- markFailed ---------------------------------------------------------------

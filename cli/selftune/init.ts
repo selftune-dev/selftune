@@ -36,6 +36,22 @@ import type { AlphaIdentity, SelftuneConfig } from "./types.js";
 import { hookKeyHasSelftuneEntry } from "./utils/hooks.js";
 import { detectAgent } from "./utils/llm-call.js";
 
+interface InitCliErrorPayload {
+  error: string;
+  message: string;
+  next_command: string;
+}
+
+class InitCliError extends Error {
+  payload: InitCliErrorPayload;
+
+  constructor(payload: InitCliErrorPayload) {
+    super(payload.message);
+    this.name = "InitCliError";
+    this.payload = payload;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Agent type detection
 // ---------------------------------------------------------------------------
@@ -517,14 +533,12 @@ export function runInit(opts: InitOptions): SelftuneConfig {
   // Handle alpha enrollment
   if (opts.alpha) {
     if (!opts.alphaEmail) {
-      throw new Error(
-        JSON.stringify({
-          error: "alpha_email_required",
-          message:
-            "The --alpha-email flag is required for alpha enrollment. Run: selftune init --alpha --alpha-email user@example.com",
-          next_command: "selftune init --alpha --alpha-email <email>",
-        }),
-      );
+      throw new InitCliError({
+        error: "alpha_email_required",
+        message:
+          "The --alpha-email flag is required for alpha enrollment. Run: selftune init --alpha --alpha-email user@example.com",
+        next_command: "selftune init --alpha --alpha-email <email>",
+      });
     }
 
     // Preserve existing user_id across reinits
@@ -532,13 +546,11 @@ export function runInit(opts: InitOptions): SelftuneConfig {
 
     // Validate api_key format if provided
     if (opts.alphaKey && !isValidApiKeyFormat(opts.alphaKey)) {
-      throw new Error(
-        JSON.stringify({
-          error: "invalid_api_key_format",
-          message: "API key must start with 'st_live_' or 'st_test_'. Check the key and retry.",
-          next_command: "selftune init --alpha --alpha-email <email> --alpha-key st_live_<key>",
-        }),
-      );
+      throw new InitCliError({
+        error: "invalid_api_key_format",
+        message: "API key must start with 'st_live_' or 'st_test_'. Check the key and retry.",
+        next_command: "selftune init --alpha --alpha-email <email> --alpha-key st_live_<key>",
+      });
     }
 
     const identity: AlphaIdentity = {
@@ -744,6 +756,10 @@ const isMain =
 
 if (isMain) {
   cliMain().catch((err) => {
+    if (err instanceof InitCliError) {
+      console.error(JSON.stringify(err.payload));
+      process.exit(1);
+    }
     console.error(`[FATAL] ${err}`);
     process.exit(1);
   });

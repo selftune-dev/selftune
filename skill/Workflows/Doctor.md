@@ -37,13 +37,18 @@ None. Doctor runs all checks unconditionally.
       "path": "/Users/you/.claude/settings.json",
       "status": "fail",
       "message": "PostToolUse hook not found in ~/.claude/settings.json"
+    },
+    {
+      "name": "dashboard_freshness_mode",
+      "status": "warn",
+      "message": "Dashboard still uses legacy JSONL watcher invalidation"
     }
   ],
   "summary": {
-    "pass": 5,
+    "pass": 8,
     "fail": 1,
-    "warn": 0,
-    "total": 6
+    "warn": 1,
+    "total": 10
   },
   "healthy": false
 }

@@ -35,6 +35,7 @@ import type { SkillStatus, StatusResult } from "./status.js";
 import { computeStatus } from "./status.js";
 import type { SyncResult } from "./sync.js";
 import { createDefaultSyncOptions, syncSources } from "./sync.js";
+import { getSelftuneVersion, readConfiguredAgentType } from "./utils/selftune-meta.js";
 import type {
   EvolutionAuditEntry,
   ImprovementSignalRecord,
@@ -1008,17 +1009,8 @@ export async function orchestrate(
         const uploadSummary = await runUploadCycle(db, {
           enrolled: true,
           userId: alphaIdentity.user_id,
-          agentType: "claude_code",
-          selftuneVersion: (() => {
-            try {
-              const pkg = JSON.parse(
-                readFileSync(join(import.meta.dir, "../../package.json"), "utf-8"),
-              );
-              return pkg.version ?? "0.0.0";
-            } catch {
-              return "0.0.0";
-            }
-          })(),
+          agentType: readConfiguredAgentType(SELFTUNE_CONFIG_PATH, "claude_code"),
+          selftuneVersion: getSelftuneVersion(),
           dryRun: options.dryRun,
           apiKey: alphaIdentity.api_key,
         });

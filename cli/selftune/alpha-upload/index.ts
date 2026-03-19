@@ -101,13 +101,16 @@ export function prepareUploads(
     // Step 4: Enqueue the payload + advance watermark atomically
     const tx = db.transaction(() => {
       const ok = enqueueUpload(db, "push", JSON.stringify(build.payload));
-      if (ok) {
-        result.enqueued = 1;
-        result.types.push("canonical");
-
-        // Step 5: Advance the watermark
-        writeWatermark(db, "canonical", build.lastSeq);
+      if (!ok) {
+        throw new Error("enqueueUpload failed");
       }
+
+      if (!writeWatermark(db, "canonical", build.lastSeq)) {
+        throw new Error("writeWatermark failed");
+      }
+
+      result.enqueued = 1;
+      result.types.push("canonical");
     });
     tx();
   } catch (err) {
@@ -165,15 +168,9 @@ export async function runUploadCycle(
     // Step 2: Flush -- drain the queue to the remote endpoint
     const queueOps: QueueOperations = {
       getPending: (limit: number) => getPendingUploads(db, limit) as ContractQueueItem[],
-      markSending: (id: number) => {
-        markSending(db, [id]);
-      },
-      markSent: (id: number) => {
-        markSent(db, [id]);
-      },
-      markFailed: (id: number, error?: string) => {
-        markFailed(db, id, error ?? "unknown");
-      },
+      markSending: (id: number) => markSending(db, [id]),
+      markSent: (id: number) => markSent(db, [id]),
+      markFailed: (id: number, error?: string) => markFailed(db, id, error ?? "unknown"),
     };
 
     const flush: FlushSummary = await flushQueue(queueOps, endpoint, {

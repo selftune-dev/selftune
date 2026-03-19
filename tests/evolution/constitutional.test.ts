@@ -168,8 +168,7 @@ describe("Combined checks", () => {
   test("fails a bad proposal with multiple violations", () => {
     const original = "A skill for testing. USE WHEN user asks about tests";
     // has XML, has unbounded broadening, drops USE WHEN
-    const longText = "A".repeat(500);
-    const proposed = `<div>${longText}</div> handles everything`;
+    const proposed = "<div>x</div> everything";
     const result = checkConstitution(proposed, original, "test-skill");
     expect(result.passed).toBe(false);
     expect(result.violations.length).toBeGreaterThanOrEqual(2);

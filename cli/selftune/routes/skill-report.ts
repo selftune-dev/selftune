@@ -17,7 +17,7 @@ export function handleSkillReport(db: Database, skillName: string): Response {
     .query(
       `SELECT timestamp, proposal_id, skill_name, action, details, eval_snapshot_json
        FROM evolution_audit
-       WHERE skill_name = ? OR (skill_name IS NULL AND proposal_id LIKE '%' || ? || '%')
+       WHERE skill_name = ? OR (skill_name IS NULL AND proposal_id LIKE 'evo-' || ? || '-%')
        ORDER BY timestamp DESC
        LIMIT 100`,
     )

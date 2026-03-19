@@ -241,6 +241,23 @@ The candidate is tested against the full eval set:
 If validation fails, the command retries up to `--max-iterations` times
 with adjusted proposals.
 
+### Aggregate Metrics To Report
+
+When summarizing an evolution run, include these aggregate metrics rather
+than only saying "passed" or "failed":
+
+| Metric | Meaning |
+|--------|---------|
+| `original_pass_rate` | Baseline pass rate before the proposal |
+| `proposed_pass_rate` | Pass rate after applying the proposal |
+| `regression_count` | Eval entries that passed before and failed after |
+| `net_change` | Total passes gained minus regressions introduced |
+| `iteration` / `iterations_used` | Which retry produced the current candidate |
+| `baseline_lift` | Additional lift over the no-skill baseline when `--with-baseline` is enabled |
+
+These metrics explain whether the proposal is genuinely better, merely
+different, or too risky to deploy.
+
 ### 7. Deploy (or Preview)
 
 If `--dry-run`, the proposal is printed but not deployed. The audit log

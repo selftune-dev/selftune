@@ -39,8 +39,11 @@ function createTestDb(): Database {
   for (const migration of MIGRATIONS) {
     try {
       db.exec(migration);
-    } catch {
-      // Duplicate column errors are expected
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes("duplicate column")) {
+        throw error;
+      }
     }
   }
   for (const idx of POST_MIGRATION_INDEXES) {
@@ -136,15 +139,9 @@ function buildQueueOps(db: Database): QueueOperations {
   const { markSending, markSent, markFailed } = require("../../cli/selftune/alpha-upload/queue.js");
   return {
     getPending: (limit: number) => getPendingUploads(db, limit) as QueueItem[],
-    markSending: (id: number) => {
-      markSending(db, [id]);
-    },
-    markSent: (id: number) => {
-      markSent(db, [id]);
-    },
-    markFailed: (id: number, error?: string) => {
-      markFailed(db, id, error ?? "unknown");
-    },
+    markSending: (id: number) => markSending(db, [id]),
+    markSent: (id: number) => markSent(db, [id]),
+    markFailed: (id: number, error?: string) => markFailed(db, id, error ?? "unknown"),
   };
 }
 
@@ -226,7 +223,7 @@ describe("e2e: full upload pipeline", () => {
     // Step 7: Verify watermark advanced
     const watermark = readWatermark(db, "canonical");
     expect(watermark).not.toBeNull();
-    expect(watermark!).toBeGreaterThan(0);
+    expect(watermark ?? 0).toBeGreaterThan(0);
 
     // Step 8: Running again with no new records produces no new uploads
     const secondPrepare = prepareUploads(
@@ -356,7 +353,7 @@ describe("e2e: failure scenarios", () => {
     // Check error message recorded
     const lastError = getLastUploadError(db);
     expect(lastError).not.toBeNull();
-    expect(lastError!.last_error).toContain("Authentication failed");
+    expect(lastError?.last_error).toContain("Authentication failed");
   });
 
   it("auth failure (403) marks items as failed with permission message", async () => {
@@ -378,7 +375,7 @@ describe("e2e: failure scenarios", () => {
 
     expect(result.failed).toBe(1);
     const lastError = getLastUploadError(db);
-    expect(lastError!.last_error).toContain("Authorization denied");
+    expect(lastError?.last_error).toContain("Authorization denied");
   });
 
   it("network-unreachable endpoint keeps records in queue with failure status", async () => {
@@ -411,7 +408,7 @@ describe("e2e: failure scenarios", () => {
     // Error recorded in queue
     const lastError = getLastUploadError(db);
     expect(lastError).not.toBeNull();
-    expect(lastError!.last_error).toContain("exhausted retries");
+    expect(lastError?.last_error).toContain("exhausted retries");
   });
 
   it("409 conflict is treated as success (duplicate push_id)", async () => {
@@ -507,7 +504,7 @@ describe("e2e: failure scenarios", () => {
     // Watermark should have advanced further
     const watermarkAfterSecond = readWatermark(db, "canonical");
     expect(watermarkAfterSecond).not.toBeNull();
-    expect(watermarkAfterSecond!).toBeGreaterThan(watermarkAfterFirst!);
+    expect(watermarkAfterSecond ?? 0).toBeGreaterThan(watermarkAfterFirst ?? 0);
 
     // Queue should show 2 sent total
     const stats = getQueueStats(db);
@@ -652,7 +649,7 @@ describe("e2e: status visibility after uploads", () => {
     // Verify last error/success queries
     const lastError = getLastUploadError(db);
     expect(lastError).not.toBeNull();
-    expect(lastError!.last_error).toContain("Authentication failed");
+    expect(lastError?.last_error).toContain("Authentication failed");
 
     const lastSuccess = getLastUploadSuccess(db);
     expect(lastSuccess).not.toBeNull();
@@ -706,8 +703,8 @@ describe("e2e: status visibility after uploads", () => {
     const checks = await checkAlphaQueueHealth(db, true);
     const stuckCheck = checks.find((c) => c.name === "alpha_queue_stuck");
     expect(stuckCheck).toBeDefined();
-    expect(stuckCheck!.status).toBe("warn");
-    expect(stuckCheck!.message).toContain("old");
+    expect(stuckCheck?.status).toBe("warn");
+    expect(stuckCheck?.message).toContain("old");
   });
 
   it("doctor checks pass when queue is healthy after successful upload", async () => {

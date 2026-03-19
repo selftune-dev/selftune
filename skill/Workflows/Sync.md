@@ -74,6 +74,7 @@ selftune sync --json
 ```
 
 Sample output:
+
 ```json
 {
   "sources": {

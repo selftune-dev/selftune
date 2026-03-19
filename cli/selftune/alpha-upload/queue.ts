@@ -112,6 +112,14 @@ export function markSent(db: Database, ids: number[]): boolean {
 
     db.run("BEGIN TRANSACTION");
     try {
+      const sendingRows = db
+        .query(
+          `SELECT id, payload_type
+           FROM upload_queue
+           WHERE id IN (${placeholders}) AND status = 'sending'`,
+        )
+        .all(...ids) as Array<{ id: number; payload_type: string }>;
+
       // Mark items as sent
       db.run(
         `UPDATE upload_queue
@@ -120,18 +128,24 @@ export function markSent(db: Database, ids: number[]): boolean {
         [now, ...ids],
       );
 
-      // Update watermarks per payload_type — set to max id for each type
-      const types = db
-        .query(
-          `SELECT payload_type, MAX(id) as max_id
-           FROM upload_queue
-           WHERE id IN (${placeholders})
-           GROUP BY payload_type`,
-        )
-        .all(...ids) as Array<{ payload_type: string; max_id: number }>;
+      // Update watermarks only for rows that actually transitioned from "sending".
+      const maxByType = new Map<string, number>();
+      for (const row of sendingRows) {
+        const current = maxByType.get(row.payload_type) ?? 0;
+        if (row.id > current) {
+          maxByType.set(row.payload_type, row.id);
+        }
+      }
 
-      for (const { payload_type, max_id } of types) {
-        writeWatermark(db, payload_type, max_id);
+      for (const [payloadType, maxId] of maxByType.entries()) {
+        db.run(
+          `INSERT INTO upload_watermarks (payload_type, last_uploaded_id, updated_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT(payload_type) DO UPDATE SET
+             last_uploaded_id = excluded.last_uploaded_id,
+             updated_at = excluded.updated_at`,
+          [payloadType, maxId, now],
+        );
       }
 
       db.run("COMMIT");

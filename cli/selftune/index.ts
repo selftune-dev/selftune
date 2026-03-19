@@ -604,6 +604,9 @@ Output:
         const { readAlphaIdentity } = await import("./alpha-identity.js");
         const { getDb } = await import("./localdb/db.js");
         const { runUploadCycle } = await import("./alpha-upload/index.js");
+        const { getSelftuneVersion, readConfiguredAgentType } = await import(
+          "./utils/selftune-meta.js"
+        );
 
         const identity = readAlphaIdentity(SELFTUNE_CONFIG_PATH);
         if (!identity?.enrolled) {
@@ -623,27 +626,42 @@ Output:
           console.error(
             "[alpha upload] Not enrolled in alpha program. Run 'selftune init --alpha --alpha-email <email>' to enroll.",
           );
-          process.exit(0);
+          process.exit(1);
+        }
+
+        if (!identity.user_id?.trim() || !identity.api_key?.trim()) {
+          console.log(
+            JSON.stringify(
+              {
+                enrolled: true,
+                prepared: 0,
+                sent: 0,
+                failed: 0,
+                skipped: 0,
+              },
+              null,
+              2,
+            ),
+          );
+          console.error(
+            "[alpha upload] Missing alpha credentials. Run 'selftune init --alpha --alpha-email <email> --alpha-key <key>' to refresh enrollment.",
+          );
+          process.exit(1);
         }
 
         const db = getDb();
-        const { join } = await import("node:path");
-        const { readFileSync } = await import("node:fs");
-        const selftuneVersion: string = JSON.parse(
-          readFileSync(join(import.meta.dir, "../../package.json"), "utf-8"),
-        ).version;
 
         const result = await runUploadCycle(db, {
           enrolled: true,
           userId: identity.user_id,
-          agentType: "claude_code",
-          selftuneVersion,
+          agentType: readConfiguredAgentType(SELFTUNE_CONFIG_PATH, "claude_code"),
+          selftuneVersion: getSelftuneVersion(),
           dryRun: values["dry-run"] ?? false,
           apiKey: identity.api_key,
         });
 
         console.log(JSON.stringify(result, null, 2));
-        break;
+        process.exit(result.failed > 0 ? 1 : 0);
       }
       default:
         console.error(

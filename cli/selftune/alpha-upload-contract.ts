@@ -40,9 +40,9 @@ export interface QueueItem {
 
 export interface QueueOperations {
   getPending(limit: number): QueueItem[];
-  markSending(id: number): void;
-  markSent(id: number): void;
-  markFailed(id: number, error?: string): void;
+  markSending(id: number): boolean;
+  markSent(id: number): boolean;
+  markFailed(id: number, error?: string): boolean;
 }
 
 export interface FlushSummary {

@@ -190,17 +190,19 @@ export async function generateSyntheticEvals(
     // Positives: high-confidence triggered records for this skill
     const skillRecords = querySkillUsageRecords(db);
     const positive = skillRecords
-      .filter((r: any) => isHighConfidencePositiveSkillRecord(r, skillName))
-      .map((r: any) => r.query)
-      .filter(Boolean)
+      .filter((r) => isHighConfidencePositiveSkillRecord(r, skillName))
+      .map((r) => r.query)
+      .filter((q): q is string => typeof q === "string" && q.length > 0)
       .slice(0, 5);
 
     // Negatives: from all_queries, excluding known positives
     const posSet = new Set(positive.map((q: string) => q.toLowerCase()));
     const allQueries = queryQueryLog(db);
     const negative = allQueries
-      .map((r: any) => r.query)
-      .filter((q: string) => q && !posSet.has(q.toLowerCase()))
+      .map((r) => r.query)
+      .filter(
+        (q): q is string => typeof q === "string" && q.length > 0 && !posSet.has(q.toLowerCase()),
+      )
       .slice(0, 5);
 
     if (positive.length > 0) {

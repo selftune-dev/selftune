@@ -351,14 +351,27 @@ export async function evolveBody(
       });
 
       // Constitutional size check (deterministic, pre-validation — body only)
-      const constitution = checkConstitutionSizeOnly(
-        proposal.proposed_body,
-        proposal.original_body,
-      );
-      if (!constitution.passed) {
-        const reason = `Constitutional: ${constitution.violations.join("; ")}`;
-        recordAudit(proposal.proposal_id, "rejected", reason);
-        if (iteration === maxIterations - 1) {
+      if (target === "body") {
+        const constitution = checkConstitutionSizeOnly(
+          proposal.proposed_body,
+          proposal.original_body,
+        );
+        if (!constitution.passed) {
+          const reason = `Constitutional: ${constitution.violations.join("; ")}`;
+          recordAudit(proposal.proposal_id, "rejected", reason);
+          recordEvidence({
+            timestamp: new Date().toISOString(),
+            proposal_id: proposal.proposal_id,
+            skill_name: skillName,
+            skill_path: skillPath,
+            target,
+            stage: "rejected",
+            rationale: proposal.rationale,
+            confidence: proposal.confidence,
+            details: reason,
+            original_text: proposal.original_body,
+            proposed_text: proposal.proposed_body,
+          });
           return {
             proposal: lastProposal,
             validation: null,
@@ -367,7 +380,6 @@ export async function evolveBody(
             reason,
           };
         }
-        continue;
       }
 
       // Check confidence threshold

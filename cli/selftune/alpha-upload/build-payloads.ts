@@ -80,10 +80,20 @@ export function buildV2PushPayload(
     if (!parsed) continue;
 
     if (row.record_kind === "evolution_evidence") {
+      const timestamp =
+        typeof parsed.timestamp === "string" && parsed.timestamp.trim().length > 0
+          ? parsed.timestamp
+          : null;
+      const proposalId =
+        typeof parsed.proposal_id === "string" && parsed.proposal_id.trim().length > 0
+          ? parsed.proposal_id
+          : null;
+      if (!timestamp || !proposalId) continue;
+
       // Evolution evidence has its own shape
       evidenceEntries.push({
-        timestamp: (parsed.timestamp as string) ?? new Date().toISOString(),
-        proposal_id: parsed.proposal_id as string,
+        timestamp,
+        proposal_id: proposalId,
         skill_name: parsed.skill_name as string,
         skill_path: (parsed.skill_path as string) ?? "",
         target: (parsed.target as EvolutionEvidenceEntry["target"]) ?? "description",

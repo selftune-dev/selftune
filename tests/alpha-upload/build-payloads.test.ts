@@ -19,8 +19,11 @@ function createTestDb(): Database {
   for (const m of MIGRATIONS) {
     try {
       db.run(m);
-    } catch {
-      /* duplicate column OK */
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes("duplicate column")) {
+        throw error;
+      }
     }
   }
   for (const idx of POST_MIGRATION_INDEXES) {
@@ -38,7 +41,7 @@ function stageRecord(
   opts: {
     record_kind: string;
     record_id: string;
-    record_json: Record<string, unknown>;
+    record_json: unknown;
     session_id?: string;
     prompt_id?: string;
     normalized_at?: string;
@@ -51,7 +54,7 @@ function stageRecord(
     [
       opts.record_kind,
       opts.record_id,
-      JSON.stringify(opts.record_json),
+      typeof opts.record_json === "string" ? opts.record_json : JSON.stringify(opts.record_json),
       opts.session_id ?? null,
       opts.prompt_id ?? null,
       opts.normalized_at ?? new Date().toISOString(),
@@ -140,6 +143,7 @@ function makeExecutionFactJson(sessionId: string) {
 
 function makeEvolutionEvidenceJson(proposalId: string) {
   return {
+    timestamp: "2026-03-18T10:10:00.000Z",
     skill_name: "selftune",
     proposal_id: proposalId,
     target: "description",
@@ -190,7 +194,7 @@ describe("buildV2PushPayload (staging-based)", () => {
     const result = buildV2PushPayload(db);
     expect(result).not.toBeNull();
 
-    const payload = result!.payload;
+    const payload = result?.payload;
     expect(payload.schema_version).toBe("2.0");
     expect(payload.push_id).toBeDefined();
     expect(typeof payload.push_id).toBe("string");
@@ -205,7 +209,7 @@ describe("buildV2PushPayload (staging-based)", () => {
     });
 
     const result = buildV2PushPayload(db);
-    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const canonical = result?.payload.canonical as Record<string, unknown[]>;
     const sessions = canonical.sessions;
 
     expect(sessions).toHaveLength(1);
@@ -229,7 +233,7 @@ describe("buildV2PushPayload (staging-based)", () => {
     });
 
     const result = buildV2PushPayload(db);
-    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const canonical = result?.payload.canonical as Record<string, unknown[]>;
     const prompts = canonical.prompts;
 
     expect(prompts).toHaveLength(1);
@@ -248,7 +252,7 @@ describe("buildV2PushPayload (staging-based)", () => {
     });
 
     const result = buildV2PushPayload(db);
-    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const canonical = result?.payload.canonical as Record<string, unknown[]>;
     const invocations = canonical.skill_invocations;
 
     expect(invocations).toHaveLength(1);
@@ -268,7 +272,7 @@ describe("buildV2PushPayload (staging-based)", () => {
     });
 
     const result = buildV2PushPayload(db);
-    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const canonical = result?.payload.canonical as Record<string, unknown[]>;
     const facts = canonical.execution_facts;
 
     expect(facts).toHaveLength(1);
@@ -287,7 +291,7 @@ describe("buildV2PushPayload (staging-based)", () => {
     });
 
     const result = buildV2PushPayload(db);
-    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const canonical = result?.payload.canonical as Record<string, unknown[]>;
     const evidence = canonical.evolution_evidence;
 
     expect(evidence).toHaveLength(1);
@@ -314,10 +318,10 @@ describe("buildV2PushPayload (staging-based)", () => {
 
     const first = buildV2PushPayload(db);
     expect(first).not.toBeNull();
-    expect(first!.lastSeq).toBeGreaterThan(0);
+    expect(first?.lastSeq).toBeGreaterThan(0);
 
     // Second call with cursor from first should get nothing
-    const second = buildV2PushPayload(db, first!.lastSeq);
+    const second = buildV2PushPayload(db, first?.lastSeq);
     expect(second).toBeNull();
   });
 
@@ -339,7 +343,7 @@ describe("buildV2PushPayload (staging-based)", () => {
     const result = buildV2PushPayload(db);
     expect(result).not.toBeNull();
 
-    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const canonical = result?.payload.canonical as Record<string, unknown[]>;
     expect(canonical.sessions).toHaveLength(1);
     expect(canonical.skill_invocations).toHaveLength(1);
     expect(canonical.prompts).toHaveLength(0);
@@ -361,7 +365,7 @@ describe("buildV2PushPayload (staging-based)", () => {
     });
 
     const result = buildV2PushPayload(db);
-    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const canonical = result?.payload.canonical as Record<string, unknown[]>;
     const session = canonical.sessions[0] as Record<string, unknown>;
 
     expect(session.record_kind).toBe("session");
@@ -400,7 +404,7 @@ describe("buildV2PushPayload (staging-based)", () => {
     const result = buildV2PushPayload(db);
     expect(result).not.toBeNull();
 
-    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const canonical = result?.payload.canonical as Record<string, unknown[]>;
     expect(canonical.orchestrate_runs).toBeDefined();
     expect(canonical.orchestrate_runs).toHaveLength(1);
 
@@ -437,7 +441,7 @@ describe("buildV2PushPayload (staging-based)", () => {
     const result = buildV2PushPayload(db);
     expect(result).not.toBeNull();
 
-    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const canonical = result?.payload.canonical as Record<string, unknown[]>;
     expect(canonical.sessions).toHaveLength(0);
     expect(canonical.orchestrate_runs).toHaveLength(1);
   });
@@ -455,7 +459,43 @@ describe("buildV2PushPayload (staging-based)", () => {
     const result = buildV2PushPayload(db, undefined, 3);
     expect(result).not.toBeNull();
 
-    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const canonical = result?.payload.canonical as Record<string, unknown[]>;
     expect(canonical.sessions).toHaveLength(3);
+  });
+
+  test("returns null when all staged rows have malformed record_json", () => {
+    stageRecord(db, {
+      record_kind: "session",
+      record_id: "bad-json-1",
+      record_json: "{not valid json",
+      session_id: "bad-json-1",
+    });
+
+    const result = buildV2PushPayload(db);
+    expect(result).toBeNull();
+  });
+
+  test("skips malformed staged rows and keeps valid rows in the same batch", () => {
+    stageRecord(db, {
+      record_kind: "session",
+      record_id: "bad-json-2",
+      record_json: "{not valid json",
+      session_id: "bad-json-2",
+    });
+    stageRecord(db, {
+      record_kind: "session",
+      record_id: "sess-valid-1",
+      record_json: makeSessionJson("sess-valid-1"),
+      session_id: "sess-valid-1",
+    });
+
+    const result = buildV2PushPayload(db);
+    expect(result).not.toBeNull();
+
+    const canonical = result?.payload.canonical as Record<string, unknown[]>;
+    expect(canonical.sessions).toHaveLength(1);
+    const session = canonical.sessions[0] as Record<string, unknown>;
+    expect(session.session_id).toBe("sess-valid-1");
+    expect(result?.lastSeq).toBeGreaterThan(0);
   });
 });

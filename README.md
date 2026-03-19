@@ -125,6 +125,7 @@ Your agent runs these — you just say what you want ("improve my skills", "show
 | **auto** | `selftune cron setup` | Install OS-level scheduling (cron/launchd/systemd) |
 | | `selftune watch --skill <name>` | Monitor after deploy. Auto-rollback on regression. |
 | **other** | `selftune telemetry` | Manage anonymous usage analytics (status, enable, disable) |
+| | `selftune alpha upload` | Run a manual alpha upload cycle and emit a JSON send summary |
 
 Full command reference: `selftune --help`
 

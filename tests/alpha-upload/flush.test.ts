@@ -65,14 +65,17 @@ function createMockQueue(
       pendingItems = pendingItems.filter((i) => !result.some((r) => r.id === i.id));
       return result;
     },
-    markSending(id: number): void {
+    markSending(id: number): boolean {
       calls.markSending.push([id]);
+      return true;
     },
-    markSent(id: number): void {
+    markSent(id: number): boolean {
       calls.markSent.push([id]);
+      return true;
     },
-    markFailed(id: number, error?: string): void {
+    markFailed(id: number, error?: string): boolean {
       calls.markFailed.push([id, error]);
+      return true;
     },
   };
 }
@@ -116,9 +119,12 @@ describe("uploadPushPayload", () => {
     await uploadPushPayload(payload, "https://api.example.com/api/v1/push");
 
     expect(capturedHeaders).not.toBeNull();
-    expect(capturedHeaders!.get("Content-Type")).toBe("application/json");
-    expect(capturedHeaders!.get("User-Agent")).toMatch(/^selftune\//);
-    expect(capturedHeaders!.get("Authorization")).toBeNull();
+    if (capturedHeaders === null) {
+      throw new Error("fetch was not called - capturedHeaders is null");
+    }
+    expect(capturedHeaders.get("Content-Type")).toBe("application/json");
+    expect(capturedHeaders.get("User-Agent")).toMatch(/^selftune\//);
+    expect(capturedHeaders.get("Authorization")).toBeNull();
   });
 
   test("sends Authorization header when API key is provided", async () => {
@@ -134,7 +140,11 @@ describe("uploadPushPayload", () => {
 
     await uploadPushPayload(payload, "https://api.example.com/api/v1/push", "my-secret-key");
 
-    expect(capturedHeaders!.get("Authorization")).toBe("Bearer my-secret-key");
+    expect(capturedHeaders).not.toBeNull();
+    if (capturedHeaders === null) {
+      throw new Error("fetch was not called - capturedHeaders is null");
+    }
+    expect(capturedHeaders.get("Authorization")).toBe("Bearer my-secret-key");
   });
 
   test("sends POST with JSON body containing schema_version 2.0", async () => {
@@ -153,9 +163,26 @@ describe("uploadPushPayload", () => {
     await uploadPushPayload(payload, "https://api.example.com/api/v1/push");
 
     expect(capturedMethod).toBe("POST");
-    const parsed = JSON.parse(capturedBody!);
+    if (capturedBody === undefined) {
+      throw new Error("fetch was not called - capturedBody is undefined");
+    }
+    const parsed = JSON.parse(capturedBody);
     expect(parsed.schema_version).toBe("2.0");
     expect(parsed.canonical).toBeDefined();
+  });
+
+  test("returns error result on invalid JSON response shape", async () => {
+    const payload = makePayload();
+    globalThis.fetch = mock(
+      async () =>
+        new Response(JSON.stringify({ success: "yes", errors: "nope" }), {
+          status: 200,
+        }),
+    );
+
+    const result = await uploadPushPayload(payload, "https://api.example.com/api/v1/push");
+    expect(result.success).toBe(false);
+    expect(result.errors[0]).toContain("Invalid JSON response shape");
   });
 
   test("returns error result on 4xx response", async () => {
@@ -257,7 +284,12 @@ describe("flushQueue", () => {
     expect(summary.failed).toBe(1);
     expect(callCount).toBe(1); // No retries
     expect(queue.calls.markFailed.length).toBe(1);
-    const errorMsg = queue.calls.markFailed[0]![1] as string;
+    const firstFailure = queue.calls.markFailed[0];
+    expect(firstFailure).toBeDefined();
+    if (!firstFailure) {
+      throw new Error("queue.markFailed was not called");
+    }
+    const errorMsg = firstFailure[1] as string;
     expect(errorMsg).toContain("Authentication failed");
     expect(errorMsg).toContain("API key");
   });
@@ -278,8 +310,14 @@ describe("flushQueue", () => {
 
     expect(summary.failed).toBe(1);
     expect(callCount).toBe(1); // No retries
-    const errorMsg = queue.calls.markFailed[0]![1] as string;
+    const firstFailure = queue.calls.markFailed[0];
+    expect(firstFailure).toBeDefined();
+    if (!firstFailure) {
+      throw new Error("queue.markFailed was not called");
+    }
+    const errorMsg = firstFailure[1] as string;
     expect(errorMsg).toContain("Authorization denied");
+    expect(errorMsg).toContain("selftune doctor");
   });
 
   test("passes API key through to uploadPushPayload", async () => {
@@ -298,7 +336,11 @@ describe("flushQueue", () => {
       apiKey: "test-api-key",
     });
 
-    expect(capturedHeaders!.get("Authorization")).toBe("Bearer test-api-key");
+    expect(capturedHeaders).not.toBeNull();
+    if (capturedHeaders === null) {
+      throw new Error("fetch was not called - capturedHeaders is null");
+    }
+    expect(capturedHeaders.get("Authorization")).toBe("Bearer test-api-key");
   });
 
   test("marks items as failed when upload fails", async () => {

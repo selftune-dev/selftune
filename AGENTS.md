@@ -28,7 +28,7 @@ The CLI (`cli/selftune/`) is the **agent's API**. The skill definition (`skill/S
 ```text
 selftune/
 ├── cli/selftune/            # TypeScript package — the CLI
-│   ├── index.ts             # CLI entry point
+│   ├── index.ts             # CLI entry point (status, doctor, alpha upload, etc.)
 │   ├── init.ts              # Agent identity bootstrap + config init
 │   ├── sync.ts              # Source-truth sync orchestration
 │   ├── orchestrate.ts       # Autonomy-first loop: sync → evolve → watch

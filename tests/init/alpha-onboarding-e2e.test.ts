@@ -102,7 +102,7 @@ describe("Agent-first alpha onboarding E2E", () => {
           alphaKey: "bad_key_format",
         }),
       ),
-    ).toThrow("invalid_api_key_format");
+    ).toThrow("API key must start with 'st_live_' or 'st_test_'");
   });
 
   test("link state transitions are correct", () => {
