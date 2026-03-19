@@ -35,7 +35,6 @@ import type { SkillStatus, StatusResult } from "./status.js";
 import { computeStatus } from "./status.js";
 import type { SyncResult } from "./sync.js";
 import { createDefaultSyncOptions, syncSources } from "./sync.js";
-import { getSelftuneVersion, readConfiguredAgentType } from "./utils/selftune-meta.js";
 import type {
   EvolutionAuditEntry,
   ImprovementSignalRecord,
@@ -45,6 +44,7 @@ import type {
 } from "./types.js";
 import { readJsonl } from "./utils/jsonl.js";
 import { detectAgent } from "./utils/llm-call.js";
+import { getSelftuneVersion, readConfiguredAgentType } from "./utils/selftune-meta.js";
 import {
   findInstalledSkillPath,
   findRepositoryClaudeSkillDirs,

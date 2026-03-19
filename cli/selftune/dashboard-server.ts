@@ -357,7 +357,7 @@ export async function startDashboardServer(
           watcher_mode: getWatcherMode(),
           process_mode: runtimeMode,
           host: hostname,
-          port: server.port,
+          port: boundPort,
         };
         return Response.json(healthResponse, { headers: corsHeaders() });
       }

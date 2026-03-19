@@ -662,6 +662,7 @@ Output:
 
         console.log(JSON.stringify(result, null, 2));
         process.exit(result.failed > 0 ? 1 : 0);
+        break;
       }
       default:
         console.error(

@@ -167,7 +167,7 @@ describe("runInit with alpha", () => {
 
   test("throws error when alpha=true but no email provided", () => {
     const opts = makeInitOpts({ alpha: true });
-    expect(() => runInit(opts)).toThrow("alpha_email_required");
+    expect(() => runInit(opts)).toThrow("--alpha-email flag is required");
   });
 
   test("--no-alpha sets enrolled=false but preserves user_id", () => {
