@@ -126,8 +126,8 @@ The dashboard displays data from these sources:
 | Unmatched | Computed | Queries that did not trigger any skill |
 | Pending | Computed | Evolution proposals not yet deployed, rejected, or rolled back |
 
-If no log data is found, the static modes exit with an error message
-listing the checked file paths.
+If no log data is found, the server reports an error listing the
+checked file paths.
 
 ## Steps
 

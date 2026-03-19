@@ -50,7 +50,7 @@ Both systems target the same cloud API, but alpha upload is automatic (when enro
 
 Alpha uploads are sent to the cloud API's V2 push endpoint:
 
-```
+```text
 POST https://api.selftune.dev/api/v1/push
 ```
 
@@ -80,7 +80,7 @@ Each alpha user authenticates with an `st_live_*` API key:
 
 Every upload request includes the API key as a Bearer token:
 
-```
+```text
 Authorization: Bearer st_live_abc123...
 ```
 
@@ -264,7 +264,7 @@ After 5 failed attempts, the queue item stays at `status = 'failed'` and is not 
 
 Before any network call, the upload module performs this check:
 
-```
+```python
 config = readFreshConfig()  // NOT cached, read from disk each time
 if config.alpha?.enrolled !== true:
     return  // silently skip upload

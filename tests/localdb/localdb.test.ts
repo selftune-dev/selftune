@@ -424,6 +424,7 @@ describe("writeEvolutionAuditToDb iterations_used", () => {
   });
 
   afterEach(() => {
+    db.close();
     _setTestDb(null);
   });
 

@@ -62,7 +62,7 @@ The right sequence is:
 
 ## Recommendation on the Existing Recovery Plan
 
-**Do not start the full** [dashboard-data-integrity-recovery.md](/Users/danielpetro/conductor/workspaces/selftune/miami/docs/exec-plans/active/dashboard-data-integrity-recovery.md) **first.**
+**Do not start the full** [dashboard-data-integrity-recovery.md](dashboard-data-integrity-recovery.md) **first.**
 
 Start only the parts of it that are direct alpha prerequisites:
 
@@ -82,8 +82,9 @@ Reason: Ray’s synthesis says the bottleneck is confidence from data, not more 
 
 ## Planning Inputs
 
-- [office-hours-2026-03-18-synthesis.md](/Users/danielpetro/Documents/Projects/FOSS/selftune/strategy/office-hours-2026-03-18-synthesis.md)
-- [dashboard-data-integrity-recovery.md](/Users/danielpetro/conductor/workspaces/selftune/miami/docs/exec-plans/active/dashboard-data-integrity-recovery.md)
+- office-hours-2026-03-18-synthesis.md (external strategy document)
+- [dashboard-data-integrity-recovery.md](dashboard-data-integrity-recovery.md)
+- [cloud-auth-unification-for-alpha.md](cloud-auth-unification-for-alpha.md)
 
 ---
 
@@ -246,7 +247,7 @@ This phase is the minimum cut of the dashboard recovery work required before rec
 
 **Primary outcome:** Daniel can turn alpha data into learning, not just storage.
 
-Detailed spike: [phase-d-marginal-case-review-spike.md](/Users/danielpetro/conductor/workspaces/selftune/miami/docs/exec-plans/active/phase-d-marginal-case-review-spike.md)
+Detailed spike: [phase-d-marginal-case-review-spike.md](phase-d-marginal-case-review-spike.md)
 
 **Changes:**
 

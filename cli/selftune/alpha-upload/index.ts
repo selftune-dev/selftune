@@ -86,15 +86,18 @@ export function prepareUploads(
 
     if (!build) return result;
 
-    // Step 4: Enqueue the payload
-    const ok = enqueueUpload(db, "push", JSON.stringify(build.payload));
-    if (ok) {
-      result.enqueued = 1;
-      result.types.push("canonical");
+    // Step 4: Enqueue the payload + advance watermark atomically
+    const tx = db.transaction(() => {
+      const ok = enqueueUpload(db, "push", JSON.stringify(build.payload));
+      if (ok) {
+        result.enqueued = 1;
+        result.types.push("canonical");
 
-      // Step 5: Advance the watermark
-      writeWatermark(db, "canonical", build.lastSeq);
-    }
+        // Step 5: Advance the watermark
+        writeWatermark(db, "canonical", build.lastSeq);
+      }
+    });
+    tx();
   } catch (err) {
     if (process.env.DEBUG || process.env.NODE_ENV === "development") {
       console.error("[alpha-upload] prepareUploads failed:", err);

@@ -134,7 +134,14 @@ function requireExcludes(
 
 function validateAgent(spec: AgentSpec, failures: ValidationFailure[]): void {
   const filePath = join(repoRoot, spec.file);
-  const content = readFileSync(filePath, "utf8");
+  let content: string;
+  try {
+    content = readFileSync(filePath, "utf8");
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    failures.push({ file: spec.file, message: `Failed to read file: ${msg}` });
+    return;
+  }
   const frontmatter = getFrontmatterBlock(content);
 
   if (!frontmatter) {
@@ -206,7 +213,14 @@ function validateAgent(spec: AgentSpec, failures: ValidationFailure[]): void {
 
 function validateSkillSummary(failures: ValidationFailure[]): void {
   const file = "skill/SKILL.md";
-  const content = readFileSync(join(repoRoot, file), "utf8");
+  let content: string;
+  try {
+    content = readFileSync(join(repoRoot, file), "utf8");
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    failures.push({ file, message: `Failed to read file: ${msg}` });
+    return;
+  }
 
   requireIncludes(failures, file, content, "Treat these as worker-style subagents:");
   for (const agent of agents) {

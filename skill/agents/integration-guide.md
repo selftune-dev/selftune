@@ -65,7 +65,7 @@ selftune doctor
 
 Check:
 - whether the CLI exists
-- whether `~/.selftune/config.json` exists and looks current
+- whether `config.json` exists and looks current (resolve via `SELFTUNE_CONFIG_DIR` or `SELFTUNE_HOME` env vars first, falling back to `~/.selftune/`; run `selftune doctor` to confirm the resolved path)
 - whether hooks or ingest paths are healthy
 - whether logs already exist
 

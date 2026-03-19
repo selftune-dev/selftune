@@ -25,10 +25,13 @@ function createTestDb(): Database {
   const db = new Database(":memory:");
   for (const ddl of ALL_DDL) db.run(ddl);
   for (const m of MIGRATIONS) {
-    try { db.run(m); } catch { /* duplicate column OK */ }
+    try { db.run(m); } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!msg.includes("duplicate column")) throw e;
+    }
   }
   for (const idx of POST_MIGRATION_INDEXES) {
-    try { db.run(idx); } catch { /* already exists OK */ }
+    db.run(idx);
   }
   return db;
 }
@@ -566,11 +569,12 @@ describe("buildV2PushPayload (staging-based)", () => {
     const result = buildV2PushPayload(db);
     expect(result).not.toBeNull();
 
-    const payload = result!.payload;
+    expect(result).toBeDefined();
+    const payload = result?.payload;
     expect(payload.schema_version).toBe("2.0");
     expect(payload.push_id).toBeDefined();
 
-    const canonical = payload.canonical as Record<string, unknown[]>;
+    const canonical = payload?.canonical as Record<string, unknown[]>;
     expect(canonical.sessions).toHaveLength(1);
     expect(canonical.prompts).toHaveLength(1);
     expect(canonical.skill_invocations).toHaveLength(1);
@@ -586,10 +590,11 @@ describe("buildV2PushPayload (staging-based)", () => {
 
     const first = buildV2PushPayload(db);
     expect(first).not.toBeNull();
-    expect(first!.lastSeq).toBeGreaterThan(0);
+    expect(first).toBeDefined();
+    expect(first?.lastSeq).toBeGreaterThan(0);
 
     // Second call with cursor from first should return null
-    const second = buildV2PushPayload(db, first!.lastSeq);
+    const second = buildV2PushPayload(db, first?.lastSeq);
     expect(second).toBeNull();
   });
 
@@ -602,8 +607,9 @@ describe("buildV2PushPayload (staging-based)", () => {
 
     const result = buildV2PushPayload(db, undefined, 3);
     expect(result).not.toBeNull();
+    expect(result).toBeDefined();
 
-    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const canonical = result?.payload.canonical as Record<string, unknown[]>;
     expect(canonical.sessions).toHaveLength(3);
   });
 
@@ -619,8 +625,9 @@ describe("buildV2PushPayload (staging-based)", () => {
 
     const result = buildV2PushPayload(db);
     expect(result).not.toBeNull();
+    expect(result).toBeDefined();
 
-    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const canonical = result?.payload.canonical as Record<string, unknown[]>;
     expect(canonical.evolution_evidence).toHaveLength(1);
     const ev = canonical.evolution_evidence[0] as Record<string, unknown>;
     expect(ev.skill_name).toBe("selftune");
@@ -647,8 +654,9 @@ describe("buildV2PushPayload (staging-based)", () => {
 
     const result = buildV2PushPayload(db);
     expect(result).not.toBeNull();
+    expect(result).toBeDefined();
 
-    const parsed = PushPayloadV2Schema.safeParse(result!.payload);
+    const parsed = PushPayloadV2Schema.safeParse(result?.payload);
     if (!parsed.success) {
       console.error("Zod validation errors:", JSON.stringify(parsed.error.issues, null, 2));
     }
@@ -685,8 +693,9 @@ describe("buildV2PushPayload (staging-based)", () => {
     stageCanonicalRecords(db, logPath);
     const result = buildV2PushPayload(db);
     expect(result).not.toBeNull();
+    expect(result).toBeDefined();
 
-    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    const canonical = result?.payload.canonical as Record<string, unknown[]>;
     expect(canonical.orchestrate_runs).toBeDefined();
     expect(canonical.orchestrate_runs).toHaveLength(1);
 
@@ -708,7 +717,8 @@ describe("buildV2PushPayload (staging-based)", () => {
     stageCanonicalRecords(db, logPath);
 
     const result = buildV2PushPayload(db);
-    const canonical = result!.payload.canonical as Record<string, unknown[]>;
+    expect(result).toBeDefined();
+    const canonical = result?.payload.canonical as Record<string, unknown[]>;
     const s = canonical.sessions[0] as Record<string, unknown>;
 
     // These should come from the original record, NOT be hardcoded

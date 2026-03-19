@@ -322,7 +322,7 @@ Use `--agent <name>` to override (claude, codex, opencode).
 
 ## Subagent Escalation
 
-For high-stakes evolutions, read `agents/evolution-reviewer.md` and spawn a
+For high-stakes evolutions, read `skill/agents/evolution-reviewer.md` and spawn a
 subagent with those instructions to review the proposal before deploying.
 This is especially valuable when the skill has a history of regressions,
 the evolution touches many trigger phrases, or the confidence score is near

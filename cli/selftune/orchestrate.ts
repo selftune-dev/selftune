@@ -444,14 +444,14 @@ function defaultResolveSkillPath(skillName: string): string | undefined {
  *
  * @internal Exported solely for unit testing.
  */
-export function detectCrossSkillOverlap(
+export async function detectCrossSkillOverlap(
   candidates: Array<{ skill: string }>,
   skillRecords: SkillUsageRecord[],
   queryRecords: QueryLogRecord[],
-): Array<{ skill_a: string; skill_b: string; overlap_pct: number; shared_queries: string[] }> {
+): Promise<Array<{ skill_a: string; skill_b: string; overlap_pct: number; shared_queries: string[] }>> {
   if (candidates.length < 2) return [];
 
-  const { buildEvalSet } = require("./eval/hooks-to-evals.js");
+  const { buildEvalSet } = await import("./eval/hooks-to-evals.js");
 
   const evalSets = new Map<string, Set<string>>();
 
@@ -796,7 +796,7 @@ export async function orchestrate(
     // Cross-skill overlap detection (console-only, non-critical)
     if (evolveCandidates.length >= 2) {
       try {
-        const overlap = detectCrossSkillOverlap(evolveCandidates, skillRecords, queryRecords);
+        const overlap = await detectCrossSkillOverlap(evolveCandidates, skillRecords, queryRecords);
         if (overlap.length > 0) {
           console.error("\n[orchestrate] Cross-skill eval overlap detected:");
           for (const o of overlap) {
@@ -1007,7 +1007,14 @@ export async function orchestrate(
           enrolled: true,
           userId: alphaIdentity.user_id,
           agentType: "claude_code",
-          selftuneVersion: "0.2.7",
+          selftuneVersion: (() => {
+            try {
+              const pkg = JSON.parse(readFileSync(join(import.meta.dir, "../package.json"), "utf-8"));
+              return pkg.version ?? "0.0.0";
+            } catch {
+              return "0.0.0";
+            }
+          })(),
           dryRun: options.dryRun,
           apiKey: alphaIdentity.api_key,
         });

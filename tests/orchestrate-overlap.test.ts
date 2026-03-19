@@ -38,7 +38,7 @@ function makeQueryRecord(query: string): QueryLogRecord {
 // ---------------------------------------------------------------------------
 
 describe("detectCrossSkillOverlap", () => {
-  test("detects overlap when two skills share >30% queries", () => {
+  test("detects overlap when two skills share >30% queries", async () => {
     // Skill A: queries 1-5
     // Skill B: queries 3-7
     // Shared: 3, 4, 5 = 3 out of min(5,5) = 60% overlap
@@ -66,7 +66,7 @@ describe("detectCrossSkillOverlap", () => {
     ];
 
     const candidates = [{ skill: "SkillA" }, { skill: "SkillB" }];
-    const result = detectCrossSkillOverlap(candidates, skillRecords, queryRecords);
+    const result = await detectCrossSkillOverlap(candidates, skillRecords, queryRecords);
 
     expect(result.length).toBe(1);
     expect(result[0].skill_a).toBe("SkillA");
@@ -78,7 +78,7 @@ describe("detectCrossSkillOverlap", () => {
     expect(result[0].shared_queries).toContain("update the config");
   });
 
-  test("returns empty array when skills have disjoint queries", () => {
+  test("returns empty array when skills have disjoint queries", async () => {
     const skillRecords: SkillUsageRecord[] = [
       makeSkillRecord("SkillA", "deploy the app"),
       makeSkillRecord("SkillA", "run the tests"),
@@ -98,17 +98,17 @@ describe("detectCrossSkillOverlap", () => {
     ];
 
     const candidates = [{ skill: "SkillA" }, { skill: "SkillB" }];
-    const result = detectCrossSkillOverlap(candidates, skillRecords, queryRecords);
+    const result = await detectCrossSkillOverlap(candidates, skillRecords, queryRecords);
 
     expect(result).toEqual([]);
   });
 
-  test("returns empty array with empty candidates", () => {
-    const result = detectCrossSkillOverlap([], [], []);
+  test("returns empty array with empty candidates", async () => {
+    const result = await detectCrossSkillOverlap([], [], []);
     expect(result).toEqual([]);
   });
 
-  test("returns empty array with single candidate", () => {
+  test("returns empty array with single candidate", async () => {
     const skillRecords: SkillUsageRecord[] = [
       makeSkillRecord("SkillA", "deploy the app"),
     ];
@@ -117,12 +117,12 @@ describe("detectCrossSkillOverlap", () => {
     ];
 
     const candidates = [{ skill: "SkillA" }];
-    const result = detectCrossSkillOverlap(candidates, skillRecords, queryRecords);
+    const result = await detectCrossSkillOverlap(candidates, skillRecords, queryRecords);
 
     expect(result).toEqual([]);
   });
 
-  test("caps shared_queries at 10 entries", () => {
+  test("caps shared_queries at 10 entries", async () => {
     // Create two skills that share 15 queries
     const sharedQueries = Array.from({ length: 15 }, (_, i) => `shared query number ${i + 1}`);
     const skillRecords: SkillUsageRecord[] = [
@@ -132,7 +132,7 @@ describe("detectCrossSkillOverlap", () => {
     const queryRecords: QueryLogRecord[] = sharedQueries.map((q) => makeQueryRecord(q));
 
     const candidates = [{ skill: "SkillA" }, { skill: "SkillB" }];
-    const result = detectCrossSkillOverlap(candidates, skillRecords, queryRecords);
+    const result = await detectCrossSkillOverlap(candidates, skillRecords, queryRecords);
 
     expect(result.length).toBe(1);
     expect(result[0].shared_queries.length).toBe(10);

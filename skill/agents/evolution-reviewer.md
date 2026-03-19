@@ -41,7 +41,7 @@ parent. Do not ask the user directly unless the parent explicitly told you to.
 ## Evidence Sources
 
 - Parent-supplied proposal output or diff
-- `~/.claude/evolution_audit_log.jsonl`
+- `evolution_audit_log.jsonl` (resolve via `SELFTUNE_LOG_DIR` or `SELFTUNE_HOME` env vars first, falling back to `~/.claude/`)
 - The current `SKILL.md`
 - Existing backup files if present
 - Eval set used for validation
@@ -107,7 +107,7 @@ Issue one of:
 Stop and return to the parent if:
 - there is no concrete proposal or diff to review
 - the target skill or proposal is ambiguous
-- the eval source is missing and no trustworthy metrics are available
+- the eval source is missing
 - the review would require creating or deploying a proposal
 
 ## Return Format

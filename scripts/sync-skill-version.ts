@@ -14,8 +14,14 @@ const pkgVersion: string = JSON.parse(
 const skillPath = join(root, "skill", "SKILL.md");
 const content = readFileSync(skillPath, "utf-8");
 
+const versionRegex = /^(\s*version:\s*).+$/m;
+if (!versionRegex.test(content)) {
+  console.error(`ERROR: No version frontmatter found in ${skillPath}`);
+  process.exit(1);
+}
+
 const updated = content.replace(
-  /^(\s*version:\s*).+$/m,
+  versionRegex,
   `$1${pkgVersion}`,
 );
 

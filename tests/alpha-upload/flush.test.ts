@@ -320,9 +320,10 @@ describe("flushQueue", () => {
       maxRetries: 5,
     });
 
-    expect(summary.skipped).toBe(1);
+    expect(summary.failed).toBe(1);
     expect(summary.sent).toBe(0);
     expect(queue.calls.markSending.length).toBe(0);
+    expect(queue.calls.markFailed.length).toBe(1);
   });
 
   test("respects batchSize option", async () => {

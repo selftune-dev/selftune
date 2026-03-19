@@ -29,7 +29,7 @@ export type AlphaPayloadType =
 
 export interface QueueItem {
   id: number;
-  payload_type: string;
+  payload_type: AlphaPayloadType;
   payload_json: string;
   status: QueueItemStatus;
   attempts: number;

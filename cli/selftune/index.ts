@@ -619,11 +619,17 @@ Output:
         }
 
         const db = getDb();
+        const { join } = await import("node:path");
+        const { readFileSync } = await import("node:fs");
+        const selftuneVersion: string = JSON.parse(
+          readFileSync(join(import.meta.dir, "../../package.json"), "utf-8"),
+        ).version;
+
         const result = await runUploadCycle(db, {
           enrolled: true,
           userId: identity.user_id,
           agentType: "claude_code",
-          selftuneVersion: "0.2.7",
+          selftuneVersion,
           dryRun: values["dry-run"] ?? false,
           apiKey: identity.api_key,
         });

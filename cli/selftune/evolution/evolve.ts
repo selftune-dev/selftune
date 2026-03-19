@@ -631,6 +631,17 @@ export async function evolve(
         if (!constitution.passed) {
           feedbackReason = `Constitutional: ${constitution.violations.join("; ")}`;
           recordAudit(proposal.proposal_id, "rejected", feedbackReason);
+          recordEvidence({
+            timestamp: new Date().toISOString(),
+            proposal_id: proposal.proposal_id,
+            skill_name: skillName,
+            skill_path: skillPath,
+            target: "description",
+            stage: "rejected",
+            rationale: proposal.rationale,
+            confidence: proposal.confidence,
+            details: feedbackReason,
+          });
           if (iteration === maxIterations - 1) {
             finishTui();
             return withStats({

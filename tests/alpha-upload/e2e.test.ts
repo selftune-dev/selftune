@@ -673,7 +673,7 @@ describe("e2e: status visibility after uploads", () => {
       ["push", twoHoursAgo, twoHoursAgo],
     );
 
-    const checks = checkAlphaQueueHealth(db, true);
+    const checks = await checkAlphaQueueHealth(db, true);
     const stuckCheck = checks.find((c) => c.name === "alpha_queue_stuck");
     expect(stuckCheck).toBeDefined();
     expect(stuckCheck!.status).toBe("warn");
@@ -700,7 +700,7 @@ describe("e2e: status visibility after uploads", () => {
       canonicalLogPath: "/nonexistent/canonical.jsonl",
     });
 
-    const checks = checkAlphaQueueHealth(db, true);
+    const checks = await checkAlphaQueueHealth(db, true);
     expect(checks.every((c) => c.status === "pass")).toBe(true);
   });
 });

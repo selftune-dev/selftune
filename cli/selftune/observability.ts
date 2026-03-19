@@ -292,15 +292,15 @@ export interface AlphaQueueCheckOptions {
  * Check alpha upload queue health.
  * Returns empty array when not enrolled (checks are skipped).
  */
-export function checkAlphaQueueHealth(
+export async function checkAlphaQueueHealth(
   db: import("bun:sqlite").Database,
   enrolled: boolean,
   opts?: AlphaQueueCheckOptions,
-): HealthCheck[] {
+): Promise<HealthCheck[]> {
   if (!enrolled) return [];
 
-  const { getQueueStats } = require("./alpha-upload/queue.js") as typeof import("./alpha-upload/queue.js");
-  const { getOldestPendingAge } = require("./localdb/queries.js") as typeof import("./localdb/queries.js");
+  const { getQueueStats } = await import("./alpha-upload/queue.js");
+  const { getOldestPendingAge } = await import("./localdb/queries.js");
 
   const checks: HealthCheck[] = [];
   const stuckThreshold = opts?.stuckThresholdSeconds ?? ALPHA_STUCK_THRESHOLD_SECONDS;

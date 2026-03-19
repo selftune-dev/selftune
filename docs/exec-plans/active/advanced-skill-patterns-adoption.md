@@ -41,7 +41,7 @@ This plan therefore splits the work into two tracks:
 
 ### Already using advanced package patterns
 
-- [skill/SKILL.md](/Users/danielpetro/conductor/workspaces/selftune/miami/skill/SKILL.md) is a routing surface, not a monolithic prompt blob
+- [skill/SKILL.md](skill/SKILL.md) is a routing surface, not a monolithic prompt blob
 - `skill/Workflows/*.md` contains per-workflow execution playbooks
 - `skill/references/*.md` contains heavy reference material loaded on demand
 - `skill/assets/*.json` contains reusable setup/config templates
@@ -49,7 +49,7 @@ This plan therefore splits the work into two tracks:
 
 ### Not yet using platform-native skill controls
 
-- Main [skill/SKILL.md](/Users/danielpetro/conductor/workspaces/selftune/miami/skill/SKILL.md#L1) only uses `name`, `description`, and `metadata`
+- Main [skill/SKILL.md](skill/SKILL.md#L1) only uses `name`, `description`, and `metadata`
 - No `argument-hint`, `disable-model-invocation`, `user-invocable`, `allowed-tools`, `model`, `context`, `agent`, or `hooks` fields appear anywhere under `skill/`
 - No use of `$ARGUMENTS`, `${CLAUDE_SESSION_ID}`, or `${CLAUDE_SKILL_DIR}`
 - Subagent spawning is manual/instructional, not driven by `context: fork`

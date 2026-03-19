@@ -13,13 +13,12 @@ const openclawHomeDir =
   process.env.SELFTUNE_OPENCLAW_DIR
   ?? (resolvedHome ? join(defaultHome, ".openclaw") : join(homedir(), ".openclaw"));
 
-export const SELFTUNE_CONFIG_DIR = process.env.SELFTUNE_CONFIG_DIR
+export const SELFTUNE_CONFIG_DIR = (process.env.SELFTUNE_CONFIG_DIR || undefined)
   ?? (resolvedHome ? join(defaultHome, ".selftune") : join(homedir(), ".selftune"));
 
 export const SELFTUNE_CONFIG_PATH = join(SELFTUNE_CONFIG_DIR, "config.json");
 
-export const LOG_DIR = process.env.SELFTUNE_LOG_DIR
-  ?? (resolvedHome ? join(defaultHome, ".claude") : join(homedir(), ".claude"));
+export const LOG_DIR = (process.env.SELFTUNE_LOG_DIR || undefined) ?? claudeHomeDir;
 
 export const TELEMETRY_LOG = join(LOG_DIR, "session_telemetry_log.jsonl");
 export const SKILL_LOG = join(LOG_DIR, "skill_usage_log.jsonl");

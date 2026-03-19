@@ -36,16 +36,27 @@ export async function uploadPushPayload(
       method: "POST",
       headers,
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (response.ok) {
       try {
         return (await response.json()) as PushUploadResult;
       } catch {
+        // Only treat as success if the body is genuinely empty
+        const contentLength = response.headers.get("content-length");
+        const body = contentLength === "0" ? "" : await response.text().catch(() => "");
+        if (body.length === 0) {
+          return {
+            success: true,
+            push_id: (payload as { push_id?: string }).push_id,
+            errors: [],
+          };
+        }
         return {
-          success: true,
-          push_id: (payload as { push_id?: string }).push_id,
-          errors: [],
+          success: false,
+          errors: [`Unexpected non-JSON response body: ${body.slice(0, 200)}`],
+          _status: response.status,
         };
       }
     }

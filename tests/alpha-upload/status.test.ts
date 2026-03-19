@@ -5,7 +5,7 @@
 
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { ALL_DDL, CREATE_INDEXES } from "../../cli/selftune/localdb/schema.js";
+import { ALL_DDL } from "../../cli/selftune/localdb/schema.js";
 import {
   getLastUploadError,
   getLastUploadSuccess,
@@ -91,8 +91,8 @@ describe("getLastUploadError", () => {
 
     const result = getLastUploadError(db);
     expect(result).not.toBeNull();
-    expect(result!.last_error).toBe("newest error");
-    expect(result!.updated_at).toBe("2025-01-02T00:00:00Z");
+    expect(result?.last_error).toBe("newest error");
+    expect(result?.updated_at).toBe("2025-01-02T00:00:00Z");
   });
 });
 
@@ -118,7 +118,7 @@ describe("getLastUploadSuccess", () => {
 
     const result = getLastUploadSuccess(db);
     expect(result).not.toBeNull();
-    expect(result!.updated_at).toBe("2025-01-02T00:00:00Z");
+    expect(result?.updated_at).toBe("2025-01-02T00:00:00Z");
   });
 });
 
@@ -142,8 +142,8 @@ describe("getOldestPendingAge", () => {
     const age = getOldestPendingAge(db);
     expect(age).not.toBeNull();
     // Should be approximately 7200 seconds (2 hours), allow some tolerance
-    expect(age!).toBeGreaterThan(7100);
-    expect(age!).toBeLessThan(7300);
+    expect(age).toBeGreaterThan(7100);
+    expect(age).toBeLessThan(7300);
   });
 
   test("ignores non-pending items", () => {
@@ -165,57 +165,57 @@ describe("checkAlphaQueueHealth", () => {
   beforeEach(() => { db = createTestDb(); });
   afterEach(() => { db.close(); });
 
-  test("returns empty array when not enrolled", () => {
-    const checks = checkAlphaQueueHealth(db, false);
+  test("returns empty array when not enrolled", async () => {
+    const checks = await checkAlphaQueueHealth(db, false);
     expect(checks).toHaveLength(0);
   });
 
-  test("returns pass checks when queue is healthy", () => {
-    const checks = checkAlphaQueueHealth(db, true);
+  test("returns pass checks when queue is healthy", async () => {
+    const checks = await checkAlphaQueueHealth(db, true);
     expect(checks.length).toBeGreaterThan(0);
     expect(checks.every((c) => c.status === "pass")).toBe(true);
   });
 
-  test("warns when pending items older than 1 hour (alpha_queue_stuck)", () => {
+  test("warns when pending items older than 1 hour (alpha_queue_stuck)", async () => {
     const twoHoursAgo = new Date(Date.now() - 2 * 3600 * 1000).toISOString();
     insertQueueItem(db, { status: "pending", created_at: twoHoursAgo });
 
-    const checks = checkAlphaQueueHealth(db, true);
+    const checks = await checkAlphaQueueHealth(db, true);
     const stuckCheck = checks.find((c) => c.name === "alpha_queue_stuck");
     expect(stuckCheck).toBeDefined();
-    expect(stuckCheck!.status).toBe("warn");
+    expect(stuckCheck?.status).toBe("warn");
   });
 
-  test("passes when pending items are recent", () => {
+  test("passes when pending items are recent", async () => {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     insertQueueItem(db, { status: "pending", created_at: fiveMinutesAgo });
 
-    const checks = checkAlphaQueueHealth(db, true);
+    const checks = await checkAlphaQueueHealth(db, true);
     const stuckCheck = checks.find((c) => c.name === "alpha_queue_stuck");
     expect(stuckCheck).toBeDefined();
-    expect(stuckCheck!.status).toBe("pass");
+    expect(stuckCheck?.status).toBe("pass");
   });
 
-  test("warns when failed count exceeds 50 (alpha_queue_failures)", () => {
+  test("warns when failed count exceeds 50 (alpha_queue_failures)", async () => {
     for (let i = 0; i < 51; i++) {
       insertQueueItem(db, { status: "failed", last_error: `error ${i}` });
     }
 
-    const checks = checkAlphaQueueHealth(db, true);
+    const checks = await checkAlphaQueueHealth(db, true);
     const failCheck = checks.find((c) => c.name === "alpha_queue_failures");
     expect(failCheck).toBeDefined();
-    expect(failCheck!.status).toBe("warn");
+    expect(failCheck?.status).toBe("warn");
   });
 
-  test("passes when failed count is under threshold", () => {
+  test("passes when failed count is under threshold", async () => {
     for (let i = 0; i < 10; i++) {
       insertQueueItem(db, { status: "failed", last_error: `error ${i}` });
     }
 
-    const checks = checkAlphaQueueHealth(db, true);
+    const checks = await checkAlphaQueueHealth(db, true);
     const failCheck = checks.find((c) => c.name === "alpha_queue_failures");
     expect(failCheck).toBeDefined();
-    expect(failCheck!.status).toBe("pass");
+    expect(failCheck?.status).toBe("pass");
   });
 });
 

@@ -1,6 +1,6 @@
 # Interactive Configuration
 
-Before running mutating workflows (evolve, evolve-body, evals, baseline), present
+Before running mutating workflows (evolve, evolve-body, eval generate, baseline), present
 a pre-flight configuration prompt to the user. This gives them control over
 execution mode, model selection, and key parameters.
 

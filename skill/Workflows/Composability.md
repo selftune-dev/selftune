@@ -88,7 +88,7 @@ When conflict candidates are identified, present them to the user with recommend
 ## Subagent Escalation
 
 For deep cross-skill analysis beyond what the composability command provides,
-read `agents/pattern-analyst.md` and spawn a subagent with those instructions.
+read `skill/agents/pattern-analyst.md` and spawn a subagent with those instructions.
 This is useful when conflict scores are high (> 0.3) and you need a full
 resolution plan with trigger ownership recommendations.
 

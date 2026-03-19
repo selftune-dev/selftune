@@ -4,7 +4,7 @@
  * Uses in-memory SQLite via openDb(":memory:") for isolation.
  */
 
-import { describe, test, expect, beforeEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { openDb } from "../../cli/selftune/localdb/db.js";
 import {
   enqueueUpload,
@@ -22,6 +22,10 @@ let db: Database;
 
 beforeEach(() => {
   db = openDb(":memory:");
+});
+
+afterEach(() => {
+  db.close();
 });
 
 // -- enqueueUpload ------------------------------------------------------------

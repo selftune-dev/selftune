@@ -99,7 +99,8 @@ export async function flushQueue(
 
   for (const item of items) {
     if (item.attempts >= maxRetries) {
-      summary.skipped++;
+      queue.markFailed(item.id, "exhausted retries");
+      summary.failed++;
       continue;
     }
 

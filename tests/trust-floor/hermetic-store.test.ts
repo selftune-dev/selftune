@@ -39,16 +39,19 @@ describe("SELFTUNE_HOME environment override", () => {
       }));
     `;
 
+    const cleanEnv = { ...process.env };
+    delete cleanEnv.SELFTUNE_CONFIG_DIR;
+    delete cleanEnv.SELFTUNE_LOG_DIR;
+    cleanEnv.SELFTUNE_HOME = store.root;
+
     const result = Bun.spawnSync(["bun", "-e", script], {
-      env: {
-        ...process.env,
-        SELFTUNE_HOME: store.root,
-        // Clear specific overrides so SELFTUNE_HOME takes effect
-        SELFTUNE_CONFIG_DIR: undefined,
-        SELFTUNE_LOG_DIR: undefined,
-      },
+      env: cleanEnv,
       cwd: process.cwd(),
     });
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Subprocess failed: ${result.stderr.toString()}`);
+    }
 
     const stdout = result.stdout.toString().trim();
     expect(stdout.length).toBeGreaterThan(0);
@@ -87,6 +90,10 @@ describe("SELFTUNE_HOME environment override", () => {
       },
       cwd: process.cwd(),
     });
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Subprocess failed: ${result.stderr.toString()}`);
+    }
 
     const paths = JSON.parse(result.stdout.toString().trim());
     expect(paths.configDir).toBe(customConfig);

@@ -12,6 +12,7 @@
  */
 
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -538,6 +539,9 @@ export function runInit(opts: InitOptions): SelftuneConfig {
 
     config.alpha = identity;
     writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+    if (opts.alphaKey) {
+      chmodSync(configPath, 0o600);
+    }
   } else if (opts.noAlpha) {
     if (existingAlphaBeforeOverwrite) {
       const identity: AlphaIdentity = {
@@ -579,7 +583,8 @@ export async function cliMain(): Promise<void> {
   const enableAutonomy = values["enable-autonomy"] ?? false;
 
   // Check for existing config without force
-  if (!force && !enableAutonomy && existsSync(configPath)) {
+  const hasAlphaMutation = !!(values.alpha || values["no-alpha"] || values["alpha-email"] || values["alpha-name"] || values["alpha-key"]);
+  if (!force && !enableAutonomy && !hasAlphaMutation && existsSync(configPath)) {
     try {
       const raw = readFileSync(configPath, "utf-8");
       const existing = JSON.parse(raw) as SelftuneConfig;

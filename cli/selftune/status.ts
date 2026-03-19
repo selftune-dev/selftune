@@ -362,6 +362,7 @@ export function formatAlphaStatus(info: AlphaStatusInfo | null): string {
 
   lines.push("  Status:             enrolled");
   lines.push(`  Pending:            ${info.stats.pending}`);
+  lines.push(`  Sending:            ${info.stats.sending}`);
   lines.push(`  Failed:             ${info.stats.failed}`);
   lines.push(`  Sent:               ${info.stats.sent}`);
 

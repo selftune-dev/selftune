@@ -63,7 +63,7 @@ The process exits with code 0 if `healthy: true`, code 1 otherwise.
 ### Find Failed Checks
 
 ```bash
-# Parse: .checks[] | select(.status == "fail") | { name, detail }
+# Parse: .checks[] | select(.status == "fail") | { name, message }
 ```
 
 ### Get Summary Counts
@@ -155,14 +155,14 @@ After fixes, run doctor again to verify all checks pass.
 
 If doctor reveals persistent issues with a specific skill — especially
 recurring failures that basic fixes do not resolve — read
-`agents/diagnosis-analyst.md` and spawn a subagent with those instructions
+`skill/agents/diagnosis-analyst.md` and spawn a subagent with those instructions
 for root cause analysis.
 
 ## Common Patterns
 
 **User reports something seems broken**
 > Run `selftune doctor`. Parse the JSON output for failed checks. Report
-> each failure's `name` and `detail` to the user with the recommended fix.
+> each failure's `name` and `message` to the user with the recommended fix.
 
 **User asks if hooks are working**
 > Run `selftune doctor`. Parse `.checks[]` for hook-related entries. If

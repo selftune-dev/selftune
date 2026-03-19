@@ -53,11 +53,17 @@ const PROTECTED_TABLES = [
  * newer than the corresponding JSONL file. If found and `force` is not set,
  * throw an error so the user can export first.
  */
-function preflightRebuildGuard(db: Database, force?: boolean): void {
-  if (force) return;
+function preflightRebuildGuard(db: Database, options?: MaterializeOptions): void {
+  if (options?.force) return;
+
+  const protectedTables = [
+    { table: "evolution_audit", tsColumn: "timestamp", jsonlLog: options?.evolutionAuditPath ?? EVOLUTION_AUDIT_LOG },
+    { table: "evolution_evidence", tsColumn: "timestamp", jsonlLog: options?.evolutionEvidencePath ?? EVOLUTION_EVIDENCE_LOG },
+    { table: "orchestrate_runs", tsColumn: "timestamp", jsonlLog: options?.orchestrateRunLogPath ?? ORCHESTRATE_RUN_LOG },
+  ];
 
   const warnings: string[] = [];
-  for (const { table, tsColumn, jsonlLog } of PROTECTED_TABLES) {
+  for (const { table, tsColumn, jsonlLog } of protectedTables) {
     // Get newest timestamp in SQLite
     let sqliteMax: string | null = null;
     try {
@@ -125,7 +131,7 @@ const META_OFFSET_PREFIX = "file_offset:";
  * Full rebuild: drop all data tables, then re-insert everything.
  */
 export function materializeFull(db: Database, options?: MaterializeOptions): MaterializeResult {
-  preflightRebuildGuard(db, options?.force);
+  preflightRebuildGuard(db, options);
 
   const tables = [
     "session_telemetry",
@@ -468,6 +474,9 @@ function insertSessionTelemetry(db: Database, records: SessionTelemetryRecord[])
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(session_id) DO UPDATE SET
       timestamp = excluded.timestamp,
+      cwd = COALESCE(excluded.cwd, session_telemetry.cwd),
+      transcript_path = COALESCE(excluded.transcript_path, session_telemetry.transcript_path),
+      source = COALESCE(excluded.source, session_telemetry.source),
       tool_calls_json = excluded.tool_calls_json,
       total_tool_calls = excluded.total_tool_calls,
       bash_commands_json = excluded.bash_commands_json,
@@ -479,6 +488,7 @@ function insertSessionTelemetry(db: Database, records: SessionTelemetryRecord[])
       last_user_query = excluded.last_user_query,
       input_tokens = excluded.input_tokens,
       output_tokens = excluded.output_tokens
+    WHERE session_telemetry.timestamp IS NULL OR excluded.timestamp >= session_telemetry.timestamp
   `);
 
   let count = 0;

@@ -12,6 +12,7 @@ export interface AlphaIdentity {
   email?: string;
   display_name?: string;
   consent_timestamp: string;
+  /** Bearer token for alpha API. Stored in plaintext in config.json. */
   api_key?: string;
 }
 

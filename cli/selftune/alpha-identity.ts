@@ -51,8 +51,11 @@ export function writeAlphaIdentity(configPath: string, identity: AlphaIdentity):
   if (existsSync(configPath)) {
     try {
       config = JSON.parse(readFileSync(configPath, "utf-8"));
-    } catch {
-      // Corrupted config -- start fresh but preserve what we can
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Unable to update alpha identity: ${configPath} is not valid JSON (${message})`,
+      );
     }
   }
 
