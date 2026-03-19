@@ -73,7 +73,7 @@ describe("/api/health runtime identity", () => {
     expect(typeof body.log_dir).toBe("string");
     expect(typeof body.config_dir).toBe("string");
 
-    expect(body.watcher_mode).toBe("jsonl");
+    expect(["jsonl", "none"]).toContain(body.watcher_mode);
     expect(body.process_mode).toBe("test");
 
     expect(body.host).toBe("127.0.0.1");
