@@ -1,8 +1,35 @@
+<!-- Verified: 2026-03-20 -->
+
 # Execution Plan: Alpha Simplification Program
 
-**Status:** Proposed  
+**Status:** In Progress  
 **Created:** 2026-03-19  
 **Goal:** Reduce coordination tax during alpha by freezing optional breadth, deleting redundant architecture, and converging on one narrow happy path that is easier to ship, debug, and maintain.
+
+## Status Update — 2026-03-20
+
+This plan has partially executed.
+
+**Landed already:**
+
+- Claude Code is now explicitly the primary platform for active support, while Codex/OpenCode/OpenClaw are labeled experimental across the CLI, README, SKILL surface, and AGENTS docs.
+- Alpha remote ingest is concentrated on the main cloud API + Neon path; the earlier sidecar/Worker direction was replaced by the current `POST /api/v1/push` path, canonical upload staging, and `SELFTUNE_ALPHA_ENDPOINT`.
+- Major SQLite-primary read paths are already in place: architecture docs describe SQLite as the primary operational store, and core dashboard/status/report surfaces query SQLite rather than reading JSONL directly.
+- Dashboard runtime identity and freshness honesty improved materially: the runtime footer and Status page expose workspace/db/log/config paths and warn when the server is still using legacy JSONL watcher invalidation.
+
+**Partially landed / still mixed:**
+
+- SQLite-primary is not fully complete. Dashboard live invalidation still watches JSONL logs, and some modules still read JSONL directly on transitional or non-core paths.
+- The “one honest dashboard story” is only partially complete. Runtime identity and watcher-mode warnings landed, but the live-freshness story is still mixed and some design docs no longer match the current implementation.
+- Optional breadth is mostly frozen in labels and messaging, but not yet consistently enforced as a planning rule across all active work.
+
+**Still open:**
+
+- Cloud auth unification is not done. Local alpha identity still behaves as a first-class local model, and the repo still carries an active auth-unification plan to converge browser auth, upload auth, and local cached identity.
+- Duplicate/obsolete paths and stale docs remain in the tree.
+- JSONL-driven runtime invalidation remains open until the dashboard fully cuts over to SQLite WAL live updates.
+
+This plan should now be treated as an in-progress simplification program with some decisions already landed, some partially landed, and a smaller set of unresolved authority/auth/freshness issues still blocking the end-state.
 
 ## Problem Statement
 
@@ -80,6 +107,8 @@ Everything else should be frozen, deferred, or explicitly downgraded to experime
 
 ### Decision 1: One Primary Platform
 
+**Current status:** Substantially landed in the current repo surface.
+
 **Decision:** Claude Code is the only first-class platform during alpha.
 
 Implications:
@@ -94,6 +123,8 @@ Follow-through:
 - stop routing roadmap-critical decisions through multi-platform generality
 
 ### Decision 2: SQLite-Primary Local Runtime
+
+**Current status:** Partially landed.
 
 **Decision:** SQLite is the only local runtime/query source of truth.
 
@@ -111,6 +142,8 @@ Follow-through:
 
 ### Decision 3: One Cloud Ingest Path
 
+**Current status:** Landed for the current alpha upload path.
+
 **Decision:** Alpha data goes to the main cloud API and Neon. No parallel worker/D1 path for alpha.
 
 Implications:
@@ -126,6 +159,8 @@ Follow-through:
 
 ### Decision 4: One Cloud Auth Story
 
+**Current status:** Not landed yet.
+
 **Decision:** Neon Auth owns user/session identity. Upload credentials are product-owned credentials tied to those cloud users.
 
 Implications:
@@ -140,6 +175,8 @@ Follow-through:
 - do not assume custom Better Auth plugin paths are the right long-term boundary just because Neon Auth uses Better Auth under the hood
 
 ### Decision 5: One Honest Dashboard Story
+
+**Current status:** Partially landed.
 
 **Decision:** The dashboard must clearly say what it is showing and what freshness model it uses.
 
@@ -182,6 +219,8 @@ Follow-through:
 
 ### Phase 0: Freeze Optional Breadth
 
+**Status:** Partially complete.
+
 **Priority:** Critical  
 **Effort:** Small  
 **Risk:** Low
@@ -198,6 +237,8 @@ Completion criteria:
 - open work is framed around the Claude Code alpha path
 
 ### Phase 1: Remove Duplicate Authority
+
+**Status:** In progress.
 
 **Priority:** Critical  
 **Effort:** Medium  
@@ -217,6 +258,8 @@ Completion criteria:
 
 ### Phase 2: Delete Obsolete Paths
 
+**Status:** Not complete.
+
 **Priority:** High  
 **Effort:** Medium  
 **Risk:** Medium
@@ -234,6 +277,8 @@ Completion criteria:
 - fewer “temporary” branches still in the critical path
 
 ### Phase 3: Tighten the Alpha Kernel
+
+**Status:** Partially complete.
 
 **Priority:** Critical  
 **Effort:** Medium  

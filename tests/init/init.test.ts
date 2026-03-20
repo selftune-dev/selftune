@@ -161,11 +161,11 @@ describe("checkClaudeCodeHooks", () => {
 // ---------------------------------------------------------------------------
 
 describe("runInit", () => {
-  test("writes config to specified directory", () => {
+  test("writes config to specified directory", async () => {
     const configDir = join(tmpDir, ".selftune");
     const configPath = join(configDir, "config.json");
 
-    const result = runInit({
+    const result = await runInit({
       configDir,
       configPath,
       force: false,
@@ -184,7 +184,7 @@ describe("runInit", () => {
     expect(written.agent_type).toBe("claude_code");
   });
 
-  test("returns existing config without force flag", () => {
+  test("returns existing config without force flag", async () => {
     const configDir = join(tmpDir, ".selftune");
     const configPath = join(configDir, "config.json");
     mkdirSync(configDir, { recursive: true });
@@ -199,7 +199,7 @@ describe("runInit", () => {
     };
     writeFileSync(configPath, JSON.stringify(existingConfig, null, 2), "utf-8");
 
-    const result = runInit({
+    const result = await runInit({
       configDir,
       configPath,
       force: false,
@@ -210,7 +210,7 @@ describe("runInit", () => {
     expect(result.initialized_at).toBe("2025-01-01T00:00:00.000Z");
   });
 
-  test("overwrites existing config with force flag", () => {
+  test("overwrites existing config with force flag", async () => {
     const configDir = join(tmpDir, ".selftune");
     const configPath = join(configDir, "config.json");
     mkdirSync(configDir, { recursive: true });
@@ -225,7 +225,7 @@ describe("runInit", () => {
     };
     writeFileSync(configPath, JSON.stringify(existingConfig, null, 2), "utf-8");
 
-    const result = runInit({
+    const result = await runInit({
       configDir,
       configPath,
       force: true,
@@ -239,11 +239,11 @@ describe("runInit", () => {
     expect(result.initialized_at).not.toBe("2025-01-01T00:00:00.000Z");
   });
 
-  test("creates config directory if it does not exist", () => {
+  test("creates config directory if it does not exist", async () => {
     const configDir = join(tmpDir, "nested", "deep", ".selftune");
     const configPath = join(configDir, "config.json");
 
-    const result = runInit({
+    const result = await runInit({
       configDir,
       configPath,
       force: false,
@@ -257,11 +257,11 @@ describe("runInit", () => {
     expect(result.agent_type).toBe("codex");
   });
 
-  test("config file is valid JSON with pretty formatting", () => {
+  test("config file is valid JSON with pretty formatting", async () => {
     const configDir = join(tmpDir, ".selftune");
     const configPath = join(configDir, "config.json");
 
-    runInit({
+    await runInit({
       configDir,
       configPath,
       force: false,
@@ -283,7 +283,7 @@ describe("runInit", () => {
     expect(parsed).toHaveProperty("initialized_at");
   });
 
-  test("sets hooks_installed correctly for claude_code", () => {
+  test("sets hooks_installed correctly for claude_code", async () => {
     const claudeDir = join(tmpDir, ".claude");
     mkdirSync(claudeDir, { recursive: true });
 
@@ -300,7 +300,7 @@ describe("runInit", () => {
     const configDir = join(tmpDir, ".selftune");
     const configPath = join(configDir, "config.json");
 
-    const result = runInit({
+    const result = await runInit({
       configDir,
       configPath,
       force: false,

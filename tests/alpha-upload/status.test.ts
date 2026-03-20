@@ -12,7 +12,12 @@ import {
 } from "../../cli/selftune/localdb/queries.js";
 import { ALL_DDL } from "../../cli/selftune/localdb/schema.js";
 import { checkAlphaQueueHealth } from "../../cli/selftune/observability.js";
-import { type AlphaStatusInfo, formatAlphaStatus } from "../../cli/selftune/status.js";
+import {
+  type AlphaStatusInfo,
+  type CloudVerifyData,
+  fetchCloudVerify,
+  formatAlphaStatus,
+} from "../../cli/selftune/status.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -296,5 +301,103 @@ describe("formatAlphaStatus", () => {
     const output = formatAlphaStatus(info);
     expect(output).toContain("Next command");
     expect(output).toContain("--alpha-key <st_live_key>");
+  });
+
+  test("shows cloud verification data when available", () => {
+    const cloudVerify: CloudVerifyData = {
+      enrolled: true,
+      last_push_at: "2025-03-20T14:25:00Z",
+      key_prefix: "st_live_abc",
+      key_created_at: "2025-01-01T00:00:00Z",
+      total_pushes: 12,
+      last_push_status: "success",
+    };
+    const info: AlphaStatusInfo = {
+      enrolled: true,
+      linkState: "ready",
+      stats: { pending: 0, sending: 0, sent: 47, failed: 0 },
+      lastError: null,
+      lastSuccess: { updated_at: "2025-03-20T14:25:00Z" },
+      cloudVerify,
+    };
+    const output = formatAlphaStatus(info);
+    expect(output).toContain("Cloud verified:");
+    expect(output).toContain("yes");
+    expect(output).toContain("Total pushes:");
+    expect(output).toContain("12");
+    expect(output).toContain("Last push:");
+  });
+
+  test("omits cloud verification lines when cloudVerify is null", () => {
+    const info: AlphaStatusInfo = {
+      enrolled: true,
+      linkState: "ready",
+      stats: { pending: 0, sending: 0, sent: 50, failed: 0 },
+      lastError: null,
+      lastSuccess: { updated_at: "2025-01-15T09:00:00Z" },
+      cloudVerify: null,
+    };
+    const output = formatAlphaStatus(info);
+    expect(output).toContain("enrolled");
+    expect(output).not.toContain("Cloud verified:");
+    expect(output).not.toContain("Total pushes:");
+  });
+
+  test("omits cloud verification lines when cloudVerify is undefined", () => {
+    const info: AlphaStatusInfo = {
+      enrolled: true,
+      linkState: "ready",
+      stats: { pending: 0, sending: 0, sent: 50, failed: 0 },
+      lastError: null,
+      lastSuccess: { updated_at: "2025-01-15T09:00:00Z" },
+    };
+    const output = formatAlphaStatus(info);
+    expect(output).not.toContain("Cloud verified:");
+  });
+
+  test("shows cloud verification without last_push_at when null", () => {
+    const cloudVerify: CloudVerifyData = {
+      enrolled: true,
+      last_push_at: null,
+      key_prefix: "st_live_abc",
+      key_created_at: "2025-01-01T00:00:00Z",
+      total_pushes: 0,
+      last_push_status: null,
+    };
+    const info: AlphaStatusInfo = {
+      enrolled: true,
+      linkState: "ready",
+      stats: { pending: 0, sending: 0, sent: 0, failed: 0 },
+      lastError: null,
+      lastSuccess: null,
+      cloudVerify,
+    };
+    const output = formatAlphaStatus(info);
+    expect(output).toContain("Cloud verified:");
+    expect(output).toContain("Total pushes:");
+    expect(output).toContain("0");
+    expect(output).not.toContain("Last push:");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fetchCloudVerify tests
+// ---------------------------------------------------------------------------
+
+describe("fetchCloudVerify", () => {
+  test("returns null when endpoint is unreachable", async () => {
+    // Point to a non-existent local server to simulate network failure
+    const originalEnv = process.env.SELFTUNE_ALPHA_ENDPOINT;
+    process.env.SELFTUNE_ALPHA_ENDPOINT = "http://127.0.0.1:19999/api/v1/push";
+    try {
+      const result = await fetchCloudVerify("st_live_test_key");
+      expect(result).toBeNull();
+    } finally {
+      if (originalEnv === undefined) {
+        delete process.env.SELFTUNE_ALPHA_ENDPOINT;
+      } else {
+        process.env.SELFTUNE_ALPHA_ENDPOINT = originalEnv;
+      }
+    }
   });
 });

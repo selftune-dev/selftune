@@ -32,6 +32,7 @@ import {
   readAlphaIdentity,
 } from "./alpha-identity.js";
 import { TELEMETRY_NOTICE } from "./analytics.js";
+import { pollDeviceCode, requestDeviceCode } from "./auth/device-code.js";
 import { CLAUDE_CODE_HOOK_KEYS, SELFTUNE_CONFIG_DIR, SELFTUNE_CONFIG_PATH } from "./constants.js";
 import type { AgentCommandGuidance, AlphaIdentity, SelftuneConfig } from "./types.js";
 import { hookKeyHasSelftuneEntry } from "./utils/hooks.js";
@@ -445,7 +446,7 @@ export interface InitOptions {
  * Run the init flow. Returns the written (or existing) config.
  * Extracted as a pure function for testability.
  */
-export function runInit(opts: InitOptions): SelftuneConfig {
+export async function runInit(opts: InitOptions): Promise<SelftuneConfig> {
   const { configDir, configPath, force } = opts;
 
   // If config exists and no --force, return existing
@@ -488,37 +489,81 @@ export function runInit(opts: InitOptions): SelftuneConfig {
 
   let validatedAlphaIdentity: AlphaIdentity | null = null;
   if (opts.alpha) {
-    if (!opts.alphaEmail) {
-      throw new InitCliError({
-        error: "alpha_email_required",
-        message:
-          "The --alpha-email flag is required for alpha enrollment. Run: selftune init --alpha --alpha-email user@example.com",
-        next_command: "selftune init --alpha --alpha-email <email>",
-        suggested_commands: ["selftune status", "selftune doctor"],
-        blocking: true,
-        code: "alpha_email_required",
-      });
-    }
+    if (opts.alphaKey) {
+      // Direct key entry path — backward compatible, requires email
+      if (!opts.alphaEmail) {
+        throw new InitCliError({
+          error: "alpha_email_required",
+          message:
+            "The --alpha-email flag is required when using --alpha-key. Run: selftune init --alpha --alpha-email user@example.com --alpha-key st_live_<key>",
+          next_command: "selftune init --alpha --alpha-email <email> --alpha-key st_live_<key>",
+          suggested_commands: ["selftune init --alpha", "selftune status"],
+          blocking: true,
+          code: "alpha_email_required",
+        });
+      }
 
-    if (opts.alphaKey && !isValidApiKeyFormat(opts.alphaKey)) {
-      throw new InitCliError({
-        error: "invalid_api_key_format",
-        message: "API key must start with 'st_live_' or 'st_test_'. Check the key and retry.",
-        next_command: "selftune init --alpha --alpha-email <email> --alpha-key st_live_<key>",
-        suggested_commands: ["selftune status", "selftune doctor"],
-        blocking: true,
-        code: "invalid_api_key_format",
-      });
-    }
+      if (!isValidApiKeyFormat(opts.alphaKey)) {
+        throw new InitCliError({
+          error: "invalid_api_key_format",
+          message: "API key must start with 'st_live_' or 'st_test_'. Check the key and retry.",
+          next_command: "selftune init --alpha --alpha-email <email> --alpha-key st_live_<key>",
+          suggested_commands: ["selftune status", "selftune doctor"],
+          blocking: true,
+          code: "invalid_api_key_format",
+        });
+      }
 
-    validatedAlphaIdentity = {
-      enrolled: true,
-      user_id: existingAlphaBeforeOverwrite?.user_id ?? generateUserId(),
-      email: opts.alphaEmail,
-      display_name: opts.alphaName,
-      consent_timestamp: new Date().toISOString(),
-      ...(opts.alphaKey ? { api_key: opts.alphaKey } : {}),
-    };
+      validatedAlphaIdentity = {
+        enrolled: true,
+        user_id: existingAlphaBeforeOverwrite?.user_id ?? generateUserId(),
+        email: opts.alphaEmail,
+        display_name: opts.alphaName,
+        consent_timestamp: new Date().toISOString(),
+        api_key: opts.alphaKey,
+      };
+    } else {
+      // Device-code flow — no key provided, authenticate via browser
+      process.stderr.write("[alpha] Starting device-code authentication flow...\n");
+
+      const grant = await requestDeviceCode();
+
+      // Emit structured JSON for the agent to parse
+      console.log(
+        JSON.stringify({
+          level: "info",
+          code: "device_code_issued",
+          verification_url: grant.verification_url,
+          user_code: grant.user_code,
+          expires_in: grant.expires_in,
+          message: `Open ${grant.verification_url} and enter code: ${grant.user_code}`,
+        }),
+      );
+
+      // Try to open browser
+      try {
+        const url = `${grant.verification_url}?code=${grant.user_code}`;
+        Bun.spawn(["open", url], { stdout: "ignore", stderr: "ignore" });
+        process.stderr.write(`[alpha] Browser opened. Waiting for approval...\n`);
+      } catch {
+        process.stderr.write(`[alpha] Could not open browser. Visit the URL above manually.\n`);
+      }
+
+      process.stderr.write("[alpha] Polling");
+      const result = await pollDeviceCode(grant.device_code, grant.interval, grant.expires_in);
+      process.stderr.write("\n[alpha] Approved!\n");
+
+      validatedAlphaIdentity = {
+        enrolled: true,
+        user_id: existingAlphaBeforeOverwrite?.user_id ?? generateUserId(),
+        cloud_user_id: result.cloud_user_id,
+        cloud_org_id: result.org_id,
+        email: opts.alphaEmail,
+        display_name: opts.alphaName,
+        consent_timestamp: new Date().toISOString(),
+        api_key: result.api_key,
+      };
+    }
   }
 
   const config: SelftuneConfig = {
@@ -636,7 +681,7 @@ export async function cliMain(): Promise<void> {
     }
   }
 
-  const config = runInit({
+  const config = await runInit({
     configDir,
     configPath,
     force,
@@ -665,6 +710,16 @@ export async function cliMain(): Promise<void> {
         user_id: config.alpha?.user_id,
         email: config.alpha?.email,
         enrolled: true,
+      }),
+    );
+    console.log(
+      JSON.stringify({
+        level: "info",
+        code: "alpha_upload_ready",
+        message:
+          "Alpha enrollment complete. Uploads will run automatically during 'selftune orchestrate'. To enable scheduled background sync (includes evolve + watch + upload), run: selftune cron setup",
+        next_command: "selftune alpha upload",
+        optional_autonomy: "selftune cron setup",
       }),
     );
     console.error(ALPHA_CONSENT_NOTICE);

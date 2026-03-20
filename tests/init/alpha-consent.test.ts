@@ -159,14 +159,15 @@ describe("runInit with alpha", () => {
     };
   }
 
-  test("writes alpha block with valid UUID when alpha=true and email provided", () => {
+  test("writes alpha block with valid UUID when alpha=true with key and email", async () => {
     const opts = makeInitOpts({
       alpha: true,
       alphaEmail: "user@example.com",
       alphaName: "Test User",
+      alphaKey: "st_live_testkey123",
     });
 
-    const config = runInit(opts);
+    const config = await runInit(opts);
 
     expect(config.alpha).toBeDefined();
     expect(config.alpha?.enrolled).toBe(true);
@@ -178,33 +179,36 @@ describe("runInit with alpha", () => {
     expect(config.alpha?.consent_timestamp).toBeTruthy();
   });
 
-  test("does NOT write alpha block when alpha flag is absent", () => {
+  test("does NOT write alpha block when alpha flag is absent", async () => {
     const opts = makeInitOpts();
-    const config = runInit(opts);
+    const config = await runInit(opts);
     expect(config.alpha).toBeUndefined();
   });
 
-  test("throws error when alpha=true but no email provided", () => {
-    const opts = makeInitOpts({ alpha: true });
-    expect(() => runInit(opts)).toThrow("--alpha-email flag is required");
+  test("throws error when alpha=true with key but no email provided", async () => {
+    const opts = makeInitOpts({ alpha: true, alphaKey: "st_live_test" });
+    await expect(runInit(opts)).rejects.toThrow(
+      "--alpha-email flag is required when using --alpha-key",
+    );
   });
 
-  test("--no-alpha sets enrolled=false but preserves user_id", () => {
+  test("--no-alpha sets enrolled=false but preserves user_id", async () => {
     const configDir = join(tmpDir, ".selftune");
     const _configPath = join(configDir, "config.json");
 
-    // First, enroll
-    const enrollConfig = runInit(
+    // First, enroll with direct key path
+    const enrollConfig = await runInit(
       makeInitOpts({
         alpha: true,
         alphaEmail: "user@example.com",
+        alphaKey: "st_live_testkey123",
         force: true,
       }),
     );
     const originalUserId = enrollConfig.alpha?.user_id;
 
     // Then unenroll
-    const unenrollConfig = runInit(
+    const unenrollConfig = await runInit(
       makeInitOpts({
         noAlpha: true,
         force: true,
@@ -216,25 +220,27 @@ describe("runInit with alpha", () => {
     expect(unenrollConfig.alpha?.user_id).toBe(originalUserId);
   });
 
-  test("reinit with force + alpha preserves existing user_id", () => {
+  test("reinit with force + alpha preserves existing user_id", async () => {
     const configDir = join(tmpDir, ".selftune");
     const _configPath = join(configDir, "config.json");
 
-    // First enrollment
-    const firstConfig = runInit(
+    // First enrollment with key
+    const firstConfig = await runInit(
       makeInitOpts({
         alpha: true,
         alphaEmail: "first@example.com",
+        alphaKey: "st_live_firstkey",
         force: true,
       }),
     );
     const originalUserId = firstConfig.alpha?.user_id;
 
-    // Re-init with force + alpha (should preserve user_id)
-    const secondConfig = runInit(
+    // Re-init with force + alpha + new key (should preserve user_id)
+    const secondConfig = await runInit(
       makeInitOpts({
         alpha: true,
         alphaEmail: "second@example.com",
+        alphaKey: "st_live_secondkey",
         force: true,
       }),
     );
@@ -243,16 +249,17 @@ describe("runInit with alpha", () => {
     expect(secondConfig.alpha?.email).toBe("second@example.com");
   });
 
-  test("plain force reinit preserves existing alpha enrollment", () => {
-    const firstConfig = runInit(
+  test("plain force reinit preserves existing alpha enrollment", async () => {
+    const firstConfig = await runInit(
       makeInitOpts({
         alpha: true,
         alphaEmail: "first@example.com",
+        alphaKey: "st_live_testkey123",
         force: true,
       }),
     );
 
-    const secondConfig = runInit(
+    const secondConfig = await runInit(
       makeInitOpts({
         force: true,
       }),
@@ -264,14 +271,15 @@ describe("runInit with alpha", () => {
     expect(secondConfig.alpha?.email).toBe("first@example.com");
   });
 
-  test("config round-trips correctly (read after write)", () => {
+  test("config round-trips correctly (read after write)", async () => {
     const opts = makeInitOpts({
       alpha: true,
       alphaEmail: "roundtrip@example.com",
       alphaName: "Round Trip",
+      alphaKey: "st_live_roundtrip",
     });
 
-    runInit(opts);
+    await runInit(opts);
 
     // Read back from disk
     const raw = JSON.parse(readFileSync(opts.configPath, "utf-8")) as SelftuneConfig;

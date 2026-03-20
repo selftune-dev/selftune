@@ -563,6 +563,7 @@ Usage:
 
 Subcommands:
   upload        Run a manual alpha data upload cycle
+  relink        Re-authenticate with the cloud (revokes old key, issues new one)
 
 Run 'selftune alpha <subcommand> --help' for subcommand-specific options.`);
       process.exit(0);
@@ -665,6 +666,77 @@ Output:
 
         console.log(JSON.stringify(result, null, 2));
         process.exit(result.failed > 0 ? 1 : 0);
+        break;
+      }
+      case "relink": {
+        const { SELFTUNE_CONFIG_PATH } = await import("./constants.js");
+        const { readAlphaIdentity, writeAlphaIdentity, generateUserId } = await import(
+          "./alpha-identity.js"
+        );
+        const { requestDeviceCode, pollDeviceCode } = await import("./auth/device-code.js");
+        const { chmodSync } = await import("node:fs");
+
+        const existingIdentity = readAlphaIdentity(SELFTUNE_CONFIG_PATH);
+        const oldKeyPrefix = existingIdentity?.api_key
+          ? `${existingIdentity.api_key.slice(0, 16)}...`
+          : "(none)";
+
+        process.stderr.write("[alpha relink] Starting device-code authentication flow...\n");
+
+        const grant = await requestDeviceCode();
+
+        console.log(
+          JSON.stringify({
+            level: "info",
+            code: "device_code_issued",
+            verification_url: grant.verification_url,
+            user_code: grant.user_code,
+            expires_in: grant.expires_in,
+            message: `Open ${grant.verification_url} and enter code: ${grant.user_code}`,
+          }),
+        );
+
+        // Try to open browser
+        try {
+          const url = `${grant.verification_url}?code=${grant.user_code}`;
+          Bun.spawn(["open", url], { stdout: "ignore", stderr: "ignore" });
+          process.stderr.write("[alpha relink] Browser opened. Waiting for approval...\n");
+        } catch {
+          process.stderr.write(
+            "[alpha relink] Could not open browser. Visit the URL above manually.\n",
+          );
+        }
+
+        process.stderr.write("[alpha relink] Polling");
+        const result = await pollDeviceCode(grant.device_code, grant.interval, grant.expires_in);
+        process.stderr.write("\n[alpha relink] Approved!\n");
+
+        const newKeyPrefix = `${result.api_key.slice(0, 16)}...`;
+
+        const updatedIdentity = {
+          enrolled: true,
+          user_id: existingIdentity?.user_id ?? generateUserId(),
+          cloud_user_id: result.cloud_user_id,
+          cloud_org_id: result.org_id,
+          email: existingIdentity?.email,
+          display_name: existingIdentity?.display_name,
+          consent_timestamp: new Date().toISOString(),
+          api_key: result.api_key,
+        };
+
+        writeAlphaIdentity(SELFTUNE_CONFIG_PATH, updatedIdentity);
+        chmodSync(SELFTUNE_CONFIG_PATH, 0o600);
+
+        console.log(
+          JSON.stringify({
+            level: "info",
+            code: "alpha_relinked",
+            old_key_prefix: oldKeyPrefix,
+            new_key_prefix: newKeyPrefix,
+            cloud_user_id: result.cloud_user_id,
+            message: "Successfully relinked. Old key revoked by cloud during approval.",
+          }),
+        );
         break;
       }
       default:

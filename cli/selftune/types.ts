@@ -8,14 +8,19 @@
 
 export interface AlphaIdentity {
   enrolled: boolean;
-  user_id: string;
-  email?: string;
-  display_name?: string;
-  consent_timestamp: string;
-  /** Bearer token for alpha API. Stored in plaintext in config.json with 0o600 perms. */
-  api_key?: string;
-  /** Cloud-issued user ID. Present when linked to cloud account. */
+  /** Cloud-issued user ID. Primary identifier after linking. */
   cloud_user_id?: string;
+  /** Cloud-issued org ID. Set during device-code approval. */
+  cloud_org_id?: string;
+  /** Cached email from cloud account. Not authoritative. */
+  email?: string;
+  /** Cached display name from cloud account. Not authoritative. */
+  display_name?: string;
+  /** Local user_id — legacy, preserved for migration. */
+  user_id: string;
+  consent_timestamp: string;
+  /** Bearer token for alpha API. Cloud-issued, cached locally. */
+  api_key?: string;
 }
 
 /**
@@ -373,7 +378,7 @@ export interface EvolutionEvidenceEntry {
   proposed_text?: string;
   eval_set?: EvalEntry[];
   validation?: EvolutionEvidenceValidation;
-  /** Client-generated deterministic dedup key for cloud upload. */
+  /** Deterministic evidence ID, generated during staging (ev_ prefix + hash). */
   evidence_id?: string;
 }
 
