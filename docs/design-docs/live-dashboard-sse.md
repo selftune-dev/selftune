@@ -1,16 +1,24 @@
-<!-- Verified: 2026-03-17 -->
+<!-- Verified: 2026-03-20 -->
 
 # Live Dashboard — Server-Sent Events
+
+## Status
+
+This doc describes the intended end-state for live dashboard freshness, not the fully shipped runtime.
+
+- Current runtime: SSE exists, but invalidation still watches selected JSONL logs in `cli/selftune/dashboard-server.ts`.
+- Pending cutover: SQLite WAL should become the only live invalidation signal.
+- Canonical tracking plan: `docs/exec-plans/active/dashboard-data-integrity-recovery.md`
 
 ## Problem
 
 The dashboard relied on polling (15–30s intervals per endpoint) to show new data. Combined with a 15s server-side materialization TTL and React Query's `staleTime`, new invocations could take 30+ seconds to appear — or not appear at all until a hard refresh cleared all cache layers.
 
-## Solution
+## Target Solution
 
-Replace polling as the primary update mechanism with Server-Sent Events (SSE). The dashboard server watches the SQLite WAL file for changes and pushes update notifications to all connected browser tabs in real time.
+Replace polling as the primary update mechanism with Server-Sent Events (SSE). The target design is for the dashboard server to watch the SQLite WAL file for changes and push update notifications to all connected browser tabs in real time.
 
-## Architecture
+## Target Architecture
 
 ```mermaid
 sequenceDiagram
@@ -41,13 +49,15 @@ sequenceDiagram
 
 ### SQLite WAL Watcher
 
-`fs.watchFile()` monitors the SQLite WAL file (`~/.selftune/selftune.db-wal`) with 500ms polling. When hooks write directly to SQLite, the WAL file's modification time or size changes, triggering the watcher. The old JSONL file watchers have been removed.
+End-state design: `fs.watchFile()` monitors the SQLite WAL file (`~/.selftune/selftune.db-wal`) with 500ms polling. When hooks write directly to SQLite, the WAL file's modification time or size changes, triggering the watcher.
+
+Current runtime note: the old JSONL file watchers have not been fully removed yet. The shipped dashboard still warns when running in legacy JSONL watcher mode.
 
 A 500ms debounce timer coalesces rapid writes (e.g., a hook appending multiple records in sequence) into a single broadcast cycle.
 
 ### No Separate Materialization Step
 
-Because hooks now write directly to SQLite, there is no separate materialization step. The data is already in the database when the WAL watcher fires. The server simply broadcasts the SSE event and the next API query reads fresh data directly from SQLite.
+Target design: because hooks now write directly to SQLite, there is no separate materialization step in the hot path. The data is already in the database when the WAL watcher fires. The server simply broadcasts the SSE event and the next API query reads fresh data directly from SQLite.
 
 ### Fan-Out
 
@@ -74,7 +84,7 @@ All React Query hooks retain `refetchInterval` but relaxed to 60s (was 15–30s)
 
 `staleTime` was reduced to 5s (was 10–30s) so that SSE-triggered invalidations result in immediate network requests rather than returning cached data.
 
-## Latency Budget
+## Target Latency Budget
 
 | Stage | Time |
 |-------|------|
@@ -85,7 +95,7 @@ All React Query hooks retain `refetchInterval` but relaxed to 60s (was 15–30s)
 | React Query invalidation + fetch | ~100ms |
 | **Total** | **~1100ms** |
 
-New data appears in the dashboard within ~1 second of a hook writing to SQLite (best case when the poll fires immediately after the write).
+After the WAL cutover lands, new data should appear in the dashboard within ~1 second of a hook writing to SQLite.
 
 ## Files Changed
 
@@ -111,8 +121,9 @@ New data appears in the dashboard within ~1 second of a hook writing to SQLite (
 
 **Why keep polling?** SSE connections can drop. `EventSource` reconnects automatically, but during the reconnect window (up to 3s by default) no updates arrive. The 60s polling fallback ensures the dashboard never goes completely stale.
 
-## Limitations
+## Current Limitations
 
-- `fs.watchFile()` uses stat polling (500ms interval), so there is an inherent latency floor compared to event-driven watchers. Best-case latency is ~600ms; worst-case is ~1100ms.
+- The runtime is still using legacy JSONL watcher invalidation in some paths, so the WAL-only freshness model described above is not yet the sole shipped behavior.
+- `fs.watchFile()` uses stat polling (500ms interval), so even after the WAL cutover there is an inherent latency floor compared to event-driven watchers.
 - On network filesystems, stat polling may be slower or return stale metadata.
-- The debounce means writes within the same 500ms window are coalesced -- the dashboard won't show intermediate states within a burst.
+- The debounce means writes within the same 500ms window are coalesced; the dashboard won't show intermediate states within a burst.

@@ -1,4 +1,4 @@
-<!-- Verified: 2026-03-16 -->
+<!-- Verified: 2026-03-20 -->
 
 # System Overview
 
@@ -122,6 +122,14 @@ sequenceDiagram
   Server-->>Browser: DoctorResult (config, logs, hooks, evolution health)
   Materializer->>DB: refresh from logs when sync/materialize runs
 ```
+
+## Local vs Cloud Dashboard
+
+The local dashboard and the cloud dashboard should not be treated as interchangeable copies of the same product surface.
+
+- **Local dashboard:** machine-scoped operator/debug UI over local SQLite. It should answer whether this machine is capturing correctly, whether local evidence looks sane, whether uploads are queued or failing, and what this workspace has observed.
+- **Cloud dashboard:** org-scoped control-plane and analysis UI over cloud auth plus canonical cloud storage. It should answer who is enrolled, which credentials exist, what landed in the cloud, and what org-level trends or operator decisions exist.
+- If a concept appears in both places, one surface must be clearly authoritative. Local should own machine/runtime health; cloud should own org identity, enrollment, credentials, and remote analytics.
 
 ## Signal-Reactive Improvement
 

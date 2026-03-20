@@ -172,16 +172,17 @@ don't need agent intelligence or user interaction.
 
 ## Data Architecture
 
-SQLite is the operational database for all reads. Hooks and sync write
+SQLite is the operational database for local runtime reads. Hooks and sync write
 directly to SQLite via `localdb/direct-write.ts`. JSONL files are retained
-as an append-only audit trail and can be used to rebuild SQLite on demand.
+as append-only capture/audit material and can still be used for rebuild/export
+paths while the migration is being closed.
 
 ```text
 Primary Store: SQLite (~/.selftune/selftune.db)
 ├── Hooks write directly via localdb/direct-write.ts (primary write path)
 ├── Sync writes directly via localdb/direct-write.ts
 ├── All reads (orchestrate, evolve, grade, status, dashboard) query SQLite
-└── WAL-mode watch powers SSE live updates
+└── Target freshness model: WAL-mode watch powers SSE live updates
 
 Audit Trail: JSONL files (~/.claude/*.jsonl)
 ├── session_telemetry_log.jsonl    Session telemetry records
@@ -208,10 +209,15 @@ Alpha Upload Path (opted-in users only):
 └── Cloud storage: Neon Postgres (raw_pushes for lossless ingest → canonical tables for analysis)
 ```
 
-Hooks and sync write to both SQLite (primary) and JSONL (audit trail) in
-parallel. All reads go through SQLite. The materializer runs once on startup
-to backfill any historical JSONL data not yet in the database. `selftune export`
-can regenerate JSONL from SQLite when needed for portability or debugging.
+Hooks and sync currently write to both SQLite (primary local runtime store)
+and JSONL (capture/audit trail) in parallel. All local product reads go
+through SQLite. The materializer runs once on startup to backfill any
+historical JSONL data not yet in the database. `selftune export` can
+regenerate JSONL from SQLite when needed for portability or debugging.
+
+Current freshness caveat: the shipped dashboard still uses legacy JSONL file
+watchers for SSE invalidation in `dashboard-server.ts`. WAL-only invalidation
+is the intended end-state, but it is not the sole live-refresh path yet.
 
 ## Repository Shape
 

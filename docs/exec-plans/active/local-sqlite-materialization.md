@@ -1,16 +1,18 @@
 # Execution Plan: Local SQLite Materialization and App Data Layer
 
-<!-- Verified: 2026-03-14 -->
+<!-- Verified: 2026-03-20 -->
 
 **Status:** Active  
 **Created:** 2026-03-12  
-**Goal:** Use SQLite as a local indexed/materialized view layer on top of selftune’s raw JSONL source-of-truth logs so the local app can be fast, credible, and simple to reason about.
+**Goal:** Finish the SQLite-first local runtime transition so the local app, CLI, and operator surfaces read from one operational store, while JSONL is reduced to capture, rebuild, export, and recovery roles.
 
 ---
 
 ## Executive Summary
 
-selftune’s raw JSONL logs remain the right source of truth for:
+This plan predates the current SQLite-first runtime cutover and should now be read as a migration-completion plan, not as justification for JSONL-first local reads.
+
+JSONL still matters for:
 
 - telemetry capture
 - transcript/source replay
@@ -19,7 +21,7 @@ selftune’s raw JSONL logs remain the right source of truth for:
 
 They are not the right structure for serving a good local product experience directly.
 
-SQLite via `bun:sqlite` is the right local materialization layer because it gives us:
+SQLite via `bun:sqlite` is the right local operational store because it gives us:
 
 - fast indexed reads
 - a simple single-file local store
@@ -27,11 +29,11 @@ SQLite via `bun:sqlite` is the right local materialization layer because it give
 - zero extra network services
 - a much cleaner foundation for overview/report queries
 
-The architecture is now:
+The target local architecture is now:
 
-- **JSONL = truth**
-- **SQLite = local indexed/materialized view**
-- **SPA = local user experience**
+- **SQLite = operational local runtime/query truth**
+- **JSONL = append-only capture plus rebuild/export/recovery input during migration**
+- **SPA = local operator experience**
 
 ---
 
@@ -46,7 +48,7 @@ The old dashboard path showed the limits of raw-log-first serving:
 
 SQLite solves the UX/product problem without replacing the telemetry model.
 
-This is not a move to “database-first telemetry.” It is a local query/materialization layer on top of append-only source logs.
+This is not a move to “database-first cloud telemetry.” It is a move to one operational local runtime store, with JSONL retained only where capture, replay, or recovery still require it.
 
 ---
 
@@ -88,23 +90,23 @@ Likely source domains:
 - evidence
 - optional materialized aggregates for overview/report
 
-The exact schema can evolve, but its role should stay narrow:
+The exact schema can evolve, but its role should stay clear:
 
-- indexed cache/materialized view
+- operational local runtime store
 - local query surface
-- not the authority for telemetry capture
+- rebuildable from append-only capture where legacy bridges still exist
 
 ---
 
 ## Architectural Rules
 
-### 1. JSONL remains authoritative
+### 1. Local runtime reads are SQLite-first
 
-If a conflict exists between raw logs and SQLite materialization, the raw logs win.
+Dashboard, status, doctor, and other operator-facing local reads should treat SQLite as the operational source of truth.
 
-### 2. Materialization must be rebuildable
+### 2. JSONL remains capture/export/recovery input until the migration is fully closed
 
-It should always be possible to rebuild the local DB from source-truth logs.
+If rebuild/export paths still depend on JSONL, keep them honest and explicit. Do not reintroduce JSONL as a first-class live query surface.
 
 ### 3. Local app queries should be explicit
 
@@ -128,9 +130,9 @@ The local data layer should explicitly support:
 - overview KPI/status/skill-card payload
 - single-skill report payload
 
-### 2. Move the SPA onto SQLite-backed data
+### 2. Finish the SQLite-backed local app path
 
-The React local app should stop depending primarily on the old dashboard server’s heavy data path.
+The React local app already reads SQLite-backed payloads. The remaining work is to remove legacy freshness bridges and leftover JSONL-dependent dashboard helpers.
 
 ### 3. Remove remaining non-v2 dashboard paths
 
@@ -142,9 +144,9 @@ The legacy HTML runtime is gone. The remaining follow-through is to keep migrati
 
 onto the same SQLite-backed payload semantics where appropriate.
 
-### 4. Keep source-truth sync first
+### 4. Keep sync and rebuild semantics honest
 
-Any materialization flow must still start from fresh source-truth sync/repair data.
+Any rebuild/materialization flow must make it obvious when JSONL is still being used as import/recovery input, and which streams are already SQLite-primary.
 
 ---
 
