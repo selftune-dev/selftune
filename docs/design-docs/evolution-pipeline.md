@@ -149,6 +149,24 @@ Coordinates the full pipeline with retry logic:
 5. Deploy if validation passed (unless `--dry-run`)
 6. Record audit entries at every state transition
 
+### Constitutional Pre-Validation
+
+Before LLM validation, description proposals pass through a deterministic
+constitutional gate. This rejects obviously bad proposals before they can
+consume validation budget or pollute the retry loop.
+
+Current checks:
+
+- size guard: description must stay within the configured character and word-count bounds
+- XML/HTML rejection: proposals containing tags are rejected immediately
+- unbounded broadening guard: bare "all", "any", "every", or "everything" must be qualified
+- anchor preservation: required `USE WHEN` anchors and `$skillName` references must survive
+
+If the gate fails, the pipeline records a `rejected` audit entry with the
+constitutional reason. For description evolution the loop can retry with a
+new proposal; for body evolution the size-only constitutional rejection is a
+terminal failure for that candidate.
+
 ### CLI Flags
 
 | Flag | Default | Description |

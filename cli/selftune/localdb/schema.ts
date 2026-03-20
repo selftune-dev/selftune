@@ -182,6 +182,41 @@ CREATE TABLE IF NOT EXISTS improvement_signals (
   consumed_by_run TEXT
 )`;
 
+// -- Alpha upload queue -------------------------------------------------------
+
+export const CREATE_UPLOAD_QUEUE = `
+CREATE TABLE IF NOT EXISTS upload_queue (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  payload_type  TEXT NOT NULL,
+  payload_json  TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'pending',
+  attempts      INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL,
+  last_error    TEXT
+)`;
+
+// -- Canonical upload staging -------------------------------------------------
+
+export const CREATE_CANONICAL_UPLOAD_STAGING = `
+CREATE TABLE IF NOT EXISTS canonical_upload_staging (
+  local_seq     INTEGER PRIMARY KEY AUTOINCREMENT,
+  record_kind   TEXT NOT NULL,
+  record_id     TEXT NOT NULL,
+  record_json   TEXT NOT NULL,
+  session_id    TEXT,
+  prompt_id     TEXT,
+  normalized_at TEXT,
+  staged_at     TEXT NOT NULL
+)`;
+
+export const CREATE_UPLOAD_WATERMARKS = `
+CREATE TABLE IF NOT EXISTS upload_watermarks (
+  payload_type     TEXT PRIMARY KEY,
+  last_uploaded_id INTEGER NOT NULL,
+  updated_at       TEXT NOT NULL
+)`;
+
 // -- Metadata table -----------------------------------------------------------
 
 export const CREATE_META = `
@@ -227,6 +262,13 @@ export const CREATE_INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_signals_consumed ON improvement_signals(consumed)`,
   `CREATE INDEX IF NOT EXISTS idx_signals_ts ON improvement_signals(timestamp)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_signals_dedup ON improvement_signals(session_id, query, signal_type, timestamp)`,
+  // -- Alpha upload queue indexes ---------------------------------------------
+  `CREATE INDEX IF NOT EXISTS idx_upload_queue_status ON upload_queue(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_upload_queue_type_status ON upload_queue(payload_type, status)`,
+  // -- Canonical upload staging indexes ---------------------------------------
+  `CREATE INDEX IF NOT EXISTS idx_staging_kind ON canonical_upload_staging(record_kind)`,
+  `CREATE INDEX IF NOT EXISTS idx_staging_session ON canonical_upload_staging(session_id)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_staging_dedup ON canonical_upload_staging(record_kind, record_id)`,
 ];
 
 /**
@@ -239,6 +281,8 @@ export const MIGRATIONS = [
   `ALTER TABLE skill_invocations ADD COLUMN skill_path TEXT`,
   `ALTER TABLE skill_invocations ADD COLUMN skill_scope TEXT`,
   `ALTER TABLE skill_invocations ADD COLUMN source TEXT`,
+  // Track how many iteration loops each evolution run used
+  `ALTER TABLE evolution_audit ADD COLUMN iterations_used INTEGER`,
 ];
 
 /** Indexes that depend on migration columns — must run AFTER MIGRATIONS. */
@@ -261,6 +305,9 @@ export const ALL_DDL = [
   CREATE_ORCHESTRATE_RUNS,
   CREATE_QUERIES,
   CREATE_IMPROVEMENT_SIGNALS,
+  CREATE_UPLOAD_QUEUE,
+  CREATE_UPLOAD_WATERMARKS,
+  CREATE_CANONICAL_UPLOAD_STAGING,
   CREATE_META,
   ...CREATE_INDEXES,
 ];

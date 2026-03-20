@@ -28,6 +28,7 @@ export interface EvalSnapshot {
 export interface EvolutionEntry {
   timestamp: string;
   proposal_id: string;
+  skill_name?: string;
   action: string;
   details: string;
   eval_snapshot?: EvalSnapshot | null;
@@ -183,6 +184,25 @@ export interface OrchestrateRunReport {
 
 export interface OrchestrateRunsResponse {
   runs: OrchestrateRunReport[];
+}
+
+// -- Health endpoint response -------------------------------------------------
+
+export interface HealthResponse {
+  ok: boolean;
+  service: string;
+  version: string;
+  spa: boolean;
+  v2_data_available: boolean;
+  workspace_root: string;
+  git_sha: string;
+  db_path: string;
+  log_dir: string;
+  config_dir: string;
+  watcher_mode: "jsonl" | "none";
+  process_mode: "standalone" | "dev-server" | "test";
+  host: string;
+  port: number;
 }
 
 // -- Doctor / health check types ----------------------------------------------

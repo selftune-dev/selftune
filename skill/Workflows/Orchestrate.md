@@ -26,10 +26,13 @@ selftune orchestrate
 |------|-------------|---------|
 | `--dry-run` | Plan and validate without deploying changes | Off |
 | `--review-required` | Keep validated changes in review mode instead of deploying | Off |
+| `--auto-approve` | *(Deprecated)* Autonomous mode is now the default | — |
 | `--skill <name>` | Limit the loop to one skill | All skills |
-| `--max-skills <n>` | Cap how many candidates are processed in one run | `3` |
-| `--recent-window <hours>` | Window for post-deploy watch/rollback checks | `24` |
+| `--max-skills <n>` | Cap how many candidates are processed in one run | `5` |
+| `--recent-window <hours>` | Window for post-deploy watch/rollback checks | `48` |
 | `--sync-force` | Force a full source replay before candidate selection | Off |
+| `--loop` | Run as a long-lived process that cycles continuously | Off |
+| `--loop-interval <seconds>` | Pause between cycles (minimum 60) | `3600` |
 
 ## Default Behavior
 
@@ -133,6 +136,12 @@ In autonomous mode, orchestrate calls sub-workflows in this fixed order:
 2. **Status** — compute skill health using existing grade results (reads `grading.json` outputs from previous sessions)
 3. **Evolve** — run evolution on selected candidates (pre-flight is skipped, cheap-loop mode enabled, defaults used)
 4. **Watch** — monitor recently evolved skills (auto-rollback enabled by default, `--recent-window` hours lookback)
+5. **Alpha Upload** — if enrolled in the alpha program (`config.alpha.enrolled === true`) and an API key is configured, stage new canonical records (sessions, invocations, evolution evidence, orchestrate runs) into `canonical_upload_staging`, build V2 push payloads, and flush to the cloud API (`POST /api/v1/push`) with Bearer auth. Fail-open: upload errors never block the orchestrate loop. Respects `--dry-run`.
+
+Between candidate selection and evolution, orchestrate checks for
+**cross-skill eval set overlap**. When two or more evolution candidates
+share >30% of their positive eval queries, a warning is logged to stderr.
+This is an informational diagnostic only — it does not block evolution.
 
 All sub-workflows run with defaults and no user interaction. The safety
 model relies on regression thresholds, automatic rollback, and SKILL.md

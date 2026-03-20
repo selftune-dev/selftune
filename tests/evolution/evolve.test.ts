@@ -603,6 +603,19 @@ describe("evolve orchestrator", () => {
     expect(result.reason).toContain("sonnet");
     expect(result.gateValidation).toBeDefined();
     expect(result.gateValidation?.improved).toBe(false);
+
+    const rejectedCalls = mockAppendAuditEntry.mock.calls.filter(
+      (call: unknown[]) => (call[0] as EvolutionAuditEntry).action === "rejected",
+    );
+    expect(rejectedCalls.length).toBeGreaterThanOrEqual(1);
+    expect((rejectedCalls[rejectedCalls.length - 1]?.[0] as EvolutionAuditEntry).details).toContain(
+      "Gate validation failed",
+    );
+
+    const rejectedEvidence = mockAppendEvidenceEntry.mock.calls.filter(
+      (call: unknown[]) => (call[0] as EvolutionEvidenceEntry).stage === "rejected",
+    );
+    expect(rejectedEvidence.length).toBeGreaterThanOrEqual(1);
   });
 
   // 14. No gate validation when gateModel is not set

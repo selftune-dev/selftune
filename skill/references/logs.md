@@ -272,7 +272,9 @@ One record per evolution action. Written by the evolution and rollback modules.
 
 **Required fields:** `timestamp`, `proposal_id`, `action`
 
-**Optional fields:** `details`, `eval_snapshot`
+**Optional fields:** `details`, `eval_snapshot`, `iterations_used`
+
+- `iterations_used` (integer, nullable) — How many iteration loops the evolution run used before reaching a result. Present on `deployed` audit entries; null for legacy records or actions that don't track iterations.
 
 ---
 

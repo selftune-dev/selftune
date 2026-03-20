@@ -6,6 +6,33 @@
 // Config types (written to ~/.selftune/config.json)
 // ---------------------------------------------------------------------------
 
+export interface AlphaIdentity {
+  enrolled: boolean;
+  /** Cloud-issued user ID. Primary identifier after linking. */
+  cloud_user_id?: string;
+  /** Cloud-issued org ID. Set during device-code approval. */
+  cloud_org_id?: string;
+  /** Cached email from cloud account. Not authoritative. */
+  email?: string;
+  /** Cached display name from cloud account. Not authoritative. */
+  display_name?: string;
+  /** Local user_id — legacy, preserved for migration. */
+  user_id: string;
+  consent_timestamp: string;
+  /** Bearer token for alpha API. Cloud-issued, cached locally. */
+  api_key?: string;
+}
+
+/**
+ * Derive the cloud link readiness state from an AlphaIdentity.
+ * Used by status.ts and observability.ts for agent-facing diagnostics.
+ */
+export type AlphaLinkState =
+  | "not_linked"
+  | "linked_not_enrolled"
+  | "enrolled_no_credential"
+  | "ready";
+
 export interface SelftuneConfig {
   agent_type: "claude_code" | "codex" | "opencode" | "openclaw" | "unknown";
   cli_path: string;
@@ -14,6 +41,7 @@ export interface SelftuneConfig {
   hooks_installed: boolean;
   initialized_at: string;
   analytics_disabled?: boolean;
+  alpha?: AlphaIdentity;
 }
 
 // ---------------------------------------------------------------------------
@@ -250,11 +278,20 @@ export interface ExecutionMetrics {
 
 export type HealthStatus = "pass" | "fail" | "warn";
 
+export interface AgentCommandGuidance {
+  code: string;
+  message: string;
+  next_command: string;
+  suggested_commands: string[];
+  blocking: boolean;
+}
+
 export interface HealthCheck {
   name: string;
   path: string;
   status: HealthStatus;
   message: string;
+  guidance?: AgentCommandGuidance;
 }
 
 export interface DoctorResult {
@@ -311,6 +348,7 @@ export interface EvolutionAuditEntry {
   action: "created" | "validated" | "deployed" | "rolled_back" | "rejected";
   details: string;
   eval_snapshot?: EvalPassRate;
+  iterations_used?: number;
 }
 
 export interface EvolutionEvidenceValidation {
@@ -340,6 +378,8 @@ export interface EvolutionEvidenceEntry {
   proposed_text?: string;
   eval_set?: EvalEntry[];
   validation?: EvolutionEvidenceValidation;
+  /** Deterministic evidence ID, generated during staging (ev_ prefix + hash). */
+  evidence_id?: string;
 }
 
 export interface EvolutionConfig {

@@ -7,8 +7,19 @@
  *  - cliMain()        (reads logs, runs doctor, prints output)
  */
 
+import {
+  formatGuidanceLines,
+  getAlphaGuidance,
+  getAlphaGuidanceForState,
+} from "./agent-guidance.js";
+import { getAlphaLinkState, readAlphaIdentity } from "./alpha-identity.js";
+import { getQueueStats } from "./alpha-upload/queue.js";
+import { getBaseUrl } from "./auth/device-code.js";
+import { SELFTUNE_CONFIG_PATH } from "./constants.js";
 import { getDb } from "./localdb/db.js";
 import {
+  getLastUploadError,
+  getLastUploadSuccess,
   queryEvolutionAudit,
   queryQueryLog,
   querySessionTelemetry,
@@ -17,6 +28,8 @@ import {
 import { computeMonitoringSnapshot, MIN_MONITORING_SKILL_CHECKS } from "./monitoring/watch.js";
 import { doctor } from "./observability.js";
 import type {
+  AgentCommandGuidance,
+  AlphaLinkState,
   DoctorResult,
   EvolutionAuditEntry,
   MonitoringSnapshot,
@@ -56,11 +69,41 @@ export interface StatusResult {
 }
 
 // ---------------------------------------------------------------------------
+// Alpha upload status types
+// ---------------------------------------------------------------------------
+
+export interface CloudVerifyData {
+  enrolled: boolean;
+  last_push_at: string | null;
+  key_prefix: string;
+  key_created_at: string;
+  total_pushes: number;
+  last_push_status: string | null;
+}
+
+export interface AlphaStatusInfo {
+  enrolled: boolean;
+  linkState?: AlphaLinkState;
+  guidance?: AgentCommandGuidance;
+  stats: { pending: number; sending: number; sent: number; failed: number };
+  lastError: { last_error: string | null; updated_at: string } | null;
+  lastSuccess: { updated_at: string } | null;
+  cloudVerify?: CloudVerifyData | null;
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_WINDOW_SESSIONS = 20;
 const DEFAULT_BASELINE_PASS_RATE = 0.5;
+
+const LINK_STATE_LABELS: Record<AlphaLinkState, string> = {
+  not_linked: "not linked",
+  linked_not_enrolled: "linked (not enrolled)",
+  enrolled_no_credential: "enrolled (missing credential)",
+  ready: "ready",
+};
 
 // ---------------------------------------------------------------------------
 // computeStatus — pure function
@@ -325,6 +368,131 @@ function colorize(text: string, hex: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Cloud verify — fail-open fetch of /api/v1/alpha/verify
+// ---------------------------------------------------------------------------
+
+const CLOUD_VERIFY_TIMEOUT_MS = 3000;
+
+/**
+ * Fetch cloud verification data from the selftune API.
+ * Fail-open: returns null on any error (network, auth, timeout).
+ * Uses a 3-second timeout to avoid blocking the status command.
+ */
+export async function fetchCloudVerify(apiKey: string): Promise<CloudVerifyData | null> {
+  try {
+    const baseUrl = getBaseUrl();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CLOUD_VERIFY_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(`${baseUrl}/alpha/verify`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: "application/json",
+        },
+        signal: controller.signal,
+      });
+
+      if (!response.ok) return null;
+
+      const data = (await response.json()) as CloudVerifyData;
+      return data;
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch {
+    // Fail-open: network errors, timeouts, JSON parse errors all return null
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Alpha upload status formatting
+// ---------------------------------------------------------------------------
+
+/**
+ * Format the alpha upload status section for CLI output.
+ * Returns a multi-line string to append to the status output.
+ * Pass null when user is not enrolled.
+ */
+export function formatAlphaStatus(info: AlphaStatusInfo | null): string {
+  const lines: string[] = [];
+  lines.push("");
+  lines.push("Alpha Upload");
+  lines.push("\u2500".repeat(15));
+
+  if (!info) {
+    const guidance = getAlphaGuidanceForState("not_linked");
+    lines.push("  Status:             not enrolled");
+    lines.push("  Cloud link:         not linked");
+    lines.push(...formatGuidanceLines(guidance));
+    return lines.join("\n");
+  }
+
+  const linkState = info.linkState ?? "not_linked";
+  lines.push(`  Status:             ${info.enrolled ? "enrolled" : "not enrolled"}`);
+  lines.push(`  Cloud link:         ${LINK_STATE_LABELS[linkState]}`);
+
+  // Cloud verification data (when available)
+  if (info.cloudVerify) {
+    const cv = info.cloudVerify;
+    const verifiedAt = new Date();
+    const verifiedTime = verifiedAt.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+    const verifiedClock = verifiedAt.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    lines.push(`  Cloud verified:     yes (last verified: ${verifiedTime}, ${verifiedClock})`);
+    lines.push(`  Total pushes:       ${cv.total_pushes}`);
+    if (cv.last_push_at) {
+      const d = new Date(cv.last_push_at);
+      const pushDate = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const pushTime = d.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+      lines.push(`  Last push:          ${pushDate}, ${pushTime}`);
+    }
+  }
+
+  lines.push(`  Pending:            ${info.stats.pending}`);
+  lines.push(`  Sending:            ${info.stats.sending}`);
+  lines.push(`  Failed:             ${info.stats.failed}`);
+  lines.push(`  Sent:               ${info.stats.sent}`);
+
+  if (info.lastError) {
+    lines.push(`  Last error:         ${info.lastError.last_error ?? "unknown"}`);
+  }
+
+  if (info.lastSuccess) {
+    const d = new Date(info.lastSuccess.updated_at);
+    const formatted = d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+    const time = d.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    lines.push(`  Last upload:        ${formatted}, ${time}`);
+  }
+
+  const guidance = info.guidance ?? getAlphaGuidanceForState(linkState);
+  if (guidance.blocking) {
+    lines.push(...formatGuidanceLines(guidance));
+  }
+
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // cliMain — reads logs, runs doctor, prints output
 // ---------------------------------------------------------------------------
 
@@ -340,6 +508,29 @@ export async function cliMain(): Promise<void> {
     const result = computeStatus(telemetry, skillRecords, queryRecords, auditEntries, doctorResult);
     const output = formatStatus(result);
     console.log(output);
+
+    // Alpha upload status section
+    const alphaIdentity = readAlphaIdentity(SELFTUNE_CONFIG_PATH);
+    let alphaInfo: AlphaStatusInfo | null = null;
+    if (alphaIdentity) {
+      const cloudVerify =
+        alphaIdentity.enrolled && alphaIdentity.api_key
+          ? await fetchCloudVerify(alphaIdentity.api_key)
+          : null;
+      alphaInfo = {
+        enrolled: alphaIdentity.enrolled === true,
+        linkState: getAlphaLinkState(alphaIdentity),
+        guidance: getAlphaGuidance(alphaIdentity),
+        stats: alphaIdentity.enrolled
+          ? getQueueStats(db)
+          : { pending: 0, sending: 0, sent: 0, failed: 0 },
+        lastError: alphaIdentity.enrolled ? getLastUploadError(db) : null,
+        lastSuccess: alphaIdentity.enrolled ? getLastUploadSuccess(db) : null,
+        cloudVerify,
+      };
+    }
+    console.log(formatAlphaStatus(alphaInfo));
+
     process.exit(0);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

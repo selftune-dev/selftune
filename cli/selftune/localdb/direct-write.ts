@@ -175,12 +175,25 @@ export function writeSessionTelemetryToDb(record: SessionTelemetryRecord): boole
       db,
       "session-telemetry",
       `
-      INSERT OR IGNORE INTO session_telemetry
+      INSERT INTO session_telemetry
         (session_id, timestamp, cwd, transcript_path, tool_calls_json,
          total_tool_calls, bash_commands_json, skills_triggered_json,
          skills_invoked_json, assistant_turns, errors_encountered,
          transcript_chars, last_user_query, source, input_tokens, output_tokens)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(session_id) DO UPDATE SET
+        timestamp = excluded.timestamp,
+        tool_calls_json = excluded.tool_calls_json,
+        total_tool_calls = excluded.total_tool_calls,
+        bash_commands_json = excluded.bash_commands_json,
+        skills_triggered_json = excluded.skills_triggered_json,
+        skills_invoked_json = excluded.skills_invoked_json,
+        assistant_turns = excluded.assistant_turns,
+        errors_encountered = excluded.errors_encountered,
+        transcript_chars = excluded.transcript_chars,
+        last_user_query = excluded.last_user_query,
+        input_tokens = COALESCE(excluded.input_tokens, session_telemetry.input_tokens),
+        output_tokens = COALESCE(excluded.output_tokens, session_telemetry.output_tokens)
     `,
     ).run(
       record.session_id,
@@ -231,11 +244,11 @@ export function writeEvolutionAuditToDb(record: EvolutionAuditEntry): boolean {
   return safeWrite("evolution-audit", (db) => {
     getStmt(
       db,
-      "evolution-audit",
+      "evolution-audit-v2",
       `
       INSERT OR IGNORE INTO evolution_audit
-        (timestamp, proposal_id, skill_name, action, details, eval_snapshot_json)
-      VALUES (?, ?, ?, ?, ?, ?)
+        (timestamp, proposal_id, skill_name, action, details, eval_snapshot_json, iterations_used)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `,
     ).run(
       record.timestamp,
@@ -244,6 +257,7 @@ export function writeEvolutionAuditToDb(record: EvolutionAuditEntry): boolean {
       record.action,
       record.details,
       record.eval_snapshot ? JSON.stringify(record.eval_snapshot) : null,
+      record.iterations_used ?? null,
     );
   });
 }

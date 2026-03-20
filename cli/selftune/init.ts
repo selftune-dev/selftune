@@ -12,11 +12,14 @@
  */
 
 import {
-  copyFileSync,
+  closeSync,
   existsSync,
+  fsyncSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
+  renameSync,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -24,11 +27,33 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+import { getAlphaGuidance } from "./agent-guidance.js";
+import {
+  ALPHA_CONSENT_NOTICE,
+  generateUserId,
+  isValidApiKeyFormat,
+  readAlphaIdentity,
+} from "./alpha-identity.js";
 import { TELEMETRY_NOTICE } from "./analytics.js";
+import { pollDeviceCode, requestDeviceCode } from "./auth/device-code.js";
 import { CLAUDE_CODE_HOOK_KEYS, SELFTUNE_CONFIG_DIR, SELFTUNE_CONFIG_PATH } from "./constants.js";
-import type { SelftuneConfig } from "./types.js";
+import type { AgentCommandGuidance, AlphaIdentity, SelftuneConfig } from "./types.js";
 import { hookKeyHasSelftuneEntry } from "./utils/hooks.js";
 import { detectAgent } from "./utils/llm-call.js";
+
+interface InitCliErrorPayload extends AgentCommandGuidance {
+  error: string;
+}
+
+class InitCliError extends Error {
+  payload: InitCliErrorPayload;
+
+  constructor(payload: InitCliErrorPayload) {
+    super(payload.message);
+    this.name = "InitCliError";
+    this.payload = payload;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Agent type detection
@@ -114,6 +139,24 @@ export function detectAgentType(
 export function determineCliPath(override?: string): string {
   if (override) return override;
   return resolve(dirname(import.meta.path), "index.ts");
+}
+
+function writeSelftuneConfig(configPath: string, config: SelftuneConfig): void {
+  const serialized = JSON.stringify(config, null, 2);
+  if (!config.alpha?.api_key?.trim()) {
+    writeFileSync(configPath, serialized, "utf-8");
+    return;
+  }
+
+  const tempPath = `${configPath}.tmp`;
+  const fd = openSync(tempPath, "w", 0o600);
+  try {
+    writeFileSync(fd, serialized, "utf-8");
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  renameSync(tempPath, configPath);
 }
 
 // ---------------------------------------------------------------------------
@@ -270,41 +313,13 @@ export function installClaudeCodeHooks(options?: {
 // Agent file installation
 // ---------------------------------------------------------------------------
 
-/** Bundled agent files directory (ships with the npm package). */
-const BUNDLED_AGENTS_DIR = resolve(dirname(import.meta.path), "..", "..", ".claude", "agents");
-
 /**
- * Copy bundled agent markdown files to ~/.claude/agents/.
- * Returns a list of file names that were copied (skips files that already exist
- * unless `force` is true).
+ * @deprecated Agent files are now bundled in skill/agents/ and read directly
+ * by the consuming agent via progressive disclosure. No installation needed.
+ * Kept as a no-op for backwards compatibility with callers.
  */
-export function installAgentFiles(options?: { homeDir?: string; force?: boolean }): string[] {
-  const home = options?.homeDir ?? homedir();
-  const force = options?.force ?? false;
-  const targetDir = join(home, ".claude", "agents");
-
-  if (!existsSync(BUNDLED_AGENTS_DIR)) return [];
-
-  let sourceFiles: string[];
-  try {
-    sourceFiles = readdirSync(BUNDLED_AGENTS_DIR).filter((f) => f.endsWith(".md"));
-  } catch {
-    return [];
-  }
-
-  if (sourceFiles.length === 0) return [];
-
-  mkdirSync(targetDir, { recursive: true });
-
-  const copied: string[] = [];
-  for (const file of sourceFiles) {
-    const dest = join(targetDir, file);
-    if (!force && existsSync(dest)) continue;
-    copyFileSync(join(BUNDLED_AGENTS_DIR, file), dest);
-    copied.push(file);
-  }
-
-  return copied;
+export function installAgentFiles(_options?: { homeDir?: string; force?: boolean }): string[] {
+  return [];
 }
 
 // ---------------------------------------------------------------------------
@@ -437,6 +452,11 @@ export interface InitOptions {
   agentOverride?: string;
   cliPathOverride?: string;
   homeDir?: string;
+  alpha?: boolean;
+  noAlpha?: boolean;
+  alphaEmail?: string;
+  alphaName?: string;
+  alphaKey?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -447,7 +467,7 @@ export interface InitOptions {
  * Run the init flow. Returns the written (or existing) config.
  * Extracted as a pure function for testability.
  */
-export function runInit(opts: InitOptions): SelftuneConfig {
+export async function runInit(opts: InitOptions): Promise<SelftuneConfig> {
   const { configDir, configPath, force } = opts;
 
   // If config exists and no --force, return existing
@@ -461,6 +481,9 @@ export function runInit(opts: InitOptions): SelftuneConfig {
       );
     }
   }
+
+  // Capture existing alpha identity before overwriting config (for user_id preservation)
+  const existingAlphaBeforeOverwrite = readAlphaIdentity(configPath);
 
   // Detect agent type
   const agentType = detectAgentType(opts.agentOverride, opts.homeDir);
@@ -485,6 +508,85 @@ export function runInit(opts: InitOptions): SelftuneConfig {
   const settingsPath = join(home, ".claude", "settings.json");
   const hooksInstalled = agentType === "claude_code" ? checkClaudeCodeHooks(settingsPath) : false;
 
+  let validatedAlphaIdentity: AlphaIdentity | null = null;
+  if (opts.alpha) {
+    if (opts.alphaKey) {
+      // Direct key entry path — backward compatible, requires email
+      if (!opts.alphaEmail) {
+        throw new InitCliError({
+          error: "alpha_email_required",
+          message:
+            "The --alpha-email flag is required when using --alpha-key. Run: selftune init --alpha --alpha-email user@example.com --alpha-key st_live_<key>",
+          next_command: "selftune init --alpha --alpha-email <email> --alpha-key st_live_<key>",
+          suggested_commands: ["selftune init --alpha", "selftune status"],
+          blocking: true,
+          code: "alpha_email_required",
+        });
+      }
+
+      if (!isValidApiKeyFormat(opts.alphaKey)) {
+        throw new InitCliError({
+          error: "invalid_api_key_format",
+          message: "API key must start with 'st_live_' or 'st_test_'. Check the key and retry.",
+          next_command: "selftune init --alpha --alpha-email <email> --alpha-key st_live_<key>",
+          suggested_commands: ["selftune status", "selftune doctor"],
+          blocking: true,
+          code: "invalid_api_key_format",
+        });
+      }
+
+      validatedAlphaIdentity = {
+        enrolled: true,
+        user_id: existingAlphaBeforeOverwrite?.user_id ?? generateUserId(),
+        email: opts.alphaEmail,
+        display_name: opts.alphaName,
+        consent_timestamp: new Date().toISOString(),
+        api_key: opts.alphaKey,
+      };
+    } else {
+      // Device-code flow — no key provided, authenticate via browser
+      process.stderr.write("[alpha] Starting device-code authentication flow...\n");
+
+      const grant = await requestDeviceCode();
+
+      // Emit structured JSON for the agent to parse
+      console.log(
+        JSON.stringify({
+          level: "info",
+          code: "device_code_issued",
+          verification_url: grant.verification_url,
+          user_code: grant.user_code,
+          expires_in: grant.expires_in,
+          message: `Open ${grant.verification_url} and enter code: ${grant.user_code}`,
+        }),
+      );
+
+      // Try to open browser
+      try {
+        const url = `${grant.verification_url}?code=${grant.user_code}`;
+        Bun.spawn(["open", url], { stdout: "ignore", stderr: "ignore" });
+        process.stderr.write(`[alpha] Browser opened. Waiting for approval...\n`);
+      } catch {
+        process.stderr.write(`[alpha] Could not open browser. Visit the URL above manually.\n`);
+      }
+
+      process.stderr.write("[alpha] Polling");
+      const result = await pollDeviceCode(grant.device_code, grant.interval, grant.expires_in);
+      process.stderr.write("\n[alpha] Approved!\n");
+
+      validatedAlphaIdentity = {
+        enrolled: true,
+        user_id: existingAlphaBeforeOverwrite?.user_id ?? generateUserId(),
+        cloud_user_id: result.cloud_user_id,
+        cloud_org_id: result.org_id,
+        email: opts.alphaEmail,
+        display_name: opts.alphaName,
+        consent_timestamp: new Date().toISOString(),
+        api_key: result.api_key,
+      };
+    }
+  }
+
   const config: SelftuneConfig = {
     agent_type: agentType,
     cli_path: cliPath,
@@ -496,13 +598,10 @@ export function runInit(opts: InitOptions): SelftuneConfig {
 
   // Write config
   mkdirSync(configDir, { recursive: true });
-  writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+  writeSelftuneConfig(configPath, config);
 
-  // Install agent files to ~/.claude/agents/
-  const copiedAgents = installAgentFiles({ homeDir: home, force });
-  if (copiedAgents.length > 0) {
-    console.error(`[INFO] Installed agent files: ${copiedAgents.join(", ")}`);
-  }
+  // Agent files are bundled in skill/agents/ and read directly by the
+  // consuming agent — no installation step needed.
 
   // Auto-install hooks into ~/.claude/settings.json (Claude Code only)
   if (agentType === "claude_code") {
@@ -513,7 +612,7 @@ export function runInit(opts: InitOptions): SelftuneConfig {
     if (addedHookKeys.length > 0) {
       config.hooks_installed = true;
       // Re-write config with updated hooks_installed flag
-      writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+      writeSelftuneConfig(configPath, config);
       console.error(
         `[INFO] Installed ${addedHookKeys.length} selftune hook(s) into ${settingsPath}: ${addedHookKeys.join(", ")}`,
       );
@@ -521,8 +620,31 @@ export function runInit(opts: InitOptions): SelftuneConfig {
       // Re-check in case hooks were already present
       config.hooks_installed = checkClaudeCodeHooks(settingsPath);
       if (config.hooks_installed) {
-        writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+        writeSelftuneConfig(configPath, config);
       }
+    }
+  }
+
+  if (existingAlphaBeforeOverwrite && !opts.alpha && !opts.noAlpha) {
+    config.alpha = existingAlphaBeforeOverwrite;
+    writeSelftuneConfig(configPath, config);
+  }
+
+  // Handle alpha enrollment
+  if (validatedAlphaIdentity) {
+    config.alpha = validatedAlphaIdentity;
+    writeSelftuneConfig(configPath, config);
+
+    const readiness = checkAlphaReadiness(configPath);
+    console.error(JSON.stringify({ alpha_readiness: readiness }));
+  } else if (opts.noAlpha) {
+    if (existingAlphaBeforeOverwrite) {
+      const identity: AlphaIdentity = {
+        ...existingAlphaBeforeOverwrite,
+        enrolled: false,
+      };
+      config.alpha = identity;
+      writeSelftuneConfig(configPath, config);
     }
   }
 
@@ -541,6 +663,11 @@ export async function cliMain(): Promise<void> {
       force: { type: "boolean", default: false },
       "enable-autonomy": { type: "boolean", default: false },
       "schedule-format": { type: "string" },
+      alpha: { type: "boolean", default: false },
+      "no-alpha": { type: "boolean", default: false },
+      "alpha-email": { type: "string" },
+      "alpha-name": { type: "string" },
+      "alpha-key": { type: "string" },
     },
     strict: true,
   });
@@ -551,7 +678,14 @@ export async function cliMain(): Promise<void> {
   const enableAutonomy = values["enable-autonomy"] ?? false;
 
   // Check for existing config without force
-  if (!force && !enableAutonomy && existsSync(configPath)) {
+  const hasAlphaMutation = !!(
+    values.alpha ||
+    values["no-alpha"] ||
+    values["alpha-email"] ||
+    values["alpha-name"] ||
+    values["alpha-key"]
+  );
+  if (!force && !enableAutonomy && !hasAlphaMutation && existsSync(configPath)) {
     try {
       const raw = readFileSync(configPath, "utf-8");
       const existing = JSON.parse(raw) as SelftuneConfig;
@@ -565,15 +699,57 @@ export async function cliMain(): Promise<void> {
     }
   }
 
-  const config = runInit({
+  const config = await runInit({
     configDir,
     configPath,
     force,
     agentOverride: values.agent,
     cliPathOverride: values["cli-path"],
+    alpha: values.alpha ?? false,
+    noAlpha: values["no-alpha"] ?? false,
+    alphaEmail: values["alpha-email"],
+    alphaName: values["alpha-name"],
+    alphaKey: values["alpha-key"],
   });
 
-  console.log(JSON.stringify(config, null, 2));
+  // Redact api_key before printing to stdout
+  const safeConfig = structuredClone(config);
+  if (safeConfig.alpha?.api_key) {
+    safeConfig.alpha.api_key = "<redacted>";
+  }
+  console.log(JSON.stringify(safeConfig, null, 2));
+
+  // Alpha enrollment output
+  if (values.alpha) {
+    console.log(
+      JSON.stringify({
+        level: "info",
+        code: "alpha_enrolled",
+        user_id: config.alpha?.user_id,
+        email: config.alpha?.email,
+        enrolled: true,
+      }),
+    );
+    console.log(
+      JSON.stringify({
+        level: "info",
+        code: "alpha_upload_ready",
+        message:
+          "Alpha enrollment complete. Uploads will run automatically during 'selftune orchestrate'. To enable scheduled background sync (includes evolve + watch + upload), run: selftune cron setup",
+        next_command: "selftune alpha upload",
+        optional_autonomy: "selftune cron setup",
+      }),
+    );
+    console.error(ALPHA_CONSENT_NOTICE);
+  } else if (values["no-alpha"]) {
+    console.log(
+      JSON.stringify({
+        level: "info",
+        code: "alpha_unenrolled",
+        enrolled: false,
+      }),
+    );
+  }
 
   // Detect workspace type and report
   const workspace = detectWorkspaceType(process.cwd());
@@ -637,6 +813,28 @@ export async function cliMain(): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Alpha readiness check
+// ---------------------------------------------------------------------------
+
+export function checkAlphaReadiness(configPath: string): {
+  ready: boolean;
+  missing: string[];
+  guidance: AgentCommandGuidance;
+} {
+  const identity = readAlphaIdentity(configPath);
+  const missing: string[] = [];
+  if (!identity) {
+    missing.push("alpha identity not configured");
+    return { ready: false, missing, guidance: getAlphaGuidance(identity) };
+  }
+  if (!identity.enrolled) missing.push("not enrolled");
+  if (!identity.api_key) missing.push("api_key not set");
+  else if (!isValidApiKeyFormat(identity.api_key))
+    missing.push("api_key has invalid format (expected st_live_* or st_test_*)");
+  return { ready: missing.length === 0, missing, guidance: getAlphaGuidance(identity) };
+}
+
 // Guard: only run when invoked directly
 const isMain =
   (import.meta as Record<string, unknown>).main === true ||
@@ -644,6 +842,10 @@ const isMain =
 
 if (isMain) {
   cliMain().catch((err) => {
+    if (err instanceof InitCliError) {
+      console.error(JSON.stringify(err.payload));
+      process.exit(1);
+    }
     console.error(`[FATAL] ${err}`);
     process.exit(1);
   });

@@ -29,6 +29,7 @@ selftune sync
 | `--no-opencode` | Skip OpenCode ingest |
 | `--no-openclaw` | Skip OpenClaw ingest |
 | `--no-repair` | Skip rebuilding `skill_usage_repaired.jsonl` |
+| `--json` | Output results as JSON |
 
 ## Output
 
@@ -65,6 +66,28 @@ sync reports source/hook failures or expected active sources are missing.
 After sync completes, proceed with the user's intended workflow:
 `selftune status`, `selftune dashboard`, `selftune watch --sync-first`,
 or `selftune evolve --sync-first`.
+
+## `--json` Usage
+
+```bash
+selftune sync --json
+```
+
+Sample output:
+
+```json
+{
+  "sources": {
+    "claude": { "scanned": 12, "synced": 3, "skipped": 9 },
+    "codex": { "scanned": 0, "synced": 0, "skipped": 0 }
+  },
+  "repaired": { "total": 42 },
+  "errors": []
+}
+```
+
+Use `--json` when the agent needs to parse sync results programmatically
+(e.g., to decide whether to proceed with evolution or surface counts to the user).
 
 ## Common Patterns
 

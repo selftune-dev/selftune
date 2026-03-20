@@ -270,7 +270,7 @@ function detectAgentType(transcriptPath: string): string {
 
 async function processSkillToolUse(
   payload: PostToolUsePayload,
-  logPath: string,
+  _logPath: string,
   canonicalLogPath: string,
   promptStatePath?: string,
 ): Promise<SkillUsageRecord | null> {

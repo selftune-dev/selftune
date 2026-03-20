@@ -9,7 +9,7 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
-import { QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
+import { QUERY_LOG, SKILL_LOG } from "../constants.js";
 import type { BaselineMeasurement } from "../eval/baseline.js";
 import { measureBaseline } from "../eval/baseline.js";
 import { buildEvalSet } from "../eval/hooks-to-evals.js";
@@ -40,6 +40,7 @@ import { parseFrontmatter, replaceFrontmatterDescription } from "../utils/frontm
 
 import { createEvolveTUI } from "../utils/tui.js";
 import { appendAuditEntry } from "./audit.js";
+import { checkConstitution } from "./constitutional.js";
 import { appendEvidenceEntry } from "./evidence.js";
 import { extractFailurePatterns } from "./extract-patterns.js";
 import {
@@ -129,6 +130,7 @@ function createAuditEntry(
   details: string,
   evalSnapshot?: EvalPassRate,
   skillName?: string,
+  iterationsUsed?: number,
 ): EvolutionAuditEntry {
   return {
     timestamp: new Date().toISOString(),
@@ -137,6 +139,7 @@ function createAuditEntry(
     details,
     ...(skillName ? { skill_name: skillName } : {}),
     ...(evalSnapshot ? { eval_snapshot: evalSnapshot } : {}),
+    ...(iterationsUsed != null ? { iterations_used: iterationsUsed } : {}),
   };
 }
 
@@ -210,8 +213,16 @@ export async function evolve(
     action: EvolutionAuditEntry["action"],
     details: string,
     evalSnapshot?: EvalPassRate,
+    iterationsUsed?: number,
   ): void {
-    const entry = createAuditEntry(proposalId, action, details, evalSnapshot, skillName);
+    const entry = createAuditEntry(
+      proposalId,
+      action,
+      details,
+      evalSnapshot,
+      skillName,
+      iterationsUsed,
+    );
     auditEntries.push(entry);
     try {
       _appendAuditEntry(entry);
@@ -353,6 +364,33 @@ export async function evolve(
       `Extracted ${failurePatterns.length} failure pattern(s) (${totalMissed} missed queries)`,
     );
 
+    // Compute aggregate grading metrics for proposal context
+    const aggregateMetrics = options.gradingResults?.length
+      ? (() => {
+          const scores = options.gradingResults.map(
+            (r) => r.summary.mean_score ?? r.summary.pass_rate,
+          );
+          const meanScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+          const scoreStdDev = Math.sqrt(
+            scores.reduce((sum, s) => sum + (s - meanScore) ** 2, 0) / scores.length,
+          );
+          const failedRate =
+            options.gradingResults.filter((r) => r.summary.failed > 0).length /
+            options.gradingResults.length;
+          const errors = options.gradingResults.map(
+            (r) => r.execution_metrics?.errors_encountered ?? 0,
+          );
+          const meanErrors = errors.reduce((a, b) => a + b, 0) / errors.length;
+          return {
+            mean_score: meanScore,
+            score_std_dev: scoreStdDev,
+            failed_session_rate: failedRate,
+            mean_errors: meanErrors,
+            total_graded: options.gradingResults.length,
+          };
+        })()
+      : undefined;
+
     // -----------------------------------------------------------------------
     // Step 5: Cold-start bootstrap or early exit if no patterns
     // -----------------------------------------------------------------------
@@ -423,6 +461,8 @@ export async function evolve(
       );
     }
 
+    let iterationsCompleted = 0;
+
     if (paretoEnabled && candidateCount > 1) {
       // Generate N candidates in parallel
       const candidates = await generateMultipleProposals(
@@ -434,6 +474,7 @@ export async function evolve(
         agent,
         candidateCount,
         options.proposalModel,
+        aggregateMetrics,
       );
 
       // Filter by confidence threshold
@@ -472,6 +513,32 @@ export async function evolve(
           proposed_text: proposal.proposed_description,
           eval_set: evalSet,
         });
+
+        // Constitutional check before validation (same gate as retry flow)
+        const constitution = checkConstitution(
+          proposal.proposed_description,
+          currentDescription,
+          skillName,
+        );
+        if (!constitution.passed) {
+          const reason = `Constitutional: ${constitution.violations.join("; ")}`;
+          recordAudit(proposal.proposal_id, "rejected", reason);
+          recordEvidence({
+            timestamp: new Date().toISOString(),
+            proposal_id: proposal.proposal_id,
+            skill_name: skillName,
+            skill_path: skillPath,
+            target: "description",
+            stage: "rejected",
+            rationale: proposal.rationale,
+            confidence: proposal.confidence,
+            details: reason,
+            original_text: proposal.original_description,
+            proposed_text: proposal.proposed_description,
+            eval_set: evalSet,
+          });
+          continue;
+        }
 
         const validation = await _validateProposal(
           proposal,
@@ -537,6 +604,7 @@ export async function evolve(
 
       lastProposal = best.proposal;
       lastValidation = best.validation;
+      iterationsCompleted = 1; // Pareto selection is a single-pass
 
       // Skip the standard retry loop — we already have our result
     } else {
@@ -544,6 +612,7 @@ export async function evolve(
       let feedbackReason = "";
 
       for (let iteration = 0; iteration < maxIterations; iteration++) {
+        iterationsCompleted = iteration + 1;
         // Step 7: Generate proposal
         const effectiveMissedQueries = feedbackReason
           ? [...missedQueries, `[Previous attempt failed: ${feedbackReason}]`]
@@ -558,6 +627,7 @@ export async function evolve(
           skillPath,
           agent,
           options.proposalModel,
+          aggregateMetrics,
         );
         llmCallCount++;
 
@@ -584,6 +654,39 @@ export async function evolve(
           proposed_text: proposal.proposed_description,
           eval_set: evalSet,
         });
+
+        // Step 8b: Constitutional check (deterministic, pre-validation)
+        const constitution = checkConstitution(
+          proposal.proposed_description,
+          currentDescription,
+          skillName,
+        );
+        if (!constitution.passed) {
+          feedbackReason = `Constitutional: ${constitution.violations.join("; ")}`;
+          recordAudit(proposal.proposal_id, "rejected", feedbackReason);
+          recordEvidence({
+            timestamp: new Date().toISOString(),
+            proposal_id: proposal.proposal_id,
+            skill_name: skillName,
+            skill_path: skillPath,
+            target: "description",
+            stage: "rejected",
+            rationale: proposal.rationale,
+            confidence: proposal.confidence,
+            details: feedbackReason,
+          });
+          if (iteration === maxIterations - 1) {
+            finishTui();
+            return withStats({
+              proposal: lastProposal,
+              validation: null,
+              deployed: false,
+              auditEntries,
+              reason: feedbackReason,
+            });
+          }
+          continue;
+        }
 
         // Step 9: Check confidence threshold
         if (proposal.confidence < confidenceThreshold) {
@@ -758,6 +861,26 @@ export async function evolve(
       );
 
       if (!baselineResult.adds_value) {
+        recordAudit(
+          lastProposal.proposal_id,
+          "rejected",
+          `Baseline gate failed: lift=${baselineResult.lift.toFixed(3)} below 0.05 threshold`,
+        );
+        recordEvidence({
+          timestamp: new Date().toISOString(),
+          proposal_id: lastProposal.proposal_id,
+          skill_name: skillName,
+          skill_path: skillPath,
+          target: "description",
+          stage: "rejected",
+          rationale: lastProposal.rationale,
+          confidence: lastProposal.confidence,
+          details: `Baseline gate failed: lift=${baselineResult.lift.toFixed(3)} below 0.05 threshold`,
+          validation: {
+            improved: false,
+            net_change: baselineResult.lift,
+          },
+        });
         finishTui();
         return withStats({
           proposal: lastProposal,
@@ -777,17 +900,37 @@ export async function evolve(
     if (options.gateModel && lastProposal && lastValidation?.improved) {
       tui.step(`Gate validation (${options.gateModel})...`);
       gateValidation = await _gateValidateProposal(lastProposal, evalSet, agent, options.gateModel);
+      llmCallCount++;
       tui.done(
         `Gate (${options.gateModel}): improved=${gateValidation.improved}, net_change=${gateValidation.net_change.toFixed(3)}`,
       );
 
-      recordAudit(
-        lastProposal.proposal_id,
-        "validated",
-        `Gate validation (${options.gateModel}): improved=${gateValidation.improved}, net_change=${gateValidation.net_change.toFixed(3)}`,
-      );
-
       if (!gateValidation.improved) {
+        recordAudit(
+          lastProposal.proposal_id,
+          "rejected",
+          `Gate validation failed (${options.gateModel}): net_change=${gateValidation.net_change.toFixed(3)}`,
+        );
+        recordEvidence({
+          timestamp: new Date().toISOString(),
+          proposal_id: lastProposal.proposal_id,
+          skill_name: skillName,
+          skill_path: skillPath,
+          target: "description",
+          stage: "rejected",
+          rationale: lastProposal.rationale,
+          confidence: lastProposal.confidence,
+          details: `Gate validation failed (${options.gateModel}): net_change=${gateValidation.net_change.toFixed(3)}`,
+          validation: {
+            improved: gateValidation.improved,
+            before_pass_rate: gateValidation.before_pass_rate,
+            after_pass_rate: gateValidation.after_pass_rate,
+            net_change: gateValidation.net_change,
+            regressions: gateValidation.regressions,
+            new_passes: gateValidation.new_passes,
+            per_entry_results: gateValidation.per_entry_results,
+          },
+        });
         finishTui();
         return withStats({
           proposal: lastProposal,
@@ -799,6 +942,12 @@ export async function evolve(
           ...(baselineResult ? { baselineResult } : {}),
         });
       }
+
+      recordAudit(
+        lastProposal.proposal_id,
+        "validated",
+        `Gate validation (${options.gateModel}): improved=${gateValidation.improved}, net_change=${gateValidation.net_change.toFixed(3)}`,
+      );
     }
 
     // -----------------------------------------------------------------------
@@ -826,12 +975,18 @@ export async function evolve(
         console.error("------------------------------\n");
       }
 
-      recordAudit(lastProposal.proposal_id, "deployed", `Deployed proposal for ${skillName}`, {
-        total: evalSet.length,
-        passed: Math.round(lastValidation.after_pass_rate * evalSet.length),
-        failed: evalSet.length - Math.round(lastValidation.after_pass_rate * evalSet.length),
-        pass_rate: lastValidation.after_pass_rate,
-      });
+      recordAudit(
+        lastProposal.proposal_id,
+        "deployed",
+        `Deployed proposal for ${skillName}`,
+        {
+          total: evalSet.length,
+          passed: Math.round(lastValidation.after_pass_rate * evalSet.length),
+          failed: evalSet.length - Math.round(lastValidation.after_pass_rate * evalSet.length),
+          pass_rate: lastValidation.after_pass_rate,
+        },
+        iterationsCompleted,
+      );
       recordEvidence({
         timestamp: new Date().toISOString(),
         proposal_id: lastProposal.proposal_id,
@@ -1135,7 +1290,7 @@ if (import.meta.main) {
     console.error(
       "\nTroubleshooting:\n" +
         "  - Verify --skill-path points to a valid SKILL.md file\n" +
-        "  - Ensure eval data exists (run `selftune evals` first) or pass --eval-set\n" +
+        "  - Ensure eval data exists (run `selftune eval generate` first) or pass --eval-set\n" +
         "  - Check that ANTHROPIC_API_KEY is set if using Claude\n" +
         "  - Re-run with --verbose for full diagnostic output",
     );

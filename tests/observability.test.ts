@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  checkCloudLinkHealth,
+  checkDashboardIntegrityHealth,
   checkEvolutionHealth,
   checkHookInstallation,
   checkLogHealth,
@@ -99,7 +101,54 @@ describe("checkEvolutionHealth", () => {
   });
 });
 
+describe("checkDashboardIntegrityHealth", () => {
+  test("returns a warning about legacy dashboard freshness mode", () => {
+    const checks = checkDashboardIntegrityHealth();
+    expect(checks).toHaveLength(1);
+    expect(checks[0]?.name).toBe("dashboard_freshness_mode");
+    expect(checks[0]?.status).toBe("warn");
+    expect(checks[0]?.message).toContain("JSONL watcher invalidation");
+  });
+});
+
 describe("checkConfigHealth", () => {
+  test("returns guidance when config is missing", () => {
+    const tempHome = mkdtempSync(join(tmpdir(), "selftune-observability-missing-"));
+    const moduleUrl = new URL("../cli/selftune/observability.ts", import.meta.url).href;
+
+    try {
+      const proc = Bun.spawnSync(
+        [
+          process.execPath,
+          "-e",
+          `const { checkConfigHealth } = await import(${JSON.stringify(moduleUrl)}); console.log(JSON.stringify(checkConfigHealth()));`,
+        ],
+        {
+          env: { ...process.env, HOME: tempHome },
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+
+      if (proc.exitCode !== 0) {
+        const stderr = new TextDecoder().decode(proc.stderr);
+        throw new Error(`Subprocess failed (exit ${proc.exitCode}): ${stderr}`);
+      }
+
+      const output = new TextDecoder().decode(proc.stdout).trim();
+      const checks = JSON.parse(output) as Array<{
+        status: string;
+        guidance?: { next_command?: string; blocking?: boolean };
+      }>;
+      expect(checks).toHaveLength(1);
+      expect(checks[0]?.status).toBe("warn");
+      expect(checks[0]?.guidance?.blocking).toBe(true);
+      expect(checks[0]?.guidance?.next_command).toBe("selftune init");
+    } finally {
+      rmSync(tempHome, { recursive: true, force: true });
+    }
+  });
+
   test("accepts openclaw agent_type values written by init", () => {
     const tempHome = mkdtempSync(join(tmpdir(), "selftune-observability-"));
     const configDir = join(tempHome, ".selftune");
@@ -150,6 +199,22 @@ describe("checkConfigHealth", () => {
   });
 });
 
+describe("checkCloudLinkHealth", () => {
+  test("returns remediation guidance when credential is missing", () => {
+    const checks = checkCloudLinkHealth({
+      enrolled: true,
+      user_id: "user-1",
+      email: "user@example.com",
+      consent_timestamp: "2026-03-20T00:00:00.000Z",
+    });
+
+    expect(checks).toHaveLength(1);
+    expect(checks[0]?.status).toBe("warn");
+    expect(checks[0]?.guidance?.blocking).toBe(true);
+    expect(checks[0]?.guidance?.next_command).toContain("--alpha-key <st_live_key>");
+  });
+});
+
 describe("doctor", () => {
   test("returns structured result", async () => {
     const result = await doctor();
@@ -171,6 +236,13 @@ describe("doctor", () => {
       (c) => c.name === "evolution_audit" || c.name === "log_evolution_audit",
     );
     expect(evolutionChecks.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("includes dashboard integrity warning", async () => {
+    const result = await doctor();
+    const integrityCheck = result.checks.find((c) => c.name === "dashboard_freshness_mode");
+    expect(integrityCheck).toBeDefined();
+    expect(integrityCheck?.status).toBe("warn");
   });
 
   test("doctor does not produce false positives from git hook checks", async () => {

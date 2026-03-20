@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import {
   ActivityPanel,
   OrchestrateRunsPanel,
@@ -124,6 +124,7 @@ export function Overview({
   onStatusFilterChange: (v: SkillHealthStatus | "ALL") => void
   overviewQuery: UseQueryResult<OverviewResponse>
 }) {
+  const navigate = useNavigate()
   const { data, isPending, isError, error, refetch } = overviewQuery
   const orchestrateQuery = useOrchestrateRuns()
 
@@ -189,6 +190,10 @@ export function Overview({
       ? gradedSkills.reduce((sum, s) => sum + s.pass_rate, 0) / gradedSkills.length
       : null
 
+  const handleSelectProposal = (skillName: string, proposalId: string) => {
+    navigate(`/skills/${encodeURIComponent(skillName)}?proposal=${encodeURIComponent(proposalId)}`)
+  }
+
   return (
     <div className="@container/main flex flex-1 flex-col gap-6 py-6">
       <OnboardingBanner skillCount={skills.length} />
@@ -216,6 +221,7 @@ export function Overview({
               evolution={overview.evolution}
               pendingProposals={overview.pending_proposals}
               unmatchedQueries={overview.unmatched_queries}
+              onSelectProposal={handleSelectProposal}
             />
             {orchestrateQuery.isPending ? (
               <Skeleton className="h-32 rounded-xl" />

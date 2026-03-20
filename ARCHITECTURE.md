@@ -1,4 +1,4 @@
-<!-- Verified: 2026-03-15 -->
+<!-- Verified: 2026-03-19 -->
 
 # Architecture — selftune
 
@@ -50,6 +50,12 @@ flowchart LR
   SQLite -. WAL watch .-> API
   API -. SSE push .-> SPA[apps/local-dashboard]
   API --> CLI[status / last / badge]
+
+  SQLite -. alpha enrolled .-> AlphaUpload[alpha-upload pipeline]
+  AlphaUpload --> Queue[(upload_queue table)]
+  Queue --> Flush[flush + retry]
+  Flush --> CloudAPI[cloud API — POST /api/v1/push]
+  CloudAPI --> Postgres[(Neon Postgres — canonical tables)]
 ```
 
 ## Operating Rules
@@ -58,6 +64,7 @@ flowchart LR
 - **Shared local evidence.** Downstream modules communicate through SQLite (primary operational store), append-only JSONL audit trails, and repaired overlays.
 - **Autonomy with safeguards.** Low-risk description evolution can deploy automatically, but validation, watch, and rollback remain mandatory.
 - **Local-first product surfaces.** `status`, `last`, and the dashboard read from local evidence, not external services.
+- **Alpha data pipeline.** Opted-in users upload V2 canonical push payloads to the cloud API via `alpha-upload/`. Uploads are fail-open and never block the orchestrate loop.
 - **Generic scheduling first.** `selftune cron setup` is the main automation path (auto-detects platform). `selftune schedule` is a backward-compatible alias.
 
 ## Domain Map
@@ -78,6 +85,7 @@ flowchart LR
 | Local DB | `cli/selftune/localdb/` | SQLite materialization and payload-oriented queries | B |
 | Dashboard | `cli/selftune/dashboard.ts`, `cli/selftune/dashboard-server.ts`, `apps/local-dashboard/` | Local SPA shell, v2 API with SSE live updates, overview/report/status UI | B |
 | Observability CLI | `cli/selftune/status.ts`, `cli/selftune/last.ts`, `cli/selftune/badge/` | Fast local readouts of health, recent activity, and badge state | B |
+| Alpha Upload | `cli/selftune/alpha-upload/`, `cli/selftune/alpha-identity.ts` | Alpha data pipeline: queue, V2 payload build, flush, HTTP transport with API key auth | B |
 | Contribute | `cli/selftune/contribute/` | Opt-in anonymized export for community signal pooling | C |
 | Skill | `skill/` | Agent-facing routing table, workflows, and references | B |
 
@@ -164,16 +172,17 @@ don't need agent intelligence or user interaction.
 
 ## Data Architecture
 
-SQLite is the operational database for all reads. Hooks and sync write
+SQLite is the operational database for local runtime reads. Hooks and sync write
 directly to SQLite via `localdb/direct-write.ts`. JSONL files are retained
-as an append-only audit trail and can be used to rebuild SQLite on demand.
+as append-only capture/audit material and can still be used for rebuild/export
+paths while the migration is being closed.
 
 ```text
 Primary Store: SQLite (~/.selftune/selftune.db)
 ├── Hooks write directly via localdb/direct-write.ts (primary write path)
 ├── Sync writes directly via localdb/direct-write.ts
 ├── All reads (orchestrate, evolve, grade, status, dashboard) query SQLite
-└── WAL-mode watch powers SSE live updates
+└── Target freshness model: WAL-mode watch powers SSE live updates
 
 Audit Trail: JSONL files (~/.claude/*.jsonl)
 ├── session_telemetry_log.jsonl    Session telemetry records
@@ -192,12 +201,23 @@ Core Loop: reads SQLite
 Rebuild Paths:
 ├── materialize.ts  — runs once on startup for historical JSONL backfill
 └── selftune export — generates JSONL from SQLite on demand
+
+Alpha Upload Path (opted-in users only):
+├── stage-canonical.ts  — reads canonical JSONL + evolution evidence + orchestrate_runs into canonical_upload_staging table
+├── build-payloads.ts   — reads staging table via single monotonic cursor, produces V2 canonical push payloads
+├── flush.ts            — POSTs to cloud API (POST /api/v1/push) with Bearer auth, handles 409/401/403
+└── Cloud storage: Neon Postgres (raw_pushes for lossless ingest → canonical tables for analysis)
 ```
 
-Hooks and sync write to both SQLite (primary) and JSONL (audit trail) in
-parallel. All reads go through SQLite. The materializer runs once on startup
-to backfill any historical JSONL data not yet in the database. `selftune export`
-can regenerate JSONL from SQLite when needed for portability or debugging.
+Hooks and sync currently write to both SQLite (primary local runtime store)
+and JSONL (capture/audit trail) in parallel. All local product reads go
+through SQLite. The materializer runs once on startup to backfill any
+historical JSONL data not yet in the database. `selftune export` can
+regenerate JSONL from SQLite when needed for portability or debugging.
+
+Current freshness caveat: the shipped dashboard still uses legacy JSONL file
+watchers for SSE invalidation in `dashboard-server.ts`. WAL-only invalidation
+is the intended end-state, but it is not the sole live-refresh path yet.
 
 ## Repository Shape
 

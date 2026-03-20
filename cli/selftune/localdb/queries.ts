@@ -73,7 +73,7 @@ export function getOverviewPayload(db: Database): OverviewPayload {
   // Evolution audit (bounded to most recent 500)
   const evolution = db
     .query(
-      `SELECT timestamp, proposal_id, action, details
+      `SELECT timestamp, proposal_id, skill_name, action, details
        FROM evolution_audit
        ORDER BY timestamp DESC
        LIMIT 500`,
@@ -81,6 +81,7 @@ export function getOverviewPayload(db: Database): OverviewPayload {
     .all() as Array<{
     timestamp: string;
     proposal_id: string;
+    skill_name: string | null;
     action: string;
     details: string;
   }>;
@@ -242,9 +243,14 @@ export function getSkillsList(db: Database): SkillSummary[] {
     .query(
       `SELECT
          si.skill_name,
-         (SELECT s2.skill_scope FROM skill_invocations s2
-          WHERE s2.skill_name = si.skill_name AND s2.skill_scope IS NOT NULL
-          ORDER BY s2.occurred_at DESC LIMIT 1) as skill_scope,
+         COALESCE(
+           (SELECT s2.skill_scope FROM skill_invocations s2
+            WHERE s2.skill_name = si.skill_name AND s2.skill_scope IS NOT NULL
+            ORDER BY s2.occurred_at DESC LIMIT 1),
+           (SELECT su.skill_scope FROM skill_usage su
+            WHERE su.skill_name = si.skill_name AND su.skill_scope IS NOT NULL
+            ORDER BY su.timestamp DESC LIMIT 1)
+         ) as skill_scope,
          COUNT(*) as total_checks,
          SUM(CASE WHEN si.triggered = 1 THEN 1 ELSE 0 END) as triggered_count,
          COUNT(DISTINCT si.session_id) as unique_sessions,
@@ -469,9 +475,12 @@ export function queryEvolutionAudit(
   eval_snapshot?: Record<string, unknown>;
 }> {
   const sql = skillName
-    ? `SELECT * FROM evolution_audit WHERE skill_name = ? ORDER BY timestamp DESC`
+    ? `SELECT * FROM evolution_audit
+       WHERE skill_name = ?
+          OR (skill_name IS NULL AND proposal_id LIKE 'evo-' || ? || '-%')
+       ORDER BY timestamp DESC`
     : `SELECT * FROM evolution_audit ORDER BY timestamp DESC`;
-  const rows = (skillName ? db.query(sql).all(skillName) : db.query(sql).all()) as Array<
+  const rows = (skillName ? db.query(sql).all(skillName, skillName) : db.query(sql).all()) as Array<
     Record<string, unknown>
   >;
   return rows.map((r) => ({
@@ -567,6 +576,75 @@ export function queryImprovementSignals(
     consumed_at: r.consumed_at as string | undefined,
     consumed_by_run: r.consumed_by_run as string | undefined,
   }));
+}
+
+// -- Alpha upload query helpers -----------------------------------------------
+
+/**
+ * Get the most recent failed queue item's error and timestamp.
+ * Returns null if no failed items exist.
+ */
+export function getLastUploadError(
+  db: Database,
+): { last_error: string | null; updated_at: string } | null {
+  try {
+    const row = db
+      .query(
+        `SELECT last_error, updated_at
+         FROM upload_queue
+         WHERE status = 'failed'
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+      )
+      .get() as { last_error: string | null; updated_at: string } | null;
+    return row ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the most recent sent queue item's timestamp.
+ * Returns null if no sent items exist.
+ */
+export function getLastUploadSuccess(db: Database): { updated_at: string } | null {
+  try {
+    const row = db
+      .query(
+        `SELECT updated_at
+         FROM upload_queue
+         WHERE status = 'sent'
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+      )
+      .get() as { updated_at: string } | null;
+    return row ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the age in seconds of the oldest pending queue item.
+ * Returns null if no pending items exist.
+ */
+export function getOldestPendingAge(db: Database): number | null {
+  try {
+    const row = db
+      .query(
+        `SELECT created_at
+         FROM upload_queue
+         WHERE status = 'pending'
+         ORDER BY created_at ASC
+         LIMIT 1`,
+      )
+      .get() as { created_at: string } | null;
+    if (!row) return null;
+    const ageMs = Date.now() - new Date(row.created_at).getTime();
+    return Math.floor(ageMs / 1000);
+  } catch {
+    return null;
+  }
 }
 
 // -- Helpers ------------------------------------------------------------------

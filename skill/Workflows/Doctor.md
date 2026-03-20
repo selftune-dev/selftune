@@ -17,33 +17,56 @@ None. Doctor runs all checks unconditionally.
 
 ```json
 {
-  "healthy": true,
+  "command": "doctor",
+  "timestamp": "2026-02-28T10:00:00Z",
   "checks": [
     {
-      "name": "session_telemetry_log exists",
+      "name": "config",
+      "path": "/Users/you/.selftune/config.json",
       "status": "pass",
-      "detail": "Found 142 entries"
+      "message": "Valid config with agent_type and llm_mode"
     },
     {
-      "name": "skill_usage_log parseable",
+      "name": "log_session_telemetry",
+      "path": "/Users/you/.claude/session_telemetry_log.jsonl",
       "status": "pass",
-      "detail": "All 89 entries valid JSON"
+      "message": "Found 142 entries"
     },
     {
-      "name": "hooks installed",
+      "name": "hook_settings",
+      "path": "/Users/you/.claude/settings.json",
       "status": "fail",
-      "detail": "PostToolUse hook not found in ~/.claude/settings.json"
+      "message": "PostToolUse hook not found in ~/.claude/settings.json"
+    },
+    {
+      "name": "dashboard_freshness_mode",
+      "status": "warn",
+      "message": "Dashboard still uses legacy JSONL watcher invalidation"
     }
   ],
   "summary": {
-    "passed": 5,
-    "failed": 1,
-    "total": 6
-  }
+    "pass": 8,
+    "fail": 1,
+    "warn": 1,
+    "total": 10
+  },
+  "healthy": false
 }
 ```
 
 The process exits with code 0 if `healthy: true`, code 1 otherwise.
+
+Failed or warning checks may include a machine-readable `guidance` object:
+
+```json
+{
+  "code": "config_missing",
+  "message": "selftune is not initialized yet.",
+  "next_command": "selftune init",
+  "suggested_commands": ["selftune doctor"],
+  "blocking": true
+}
+```
 
 ## Parsing Instructions
 
@@ -57,69 +80,64 @@ The process exits with code 0 if `healthy: true`, code 1 otherwise.
 ### Find Failed Checks
 
 ```bash
-# Parse: .checks[] | select(.status == "fail") | { name, detail }
+# Parse: .checks[] | select(.status == "fail") | { name, message }
 ```
 
 ### Get Summary Counts
 
 ```bash
-# Parse: .summary.passed, .summary.failed, .summary.total
+# Parse: .summary.pass, .summary.fail, .summary.warn, .summary.total
 ```
 
 ## Health Checks
 
-Doctor validates these areas:
+Doctor validates these baseline areas (10 checks total), and adds alpha cloud-link
+or queue checks when alpha is configured:
 
-### Log File Checks
+### Config Check
 
-| Check | What it validates |
-|-------|-------------------|
-| Log files exist | `session_telemetry_log.jsonl`, `skill_usage_log.jsonl`, `all_queries_log.jsonl` exist in `~/.claude/` |
-| Logs are parseable | Every line in each log file is valid JSON |
-| Schema conformance | Required fields present per log type (see `references/logs.md`) |
+| Check name | What it validates |
+|------------|-------------------|
+| `config` | `~/.selftune/config.json` exists, is valid JSON, contains `agent_type` and `llm_mode` fields |
 
-### Hook Checks
+### Log Checks (4 checks)
 
-| Check | What it validates |
-|-------|-------------------|
-| Hooks installed | `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, and `Stop` hooks are configured in `~/.claude/settings.json` |
-| Hook scripts exist | The script files referenced by hooks exist on disk |
-| Auto-activate hook | `hooks/auto-activate.ts` is registered in `UserPromptSubmit` and the file is executable |
-| Evolution guard hook | `hooks/evolution-guard.ts` is registered in `PreToolUse` and the file exists |
+| Check name | What it validates |
+|------------|-------------------|
+| `log_session_telemetry` | `session_telemetry_log.jsonl` exists and is parseable |
+| `log_skill_usage` | `skill_usage_log.jsonl` exists and is parseable |
+| `log_all_queries` | `all_queries_log.jsonl` exists and is parseable |
+| `log_evolution_audit` | `evolution_audit_log.jsonl` exists and is parseable |
 
-### Memory Checks
+### Hook Check
 
-| Check | What it validates |
-|-------|-------------------|
-| Memory directory exists | `~/.selftune/memory/` directory is present |
-| Memory files valid | `context.md`, `decisions.md`, `plan.md` exist and are non-empty (if previously written) |
+| Check name | What it validates |
+|------------|-------------------|
+| `hook_settings` | `~/.claude/settings.json` has selftune hooks configured |
 
-### Activation Rules Checks
+### Evolution Check
 
-| Check | What it validates |
-|-------|-------------------|
-| Rules file exists | `~/.selftune/activation-rules.json` is present |
-| Rules file valid | The file contains valid JSON conforming to the activation rules schema |
+| Check name | What it validates |
+|------------|-------------------|
+| `evolution_audit` | Evolution audit log entries have valid structure |
 
-### Agent Checks
+### Integrity Check
 
-| Check | What it validates |
-|-------|-------------------|
-| Optional agent directory exists | If `.claude/agents/` is present, it is readable |
-| Optional agent files present | If the repo bundles helper agents, the expected files are present |
+| Check name | What it validates |
+|------------|-------------------|
+| `dashboard_freshness_mode` | Warns when the dashboard still relies on legacy JSONL watcher invalidation instead of SQLite WAL live refresh |
 
-### Dashboard Checks (optional)
+### Skill Version Sync Check
 
-| Check | What it validates |
-|-------|-------------------|
-| Dashboard server accessible | `dashboard-server.ts` exists in the CLI directory |
+| Check name | What it validates |
+|------------|-------------------|
+| `skill_version_sync` | SKILL.md frontmatter version matches package.json version |
 
-### Evolution Audit Checks
+### Version Check
 
-| Check | What it validates |
-|-------|-------------------|
-| Audit log integrity | `evolution_audit_log.jsonl` entries have required fields (`timestamp`, `proposal_id`, `action`) |
-| Valid action values | All entries use known action types: `created`, `validated`, `deployed`, `rolled_back` |
+| Check name | What it validates |
+|------------|-------------------|
+| `version_up_to_date` | Installed version matches latest on npm registry |
 
 ## Steps
 
@@ -139,18 +157,13 @@ For each failed check, take the appropriate action:
 
 | Failed check | Fix |
 |-------------|-----|
-| Log files missing | Run a session to generate initial log entries. Check hook installation. |
-| Logs not parseable | Inspect the corrupted log file. Remove or fix invalid lines. |
-| Hooks not installed | Merge `skill/settings_snippet.json` into `~/.claude/settings.json`. Update paths. |
-| Hook scripts missing | Verify the selftune repo path. Re-run `init` if the repo was moved. |
-| Auto-activate missing | Add `hooks/auto-activate.ts` to `UserPromptSubmit` in settings. |
-| Evolution guard missing | Add `hooks/evolution-guard.ts` to `PreToolUse` in settings. |
-| Memory directory missing | Run `mkdir -p ~/.selftune/memory`. |
-| Memory files invalid | Delete and let the memory writer recreate them on next evolve/watch. |
-| Activation rules missing | Copy `assets/activation-rules-default.json` to `~/.selftune/activation-rules.json`. |
-| Activation rules invalid | Validate JSON syntax. Re-copy from template if corrupted. |
-| Agent files missing | If your repo uses optional helper agents, restore them in `.claude/agents/`. Otherwise ignore this advisory. |
-| Audit log invalid | Remove corrupted entries. Future operations will append clean entries. |
+| `config` | Run `selftune init` (or `selftune init --force` to regenerate). |
+| `log_*` | Run a session to generate initial log entries. Check hook installation with `selftune init`. |
+| `hook_settings` | Run `selftune init` to install hooks into `~/.claude/settings.json`. |
+| `evolution_audit` | Remove corrupted entries. Future operations will append clean entries. |
+| `dashboard_freshness_mode` | This is an operator warning, not a broken install. Expect possible freshness gaps for SQLite-only writes and export before destructive recovery. |
+| `skill_version_sync` | Run `bun run sync-version` to stamp SKILL.md from package.json. |
+| `version_up_to_date` | Run `npm install -g selftune` to update. |
 
 ### 4. Re-run Doctor
 
@@ -159,14 +172,28 @@ After fixes, run doctor again to verify all checks pass.
 ## Subagent Escalation
 
 If doctor reveals persistent issues with a specific skill — especially
-recurring failures that basic fixes do not resolve — spawn the
-`diagnosis-analyst` agent as a subagent for root cause analysis.
+recurring failures that basic fixes do not resolve — read
+`skill/agents/diagnosis-analyst.md` and spawn a subagent with those instructions
+for root cause analysis.
+
+### Alpha Upload Not Active
+
+**Symptoms:** `selftune status` shows alpha upload as "not enrolled" or "enrolled (missing credential)"
+
+**Diagnostic steps:**
+1. Check `selftune status` — look at "Alpha Upload" and "Cloud link" lines
+2. If `doctor` includes a `cloud_link` or alpha queue warning, prefer `.checks[].guidance.next_command`
+3. If "not enrolled" or "not linked": run `selftune init --alpha --alpha-email <email> --alpha-key <key>`
+4. If "enrolled (missing credential)": re-run `selftune init --alpha --alpha-email <email> --alpha-key <credential> --force`
+5. If "api_key has invalid format": credential must start with `st_live_` or `st_test_`
+
+**Resolution:** Follow the setup sequence in Initialize workflow → Alpha Enrollment section.
 
 ## Common Patterns
 
 **User reports something seems broken**
 > Run `selftune doctor`. Parse the JSON output for failed checks. Report
-> each failure's `name` and `detail` to the user with the recommended fix.
+> each failure's `name` and `message` to the user with the recommended fix.
 
 **User asks if hooks are working**
 > Run `selftune doctor`. Parse `.checks[]` for hook-related entries. If

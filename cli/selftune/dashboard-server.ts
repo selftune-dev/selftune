@@ -20,10 +20,20 @@ import type { Database } from "bun:sqlite";
 import { existsSync, type FSWatcher, watch as fsWatch, readFileSync } from "node:fs";
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { BadgeFormat } from "./badge/badge-svg.js";
-import { EVOLUTION_AUDIT_LOG, QUERY_LOG, TELEMETRY_LOG } from "./constants.js";
-import type { OverviewResponse, SkillReportResponse } from "./dashboard-contract.js";
+import {
+  EVOLUTION_AUDIT_LOG,
+  LOG_DIR,
+  QUERY_LOG,
+  SELFTUNE_CONFIG_DIR,
+  TELEMETRY_LOG,
+} from "./constants.js";
+import type {
+  HealthResponse,
+  OverviewResponse,
+  SkillReportResponse,
+} from "./dashboard-contract.js";
 import { readEvidenceTrail } from "./evolution/evidence.js";
-import { closeSingleton, getDb } from "./localdb/db.js";
+import { closeSingleton, DB_PATH, getDb } from "./localdb/db.js";
 import { materializeIncremental } from "./localdb/materialize.js";
 import {
   queryEvolutionAudit,
@@ -52,6 +62,7 @@ export interface DashboardServerOptions {
   host?: string;
   spaDir?: string;
   openBrowser?: boolean;
+  runtimeMode?: HealthResponse["process_mode"];
   statusLoader?: () => StatusResult | Promise<StatusResult>;
   evidenceLoader?: () => EvolutionEvidenceEntry[];
   overviewLoader?: () => OverviewResponse;
@@ -67,6 +78,21 @@ try {
 } catch {
   // fallback already set
 }
+
+/** Resolve short git SHA once at startup (cached). */
+let cachedGitSha: string | null = null;
+function getGitSha(): string {
+  if (cachedGitSha !== null) return cachedGitSha;
+  try {
+    const result = Bun.spawnSync(["git", "rev-parse", "--short", "HEAD"]);
+    cachedGitSha = result.stdout.toString().trim() || "unknown";
+  } catch {
+    cachedGitSha = "unknown";
+  }
+  return cachedGitSha;
+}
+
+const WORKSPACE_ROOT = resolve(import.meta.dir, "..", "..");
 
 function findSpaDir(): string | null {
   const candidates = [
@@ -138,6 +164,7 @@ export async function startDashboardServer(
   const port = options?.port ?? 3141;
   const hostname = options?.host ?? "localhost";
   const openBrowser = options?.openBrowser ?? true;
+  const runtimeMode = options?.runtimeMode ?? (import.meta.main ? "dev-server" : "test");
   const getStatusResult = options?.statusLoader ?? computeStatusFromDb;
   const getEvidenceEntries = options?.evidenceLoader ?? readEvidenceTrail;
   const getOverviewResponse = options?.overviewLoader;
@@ -212,6 +239,7 @@ export async function startDashboardServer(
 
   // -- File watchers on JSONL logs for push-based updates ---------------------
   const WATCHED_LOGS = [TELEMETRY_LOG, QUERY_LOG, EVOLUTION_AUDIT_LOG];
+  const watchedLogPaths = new Set(WATCHED_LOGS);
 
   let fsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const FS_DEBOUNCE_MS = 500;
@@ -226,14 +254,46 @@ export async function startDashboardServer(
   }
 
   const fileWatchers: FSWatcher[] = [];
-  for (const logPath of WATCHED_LOGS) {
-    if (existsSync(logPath)) {
-      try {
-        fileWatchers.push(fsWatch(logPath, onLogFileChange));
-      } catch {
-        // Non-fatal: fall back to polling if watch fails
-      }
+  const watchedFiles = new Set<string>();
+  let directoryWatcherActive = false;
+
+  function registerFileWatcher(logPath: string): void {
+    if (watchedFiles.has(logPath) || !existsSync(logPath)) return;
+    try {
+      fileWatchers.push(fsWatch(logPath, onLogFileChange));
+      watchedFiles.add(logPath);
+    } catch {
+      // Non-fatal: fall back to polling if watch fails
     }
+  }
+
+  for (const logPath of WATCHED_LOGS) {
+    registerFileWatcher(logPath);
+  }
+
+  try {
+    fileWatchers.push(
+      fsWatch(LOG_DIR, (_eventType, filename) => {
+        if (typeof filename !== "string" || filename.length === 0) return;
+        const fullPath = join(LOG_DIR, filename);
+        if (!watchedLogPaths.has(fullPath)) return;
+        registerFileWatcher(fullPath);
+        onLogFileChange();
+      }),
+    );
+    directoryWatcherActive = true;
+  } catch {
+    directoryWatcherActive = false;
+  }
+
+  function getWatcherMode(): HealthResponse["watcher_mode"] {
+    return directoryWatcherActive || watchedFiles.size > 0 ? "jsonl" : "none";
+  }
+
+  if (runtimeMode !== "test" && getWatcherMode() === "jsonl") {
+    console.warn(
+      "Dashboard freshness mode: JSONL watcher invalidation (legacy). Live updates can miss SQLite-only writes until WAL cutover lands.",
+    );
   }
 
   let cachedStatusResult: StatusResult | null = null;
@@ -283,16 +343,23 @@ export async function startDashboardServer(
 
       // ---- GET /api/health ----
       if (url.pathname === "/api/health" && req.method === "GET") {
-        return Response.json(
-          {
-            ok: true,
-            service: "selftune-dashboard",
-            version: selftuneVersion,
-            spa: Boolean(spaDir),
-            v2_data_available: Boolean(getOverviewResponse || db),
-          },
-          { headers: corsHeaders() },
-        );
+        const healthResponse: HealthResponse = {
+          ok: true,
+          service: "selftune-dashboard",
+          version: selftuneVersion,
+          spa: Boolean(spaDir),
+          v2_data_available: Boolean(getOverviewResponse || db),
+          workspace_root: WORKSPACE_ROOT,
+          git_sha: getGitSha(),
+          db_path: DB_PATH,
+          log_dir: LOG_DIR,
+          config_dir: SELFTUNE_CONFIG_DIR,
+          watcher_mode: getWatcherMode(),
+          process_mode: runtimeMode,
+          host: hostname,
+          port: boundPort,
+        };
+        return Response.json(healthResponse, { headers: corsHeaders() });
       }
 
       // ---- GET /api/v2/events ---- SSE stream for live updates
@@ -537,5 +604,10 @@ export async function startDashboardServer(
 // -- Direct execution (bun run dashboard-server.ts --port XXXX) ---------------
 if (import.meta.main) {
   const port = Number(process.argv.find((_, i, a) => a[i - 1] === "--port")) || 7888;
-  startDashboardServer({ port, openBrowser: false });
+  const runtimeModeArg = process.argv.find((_, i, a) => a[i - 1] === "--runtime-mode");
+  const runtimeMode =
+    runtimeModeArg === "standalone" || runtimeModeArg === "dev-server" || runtimeModeArg === "test"
+      ? runtimeModeArg
+      : "dev-server";
+  startDashboardServer({ port, openBrowser: false, runtimeMode });
 }

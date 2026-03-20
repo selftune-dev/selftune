@@ -42,14 +42,12 @@ import type { SyncResult, SyncStepResult } from "../cli/selftune/sync.js";
 import type {
   DoctorResult,
   EvalEntry,
-  EvolutionAuditEntry,
   EvolutionProposal,
   FailurePattern,
   QueryLogRecord,
   SessionTelemetryRecord,
   SkillUsageRecord,
 } from "../cli/selftune/types.js";
-import { readJsonl } from "../cli/selftune/utils/jsonl.js";
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -264,7 +262,6 @@ describe("autonomy proof: autonomous deploy end-to-end", () => {
     const skillPath = join(skillDir, "SKILL.md");
     writeFileSync(skillPath, SKILL_MD_ORIGINAL, "utf-8");
 
-    const auditLogPath = join(tmpDir, "evolution_audit_log.jsonl");
     const proposal = makeProposal(skillPath);
     const validation = makeValidation();
 

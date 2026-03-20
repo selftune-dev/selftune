@@ -10,7 +10,7 @@
 // NOTE: With dual-write active (Phase 1+), hooks insert directly into SQLite.
 // The materializer is only needed for:
 //   1. Initial startup (to catch pre-existing JSONL data from before dual-write)
-//   2. Manual rebuild via `selftune rebuild-db`
+//   2. Manual recovery after exporting JSONL and recreating the DB file
 //   3. Backfill from batch ingestors that don't yet dual-write
 
 import type { Database } from "bun:sqlite";
@@ -41,6 +41,118 @@ import { readJsonl, readJsonlFrom } from "../utils/jsonl.js";
 import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
 import { getMeta, setMeta } from "./db.js";
 
+/** Tables that contain SQLite-only data (written by hooks, not just materialized from JSONL). */
+const _PROTECTED_TABLES = [
+  { table: "evolution_audit", tsColumn: "timestamp", jsonlLog: EVOLUTION_AUDIT_LOG },
+  { table: "evolution_evidence", tsColumn: "timestamp", jsonlLog: EVOLUTION_EVIDENCE_LOG },
+  { table: "orchestrate_runs", tsColumn: "timestamp", jsonlLog: ORCHESTRATE_RUN_LOG },
+] as const;
+
+/**
+ * Preflight check before full rebuild: detect tables where SQLite has rows
+ * newer than the corresponding JSONL file. If found and `force` is not set,
+ * throw an error so the user can export first.
+ */
+function preflightRebuildGuard(db: Database, options?: MaterializeOptions): void {
+  if (options?.force) return;
+
+  const protectedTables = [
+    {
+      table: "evolution_audit",
+      tsColumn: "timestamp",
+      jsonlLog: options?.evolutionAuditPath ?? EVOLUTION_AUDIT_LOG,
+    },
+    {
+      table: "evolution_evidence",
+      tsColumn: "timestamp",
+      jsonlLog: options?.evolutionEvidencePath ?? EVOLUTION_EVIDENCE_LOG,
+    },
+    {
+      table: "orchestrate_runs",
+      tsColumn: "timestamp",
+      jsonlLog: options?.orchestrateRunLogPath ?? ORCHESTRATE_RUN_LOG,
+    },
+  ];
+
+  const warnings: string[] = [];
+  for (const { table, tsColumn, jsonlLog } of protectedTables) {
+    // Get newest timestamp in SQLite
+    let sqliteMax: string | null = null;
+    try {
+      const row = db.query(`SELECT MAX(${tsColumn}) AS max_ts FROM ${table}`).get() as {
+        max_ts: string | null;
+      } | null;
+      sqliteMax = row?.max_ts ?? null;
+    } catch {
+      continue; // table doesn't exist yet — safe to rebuild
+    }
+
+    if (!sqliteMax) continue; // no rows in SQLite — safe
+
+    // Get newest timestamp from JSONL
+    let jsonlMax: string | null = null;
+    let jsonlBoundaryCount = 0;
+    try {
+      const records = readJsonl<{ timestamp: string }>(jsonlLog);
+      if (records.length > 0) {
+        jsonlMax = records.reduce(
+          (max, r) => (r.timestamp > max ? r.timestamp : max),
+          records[0].timestamp,
+        );
+        jsonlBoundaryCount = records.filter((record) => record.timestamp === jsonlMax).length;
+      }
+    } catch {
+      // JSONL file doesn't exist or is empty — SQLite has data JSONL doesn't
+      jsonlMax = null;
+    }
+
+    let newerCount = 0;
+    let sqliteBoundaryCount = 0;
+    try {
+      if (!jsonlMax) {
+        const row = db.query(`SELECT COUNT(*) AS newer_count FROM ${table}`).get() as {
+          newer_count: number;
+        } | null;
+        newerCount = row?.newer_count ?? 0;
+      } else if (sqliteMax > jsonlMax) {
+        const row = db
+          .query(`SELECT COUNT(*) AS newer_count FROM ${table} WHERE ${tsColumn} > ?`)
+          .get(jsonlMax) as {
+          newer_count: number;
+        } | null;
+        newerCount = row?.newer_count ?? 0;
+      }
+      if (jsonlMax) {
+        const boundaryRow = db
+          .query(`SELECT COUNT(*) AS boundary_count FROM ${table} WHERE ${tsColumn} = ?`)
+          .get(jsonlMax) as {
+          boundary_count: number;
+        } | null;
+        sqliteBoundaryCount = boundaryRow?.boundary_count ?? 0;
+      }
+    } catch {
+      newerCount = 0;
+      sqliteBoundaryCount = 0;
+    }
+
+    if (
+      !jsonlMax ||
+      newerCount > 0 ||
+      (sqliteMax === jsonlMax && sqliteBoundaryCount !== jsonlBoundaryCount)
+    ) {
+      warnings.push(
+        `  - ${table}: ${newerCount} SQLite-only row(s), SQLite max=${sqliteMax}, JSONL max=${jsonlMax ?? "(empty)"}, boundary_count(SQLite=${sqliteBoundaryCount}, JSONL=${jsonlBoundaryCount})`,
+      );
+    }
+  }
+
+  if (warnings.length > 0) {
+    throw new Error(
+      `Rebuild blocked: the following tables have SQLite-only rows that would be lost:\n${warnings.join("\n")}\n\nRun \`selftune export\` first to preserve this data, then retry with --force.`,
+    );
+  }
+}
+
 /** Meta key tracking last materialization timestamp. */
 const META_LAST_MATERIALIZED = "last_materialized_at";
 /** Meta key prefix for per-file byte offsets (append-only incremental reads). */
@@ -50,6 +162,8 @@ const META_OFFSET_PREFIX = "file_offset:";
  * Full rebuild: drop all data tables, then re-insert everything.
  */
 export function materializeFull(db: Database, options?: MaterializeOptions): MaterializeResult {
+  preflightRebuildGuard(db, options);
+
   const tables = [
     "session_telemetry",
     "evolution_audit",
@@ -76,6 +190,8 @@ export interface MaterializeOptions {
   evolutionEvidencePath?: string;
   orchestrateRunLogPath?: string;
   since?: string | null;
+  /** Skip the preflight rebuild guard (use after `selftune export`). */
+  force?: boolean;
 }
 
 export interface MaterializeResult {
@@ -381,12 +497,29 @@ function insertExecutionFacts(db: Database, records: CanonicalRecord[]): number 
 
 function insertSessionTelemetry(db: Database, records: SessionTelemetryRecord[]): number {
   const stmt = db.prepare(`
-    INSERT OR IGNORE INTO session_telemetry
+    INSERT INTO session_telemetry
       (session_id, timestamp, cwd, transcript_path, tool_calls_json,
        total_tool_calls, bash_commands_json, skills_triggered_json,
        skills_invoked_json, assistant_turns, errors_encountered,
        transcript_chars, last_user_query, source, input_tokens, output_tokens)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(session_id) DO UPDATE SET
+      timestamp = excluded.timestamp,
+      cwd = COALESCE(excluded.cwd, session_telemetry.cwd),
+      transcript_path = COALESCE(excluded.transcript_path, session_telemetry.transcript_path),
+      source = COALESCE(excluded.source, session_telemetry.source),
+      tool_calls_json = excluded.tool_calls_json,
+      total_tool_calls = excluded.total_tool_calls,
+      bash_commands_json = excluded.bash_commands_json,
+      skills_triggered_json = COALESCE(excluded.skills_triggered_json, session_telemetry.skills_triggered_json),
+      skills_invoked_json = COALESCE(excluded.skills_invoked_json, session_telemetry.skills_invoked_json),
+      assistant_turns = excluded.assistant_turns,
+      errors_encountered = excluded.errors_encountered,
+      transcript_chars = excluded.transcript_chars,
+      last_user_query = excluded.last_user_query,
+      input_tokens = COALESCE(excluded.input_tokens, session_telemetry.input_tokens),
+      output_tokens = COALESCE(excluded.output_tokens, session_telemetry.output_tokens)
+    WHERE session_telemetry.timestamp IS NULL OR excluded.timestamp >= session_telemetry.timestamp
   `);
 
   let count = 0;
@@ -465,8 +598,8 @@ function insertEvolutionAudit(db: Database, records: EvolutionAuditEntry[]): num
   // (idx_evo_audit_dedup defined in schema.ts).
   const stmt = db.prepare(`
     INSERT OR IGNORE INTO evolution_audit
-      (timestamp, proposal_id, skill_name, action, details, eval_snapshot_json)
-    VALUES (?, ?, ?, ?, ?, ?)
+      (timestamp, proposal_id, skill_name, action, details, eval_snapshot_json, iterations_used)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
 
   let count = 0;
@@ -478,6 +611,7 @@ function insertEvolutionAudit(db: Database, records: EvolutionAuditEntry[]): num
       r.action,
       r.details,
       r.eval_snapshot ? JSON.stringify(r.eval_snapshot) : null,
+      r.iterations_used ?? null,
     );
     count++;
   }

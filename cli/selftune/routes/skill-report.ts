@@ -15,15 +15,16 @@ export function handleSkillReport(db: Database, skillName: string): Response {
   // 1. Evolution audit with eval_snapshot
   const evolution = db
     .query(
-      `SELECT timestamp, proposal_id, action, details, eval_snapshot_json
+      `SELECT timestamp, proposal_id, skill_name, action, details, eval_snapshot_json
        FROM evolution_audit
-       WHERE skill_name = ?
+       WHERE skill_name = ? OR (skill_name IS NULL AND proposal_id LIKE 'evo-' || ? || '-%')
        ORDER BY timestamp DESC
        LIMIT 100`,
     )
-    .all(skillName) as Array<{
+    .all(skillName, skillName) as Array<{
     timestamp: string;
     proposal_id: string;
+    skill_name: string | null;
     action: string;
     details: string;
     eval_snapshot_json: string | null;
@@ -85,12 +86,15 @@ export function handleSkillReport(db: Database, skillName: string): Response {
   };
 
   // 4. Skill invocations — single source of truth
+  // JOIN prompts to recover query text when si.query is null (canonical records
+  // don't carry query; it's only populated via the direct-write hook path).
   const invocationsWithConfidence = db
     .query(
       `SELECT si.occurred_at as timestamp, si.session_id, si.skill_name,
               si.invocation_mode, si.triggered, si.confidence, si.tool_name,
-              si.agent_type, si.query, si.source
+              si.agent_type, COALESCE(si.query, p.prompt_text) as query, si.source
        FROM skill_invocations si
+       LEFT JOIN prompts p ON si.matched_prompt_id = p.prompt_id
        WHERE si.skill_name = ?
        ORDER BY si.occurred_at DESC
        LIMIT 100`,

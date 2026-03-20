@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Link, useParams } from "react-router-dom"
+import { Link, useParams, useSearchParams } from "react-router-dom"
 import {
   Badge,
   Button,
@@ -189,13 +189,8 @@ function SessionGroup({ sessionId, meta, invocations, defaultExpanded }: {
 
 export function SkillReport() {
   const { name } = useParams<{ name: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { data, isPending, isError, error, refetch } = useSkillReport(name)
-  const [selectedProposal, setSelectedProposal] = useState<string | null>(null)
-
-  // Reset local state when navigating between skills
-  useEffect(() => {
-    setSelectedProposal(null)
-  }, [name])
 
   if (!name) {
     return (
@@ -280,8 +275,32 @@ export function SkillReport() {
   const hasEvolution = (selftune_stats?.run_count ?? 0) > 0
   const missed = duration_stats?.missed_triggers ?? 0
 
-  // Auto-select first proposal if none selected
-  const activeProposal = selectedProposal ?? (evolution.length > 0 ? evolution[0].proposal_id : null)
+  const proposalIds = new Set(evolution.map((entry) => entry.proposal_id))
+  const requestedProposal = searchParams.get("proposal")
+  const activeProposal = requestedProposal && proposalIds.has(requestedProposal)
+    ? requestedProposal
+    : (evolution.length > 0 ? evolution[0].proposal_id : null)
+
+  useEffect(() => {
+    const current = searchParams.get("proposal")
+    if (activeProposal && current !== activeProposal) {
+      const next = new URLSearchParams(searchParams)
+      next.set("proposal", activeProposal)
+      setSearchParams(next, { replace: true })
+      return
+    }
+    if (!activeProposal && current) {
+      const next = new URLSearchParams(searchParams)
+      next.delete("proposal")
+      setSearchParams(next, { replace: true })
+    }
+  }, [activeProposal, searchParams, setSearchParams])
+
+  const handleSelectProposal = (proposalId: string) => {
+    const next = new URLSearchParams(searchParams)
+    next.set("proposal", proposalId)
+    setSearchParams(next, { replace: true })
+  }
 
   // Unique models/platforms from session metadata
   const uniqueModels = [...new Set((session_metadata ?? []).map((s) => s.model).filter(Boolean))]
@@ -511,7 +530,7 @@ export function SkillReport() {
             <EvolutionTimeline
               entries={evolution}
               selectedProposalId={activeProposal}
-              onSelect={setSelectedProposal}
+              onSelect={handleSelectProposal}
             />
           </aside>
         )}
@@ -584,7 +603,7 @@ export function SkillReport() {
                       <button
                         key={p.proposal_id}
                         type="button"
-                        onClick={() => setSelectedProposal(p.proposal_id)}
+                        onClick={() => handleSelectProposal(p.proposal_id)}
                         className="flex gap-3 rounded-lg border p-3 w-full text-left hover:bg-accent/50 transition-colors"
                       >
                         <div className="mt-0.5 size-2 shrink-0 rounded-full bg-amber-400" />

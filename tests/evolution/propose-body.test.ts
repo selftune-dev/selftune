@@ -94,6 +94,57 @@ describe("buildBodyGenerationPrompt", () => {
     expect(prompt).not.toContain("Reference Examples");
   });
 
+  test("includes execution context when provided", () => {
+    const execCtx = {
+      avgToolCalls: 12.5,
+      avgErrors: 1.3,
+      avgTurns: 8.0,
+      commonTools: ["Read", "Edit", "Bash"],
+      failureTools: ["Bash"],
+    };
+    const prompt = buildBodyGenerationPrompt(
+      currentContent,
+      patterns,
+      missedQueries,
+      skillName,
+      undefined,
+      execCtx,
+    );
+    expect(prompt).toContain("Execution Profile");
+    expect(prompt).toContain("Average tool calls per session: 12.5");
+    expect(prompt).toContain("Average errors per session: 1.3");
+    expect(prompt).toContain("Average assistant turns: 8.0");
+    expect(prompt).toContain("Read, Edit, Bash");
+    expect(prompt).toContain("Tools correlated with failures: Bash");
+  });
+
+  test("omits execution context when not provided", () => {
+    const prompt = buildBodyGenerationPrompt(currentContent, patterns, missedQueries, skillName);
+    expect(prompt).not.toContain("Execution Profile");
+    expect(prompt).not.toContain("Average tool calls");
+  });
+
+  test("handles execution context with empty tool lists", () => {
+    const execCtx = {
+      avgToolCalls: 0,
+      avgErrors: 0,
+      avgTurns: 0,
+      commonTools: [],
+      failureTools: [],
+    };
+    const prompt = buildBodyGenerationPrompt(
+      currentContent,
+      patterns,
+      missedQueries,
+      skillName,
+      undefined,
+      execCtx,
+    );
+    expect(prompt).toContain("Execution Profile");
+    expect(prompt).toContain("Most-used tools in successful sessions: none");
+    expect(prompt).toContain("Tools correlated with failures: none");
+  });
+
   test("includes failure feedback when present", () => {
     const patternsWithFeedback: FailurePattern[] = [
       {

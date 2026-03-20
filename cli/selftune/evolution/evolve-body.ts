@@ -27,10 +27,11 @@ import type {
 } from "../types.js";
 
 import { appendAuditEntry } from "./audit.js";
+import { checkConstitutionSizeOnly } from "./constitutional.js";
 import { parseSkillSections, replaceBody, replaceSection } from "./deploy-proposal.js";
 import { appendEvidenceEntry } from "./evidence.js";
 import { extractFailurePatterns } from "./extract-patterns.js";
-import { generateBodyProposal } from "./propose-body.js";
+import { type ExecutionContext, generateBodyProposal } from "./propose-body.js";
 import { generateRoutingProposal } from "./propose-routing.js";
 import { refineBodyProposal } from "./refine-body.js";
 import { validateBodyProposal } from "./validate-body.js";
@@ -227,6 +228,64 @@ export async function evolveBody(
 
     const missedQueries = failurePatterns.flatMap((p) => p.missed_queries);
 
+    // Compute execution context from session telemetry (fail-open)
+    let executionContext: ExecutionContext | undefined;
+    try {
+      const { querySessionTelemetry } = await import("../localdb/queries.js");
+      const db = getDb();
+      const allTelemetry = querySessionTelemetry(db);
+
+      // Find session IDs that used this skill
+      const skillSessionIds = new Set(
+        skillUsage
+          .filter((r) => r.skill_name?.toLowerCase() === skillName.toLowerCase() && r.triggered)
+          .map((r) => r.session_id),
+      );
+
+      // Filter telemetry to skill sessions
+      const telemetryForSkill = allTelemetry.filter((t) => skillSessionIds.has(t.session_id));
+
+      if (telemetryForSkill.length > 0) {
+        const mean = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
+
+        const toolCallCounts = telemetryForSkill.map((t) => t.total_tool_calls ?? 0);
+        const errorCounts = telemetryForSkill.map((t) => t.errors_encountered ?? 0);
+        const turnCounts = telemetryForSkill.map((t) => t.assistant_turns ?? 0);
+
+        // Count tool frequency across all sessions
+        const toolFreq = new Map<string, number>();
+        const failureToolFreq = new Map<string, number>();
+
+        for (const t of telemetryForSkill) {
+          const tools: Record<string, number> = t.tool_calls ?? {};
+          const isFailure = (t.errors_encountered ?? 0) > 2;
+
+          for (const [tool, count] of Object.entries(tools)) {
+            toolFreq.set(tool, (toolFreq.get(tool) ?? 0) + count);
+            if (isFailure) {
+              failureToolFreq.set(tool, (failureToolFreq.get(tool) ?? 0) + count);
+            }
+          }
+        }
+
+        const topN = (freq: Map<string, number>, n: number) =>
+          [...freq.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, n)
+            .map(([k]) => k);
+
+        executionContext = {
+          avgToolCalls: mean(toolCallCounts),
+          avgErrors: mean(errorCounts),
+          avgTurns: mean(turnCounts),
+          commonTools: topN(toolFreq, 5),
+          failureTools: topN(failureToolFreq, 3),
+        };
+      }
+    } catch {
+      // fail-open: body evolution works without execution context
+    }
+
     // Step 4: Generate -> validate -> refine loop
     let lastProposal: BodyEvolutionProposal | null = null;
     let lastValidation: BodyValidationResult | null = null;
@@ -258,6 +317,7 @@ export async function evolveBody(
             teacherAgent,
             teacherModel,
             fewShotExamples,
+            executionContext,
           );
         }
       } else if (lastProposal && lastValidation) {
@@ -289,6 +349,38 @@ export async function evolveBody(
         proposed_text: proposal.proposed_body,
         eval_set: evalSet,
       });
+
+      // Constitutional size check (deterministic, pre-validation — body only)
+      if (target === "body") {
+        const constitution = checkConstitutionSizeOnly(
+          proposal.proposed_body,
+          proposal.original_body,
+        );
+        if (!constitution.passed) {
+          const reason = `Constitutional: ${constitution.violations.join("; ")}`;
+          recordAudit(proposal.proposal_id, "rejected", reason);
+          recordEvidence({
+            timestamp: new Date().toISOString(),
+            proposal_id: proposal.proposal_id,
+            skill_name: skillName,
+            skill_path: skillPath,
+            target,
+            stage: "rejected",
+            rationale: proposal.rationale,
+            confidence: proposal.confidence,
+            details: reason,
+            original_text: proposal.original_body,
+            proposed_text: proposal.proposed_body,
+          });
+          return {
+            proposal: lastProposal,
+            validation: null,
+            deployed: false,
+            auditEntries,
+            reason,
+          };
+        }
+      }
 
       // Check confidence threshold
       if (proposal.confidence < confidenceThreshold) {

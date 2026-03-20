@@ -1,4 +1,3 @@
-import type { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type {
   CanonicalExecutionFactRecord,

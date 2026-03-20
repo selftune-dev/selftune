@@ -11,8 +11,18 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { getAlphaGuidance } from "./agent-guidance.js";
+import { getAlphaLinkState, readAlphaIdentity } from "./alpha-identity.js";
 import { LOG_DIR, REQUIRED_FIELDS, SELFTUNE_CONFIG_PATH } from "./constants.js";
-import type { DoctorResult, HealthCheck, HealthStatus, SelftuneConfig } from "./types.js";
+import { DB_PATH, getDb } from "./localdb/db.js";
+import type {
+  AlphaIdentity,
+  AlphaLinkState,
+  DoctorResult,
+  HealthCheck,
+  HealthStatus,
+  SelftuneConfig,
+} from "./types.js";
 import { missingClaudeCodeHookKeys } from "./utils/hooks.js";
 
 const VALID_AGENT_TYPES = new Set(["claude_code", "codex", "opencode", "openclaw", "unknown"]);
@@ -116,6 +126,13 @@ export function checkHookInstallation(): HealthCheck[] {
   if (!existsSync(settingsPath)) {
     settingsCheck.status = "warn";
     settingsCheck.message = "Claude Code settings.json not found";
+    settingsCheck.guidance = {
+      code: "hook_settings_missing",
+      message: "Claude Code settings.json is missing. Re-run init to install the selftune hooks.",
+      next_command: "selftune init --force",
+      suggested_commands: ["selftune doctor"],
+      blocking: true,
+    };
   } else {
     try {
       const raw = readFileSync(settingsPath, "utf-8");
@@ -124,11 +141,25 @@ export function checkHookInstallation(): HealthCheck[] {
       if (!hooks || typeof hooks !== "object") {
         settingsCheck.status = "warn";
         settingsCheck.message = "No hooks section in settings.json";
+        settingsCheck.guidance = {
+          code: "hook_settings_missing",
+          message: "The Claude Code hooks are not configured yet.",
+          next_command: "selftune init --force",
+          suggested_commands: ["selftune doctor"],
+          blocking: true,
+        };
       } else {
         const missing = missingClaudeCodeHookKeys(hooks as Record<string, unknown>);
         if (missing.length > 0) {
           settingsCheck.status = "warn";
           settingsCheck.message = `Selftune hooks not configured for: ${missing.join(", ")}`;
+          settingsCheck.guidance = {
+            code: "hook_settings_incomplete",
+            message: "Some Claude Code hooks are missing.",
+            next_command: "selftune init --force",
+            suggested_commands: ["selftune doctor"],
+            blocking: true,
+          };
         } else {
           settingsCheck.status = "pass";
           settingsCheck.message = "All selftune hooks configured in settings.json";
@@ -165,6 +196,18 @@ export function checkEvolutionHealth(): HealthCheck[] {
   return [check];
 }
 
+export function checkDashboardIntegrityHealth(): HealthCheck[] {
+  const check: HealthCheck = {
+    name: "dashboard_freshness_mode",
+    path: DB_PATH,
+    status: "warn",
+    message:
+      "Dashboard reads SQLite, but live refresh still relies on JSONL watcher invalidation instead of SQLite WAL. Expect freshness gaps for SQLite-only writes and export before destructive recovery.",
+  };
+
+  return [check];
+}
+
 export function checkConfigHealth(): HealthCheck[] {
   const check: HealthCheck = {
     name: "config",
@@ -176,6 +219,13 @@ export function checkConfigHealth(): HealthCheck[] {
   if (!existsSync(SELFTUNE_CONFIG_PATH)) {
     check.status = "warn";
     check.message = "Config not found. Run 'selftune init' to bootstrap.";
+    check.guidance = {
+      code: "config_missing",
+      message: "selftune is not initialized yet.",
+      next_command: "selftune init",
+      suggested_commands: ["selftune doctor"],
+      blocking: true,
+    };
   } else {
     try {
       const raw = readFileSync(SELFTUNE_CONFIG_PATH, "utf-8");
@@ -190,6 +240,13 @@ export function checkConfigHealth(): HealthCheck[] {
       if (errors.length > 0) {
         check.status = "fail";
         check.message = errors.join("; ");
+        check.guidance = {
+          code: "config_invalid",
+          message: "The selftune config is invalid and needs to be regenerated.",
+          next_command: "selftune init --force",
+          suggested_commands: ["selftune doctor"],
+          blocking: true,
+        };
       } else {
         check.status = "pass";
         check.message = `agent_type=${config.agent_type}, llm_mode=${config.llm_mode}`;
@@ -197,6 +254,13 @@ export function checkConfigHealth(): HealthCheck[] {
     } catch {
       check.status = "fail";
       check.message = "Config file exists but is not valid JSON";
+      check.guidance = {
+        code: "config_invalid_json",
+        message: "The selftune config file is corrupt JSON.",
+        next_command: "selftune init --force",
+        suggested_commands: ["selftune doctor"],
+        blocking: true,
+      };
     }
   }
 
@@ -249,6 +313,13 @@ export async function checkVersionHealth(): Promise<HealthCheck[]> {
         } else {
           check.status = "warn";
           check.message = `v${currentVersion} installed, v${latestVersion} available. Run: npx skills add selftune-dev/selftune`;
+          check.guidance = {
+            code: "version_update_available",
+            message: "A newer selftune release is available.",
+            next_command: "npx skills add selftune-dev/selftune",
+            suggested_commands: ["selftune doctor"],
+            blocking: false,
+          };
         }
       } else {
         check.message = `v${currentVersion} (unable to check npm registry)`;
@@ -263,24 +334,199 @@ export async function checkVersionHealth(): Promise<HealthCheck[]> {
   return [check];
 }
 
+// ---------------------------------------------------------------------------
+// Alpha upload queue health checks
+// ---------------------------------------------------------------------------
+
+const ALPHA_STUCK_THRESHOLD_SECONDS = 3600; // 1 hour
+const ALPHA_FAILURE_THRESHOLD = 50;
+
+export interface AlphaQueueCheckOptions {
+  stuckThresholdSeconds?: number;
+  failureThreshold?: number;
+}
+
+/**
+ * Check alpha upload queue health.
+ * Returns empty array when not enrolled (checks are skipped).
+ */
+export async function checkAlphaQueueHealth(
+  db: import("bun:sqlite").Database,
+  enrolled: boolean,
+  opts?: AlphaQueueCheckOptions,
+): Promise<HealthCheck[]> {
+  if (!enrolled) return [];
+
+  const { getQueueStats } = await import("./alpha-upload/queue.js");
+  const { getOldestPendingAge } = await import("./localdb/queries.js");
+
+  const checks: HealthCheck[] = [];
+  const stuckThreshold = opts?.stuckThresholdSeconds ?? ALPHA_STUCK_THRESHOLD_SECONDS;
+  const failureThreshold = opts?.failureThreshold ?? ALPHA_FAILURE_THRESHOLD;
+
+  // Check for stuck pending items
+  const stuckCheck: HealthCheck = {
+    name: "alpha_queue_stuck",
+    path: "upload_queue",
+    status: "pass",
+    message: "",
+  };
+
+  const oldestAge = getOldestPendingAge(db);
+  if (oldestAge !== null && oldestAge > stuckThreshold) {
+    stuckCheck.status = "warn";
+    const hours = Math.floor(oldestAge / 3600);
+    const minutes = Math.floor((oldestAge % 3600) / 60);
+    stuckCheck.message = `Oldest pending upload is ${hours}h ${minutes}m old (threshold: ${Math.floor(stuckThreshold / 3600)}h)`;
+    stuckCheck.guidance = {
+      code: "alpha_queue_stuck",
+      message: "The alpha upload queue has pending items that are not draining.",
+      next_command: "selftune alpha upload",
+      suggested_commands: ["selftune doctor", "selftune status"],
+      blocking: false,
+    };
+  } else {
+    stuckCheck.message =
+      oldestAge !== null
+        ? `Oldest pending item: ${Math.floor(oldestAge / 60)}m old`
+        : "No pending items";
+  }
+  checks.push(stuckCheck);
+
+  // Check for excessive failures
+  const failCheck: HealthCheck = {
+    name: "alpha_queue_failures",
+    path: "upload_queue",
+    status: "pass",
+    message: "",
+  };
+
+  const stats = getQueueStats(db);
+  if (stats.failed > failureThreshold) {
+    failCheck.status = "warn";
+    failCheck.message = `${stats.failed} failed uploads (threshold: ${failureThreshold})`;
+    failCheck.guidance = {
+      code: "alpha_queue_failures",
+      message: "The alpha upload queue has accumulated too many failures.",
+      next_command: "selftune alpha upload",
+      suggested_commands: ["selftune doctor", "selftune status"],
+      blocking: false,
+    };
+  } else {
+    failCheck.message = `${stats.failed} failed uploads`;
+  }
+  checks.push(failCheck);
+
+  return checks;
+}
+
+export function checkSkillVersionSync(): HealthCheck[] {
+  const check: HealthCheck = {
+    name: "skill_version_sync",
+    path: "skill/SKILL.md",
+    status: "pass",
+    message: "",
+  };
+
+  try {
+    const pkgPath = join(import.meta.dir, "../../package.json");
+    const pkgVersion: string = JSON.parse(readFileSync(pkgPath, "utf-8")).version;
+
+    const skillPath = join(import.meta.dir, "../../skill/SKILL.md");
+    if (!existsSync(skillPath)) {
+      check.status = "warn";
+      check.message = "skill/SKILL.md not found (may be running from installed package)";
+      return [check];
+    }
+
+    const skillContent = readFileSync(skillPath, "utf-8");
+    const versionMatch = skillContent.match(/^\s*version:\s*(.+)$/m);
+    if (!versionMatch) {
+      check.status = "warn";
+      check.message = "No version field found in SKILL.md frontmatter";
+      return [check];
+    }
+
+    const skillVersion = versionMatch[1].trim();
+    if (skillVersion === pkgVersion) {
+      check.message = `v${pkgVersion} (in sync)`;
+    } else {
+      check.status = "warn";
+      check.message = `SKILL.md has v${skillVersion} but package.json has v${pkgVersion}. Run: bun run sync-version`;
+      check.guidance = {
+        code: "skill_version_out_of_sync",
+        message: "The packaged skill version does not match package.json.",
+        next_command: "bun run sync-version",
+        suggested_commands: ["selftune doctor"],
+        blocking: false,
+      };
+    }
+  } catch {
+    check.status = "warn";
+    check.message = "Unable to compare versions";
+  }
+
+  return [check];
+}
+
+// ---------------------------------------------------------------------------
+// Cloud link health checks
+// ---------------------------------------------------------------------------
+
+/**
+ * Check cloud link health for alpha users.
+ * Returns [] for non-alpha users (identity is null).
+ */
+const CLOUD_LINK_CHECKS: Record<AlphaLinkState, { status: HealthStatus; message: string }> = {
+  not_linked: { status: "warn", message: "Not linked to cloud account (cloud_user_id missing)" },
+  linked_not_enrolled: { status: "warn", message: "Linked but not enrolled" },
+  enrolled_no_credential: {
+    status: "warn",
+    message: "Enrolled but api_key missing — uploads will fail",
+  },
+  ready: { status: "pass", message: "Cloud link ready" },
+};
+
+export function checkCloudLinkHealth(identity: AlphaIdentity | null): HealthCheck[] {
+  if (!identity) return [];
+  const state = getAlphaLinkState(identity);
+  const { status, message } = CLOUD_LINK_CHECKS[state];
+  return [
+    {
+      name: "cloud_link",
+      path: SELFTUNE_CONFIG_PATH,
+      status,
+      message,
+      guidance: getAlphaGuidance(identity),
+    },
+  ];
+}
+
 export async function doctor(): Promise<DoctorResult> {
+  const alphaIdentity = readAlphaIdentity(SELFTUNE_CONFIG_PATH);
+  const db = getDb();
   const allChecks = [
     ...checkConfigHealth(),
     ...checkLogHealth(),
     ...checkHookInstallation(),
     ...checkEvolutionHealth(),
+    ...checkDashboardIntegrityHealth(),
+    ...checkSkillVersionSync(),
     ...(await checkVersionHealth()),
+    ...checkCloudLinkHealth(alphaIdentity),
+    ...(await checkAlphaQueueHealth(db, alphaIdentity?.enrolled === true)),
   ];
   const passed = allChecks.filter((c) => c.status === "pass").length;
   const failed = allChecks.filter((c) => c.status === "fail").length;
   const warned = allChecks.filter((c) => c.status === "warn").length;
+  const hasBlockingGuidance = allChecks.some((c) => c.guidance?.blocking === true);
 
   return {
     command: "doctor",
     timestamp: new Date().toISOString(),
     checks: allChecks,
     summary: { pass: passed, fail: failed, warn: warned, total: allChecks.length },
-    healthy: failed === 0,
+    healthy: failed === 0 && !hasBlockingGuidance,
   };
 }
 

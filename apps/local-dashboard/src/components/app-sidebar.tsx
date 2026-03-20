@@ -32,6 +32,7 @@ import {
   GlobeIcon,
   HeartPulseIcon,
   HelpCircleIcon,
+  LayoutDashboardIcon,
   SearchIcon,
   ServerIcon,
   XCircleIcon,
@@ -197,6 +198,24 @@ export function AppSidebar({
                 className="h-8 pl-8 text-sm"
               />
             </div>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Dashboard */}
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={location.pathname === "/"}
+                  tooltip="Dashboard"
+                  render={<Link to="/" />}
+                >
+                  <LayoutDashboardIcon className="size-4" />
+                  <span>Dashboard</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 

@@ -12,15 +12,24 @@ Bootstrap selftune for first-time use or after changing environments.
 
 ```bash
 selftune init [--agent <type>] [--cli-path <path>] [--force]
+selftune init --alpha --alpha-email <email> [--alpha-name "Name"] [--force]
+selftune init --no-alpha [--force]
 ```
 
 ## Options
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--agent <type>` | Agent platform: `claude`, `codex`, `opencode` | Auto-detected |
+| `--agent <type>` | Agent platform: `claude_code`, `codex`, `opencode`, `openclaw` | Auto-detected |
 | `--cli-path <path>` | Override auto-detected CLI entry-point path | Auto-detected |
 | `--force` | Reinitialize even if config already exists | Off |
+| `--enable-autonomy` | Enable autonomous scheduling during init | Off |
+| `--schedule-format <fmt>` | Schedule format: `cron`, `launchd`, `systemd` | Auto-detected |
+| `--alpha` | Enroll in the selftune alpha program | Off |
+| `--no-alpha` | Unenroll from the alpha program (preserves user_id) | Off |
+| `--alpha-email <email>` | Email for alpha enrollment (required with `--alpha`) | - |
+| `--alpha-name <name>` | Display name for alpha enrollment | - |
+| `--alpha-key <key>` | API key for cloud uploads (`st_live_*` format) | - |
 
 ## Output Format
 
@@ -28,12 +37,19 @@ Creates `~/.selftune/config.json`:
 
 ```json
 {
-  "agent_type": "claude",
+  "agent_type": "claude_code",
   "cli_path": "/Users/you/selftune/cli/selftune/index.ts",
   "llm_mode": "agent",
   "agent_cli": "claude",
   "hooks_installed": true,
-  "initialized_at": "2026-02-28T10:00:00Z"
+  "initialized_at": "2026-02-28T10:00:00Z",
+  "alpha": {
+    "enrolled": true,
+    "user_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+    "email": "user@example.com",
+    "display_name": "User Name",
+    "consent_timestamp": "2026-02-28T10:00:00Z"
+  }
 }
 ```
 
@@ -47,6 +63,12 @@ Creates `~/.selftune/config.json`:
 | `agent_cli` | string | CLI binary name for the detected agent |
 | `hooks_installed` | boolean | Whether telemetry hooks are installed |
 | `initialized_at` | string | ISO 8601 timestamp |
+| `alpha` | object? | Alpha program enrollment (present only if enrolled) |
+| `alpha.enrolled` | boolean | Whether the user is currently enrolled |
+| `alpha.user_id` | string | Stable UUID, generated once, preserved across reinits |
+| `alpha.email` | string? | Email provided at enrollment |
+| `alpha.display_name` | string? | Optional display name |
+| `alpha.consent_timestamp` | string | ISO 8601 timestamp of consent |
 
 ## Steps
 
@@ -135,21 +157,7 @@ The activation rules file configures auto-activation behavior -- which skills
 get suggested and under what conditions. Edit `~/.selftune/activation-rules.json`
 to customize thresholds and skill mappings for your project.
 
-### 7. Verify Agent Availability
-
-`selftune init` installs the specialized agent files to `~/.claude/agents/`
-automatically. Verify they are present:
-
-```bash
-ls ~/.claude/agents/
-```
-
-Expected agents: `diagnosis-analyst.md`, `pattern-analyst.md`,
-`evolution-reviewer.md`, `integration-guide.md`. These are used by evolve
-and doctor workflows for deeper analysis. If missing, run `selftune init --force`
-to reinstall them.
-
-### 8. Verify with Doctor
+### 7. Verify with Doctor
 
 ```bash
 selftune doctor
@@ -163,17 +171,150 @@ reported issues before proceeding.
 For project-type-specific setup (single-skill, multi-skill, monorepo, Codex,
 OpenCode, mixed agents), see [docs/integration-guide.md](../../docs/integration-guide.md).
 
-Templates for each project type are in the `templates/` directory:
-- `templates/single-skill-settings.json` — hooks for single-skill projects
-- `templates/multi-skill-settings.json` — hooks for multi-skill projects with activation rules
-- `templates/activation-rules-default.json` — default auto-activation rule configuration
+Templates for each project type are bundled with the skill:
+- `skill/settings_snippet.json` — hooks for Claude Code projects
+- `assets/activation-rules-default.json` — default auto-activation rule configuration
 
 ## Subagent Escalation
 
 For complex project structures (monorepos, multi-skill repos, mixed agent
-platforms), spawn the `integration-guide` agent as a subagent for guided
-setup. This agent handles project-type detection, per-package configuration,
-and verification steps that go beyond what the basic init workflow covers.
+platforms), read `agents/integration-guide.md` and spawn a subagent with
+those instructions. That agent handles project-type detection, per-package
+configuration, and verification steps that go beyond what the basic init
+workflow covers.
+
+## Alpha Enrollment
+
+Enroll the user in the selftune alpha program for early access features.
+
+Before running the alpha command:
+1. Ask whether the user wants to opt into the selftune alpha data-sharing program
+2. If they opt in, ask for their email and optional display name
+3. If they decline, skip alpha enrollment and continue with plain `selftune init`
+
+The CLI stays non-interactive. The agent is responsible for collecting consent
+and the required `--alpha-email` value before invoking the command.
+
+## Alpha Enrollment (Agent-First Flow)
+
+The alpha program sends canonical telemetry to the selftune cloud for analysis.
+Setup is agent-first — the cloud app is a one-time control-plane handoff, not the main UX.
+
+### Setup Sequence
+
+1. **Check local config**: Run `selftune status` — look for the "Alpha Upload" section
+2. **If not linked**: Tell the user:
+   > To join the selftune alpha program, you need to create an account at https://app.selftune.dev and issue an upload credential. This is a one-time step — afterwards everything runs locally through the CLI.
+3. **User completes cloud enrollment**: Signs in, enrolls, copies the `st_live_*` credential
+4. **Store credential locally**:
+
+   ```bash
+   selftune init --alpha --alpha-email <user-email> --alpha-key <st_live_credential>
+   ```
+
+5. **Verify readiness**: The init command prints a readiness check. If all checks pass, alpha upload is active.
+   The readiness JSON now includes a `guidance` object with:
+   - `message`
+   - `next_command`
+   - `suggested_commands[]`
+   - `blocking`
+6. **If readiness fails**: Run `selftune doctor` to diagnose. Common issues:
+   - `api_key not set` → re-run init with `--alpha-key`
+   - `api_key has invalid format` → credential must start with `st_live_` or `st_test_`
+   - `not enrolled` → re-run init with `--alpha --alpha-email <email> --alpha-key <key>`
+
+### Key Principle
+
+The cloud app is used **only** for:
+- Sign-in
+- Alpha enrollment
+- Upload credential issuance
+
+All other selftune operations happen through the local CLI and this agent.
+
+### Enroll
+
+```bash
+selftune init --alpha --alpha-email user@example.com --alpha-name "User Name" --force
+selftune init --alpha-key st_live_abc123...  # after enrollment, store the API key
+```
+
+The `--alpha-email` flag is required. The command will:
+1. Generate a stable UUID (preserved across reinits)
+2. Write the alpha block to `~/.selftune/config.json`
+3. Print an `alpha_enrolled` JSON message to stdout
+4. Print the consent notice to stderr
+5. If an `--alpha-key` is provided, chmod `~/.selftune/config.json` to `0600`
+
+The consent notice explicitly states that the friendly alpha cohort shares raw
+prompt/query text in addition to skill/session/evolution metadata.
+
+### API Key Provisioning
+
+After enrollment, users need to configure an API key for cloud uploads:
+
+1. Create a cloud account at the selftune web app
+2. Generate an API key (format: `st_live_*`)
+3. Store the key locally:
+
+```bash
+selftune init --alpha --alpha-email <email> --alpha-key st_live_abc123... --force
+```
+
+Without an API key, alpha enrollment is recorded locally but no uploads are attempted. When a key is stored, selftune tightens the local config file permissions to `0600`.
+
+### Upload Behavior
+
+Once enrolled and an API key is configured, `selftune orchestrate` automatically
+uploads new session, invocation, and evolution data to the cloud API at the end of
+each run. This upload step is fail-open -- errors never block the orchestrate loop.
+Use `selftune alpha upload` for manual uploads or `selftune alpha upload --dry-run`
+to preview what would be sent.
+
+The upload endpoint is `https://api.selftune.dev/api/v1/push`, authenticated with
+the stored API key via `Authorization: Bearer` header. The endpoint can be
+overridden with the `SELFTUNE_ALPHA_ENDPOINT` environment variable.
+
+### Unenroll
+
+```bash
+selftune init --no-alpha --force
+```
+
+Sets `enrolled: false` in the alpha block but preserves the `user_id` so re-enrollment does not create a new identity.
+
+### Error Handling
+
+If `--alpha` is passed without `--alpha-email`, the CLI throws a JSON error:
+
+```json
+{
+  "code": "alpha_email_required",
+  "error": "alpha_email_required",
+  "message": "The --alpha-email flag is required for alpha enrollment.",
+  "next_command": "selftune init --alpha --alpha-email <email>",
+  "suggested_commands": ["selftune status", "selftune doctor"],
+  "blocking": true
+}
+```
+
+When alpha readiness is evaluated after `selftune init --alpha`, the CLI emits:
+
+```json
+{
+  "alpha_readiness": {
+    "ready": false,
+    "missing": ["api_key not set"],
+    "guidance": {
+      "code": "alpha_credential_required",
+      "message": "Alpha enrollment exists, but the local upload credential is missing or invalid.",
+      "next_command": "selftune init --alpha --alpha-email user@example.com --alpha-key <st_live_key> --force",
+      "suggested_commands": ["selftune status", "selftune doctor"],
+      "blocking": true
+    }
+  }
+}
+```
 
 ## Common Patterns
 
@@ -181,6 +322,11 @@ and verification steps that go beyond what the basic init workflow covers.
 > Run `which selftune` to check installation. If missing, install with
 > `npm install -g selftune`. Run `selftune init`, then verify with
 > `selftune doctor`. Report results to the user.
+
+**User wants alpha enrollment**
+> Ask whether they want to opt into alpha data sharing. If yes, collect email
+> and optional display name, then run `selftune init --alpha --alpha-email ...`.
+> If no, continue with plain `selftune init`.
 
 **Hooks not capturing data**
 > Run `selftune doctor` to check hook installation. Parse the JSON output

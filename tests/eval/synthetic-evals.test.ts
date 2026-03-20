@@ -32,6 +32,43 @@ describe("buildSyntheticPrompt", () => {
     expect(system).toContain("Implicit");
     expect(system).toContain("Contextual");
   });
+
+  test("includes real examples when provided", () => {
+    const realExamples = {
+      positive: ["make me a slide deck", "create presentation for Q4"],
+      negative: ["what is the weather?", "fix the login bug"],
+    };
+    const { user } = buildSyntheticPrompt("content", "pptx", 10, 5, realExamples);
+    expect(user).toContain("Real user queries for style and phrasing reference:");
+    expect(user).toContain("Queries that triggered this skill:");
+    expect(user).toContain('"make me a slide deck"');
+    expect(user).toContain('"create presentation for Q4"');
+    expect(user).toContain("Queries that did NOT trigger (general queries):");
+    expect(user).toContain('"what is the weather?"');
+    expect(user).toContain("Generate queries that match this natural phrasing style.");
+  });
+
+  test("omits real examples section when not provided", () => {
+    const { user } = buildSyntheticPrompt("content", "pptx", 10, 5);
+    expect(user).not.toContain("Real user queries");
+  });
+
+  test("omits real examples section when arrays are empty", () => {
+    const { user } = buildSyntheticPrompt("content", "pptx", 10, 5, {
+      positive: [],
+      negative: [],
+    });
+    expect(user).not.toContain("Real user queries");
+  });
+
+  test("includes only positive section when negatives are empty", () => {
+    const { user } = buildSyntheticPrompt("content", "pptx", 10, 5, {
+      positive: ["make slides"],
+      negative: [],
+    });
+    expect(user).toContain("Queries that triggered this skill:");
+    expect(user).not.toContain("Queries that did NOT trigger");
+  });
 });
 
 // ---------------------------------------------------------------------------

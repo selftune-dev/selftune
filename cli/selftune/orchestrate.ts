@@ -14,7 +14,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 
-import { ORCHESTRATE_LOCK, SIGNAL_LOG } from "./constants.js";
+import { readAlphaIdentity } from "./alpha-identity.js";
+import type { UploadCycleSummary } from "./alpha-upload/index.js";
+import { ORCHESTRATE_LOCK, SELFTUNE_CONFIG_PATH, SIGNAL_LOG } from "./constants.js";
 import type { OrchestrateRunReport, OrchestrateRunSkillAction } from "./dashboard-contract.js";
 import type { EvolveResult } from "./evolution/evolve.js";
 import { readGradingResultsForSkill } from "./grading/results.js";
@@ -42,6 +44,7 @@ import type {
 } from "./types.js";
 import { readJsonl } from "./utils/jsonl.js";
 import { detectAgent } from "./utils/llm-call.js";
+import { getSelftuneVersion, readConfiguredAgentType } from "./utils/selftune-meta.js";
 import {
   findInstalledSkillPath,
   findRepositoryClaudeSkillDirs,
@@ -192,6 +195,7 @@ export interface OrchestrateResult {
   syncResult: SyncResult;
   statusResult: StatusResult;
   candidates: SkillAction[];
+  uploadSummary?: UploadCycleSummary;
   summary: {
     totalSkills: number;
     evaluated: number;
@@ -428,6 +432,77 @@ function getSkillSearchDirs(): string[] {
 
 function defaultResolveSkillPath(skillName: string): string | undefined {
   return findInstalledSkillPath(skillName, getSkillSearchDirs());
+}
+
+// ---------------------------------------------------------------------------
+// Cross-skill eval set overlap detection (internal — exported for testing only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Detects significant overlap between the positive eval sets of evolution
+ * candidates. When two skills share >30% of their positive queries, it
+ * suggests a routing boundary problem. Console-only — no persistence.
+ *
+ * @internal Exported solely for unit testing.
+ */
+export async function detectCrossSkillOverlap(
+  candidates: Array<{ skill: string }>,
+  skillRecords: SkillUsageRecord[],
+  queryRecords: QueryLogRecord[],
+): Promise<
+  Array<{ skill_a: string; skill_b: string; overlap_pct: number; shared_queries: string[] }>
+> {
+  if (candidates.length < 2) return [];
+
+  const { buildEvalSet } = await import("./eval/hooks-to-evals.js");
+
+  const evalSets = new Map<string, Set<string>>();
+
+  for (const c of candidates) {
+    const evalSet = buildEvalSet(skillRecords, queryRecords, c.skill);
+    const positives = new Set(
+      evalSet
+        .filter((e: { should_trigger: boolean }) => e.should_trigger)
+        .map((e: { query: string }) => e.query.toLowerCase()),
+    );
+    evalSets.set(c.skill, positives);
+  }
+
+  const overlaps: Array<{
+    skill_a: string;
+    skill_b: string;
+    overlap_pct: number;
+    shared_queries: string[];
+  }> = [];
+  const skillNames = [...evalSets.keys()];
+
+  for (let i = 0; i < skillNames.length; i++) {
+    for (let j = i + 1; j < skillNames.length; j++) {
+      const setA = evalSets.get(skillNames[i]);
+      const setB = evalSets.get(skillNames[j]);
+      if (!setA || !setB) continue;
+
+      if (setA.size === 0 || setB.size === 0) continue;
+
+      const shared: string[] = [];
+      for (const q of setA) {
+        if (setB.has(q)) shared.push(q);
+      }
+
+      const overlapPct = shared.length / Math.min(setA.size, setB.size);
+
+      if (overlapPct > 0.3) {
+        overlaps.push({
+          skill_a: skillNames[i],
+          skill_b: skillNames[j],
+          overlap_pct: overlapPct,
+          shared_queries: shared.slice(0, 10),
+        });
+      }
+    }
+  }
+
+  return overlaps;
 }
 
 // ---------------------------------------------------------------------------
@@ -722,6 +797,24 @@ export async function orchestrate(
       console.error(`  ${c.action === "skip" ? "⊘" : "→"} ${c.skill}: ${c.reason}`);
     }
 
+    // Cross-skill overlap detection (console-only, non-critical)
+    if (evolveCandidates.length >= 2) {
+      try {
+        const overlap = await detectCrossSkillOverlap(evolveCandidates, skillRecords, queryRecords);
+        if (overlap.length > 0) {
+          console.error("\n[orchestrate] Cross-skill eval overlap detected:");
+          for (const o of overlap) {
+            console.error(
+              `  ⚠ ${o.skill_a} ↔ ${o.skill_b}: ${(o.overlap_pct * 100).toFixed(0)}% shared queries (${o.shared_queries.length} queries)`,
+            );
+          }
+          console.error("");
+        }
+      } catch {
+        // fail-open: overlap detection is non-critical
+      }
+    }
+
     // -------------------------------------------------------------------------
     // Step 4: Detect agent
     // -------------------------------------------------------------------------
@@ -905,6 +998,33 @@ export async function orchestrate(
       /* fail-open */
     }
 
+    // -------------------------------------------------------------------------
+    // Step 9: Alpha upload (fail-open — never blocks the orchestrate loop)
+    // -------------------------------------------------------------------------
+    const alphaIdentity = readAlphaIdentity(SELFTUNE_CONFIG_PATH);
+    if (alphaIdentity?.enrolled) {
+      try {
+        console.error("[orchestrate] Running alpha upload cycle...");
+        const { runUploadCycle } = await import("./alpha-upload/index.js");
+        const db = getDb();
+        const uploadSummary = await runUploadCycle(db, {
+          enrolled: true,
+          userId: alphaIdentity.user_id,
+          agentType: readConfiguredAgentType(SELFTUNE_CONFIG_PATH, "unknown"),
+          selftuneVersion: getSelftuneVersion(),
+          dryRun: options.dryRun,
+          apiKey: alphaIdentity.api_key,
+        });
+        result.uploadSummary = uploadSummary;
+        console.error(
+          `[orchestrate] Alpha upload: prepared=${uploadSummary.prepared}, sent=${uploadSummary.sent}, failed=${uploadSummary.failed}, skipped=${uploadSummary.skipped}`,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[orchestrate] Alpha upload failed (non-blocking): ${msg}`);
+      }
+    }
+
     return result;
   } finally {
     releaseLock();
@@ -1039,6 +1159,7 @@ Examples:
     // JSON output: include per-skill decisions for machine consumption
     const jsonOutput = {
       ...result.summary,
+      ...(result.uploadSummary ? { upload: result.uploadSummary } : {}),
       decisions: result.candidates.map((c) => ({
         skill: c.skill,
         action: c.action,

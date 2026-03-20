@@ -28,7 +28,7 @@ The CLI (`cli/selftune/`) is the **agent's API**. The skill definition (`skill/S
 ```text
 selftune/
 ├── cli/selftune/            # TypeScript package — the CLI
-│   ├── index.ts             # CLI entry point
+│   ├── index.ts             # CLI entry point (status, doctor, alpha upload, etc.)
 │   ├── init.ts              # Agent identity bootstrap + config init
 │   ├── sync.ts              # Source-truth sync orchestration
 │   ├── orchestrate.ts       # Autonomy-first loop: sync → evolve → watch
@@ -61,11 +61,11 @@ selftune/
 │   │   └── openclaw-ingest.ts # OpenClaw session importer (experimental)
 │   ├── routes/              # HTTP route handlers (extracted from dashboard-server)
 │   ├── repair/              # Rebuild repaired skill-usage overlays
-│   ├── localdb/             # SQLite schema, direct-write, queries, materialization
+│   ├── localdb/             # SQLite schema, direct-write, queries, materialization, canonical_upload_staging
 │   │   ├── db.ts            # Database lifecycle + singleton
 │   │   ├── direct-write.ts  # Fail-open insert functions for all tables
 │   │   ├── queries.ts       # Read queries for dashboard + CLI consumers
-│   │   ├── schema.ts        # Table DDL + indexes
+│   │   ├── schema.ts        # Table DDL + indexes (includes canonical_upload_staging)
 │   │   └── materialize.ts   # JSONL → SQLite rebuild (startup/backfill only)
 │   ├── cron/                # Optional OpenClaw-specific scheduler adapter
 │   ├── memory/              # Evolution memory persistence
@@ -84,11 +84,20 @@ selftune/
 │   │   └── stopping-criteria.ts  # Stopping criteria evaluator
 │   ├── monitoring/          # Post-deploy monitoring (M4)
 │   │   └── watch.ts
+│   ├── alpha-identity.ts    # Alpha user identity (UUID, consent, persistence)
+│   ├── alpha-upload-contract.ts # Upload queue infrastructure types + PushUploadResult
+│   ├── alpha-upload/        # Alpha remote data pipeline (V2 canonical push to cloud API)
+│   │   ├── index.ts         # Upload orchestration (prepareUploads, runUploadCycle)
+│   │   ├── queue.ts         # Local upload queue + watermark tracking
+│   │   ├── stage-canonical.ts # JSONL + SQLite → canonical_upload_staging writer
+│   │   ├── build-payloads.ts # Staging table → V2 canonical push payload builders
+│   │   ├── client.ts        # HTTP upload client with Bearer auth (never throws)
+│   │   └── flush.ts         # Queue flush with exponential backoff (409=success, 401/403=non-retryable)
 │   ├── contribute/          # Opt-in anonymized data export (M7)
 │   │   ├── bundle.ts        # Bundle assembler
 │   │   ├── sanitize.ts      # Privacy sanitization (conservative/aggressive)
 │   │   └── contribute.ts    # CLI entry point + GitHub submission
-│   ├── observability.ts     # Health checks, log integrity
+│   ├── observability.ts     # Health checks, log integrity, alpha queue health
 │   ├── status.ts            # Skill health summary (M6)
 │   ├── last.ts              # Last session insight (M6)
 │   └── workflows/           # Workflow discovery and persistence
@@ -98,9 +107,15 @@ selftune/
 │   └── src/hooks/           # Data-fetching hooks against dashboard-server
 ├── bin/                     # npm/node CLI entry point
 │   └── selftune.cjs
-├── skill/                   # Agent-facing selftune skill
-│   ├── SKILL.md             # Skill definition
+├── skill/                   # Agent-facing selftune skill (self-contained)
+│   ├── SKILL.md             # Skill definition + routing
 │   ├── settings_snippet.json
+│   ├── agents/              # Specialized subagents (bundled, copied to ~/.claude/agents/ on init)
+│   │   ├── diagnosis-analyst.md
+│   │   ├── evolution-reviewer.md
+│   │   ├── integration-guide.md
+│   │   └── pattern-analyst.md
+│   ├── assets/              # Config templates (activation rules, settings)
 │   ├── Workflows/           # Skill workflow routing docs
 │   │   ├── Contribute.md
 │   │   ├── Cron.md
@@ -120,6 +135,7 @@ selftune/
 │   │   └── Watch.md
 │   └── references/
 │       ├── grading-methodology.md
+│       ├── interactive-config.md
 │       ├── invocation-taxonomy.md
 │       └── logs.md
 ├── tests/                   # Test suite (bun test)
@@ -174,7 +190,7 @@ This prevents stale docs and broken contracts.
 | Dashboard contract (`dashboard-contract.ts`) | `apps/local-dashboard/src/types.ts`, dashboard components that consume the changed fields |
 | Hook behavior (`hooks/*.ts`) | `skill/Workflows/Initialize.md` hook table, `skill/settings_snippet.json` |
 | Orchestrate behavior | `skill/Workflows/Orchestrate.md`, `ARCHITECTURE.md` operating modes |
-| Agent files (`.claude/agents/*.md`) | `skill/SKILL.md` Specialized Agents table |
+| Agent files (`skill/agents/*.md`) | `skill/SKILL.md` Specialized Agents table |
 | New workflow file | `skill/SKILL.md` Workflow Routing table + Resource Index |
 | Evolution pipeline changes | `skill/Workflows/Evolve.md`, `docs/design-docs/evolution-pipeline.md` |
 | Platform adapter (ingestor) changes | `skill/Workflows/Ingest.md`, `README.md` Platforms section |

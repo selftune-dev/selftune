@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { processPrompt } from "../../cli/selftune/hooks/prompt-log.js";
 import { processSessionStop } from "../../cli/selftune/hooks/session-stop.js";
 import { _setTestDb, getDb, openDb } from "../../cli/selftune/localdb/db.js";
-import type { SessionTelemetryRecord } from "../../cli/selftune/types.js";
 
 let tmpDir: string;
 let canonicalLogPath: string;

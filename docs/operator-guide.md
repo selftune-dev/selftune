@@ -110,11 +110,22 @@ usually happen via the scheduler or as the first step inside `orchestrate`.
 selftune sync
 ```
 
-Use `--force` only when you explicitly want to rebuild local state from
-scratch.
+Use `--force` only when you explicitly want to rescan all source-truth inputs.
+It is not a substitute for the export-first DB recovery path.
 
 When autonomy is already installed, treat this as a repair/verification command,
 not the main product interaction.
+
+If you hit a SQLite/schema failure, do this instead of looking for a nonexistent
+`rebuild-db` command:
+
+```bash
+selftune export
+rm ~/.selftune/selftune.db
+selftune sync --force
+```
+
+Export first so recent SQLite-backed rows are preserved before recreating the DB.
 
 ### 2. Inspect health
 

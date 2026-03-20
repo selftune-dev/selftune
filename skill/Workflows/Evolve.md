@@ -30,7 +30,13 @@ selftune evolve --skill <name> --skill-path <path> [options]
 | `--confidence <n>` | Minimum confidence threshold (0-1) | 0.6 |
 | `--max-iterations <n>` | Maximum retry iterations | 3 |
 | `--validation-model <model>` | Model for trigger-check validation LLM calls | `haiku` |
-| `--cheap-loop` | Use cheap models for loop, expensive for final gate | Off |
+| `--pareto` | Generate multiple candidates per iteration | Off |
+| `--candidates <n>` | Number of candidates per iteration (with `--pareto`) | 3 |
+| `--token-efficiency` | Optimize for token efficiency in proposals | Off |
+| `--with-baseline` | Include a no-skill baseline comparison | Off |
+| `--cheap-loop` | Use cheap models for loop, expensive for final gate | On |
+| `--full-model` | Use full-cost model throughout (disables cheap-loop) | Off |
+| `--verbose` | Print detailed progress during evolution | Off |
 | `--gate-model <model>` | Model for final gate validation | `sonnet` (when `--cheap-loop`) |
 | `--proposal-model <model>` | Model for proposal generation LLM calls | None |
 | `--sync-first` | Refresh source-truth telemetry before generating evals/failure patterns | Off |
@@ -197,6 +203,26 @@ The command groups missed queries by invocation type:
 
 See `references/invocation-taxonomy.md` for the taxonomy.
 
+### 4b. Constitutional Pre-Validation Gate
+
+Before any LLM-based validation, each proposal passes through a
+deterministic constitutional check that rejects obviously bad proposals
+at zero cost. Four principles are enforced:
+
+1. **Size constraint** — description must be ≤1024 characters and within
+   0.3x–3.0x word count of the original.
+2. **No XML injection** — reject proposals containing XML/HTML tags.
+3. **No unbounded broadening** — reject bare "all", "any", "every",
+   "everything" unless qualified by enumeration markers ("including",
+   "such as", "like", "e.g.", or a comma-separated list).
+4. **Anchor preservation** — if the original contains `USE WHEN` trigger
+   phrases or `$skillName` references, those must appear in the proposal.
+
+If a proposal fails any principle, it is rejected with a descriptive
+violation message and the pipeline retries (if iterations remain).
+
+For body evolution (`evolve body`), only the size constraint applies.
+
 ### 5. Propose Description Changes
 
 An LLM generates a candidate description that would catch the missed
@@ -214,6 +240,23 @@ The candidate is tested against the full eval set:
 
 If validation fails, the command retries up to `--max-iterations` times
 with adjusted proposals.
+
+### Aggregate Metrics To Report
+
+When summarizing an evolution run, include these aggregate metrics rather
+than only saying "passed" or "failed":
+
+| Metric | Meaning |
+|--------|---------|
+| `original_pass_rate` | Baseline pass rate before the proposal |
+| `proposed_pass_rate` | Pass rate after applying the proposal |
+| `regression_count` | Eval entries that passed before and failed after |
+| `net_change` | Total passes gained minus regressions introduced |
+| `iteration` / `iterations_used` | Which retry produced the current candidate |
+| `baseline_lift` | Additional lift over the no-skill baseline when `--with-baseline` is enabled |
+
+These metrics explain whether the proposal is genuinely better, merely
+different, or too risky to deploy.
 
 ### 7. Deploy (or Preview)
 
@@ -296,10 +339,11 @@ Use `--agent <name>` to override (claude, codex, opencode).
 
 ## Subagent Escalation
 
-For high-stakes evolutions, consider spawning the `evolution-reviewer` agent
-as a subagent to review the proposal before deploying. This is especially
-valuable when the skill has a history of regressions, the evolution touches
-many trigger phrases, or the confidence score is near the threshold.
+For high-stakes evolutions, read `skill/agents/evolution-reviewer.md` and spawn a
+subagent with those instructions to review the proposal before deploying.
+This is especially valuable when the skill has a history of regressions,
+the evolution touches many trigger phrases, or the confidence score is near
+the threshold.
 
 ## Autonomous Mode
 

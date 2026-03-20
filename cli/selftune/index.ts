@@ -24,6 +24,7 @@
  *   selftune export             — Export SQLite data to JSONL files
  *   selftune export-canonical   — Export canonical telemetry for downstream ingestion
  *   selftune telemetry          — Manage anonymous usage analytics (status, enable, disable)
+ *   selftune alpha <subcommand> — Alpha program management (upload)
  *   selftune hook <name>        — Run a hook by name (prompt-log, session-stop, etc.)
  */
 
@@ -56,6 +57,7 @@ Commands:
   repair-skill-usage Rebuild trustworthy skill usage from transcripts
   export             Export SQLite data to JSONL files
   export-canonical   Export canonical telemetry for downstream ingestion
+  alpha <subcommand> Alpha program management (upload)
   telemetry          Manage anonymous usage analytics (status, enable, disable)
   hook <name>        Run a hook by name (prompt-log, session-stop, etc.)
 
@@ -549,6 +551,193 @@ Options:
   case "orchestrate": {
     const { cliMain } = await import("./orchestrate.js");
     await cliMain();
+    break;
+  }
+  case "alpha": {
+    const sub = process.argv[2];
+    if (!sub || sub === "--help" || sub === "-h") {
+      console.log(`selftune alpha — Alpha program management
+
+Usage:
+  selftune alpha <subcommand> [options]
+
+Subcommands:
+  upload        Run a manual alpha data upload cycle
+  relink        Re-authenticate with the cloud (revokes old key, issues new one)
+
+Run 'selftune alpha <subcommand> --help' for subcommand-specific options.`);
+      process.exit(0);
+    }
+    process.argv = [process.argv[0], process.argv[1], ...process.argv.slice(3)];
+    switch (sub) {
+      case "upload": {
+        const { parseArgs } = await import("node:util");
+        let values: ReturnType<typeof parseArgs>["values"];
+        try {
+          ({ values } = parseArgs({
+            options: {
+              "dry-run": { type: "boolean", default: false },
+              help: { type: "boolean", short: "h", default: false },
+            },
+            strict: true,
+          }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`Invalid arguments: ${message}`);
+          process.exit(1);
+        }
+        if (values.help) {
+          console.log(`selftune alpha upload — Run a manual alpha data upload cycle
+
+Usage:
+  selftune alpha upload [--dry-run]
+
+Options:
+  --dry-run   Log what would be uploaded without sending
+  -h, --help  Show this help message
+
+Output:
+  JSON summary: { enrolled, prepared, sent, failed, skipped, guidance? }`);
+          process.exit(0);
+        }
+
+        const { SELFTUNE_CONFIG_PATH } = await import("./constants.js");
+        const { getAlphaGuidance } = await import("./agent-guidance.js");
+        const { readAlphaIdentity } = await import("./alpha-identity.js");
+        const { getDb } = await import("./localdb/db.js");
+        const { runUploadCycle } = await import("./alpha-upload/index.js");
+        const { getSelftuneVersion, readConfiguredAgentType } = await import(
+          "./utils/selftune-meta.js"
+        );
+
+        const identity = readAlphaIdentity(SELFTUNE_CONFIG_PATH);
+        if (!identity?.enrolled) {
+          const guidance = getAlphaGuidance(identity);
+          console.log(
+            JSON.stringify(
+              {
+                enrolled: false,
+                prepared: 0,
+                sent: 0,
+                failed: 0,
+                skipped: 0,
+                guidance,
+              },
+              null,
+              2,
+            ),
+          );
+          console.error(`[alpha upload] ${guidance.message}`);
+          console.error(`[alpha upload] Next: ${guidance.next_command}`);
+          process.exit(1);
+        }
+
+        if (!identity.user_id?.trim() || !identity.api_key?.trim()) {
+          const guidance = getAlphaGuidance(identity);
+          console.log(
+            JSON.stringify(
+              {
+                enrolled: true,
+                prepared: 0,
+                sent: 0,
+                failed: 0,
+                skipped: 0,
+                guidance,
+              },
+              null,
+              2,
+            ),
+          );
+          console.error(`[alpha upload] ${guidance.message}`);
+          console.error(`[alpha upload] Next: ${guidance.next_command}`);
+          process.exit(1);
+        }
+
+        const db = getDb();
+
+        const result = await runUploadCycle(db, {
+          enrolled: true,
+          userId: identity.user_id,
+          agentType: readConfiguredAgentType(SELFTUNE_CONFIG_PATH, "unknown"),
+          selftuneVersion: getSelftuneVersion(),
+          dryRun: values["dry-run"] ?? false,
+          apiKey: identity.api_key,
+        });
+
+        console.log(JSON.stringify(result, null, 2));
+        process.exit(result.failed > 0 ? 1 : 0);
+        break;
+      }
+      case "relink": {
+        const { SELFTUNE_CONFIG_PATH } = await import("./constants.js");
+        const { readAlphaIdentity, writeAlphaIdentity, generateUserId } = await import(
+          "./alpha-identity.js"
+        );
+        const { requestDeviceCode, pollDeviceCode } = await import("./auth/device-code.js");
+        const { chmodSync } = await import("node:fs");
+
+        const existingIdentity = readAlphaIdentity(SELFTUNE_CONFIG_PATH);
+        process.stderr.write("[alpha relink] Starting device-code authentication flow...\n");
+
+        const grant = await requestDeviceCode();
+
+        console.log(
+          JSON.stringify({
+            level: "info",
+            code: "device_code_issued",
+            verification_url: grant.verification_url,
+            user_code: grant.user_code,
+            expires_in: grant.expires_in,
+            message: `Open ${grant.verification_url} and enter code: ${grant.user_code}`,
+          }),
+        );
+
+        // Try to open browser
+        try {
+          const url = `${grant.verification_url}?code=${grant.user_code}`;
+          Bun.spawn(["open", url], { stdout: "ignore", stderr: "ignore" });
+          process.stderr.write("[alpha relink] Browser opened. Waiting for approval...\n");
+        } catch {
+          process.stderr.write(
+            "[alpha relink] Could not open browser. Visit the URL above manually.\n",
+          );
+        }
+
+        process.stderr.write("[alpha relink] Polling");
+        const result = await pollDeviceCode(grant.device_code, grant.interval, grant.expires_in);
+        process.stderr.write("\n[alpha relink] Approved!\n");
+
+        const updatedIdentity = {
+          enrolled: true,
+          user_id: existingIdentity?.user_id ?? generateUserId(),
+          cloud_user_id: result.cloud_user_id,
+          cloud_org_id: result.org_id,
+          email: existingIdentity?.email,
+          display_name: existingIdentity?.display_name,
+          consent_timestamp: new Date().toISOString(),
+          api_key: result.api_key,
+        };
+
+        writeAlphaIdentity(SELFTUNE_CONFIG_PATH, updatedIdentity);
+        chmodSync(SELFTUNE_CONFIG_PATH, 0o600);
+
+        console.log(
+          JSON.stringify({
+            level: "info",
+            code: "alpha_relinked",
+            replaced_existing_key: Boolean(existingIdentity?.api_key),
+            cloud_user_id: result.cloud_user_id,
+            message: "Successfully relinked. Old key revoked by cloud during approval.",
+          }),
+        );
+        break;
+      }
+      default:
+        console.error(
+          `Unknown alpha subcommand: ${sub}\nRun 'selftune alpha --help' for available subcommands.`,
+        );
+        process.exit(1);
+    }
     break;
   }
   case "telemetry": {
