@@ -106,6 +106,7 @@ selftune export    [TABLE...] [--output/-o DIR] [--since DATE]
 
 # Alpha enrollment (cloud app is control-plane only, not the main UX)
 selftune init --alpha --alpha-email <email> --alpha-key <st_live_key>
+selftune alpha upload [--dry-run]
 selftune status                                                        # shows cloud link state + upload readiness
 ```
 
@@ -124,7 +125,7 @@ selftune status                                                        # shows c
 | replay, backfill, claude transcripts, historical sessions | Replay | Workflows/Replay.md |
 | contribute, share, community, export data, anonymized, give back | Contribute | Workflows/Contribute.md |
 | init, setup, set up, bootstrap, first time, install, configure selftune, alpha, enroll, alpha enrollment, cloud link, upload credential | Initialize | Workflows/Initialize.md |
-| cron, schedule, autonomous, automate evolution, run automatically | Cron | Workflows/Cron.md |
+| cron, schedule, automate evolution, run automatically | Cron | Workflows/Cron.md |
 | auto-activate, suggestions, activation rules, nag, why suggest | AutoActivation | Workflows/AutoActivation.md |
 | dashboard, visual, open dashboard, show dashboard, serve dashboard, live dashboard | Dashboard | Workflows/Dashboard.md |
 | evolution memory, session continuity, what happened last | EvolutionMemory | Workflows/EvolutionMemory.md |
@@ -134,10 +135,10 @@ selftune status                                                        # shows c
 | eval import, skillsbench, external evals, benchmark tasks | ImportSkillsBench | Workflows/ImportSkillsBench.md |
 | telemetry, analytics, disable analytics, opt out, tracking, privacy | Telemetry | Workflows/Telemetry.md |
 | orchestrate, autonomous, full loop, improve all skills, run selftune loop | Orchestrate | Workflows/Orchestrate.md |
-| sync, refresh, replay, source truth, rescan sessions | Sync | Workflows/Sync.md |
+| sync, refresh, source truth, rescan sessions | Sync | Workflows/Sync.md |
 | badge, readme badge, skill badge, health badge | Badge | Workflows/Badge.md |
 | workflows, discover workflows, list workflows, multi-skill workflows | Workflows | Workflows/Workflows.md |
-| alpha upload, upload data, send alpha data, manual upload, dry run upload | AlphaUpload | *(direct command — no workflow file)* |
+| alpha upload, upload data, send alpha data, manual upload, dry run upload | AlphaUpload | Workflows/AlphaUpload.md |
 | export, dump, jsonl, export sqlite, debug export | Export | *(direct command — no workflow file)* |
 | status, health summary, skill health, how are skills, skills doing, run selftune | Status | *(direct command — no workflow file)* |
 | last, last session, recent session, what happened, what changed | Last | *(direct command — no workflow file)* |

@@ -303,6 +303,21 @@ describe("formatAlphaStatus", () => {
     expect(output).toContain("--alpha-key <st_live_key>");
   });
 
+  test("shows linked but not enrolled state when cloud identity exists", () => {
+    const info: AlphaStatusInfo = {
+      enrolled: false,
+      linkState: "linked_not_enrolled",
+      stats: { pending: 0, sending: 0, sent: 0, failed: 0 },
+      lastError: null,
+      lastSuccess: null,
+    };
+
+    const output = formatAlphaStatus(info);
+    expect(output).toContain("Status:             not enrolled");
+    expect(output).toContain("Cloud link:         linked (not enrolled)");
+    expect(output).toContain("Next command");
+  });
+
   test("shows cloud verification data when available", () => {
     const cloudVerify: CloudVerifyData = {
       enrolled: true,

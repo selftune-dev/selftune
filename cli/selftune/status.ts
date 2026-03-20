@@ -82,7 +82,7 @@ export interface CloudVerifyData {
 }
 
 export interface AlphaStatusInfo {
-  enrolled: true;
+  enrolled: boolean;
   linkState?: AlphaLinkState;
   guidance?: AgentCommandGuidance;
   stats: { pending: number; sending: number; sent: number; failed: number };
@@ -422,7 +422,7 @@ export function formatAlphaStatus(info: AlphaStatusInfo | null): string {
   lines.push("Alpha Upload");
   lines.push("\u2500".repeat(15));
 
-  if (!info || !info.enrolled) {
+  if (!info) {
     const guidance = getAlphaGuidanceForState("not_linked");
     lines.push("  Status:             not enrolled");
     lines.push("  Cloud link:         not linked");
@@ -430,8 +430,8 @@ export function formatAlphaStatus(info: AlphaStatusInfo | null): string {
     return lines.join("\n");
   }
 
-  lines.push("  Status:             enrolled");
   const linkState = info.linkState ?? "not_linked";
+  lines.push(`  Status:             ${info.enrolled ? "enrolled" : "not enrolled"}`);
   lines.push(`  Cloud link:         ${LINK_STATE_LABELS[linkState]}`);
 
   // Cloud verification data (when available)
@@ -512,18 +512,20 @@ export async function cliMain(): Promise<void> {
     // Alpha upload status section
     const alphaIdentity = readAlphaIdentity(SELFTUNE_CONFIG_PATH);
     let alphaInfo: AlphaStatusInfo | null = null;
-    if (alphaIdentity?.enrolled) {
-      // Fetch cloud verification data in parallel (fail-open, 3s timeout)
+    if (alphaIdentity) {
       const cloudVerify =
-        alphaIdentity.api_key ? await fetchCloudVerify(alphaIdentity.api_key) : null;
-
+        alphaIdentity.enrolled && alphaIdentity.api_key
+          ? await fetchCloudVerify(alphaIdentity.api_key)
+          : null;
       alphaInfo = {
-        enrolled: true,
+        enrolled: alphaIdentity.enrolled === true,
         linkState: getAlphaLinkState(alphaIdentity),
         guidance: getAlphaGuidance(alphaIdentity),
-        stats: getQueueStats(db),
-        lastError: getLastUploadError(db),
-        lastSuccess: getLastUploadSuccess(db),
+        stats: alphaIdentity.enrolled
+          ? getQueueStats(db)
+          : { pending: 0, sending: 0, sent: 0, failed: 0 },
+        lastError: alphaIdentity.enrolled ? getLastUploadError(db) : null,
+        lastSuccess: alphaIdentity.enrolled ? getLastUploadSuccess(db) : null,
         cloudVerify,
       };
     }

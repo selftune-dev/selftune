@@ -408,8 +408,8 @@ export async function checkAlphaQueueHealth(
     failCheck.guidance = {
       code: "alpha_queue_failures",
       message: "The alpha upload queue has accumulated too many failures.",
-      next_command: "selftune doctor",
-      suggested_commands: ["selftune alpha upload", "selftune status"],
+      next_command: "selftune alpha upload",
+      suggested_commands: ["selftune doctor", "selftune status"],
       blocking: false,
     };
   } else {
@@ -488,7 +488,7 @@ const CLOUD_LINK_CHECKS: Record<AlphaLinkState, { status: HealthStatus; message:
 };
 
 export function checkCloudLinkHealth(identity: AlphaIdentity | null): HealthCheck[] {
-  if (!identity || (!identity.enrolled && !identity.cloud_user_id && !identity.api_key)) return [];
+  if (!identity) return [];
   const state = getAlphaLinkState(identity);
   const { status, message } = CLOUD_LINK_CHECKS[state];
   return [
@@ -519,13 +519,14 @@ export async function doctor(): Promise<DoctorResult> {
   const passed = allChecks.filter((c) => c.status === "pass").length;
   const failed = allChecks.filter((c) => c.status === "fail").length;
   const warned = allChecks.filter((c) => c.status === "warn").length;
+  const hasBlockingGuidance = allChecks.some((c) => c.guidance?.blocking === true);
 
   return {
     command: "doctor",
     timestamp: new Date().toISOString(),
     checks: allChecks,
     summary: { pass: passed, fail: failed, warn: warned, total: allChecks.length },
-    healthy: failed === 0,
+    healthy: failed === 0 && !hasBlockingGuidance,
   };
 }
 

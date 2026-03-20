@@ -230,11 +230,11 @@ CREATE INDEX idx_upload_queue_created ON upload_queue(created_at);
 
 ### Flush flow
 
-1. The flush function queries `upload_queue WHERE status IN ('pending', 'failed') AND attempts < 5` ordered by `created_at ASC`.
-2. For each queued item, it constructs a V2 push envelope and POSTs to `https://api.selftune.dev/api/v1/push` with the Bearer API key.
-3. On success (201 or 409): update `status = 'sent'`, set `sent_at`.
-4. On retryable failure (429, 5xx): increment `attempts`, set `last_attempt_at` and `last_error`, set `status = 'failed'`.
-5. On non-retryable failure (401, 403): increment `attempts`, set `last_error`, set `status = 'failed'`.
+1. `flushQueue()` selects rows with `status = 'pending'` ordered by `created_at ASC`.
+2. For each pending item, it POSTs the stored V2 push envelope to `https://api.selftune.dev/api/v1/push` with the Bearer API key.
+3. Retryable failures (`429`, `5xx`) are retried with exponential backoff inside the same `flushQueue()` run.
+4. Success (`201` or `409`) is terminal: set `status = 'sent'` and `sent_at`.
+5. Exhausted retryable failures and non-retryable auth failures (`401`, `403`) are terminal: increment `attempts`, set `last_attempt_at` / `last_error`, and leave the row at `status = 'failed'`.
 
 ### Retry with exponential backoff
 

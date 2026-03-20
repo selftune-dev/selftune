@@ -12,11 +12,14 @@
  */
 
 import {
-  chmodSync,
+  closeSync,
   existsSync,
+  fsyncSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
+  renameSync,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -136,6 +139,24 @@ export function detectAgentType(
 export function determineCliPath(override?: string): string {
   if (override) return override;
   return resolve(dirname(import.meta.path), "index.ts");
+}
+
+function writeSelftuneConfig(configPath: string, config: SelftuneConfig): void {
+  const serialized = JSON.stringify(config, null, 2);
+  if (!config.alpha?.api_key?.trim()) {
+    writeFileSync(configPath, serialized, "utf-8");
+    return;
+  }
+
+  const tempPath = `${configPath}.tmp`;
+  const fd = openSync(tempPath, "w", 0o600);
+  try {
+    writeFileSync(fd, serialized, "utf-8");
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+  renameSync(tempPath, configPath);
 }
 
 // ---------------------------------------------------------------------------
@@ -577,7 +598,7 @@ export async function runInit(opts: InitOptions): Promise<SelftuneConfig> {
 
   // Write config
   mkdirSync(configDir, { recursive: true });
-  writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+  writeSelftuneConfig(configPath, config);
 
   // Agent files are bundled in skill/agents/ and read directly by the
   // consuming agent — no installation step needed.
@@ -591,7 +612,7 @@ export async function runInit(opts: InitOptions): Promise<SelftuneConfig> {
     if (addedHookKeys.length > 0) {
       config.hooks_installed = true;
       // Re-write config with updated hooks_installed flag
-      writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+      writeSelftuneConfig(configPath, config);
       console.error(
         `[INFO] Installed ${addedHookKeys.length} selftune hook(s) into ${settingsPath}: ${addedHookKeys.join(", ")}`,
       );
@@ -599,23 +620,20 @@ export async function runInit(opts: InitOptions): Promise<SelftuneConfig> {
       // Re-check in case hooks were already present
       config.hooks_installed = checkClaudeCodeHooks(settingsPath);
       if (config.hooks_installed) {
-        writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+        writeSelftuneConfig(configPath, config);
       }
     }
   }
 
   if (existingAlphaBeforeOverwrite && !opts.alpha && !opts.noAlpha) {
     config.alpha = existingAlphaBeforeOverwrite;
-    writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+    writeSelftuneConfig(configPath, config);
   }
 
   // Handle alpha enrollment
   if (validatedAlphaIdentity) {
     config.alpha = validatedAlphaIdentity;
-    writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
-    if (opts.alphaKey) {
-      chmodSync(configPath, 0o600);
-    }
+    writeSelftuneConfig(configPath, config);
 
     const readiness = checkAlphaReadiness(configPath);
     console.error(JSON.stringify({ alpha_readiness: readiness }));
@@ -626,7 +644,7 @@ export async function runInit(opts: InitOptions): Promise<SelftuneConfig> {
         enrolled: false,
       };
       config.alpha = identity;
-      writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+      writeSelftuneConfig(configPath, config);
     }
   }
 

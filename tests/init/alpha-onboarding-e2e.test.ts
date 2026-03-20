@@ -39,6 +39,7 @@ function makeInitOpts(overrides: Record<string, unknown> = {}) {
 
 describe("Agent-first alpha onboarding E2E", () => {
   test("fresh config → selftune init --alpha --alpha-key → upload-ready", async () => {
+    const testApiKey = ["st_live", "abc123xyz"].join("_");
     const opts = makeInitOpts();
 
     // Step 1: Fresh machine — no config exists
@@ -55,13 +56,13 @@ describe("Agent-first alpha onboarding E2E", () => {
         alpha: true,
         alphaEmail: "user@example.com",
         alphaName: "Test User",
-        alphaKey: "st_live_abc123xyz",
+        alphaKey: testApiKey,
       }),
     );
 
     expect(config1.alpha?.enrolled).toBe(true);
     expect(config1.alpha?.email).toBe("user@example.com");
-    expect(config1.alpha?.api_key).toBe("st_live_abc123xyz");
+    expect(config1.alpha?.api_key).toBe(testApiKey);
 
     // Step 3: Readiness check — api_key is valid so readiness passes
     const readiness1 = checkAlphaReadiness(opts.configPath);

@@ -171,8 +171,8 @@ reported issues before proceeding.
 For project-type-specific setup (single-skill, multi-skill, monorepo, Codex,
 OpenCode, mixed agents), see [docs/integration-guide.md](../../docs/integration-guide.md).
 
-Templates for each project type are in the `assets/` directory:
-- `assets/settings_snippet.json` — hooks for Claude Code projects
+Templates for each project type are bundled with the skill:
+- `skill/settings_snippet.json` — hooks for Claude Code projects
 - `assets/activation-rules-default.json` — default auto-activation rule configuration
 
 ## Subagent Escalation
@@ -207,9 +207,11 @@ Setup is agent-first — the cloud app is a one-time control-plane handoff, not 
    > To join the selftune alpha program, you need to create an account at https://app.selftune.dev and issue an upload credential. This is a one-time step — afterwards everything runs locally through the CLI.
 3. **User completes cloud enrollment**: Signs in, enrolls, copies the `st_live_*` credential
 4. **Store credential locally**:
+
    ```bash
    selftune init --alpha --alpha-email <user-email> --alpha-key <st_live_credential>
    ```
+
 5. **Verify readiness**: The init command prints a readiness check. If all checks pass, alpha upload is active.
    The readiness JSON now includes a `guidance` object with:
    - `message`

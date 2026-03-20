@@ -27,11 +27,7 @@ function createTestDb(): Database {
     }
   }
   for (const idx of POST_MIGRATION_INDEXES) {
-    try {
-      db.run(idx);
-    } catch {
-      /* already exists OK */
-    }
+    db.run(idx);
   }
   return db;
 }
