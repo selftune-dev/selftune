@@ -851,4 +851,22 @@ describe("queryCanonicalRecordsForStaging", () => {
     expect(typeof executionFact?.execution_fact_id).toBe("string");
     expect(executionFact?.execution_fact_id).toBe("1");
   });
+
+  it("preserves skill_path when rebuilding skill invocations from SQLite", () => {
+    seedSkillUsage(db, {
+      session_id: "sess-skill-path",
+      skill_invocation_id: "si-skill-path",
+      skill_name: "Research",
+      skill_path: "/skills/research/SKILL.md",
+    });
+
+    const invocation = queryCanonicalRecordsForStaging(db).find(
+      (record) =>
+        record.record_kind === "skill_invocation" &&
+        record.skill_invocation_id === "si-skill-path",
+    ) as Record<string, unknown> | undefined;
+
+    expect(invocation).toBeDefined();
+    expect(invocation?.skill_path).toBe("/skills/research/SKILL.md");
+  });
 });

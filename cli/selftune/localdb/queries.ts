@@ -659,7 +659,7 @@ export function queryCanonicalRecordsForStaging(db: Database): Record<string, un
   // Skill invocations
   const invocations = db
     .query(
-      `SELECT skill_invocation_id, session_id, occurred_at, skill_name, invocation_mode,
+      `SELECT skill_invocation_id, session_id, occurred_at, skill_name, skill_path, invocation_mode,
               triggered, confidence, tool_name, matched_prompt_id, agent_type,
               schema_version, platform, normalized_at, normalizer_version, capture_mode, raw_source_ref
        FROM skill_invocations ORDER BY occurred_at`,
@@ -683,6 +683,7 @@ export function queryCanonicalRecordsForStaging(db: Database): Record<string, un
       skill_invocation_id: si.skill_invocation_id,
       occurred_at: si.occurred_at,
       skill_name: si.skill_name,
+      skill_path: si.skill_path ?? undefined,
       invocation_mode: si.invocation_mode,
       triggered: (si.triggered as number) === 1,
       confidence: si.confidence,
