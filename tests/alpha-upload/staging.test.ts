@@ -786,6 +786,124 @@ describe("buildV2PushPayload (staging-based)", () => {
     expect((run.skill_actions as unknown[]).length).toBe(1);
   });
 
+  test("default SQLite path: stages records written via direct-write (no JSONL)", () => {
+    // Write canonical records directly into SQLite tables (simulating the runtime path
+    // where hooks write via direct-write.ts, not via JSONL)
+    db.run(
+      `INSERT INTO sessions
+        (session_id, started_at, ended_at, platform, model, completion_status,
+         source_session_kind, schema_version, normalized_at,
+         normalizer_version, capture_mode, raw_source_ref)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        "sqlite-sess-1",
+        "2026-03-18T09:00:00.000Z",
+        "2026-03-18T09:30:00.000Z",
+        "claude_code",
+        "opus",
+        "completed",
+        "interactive",
+        "2.0",
+        "2026-03-18T10:00:00.000Z",
+        "1.0.0",
+        "hook",
+        JSON.stringify({ event_type: "SessionStop" }),
+      ],
+    );
+    db.run(
+      `INSERT INTO prompts
+        (prompt_id, session_id, occurred_at, prompt_kind, is_actionable, prompt_index, prompt_text,
+         schema_version, platform, normalized_at, normalizer_version, capture_mode, raw_source_ref)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        "sqlite-sess-1:p0",
+        "sqlite-sess-1",
+        "2026-03-18T09:01:00.000Z",
+        "user",
+        1,
+        0,
+        "improve my skills",
+        "2.0",
+        "claude_code",
+        "2026-03-18T10:00:00.000Z",
+        "1.0.0",
+        "hook",
+        JSON.stringify({ event_type: "UserPromptSubmit" }),
+      ],
+    );
+    db.run(
+      `INSERT INTO skill_invocations
+        (skill_invocation_id, session_id, occurred_at, skill_name, invocation_mode,
+         triggered, confidence,
+         schema_version, platform, normalized_at, normalizer_version, capture_mode, raw_source_ref)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        "sqlite-sess-1:s:selftune:0",
+        "sqlite-sess-1",
+        "2026-03-18T09:02:00.000Z",
+        "selftune",
+        "implicit",
+        1,
+        0.95,
+        "2.0",
+        "claude_code",
+        "2026-03-18T10:00:00.000Z",
+        "1.0.0",
+        "hook",
+        JSON.stringify({}),
+      ],
+    );
+    db.run(
+      `INSERT INTO execution_facts
+        (session_id, occurred_at, tool_calls_json, total_tool_calls,
+         assistant_turns, errors_encountered,
+         schema_version, platform, normalized_at, normalizer_version, capture_mode, raw_source_ref)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        "sqlite-sess-1",
+        "2026-03-18T09:30:00.000Z",
+        JSON.stringify({ Read: 2, Write: 1 }),
+        3,
+        4,
+        0,
+        "2.0",
+        "claude_code",
+        "2026-03-18T10:00:00.000Z",
+        "1.0.0",
+        "hook",
+        JSON.stringify({}),
+      ],
+    );
+
+    // Call stageCanonicalRecords with default logPath — this triggers the SQLite read path
+    const staged = stageCanonicalRecords(db);
+    expect(staged).toBeGreaterThanOrEqual(4); // session + prompt + invocation + execution_fact
+
+    // Verify staged rows exist and contain valid canonical JSON
+    const rows = db.query("SELECT * FROM canonical_upload_staging ORDER BY local_seq").all() as Array<
+      Record<string, unknown>
+    >;
+    const kinds = rows.map((r) => r.record_kind);
+    expect(kinds).toContain("session");
+    expect(kinds).toContain("prompt");
+    expect(kinds).toContain("skill_invocation");
+    expect(kinds).toContain("execution_fact");
+
+    // Verify the staged JSON passes contract validation by building a payload
+    const result = buildV2PushPayload(db);
+    if (!result) throw new Error("expected staged payload");
+    expect(result.payload.canonical.sessions).toHaveLength(1);
+    expect(result.payload.canonical.prompts).toHaveLength(1);
+    expect(result.payload.canonical.skill_invocations).toHaveLength(1);
+    expect(result.payload.canonical.execution_facts).toHaveLength(1);
+
+    // Spot-check envelope fields survived the round-trip
+    const sess = result.payload.canonical.sessions[0] as Record<string, unknown>;
+    expect(sess.normalizer_version).toBe("1.0.0");
+    expect(sess.capture_mode).toBe("hook");
+    expect(sess.raw_source_ref).toEqual({ event_type: "SessionStop" });
+  });
+
   test("no hardcoded provenance fields -- canonical fields preserved from source", () => {
     const session = makeCanonicalSessionRecord("sess-prov", {
       capture_mode: "hook",
