@@ -69,7 +69,7 @@ export async function uploadPushPayload(
       try {
         const parsed: unknown = JSON.parse(body);
         if (isPushUploadResult(parsed)) {
-          return parsed;
+          return { ...parsed, _status: parsed._status ?? response.status };
         }
         if (isAcceptedPushResponse(parsed)) {
           return {

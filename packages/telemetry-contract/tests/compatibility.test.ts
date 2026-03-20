@@ -47,6 +47,10 @@ describe("PushPayloadV2Schema compatibility", () => {
     delete (badPayload.canonical.execution_facts[0] as Record<string, unknown>).execution_fact_id;
     const result = PushPayloadV2Schema.safeParse(badPayload);
     expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("canonical.execution_facts.0.execution_fact_id");
+    }
   });
 
   test("execution_fact_id rejects empty string", () => {
@@ -54,6 +58,10 @@ describe("PushPayloadV2Schema compatibility", () => {
     (badPayload.canonical.execution_facts[0] as Record<string, unknown>).execution_fact_id = "";
     const result = PushPayloadV2Schema.safeParse(badPayload);
     expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("canonical.execution_facts.0.execution_fact_id");
+    }
   });
 
   // ---- bash_commands_redacted is optional ----
@@ -103,6 +111,9 @@ describe("PushPayloadV2Schema compatibility", () => {
       (i) => i.session_id,
     );
 
+    // Precondition: arrays must be non-empty for the test to be meaningful
+    expect(invSessionIds.length).toBeGreaterThan(0);
+
     // Confirm the invocation references a session not in the sessions array
     for (const sid of invSessionIds) {
       expect(sessionIds.has(sid)).toBe(false);
@@ -119,6 +130,9 @@ describe("PushPayloadV2Schema compatibility", () => {
     const promptSessionIds = partialPushUnresolvedParents.canonical.prompts.map(
       (p) => p.session_id,
     );
+
+    // Precondition: arrays must be non-empty for the test to be meaningful
+    expect(promptSessionIds.length).toBeGreaterThan(0);
 
     for (const sid of promptSessionIds) {
       expect(sessionIds.has(sid)).toBe(false);

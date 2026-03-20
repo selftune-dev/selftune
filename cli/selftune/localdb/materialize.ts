@@ -135,7 +135,11 @@ function preflightRebuildGuard(db: Database, options?: MaterializeOptions): void
       sqliteBoundaryCount = 0;
     }
 
-    if (!jsonlMax || newerCount > 0 || sqliteBoundaryCount !== jsonlBoundaryCount) {
+    if (
+      !jsonlMax ||
+      newerCount > 0 ||
+      (sqliteMax === jsonlMax && sqliteBoundaryCount !== jsonlBoundaryCount)
+    ) {
       warnings.push(
         `  - ${table}: ${newerCount} SQLite-only row(s), SQLite max=${sqliteMax}, JSONL max=${jsonlMax ?? "(empty)"}, boundary_count(SQLite=${sqliteBoundaryCount}, JSONL=${jsonlBoundaryCount})`,
       );

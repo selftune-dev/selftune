@@ -262,7 +262,6 @@ describe("autonomy proof: autonomous deploy end-to-end", () => {
     const skillPath = join(skillDir, "SKILL.md");
     writeFileSync(skillPath, SKILL_MD_ORIGINAL, "utf-8");
 
-    const _auditLogPath = join(tmpDir, "evolution_audit_log.jsonl");
     const proposal = makeProposal(skillPath);
     const validation = makeValidation();
 

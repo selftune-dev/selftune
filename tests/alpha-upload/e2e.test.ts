@@ -104,11 +104,13 @@ function stagePrompts(db: Database, count: number): void {
   }
 }
 
-/** Stage evolution evidence records directly. */
+/** Stage evolution evidence records directly using V2 deterministic shape. */
 function stageEvolutionEvidence(db: Database, count: number): void {
   for (let i = 0; i < count; i++) {
-    const recordId = `e2e-prop-${i}:deployed:2026-01-01T00:00:00Z`;
+    const evidenceId = `ev_e2e-prop-${i}_deployed_${i}`;
+    const recordId = `evidence-${evidenceId}:deployed:2026-01-01T00:00:00Z`;
     const record = {
+      evidence_id: evidenceId,
       skill_name: "Research",
       proposal_id: `e2e-prop-${i}`,
       target: "description",

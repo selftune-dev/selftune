@@ -514,6 +514,32 @@ export async function evolve(
           eval_set: evalSet,
         });
 
+        // Constitutional check before validation (same gate as retry flow)
+        const constitution = checkConstitution(
+          proposal.proposed_description,
+          currentDescription,
+          skillName,
+        );
+        if (!constitution.passed) {
+          const reason = `Constitutional: ${constitution.violations.join("; ")}`;
+          recordAudit(proposal.proposal_id, "rejected", reason);
+          recordEvidence({
+            timestamp: new Date().toISOString(),
+            proposal_id: proposal.proposal_id,
+            skill_name: skillName,
+            skill_path: skillPath,
+            target: "description",
+            stage: "rejected",
+            rationale: proposal.rationale,
+            confidence: proposal.confidence,
+            details: reason,
+            original_text: proposal.original_description,
+            proposed_text: proposal.proposed_description,
+            eval_set: evalSet,
+          });
+          continue;
+        }
+
         const validation = await _validateProposal(
           proposal,
           evalSet,

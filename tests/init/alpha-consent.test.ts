@@ -53,6 +53,13 @@ describe("readAlphaIdentity", () => {
     expect(result).toBeNull();
   });
 
+  test("returns null when config contains malformed JSON", () => {
+    const configPath = join(tmpDir, "bad.json");
+    writeFileSync(configPath, "{invalid json!!!", "utf-8");
+    const result = readAlphaIdentity(configPath);
+    expect(result).toBeNull();
+  });
+
   test("returns alpha block when present", () => {
     const configPath = join(tmpDir, "config.json");
     const alpha: AlphaIdentity = {
@@ -85,6 +92,18 @@ describe("writeAlphaIdentity", () => {
 
     const raw = JSON.parse(readFileSync(configPath, "utf-8"));
     expect(raw.alpha).toEqual(identity);
+  });
+
+  test("throws when config contains malformed JSON", () => {
+    const configPath = join(tmpDir, "corrupt.json");
+    writeFileSync(configPath, "not valid json{{{", "utf-8");
+    const identity: AlphaIdentity = {
+      enrolled: true,
+      user_id: "test-uuid",
+      email: "test@example.com",
+      consent_timestamp: "2026-03-18T00:00:00Z",
+    };
+    expect(() => writeAlphaIdentity(configPath, identity)).toThrow();
   });
 
   test("merges alpha block into existing config without clobbering other fields", () => {

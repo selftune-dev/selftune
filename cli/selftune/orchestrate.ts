@@ -1010,7 +1010,7 @@ export async function orchestrate(
         const uploadSummary = await runUploadCycle(db, {
           enrolled: true,
           userId: alphaIdentity.user_id,
-          agentType: readConfiguredAgentType(SELFTUNE_CONFIG_PATH, "claude_code"),
+          agentType: readConfiguredAgentType(SELFTUNE_CONFIG_PATH, "unknown"),
           selftuneVersion: getSelftuneVersion(),
           dryRun: options.dryRun,
           apiKey: alphaIdentity.api_key,

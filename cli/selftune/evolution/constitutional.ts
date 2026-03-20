@@ -39,10 +39,12 @@ function sentenceContaining(text: string, matchIndex: number): string {
   const sentences = text.split(/(?<![a-z])(?<=[.!?])\s+/i);
   let offset = 0;
   for (const sentence of sentences) {
-    if (matchIndex >= offset && matchIndex < offset + sentence.length) {
+    const realOffset = text.indexOf(sentence, offset);
+    if (realOffset === -1) break;
+    if (matchIndex >= realOffset && matchIndex < realOffset + sentence.length) {
       return sentence;
     }
-    offset += sentence.length + 1; // +1 for the split whitespace
+    offset = realOffset + sentence.length;
   }
   return text; // fallback: treat entire text as one sentence
 }
@@ -117,7 +119,7 @@ export function checkConstitution(
   }
 
   // Check for $variable references
-  const dollarRefs = original.match(/\$\w+/g);
+  const dollarRefs = original.match(/\$[A-Za-z0-9_-]+/g);
   if (dollarRefs) {
     for (const ref of dollarRefs) {
       if (!proposed.includes(ref)) {
