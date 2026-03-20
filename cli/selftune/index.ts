@@ -677,10 +677,6 @@ Output:
         const { chmodSync } = await import("node:fs");
 
         const existingIdentity = readAlphaIdentity(SELFTUNE_CONFIG_PATH);
-        const oldKeyPrefix = existingIdentity?.api_key
-          ? `${existingIdentity.api_key.slice(0, 16)}...`
-          : "(none)";
-
         process.stderr.write("[alpha relink] Starting device-code authentication flow...\n");
 
         const grant = await requestDeviceCode();
@@ -711,8 +707,6 @@ Output:
         const result = await pollDeviceCode(grant.device_code, grant.interval, grant.expires_in);
         process.stderr.write("\n[alpha relink] Approved!\n");
 
-        const newKeyPrefix = `${result.api_key.slice(0, 16)}...`;
-
         const updatedIdentity = {
           enrolled: true,
           user_id: existingIdentity?.user_id ?? generateUserId(),
@@ -731,8 +725,7 @@ Output:
           JSON.stringify({
             level: "info",
             code: "alpha_relinked",
-            old_key_prefix: oldKeyPrefix,
-            new_key_prefix: newKeyPrefix,
+            replaced_existing_key: Boolean(existingIdentity?.api_key),
             cloud_user_id: result.cloud_user_id,
             message: "Successfully relinked. Old key revoked by cloud during approval.",
           }),
