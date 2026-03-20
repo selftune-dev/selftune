@@ -5,12 +5,11 @@
  * migrateLocalIdentity() detection, and config read/write helpers.
  */
 
-import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { AlphaIdentity, AlphaLinkState } from "../../cli/selftune/types.js";
 import {
   generateUserId,
   getAlphaLinkState,
@@ -19,6 +18,7 @@ import {
   readAlphaIdentity,
   writeAlphaIdentity,
 } from "../../cli/selftune/alpha-identity.js";
+import type { AlphaIdentity } from "../../cli/selftune/types.js";
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -208,12 +208,15 @@ describe("readAlphaIdentity / writeAlphaIdentity", () => {
 
     const result = readAlphaIdentity(configPath);
     expect(result).not.toBeNull();
-    expect(result!.enrolled).toBe(true);
-    expect(result!.user_id).toBe("local-uuid-123");
-    expect(result!.cloud_user_id).toBe("cloud-xyz");
-    expect(result!.cloud_org_id).toBe("org-abc");
-    expect(result!.email).toBe("user@example.com");
-    expect(result!.api_key).toBe("st_live_key123");
+    if (!result) {
+      throw new Error("expected alpha identity to be written");
+    }
+    expect(result.enrolled).toBe(true);
+    expect(result.user_id).toBe("local-uuid-123");
+    expect(result.cloud_user_id).toBe("cloud-xyz");
+    expect(result.cloud_org_id).toBe("org-abc");
+    expect(result.email).toBe("user@example.com");
+    expect(result.api_key).toBe("st_live_key123");
   });
 
   test("preserves existing config fields when writing alpha", () => {
@@ -235,9 +238,7 @@ describe("readAlphaIdentity / writeAlphaIdentity", () => {
 
   test("throws on corrupt existing config", () => {
     writeFileSync(configPath, "not-json");
-    expect(() => writeAlphaIdentity(configPath, makeIdentity())).toThrow(
-      /not valid JSON/,
-    );
+    expect(() => writeAlphaIdentity(configPath, makeIdentity())).toThrow(/not valid JSON/);
   });
 
   test("creates parent directories", () => {

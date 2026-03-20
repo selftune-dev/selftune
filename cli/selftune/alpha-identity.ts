@@ -108,9 +108,10 @@ export function getAlphaLinkState(identity: AlphaIdentity | null): AlphaLinkStat
  * Detect legacy local-only alpha blocks and mark them as needing cloud link.
  * A legacy identity has email + user_id but no cloud_user_id.
  */
-export function migrateLocalIdentity(
-  identity: AlphaIdentity,
-): { needsCloudLink: boolean; identity: AlphaIdentity } {
+export function migrateLocalIdentity(identity: AlphaIdentity): {
+  needsCloudLink: boolean;
+  identity: AlphaIdentity;
+} {
   if (identity.cloud_user_id) {
     return { needsCloudLink: false, identity };
   }
