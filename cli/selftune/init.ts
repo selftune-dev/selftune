@@ -458,6 +458,34 @@ export interface InitOptions {
   alphaName?: string;
 }
 
+function validateAlphaMetadataFlags(alpha: boolean | undefined, email?: string, name?: string): void {
+  if ((email !== undefined || name !== undefined) && !alpha) {
+    throw new Error("--alpha-email and --alpha-name require --alpha");
+  }
+}
+
+function assertValidApprovedAlphaCredential(result: {
+  api_key: string;
+  cloud_user_id: string;
+  org_id: string;
+}): void {
+  if (!isValidApiKeyFormat(result.api_key)) {
+    throw new Error(
+      "Device-code approval returned an invalid alpha credential. Re-run `selftune init --alpha`.",
+    );
+  }
+  if (!result.cloud_user_id?.trim()) {
+    throw new Error(
+      "Device-code approval did not include a cloud user id. Re-run `selftune init --alpha`.",
+    );
+  }
+  if (!result.org_id?.trim()) {
+    throw new Error(
+      "Device-code approval did not include an alpha org id. Re-run `selftune init --alpha`.",
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Core init logic
 // ---------------------------------------------------------------------------
@@ -468,6 +496,7 @@ export interface InitOptions {
  */
 export async function runInit(opts: InitOptions): Promise<SelftuneConfig> {
   const { configDir, configPath, force } = opts;
+  validateAlphaMetadataFlags(opts.alpha, opts.alphaEmail, opts.alphaName);
 
   // If config exists and no --force (and no alpha mutation), return existing
   const hasAlphaMutation =
@@ -545,6 +574,7 @@ export async function runInit(opts: InitOptions): Promise<SelftuneConfig> {
 
     process.stderr.write("[alpha] Polling");
     const result = await pollDeviceCode(grant.device_code, grant.interval, grant.expires_in);
+    assertValidApprovedAlphaCredential(result);
     process.stderr.write("\n[alpha] Approved!\n");
 
     validatedAlphaIdentity = {
@@ -647,6 +677,12 @@ export async function cliMain(): Promise<void> {
   const configPath = SELFTUNE_CONFIG_PATH;
   const force = values.force ?? false;
   const enableAutonomy = values["enable-autonomy"] ?? false;
+  try {
+    validateAlphaMetadataFlags(values.alpha, values["alpha-email"], values["alpha-name"]);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 
   // Check for existing config without force
   const hasAlphaMutation = !!(

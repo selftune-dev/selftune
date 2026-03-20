@@ -16,7 +16,13 @@ let tmpDir: string;
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 
-function mockDeviceCodeFlow(): void {
+function mockDeviceCodeFlow(
+  approvalOverrides: Partial<{
+    api_key: string;
+    cloud_user_id: string;
+    org_id: string;
+  }> = {},
+): void {
   process.env.SELFTUNE_ALPHA_ENDPOINT = "https://test.local/api/v1/push";
   process.env.SELFTUNE_NO_BROWSER = "1";
   globalThis.fetch = (async (url: string) => {
@@ -27,6 +33,7 @@ function mockDeviceCodeFlow(): void {
           api_key: "st_live_testkey123",
           cloud_user_id: "cloud-user-test",
           org_id: "org-test",
+          ...approvalOverrides,
         }),
         { status: 200 },
       );
@@ -219,6 +226,16 @@ describe("runInit with alpha", () => {
     expect(config.alpha).toBeUndefined();
   });
 
+  test("rejects alpha metadata flags unless --alpha is enabled", async () => {
+    await expect(
+      runInit(
+        makeInitOpts({
+          alphaEmail: "user@example.com",
+        }),
+      ),
+    ).rejects.toThrow("--alpha-email and --alpha-name require --alpha");
+  });
+
   test("--no-alpha sets enrolled=false but preserves user_id", async () => {
     mockDeviceCodeFlow();
 
@@ -318,5 +335,47 @@ describe("runInit with alpha", () => {
     const identity = readAlphaIdentity(opts.configPath);
     expect(identity).not.toBeNull();
     expect(identity?.user_id).toBe(raw.alpha?.user_id);
+  });
+
+  test("fails before persisting an invalid device-code credential", async () => {
+    mockDeviceCodeFlow({ api_key: "invalid-key" });
+    const opts = makeInitOpts({
+      alpha: true,
+      alphaEmail: "user@example.com",
+    });
+
+    await expect(runInit(opts)).rejects.toThrow("invalid alpha credential");
+    expect(readAlphaIdentity(opts.configPath)).toBeNull();
+  });
+
+  test("fails before persisting a malformed approval payload", async () => {
+    mockDeviceCodeFlow({ cloud_user_id: "", org_id: "" });
+    const opts = makeInitOpts({
+      alpha: true,
+      alphaEmail: "user@example.com",
+    });
+
+    await expect(runInit(opts)).rejects.toThrow("did not include a cloud user id");
+    expect(readAlphaIdentity(opts.configPath)).toBeNull();
+  });
+});
+
+describe("cliMain alpha flag validation", () => {
+  test("rejects standalone --alpha-email without --alpha", () => {
+    const initPath = new URL("../../cli/selftune/init.ts", import.meta.url).pathname;
+    const proc = Bun.spawnSync(
+      [process.execPath, "run", initPath, "--alpha-email", "user@example.com"],
+      {
+        cwd: process.cwd(),
+        env: { ...process.env, HOME: tmpDir },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+
+    expect(proc.exitCode).toBe(1);
+    expect(new TextDecoder().decode(proc.stderr)).toContain(
+      "--alpha-email and --alpha-name require --alpha",
+    );
   });
 });

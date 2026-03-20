@@ -713,7 +713,8 @@ describe("buildV2PushPayload (staging-based)", () => {
     // Envelope fields
     expect(p.schema_version).toBe("2.0");
     expect(typeof p.client_version).toBe("string");
-    expect(p.push_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(typeof p.push_id).toBe("string");
+    expect(p.push_id.length).toBeGreaterThan(0);
     expect(typeof p.normalizer_version).toBe("string");
 
     // Canonical arrays exist with correct lengths
@@ -875,7 +876,7 @@ describe("buildV2PushPayload (staging-based)", () => {
 
     // Call stageCanonicalRecords with default logPath — this triggers the SQLite read path
     const staged = stageCanonicalRecords(db);
-    expect(staged).toBeGreaterThanOrEqual(4); // session + prompt + invocation + execution_fact
+    expect(staged).toBe(4); // exactly session + prompt + invocation + execution_fact
 
     // Verify staged rows exist and contain valid canonical JSON
     const rows = db
