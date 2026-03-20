@@ -4,6 +4,12 @@ selftune writes raw legacy logs plus a canonical event log. This reference
 describes each format in detail for the skill to use when parsing sessions,
 audit trails, and cloud-ingest exports.
 
+> **Note:** JSONL files are now backup/recovery only. SQLite (`~/.selftune/selftune.db`)
+> is the sole operational store for all runtime reads. JSONL writes are retained for
+> append-only durability, but all dashboard queries, hook reads, grading, monitoring,
+> and upload staging read from SQLite. JSONL reads only occur when custom log paths
+> are provided (e.g., `--telemetry-log`, `--skill-log`) for test isolation.
+
 ---
 
 ## ~/.claude/session_telemetry_log.jsonl

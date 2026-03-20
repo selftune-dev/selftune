@@ -199,7 +199,7 @@ export interface HealthResponse {
   db_path: string;
   log_dir: string;
   config_dir: string;
-  watcher_mode: "jsonl" | "none";
+  watcher_mode: "wal" | "jsonl" | "none";
   process_mode: "standalone" | "dev-server" | "test";
   host: string;
   port: number;

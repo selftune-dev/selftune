@@ -35,12 +35,12 @@ function extractSkillName(filePath: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Active monitoring check (reads audit log directly — no evolution imports)
+// Active monitoring check (SQLite-first — JSONL only for test/custom paths)
 // ---------------------------------------------------------------------------
 
 /**
  * Check if a skill has an active deployed evolution (meaning it's under monitoring).
- * Reads the evolution audit JSONL directly to respect architecture lint rules.
+ * SQLite is the default read path; JSONL is used only for test/custom-path overrides.
  *
  * A skill is "actively monitored" if its last audit action is "deployed".
  * If the last action is "rolled_back", it's no longer monitored.
@@ -49,21 +49,18 @@ export async function checkActiveMonitoring(
   skillName: string,
   auditLogPath: string,
 ): Promise<boolean> {
-  // Try SQLite first, fall back to JSONL for non-default paths (e.g., tests)
+  // SQLite is the default path; JSONL fallback only for non-default paths (tests)
   let entries: Array<{ skill_name?: string; action: string }>;
   if (auditLogPath === EVOLUTION_AUDIT_LOG) {
-    try {
-      const { getDb } = await import("../localdb/db.js");
-      const { queryEvolutionAudit } = await import("../localdb/queries.js");
-      const db = getDb();
-      entries = queryEvolutionAudit(db, skillName) as Array<{
-        skill_name?: string;
-        action: string;
-      }>;
-    } catch {
-      entries = readJsonl<{ skill_name?: string; action: string }>(auditLogPath);
-    }
+    const { getDb } = await import("../localdb/db.js");
+    const { queryEvolutionAudit } = await import("../localdb/queries.js");
+    const db = getDb();
+    entries = queryEvolutionAudit(db, skillName) as Array<{
+      skill_name?: string;
+      action: string;
+    }>;
   } else {
+    // test/custom-path fallback
     entries = readJsonl<{ skill_name?: string; action: string }>(auditLogPath);
   }
 

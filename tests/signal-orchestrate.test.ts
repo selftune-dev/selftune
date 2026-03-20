@@ -3,6 +3,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { getDb } from "../cli/selftune/localdb/db.js";
+import { writeImprovementSignalToDb } from "../cli/selftune/localdb/direct-write.js";
 import {
   acquireLock,
   markSignalsConsumed,
@@ -11,7 +13,6 @@ import {
 } from "../cli/selftune/orchestrate.js";
 import type { SkillStatus } from "../cli/selftune/status.js";
 import type { ImprovementSignalRecord, MonitoringSnapshot } from "../cli/selftune/types.js";
-import { readJsonl } from "../cli/selftune/utils/jsonl.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -209,8 +210,7 @@ describe("markSignalsConsumed", () => {
   });
 
   test("marks matching signals as consumed", () => {
-    tempDir = makeTempDir();
-    const signalPath = join(tempDir, "signals.jsonl");
+    // Seed signals into SQLite via direct-write
 
     const signals = [
       makeSignal({ timestamp: "2025-01-01T00:00:00Z", session_id: "s1", mentioned_skill: "A" }),
@@ -224,52 +224,38 @@ describe("markSignalsConsumed", () => {
       }),
     ];
 
-    writeFileSync(signalPath, `${signals.map((s) => JSON.stringify(s)).join("\n")}\n`);
+    for (const s of signals) {
+      writeImprovementSignalToDb(s);
+    }
 
     // Only pass the unconsumed signals as pending
     const pendingSignals = signals.filter((s) => !s.consumed);
-    markSignalsConsumed(pendingSignals, "run_123", signalPath);
+    markSignalsConsumed(pendingSignals, "run_123");
 
-    const updated = readJsonl<ImprovementSignalRecord>(signalPath);
+    const db = getDb();
+    const updated = db
+      .query(
+        "SELECT * FROM improvement_signals WHERE session_id IN ('s1','s2','s3') ORDER BY timestamp ASC",
+      )
+      .all();
     expect(updated).toHaveLength(3);
 
     // First two should be consumed
-    expect(updated[0].consumed).toBe(true);
+    expect(updated[0].consumed).toBe(1);
     expect(updated[0].consumed_by_run).toBe("run_123");
     expect(updated[0].consumed_at).toBeDefined();
 
-    expect(updated[1].consumed).toBe(true);
+    expect(updated[1].consumed).toBe(1);
     expect(updated[1].consumed_by_run).toBe("run_123");
 
     // Third was already consumed, should retain original values
-    expect(updated[2].consumed).toBe(true);
+    expect(updated[2].consumed).toBe(1);
     expect(updated[2].consumed_by_run).toBe("old_run");
   });
 
-  test("handles missing signal log gracefully", () => {
-    tempDir = makeTempDir();
-    const signalPath = join(tempDir, "nonexistent.jsonl");
-    const pendingSignals = [
-      makeSignal({ timestamp: "2025-01-01T00:00:00Z", session_id: "s1", mentioned_skill: "A" }),
-    ];
-
-    // Should not throw even with non-empty pending list and missing file
-    expect(() => markSignalsConsumed(pendingSignals, "run_123", signalPath)).not.toThrow();
-    expect(existsSync(signalPath)).toBe(false);
-  });
-
   test("handles empty pending signals", () => {
-    tempDir = makeTempDir();
-    const signalPath = join(tempDir, "signals.jsonl");
-
-    const signals = [makeSignal({ timestamp: "2025-01-01T00:00:00Z", session_id: "s1" })];
-    writeFileSync(signalPath, `${signals.map((s) => JSON.stringify(s)).join("\n")}\n`);
-
-    markSignalsConsumed([], "run_123", signalPath);
-
-    const updated = readJsonl<ImprovementSignalRecord>(signalPath);
-    expect(updated).toHaveLength(1);
-    expect(updated[0].consumed).toBe(false);
+    // Should not throw with empty list
+    expect(() => markSignalsConsumed([], "run_123")).not.toThrow();
   });
 });
 

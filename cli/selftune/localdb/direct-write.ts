@@ -44,6 +44,9 @@ export interface SkillInvocationWriteInput {
   platform?: string;
   schema_version?: string;
   normalized_at?: string;
+  normalizer_version?: string;
+  capture_mode?: string;
+  raw_source_ref?: Record<string, unknown>;
   // Extra fields from skill_usage
   query?: string;
   skill_path?: string;
@@ -81,6 +84,17 @@ function safeWrite(label: string, fn: (db: Database) => void): boolean {
       console.error(`[direct-write] ${label} failed:`, err);
     }
     return false;
+  }
+}
+
+function safeWriteResult<T>(label: string, fn: (db: Database) => T): T | null {
+  try {
+    return fn(getDb());
+  } catch (err) {
+    if (process.env.DEBUG || process.env.NODE_ENV === "development") {
+      console.error(`[direct-write] ${label} failed:`, err);
+    }
+    return null;
   }
 }
 
@@ -377,7 +391,7 @@ export function updateSignalConsumed(
   signalType: string,
   runId: string,
 ): boolean {
-  return safeWrite("signal-consumed", (db) => {
+  const result = safeWriteResult("signal-consumed", (db) =>
     getStmt(
       db,
       "signal-consumed",
@@ -386,8 +400,9 @@ export function updateSignalConsumed(
       SET consumed = 1, consumed_at = ?, consumed_by_run = ?
       WHERE session_id = ? AND query = ? AND signal_type = ? AND consumed = 0
     `,
-    ).run(new Date().toISOString(), runId, sessionId, query, signalType);
-  });
+    ).run(new Date().toISOString(), runId, sessionId, query, signalType),
+  );
+  return result?.changes > 0;
 }
 
 // -- Internal insert helpers (used by cached statements) ----------------------
@@ -400,8 +415,8 @@ function insertSession(db: Database, s: CanonicalSessionRecord): void {
     INSERT INTO sessions
       (session_id, started_at, ended_at, platform, model, completion_status,
        source_session_kind, agent_cli, workspace_path, repo_remote, branch,
-       schema_version, normalized_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       schema_version, normalized_at, normalizer_version, capture_mode, raw_source_ref)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(session_id) DO UPDATE SET
       platform = CASE
         WHEN sessions.platform IS NULL OR sessions.platform = 'unknown'
@@ -416,7 +431,10 @@ function insertSession(db: Database, s: CanonicalSessionRecord): void {
       agent_cli = COALESCE(sessions.agent_cli, excluded.agent_cli),
       repo_remote = COALESCE(sessions.repo_remote, excluded.repo_remote),
       branch = COALESCE(sessions.branch, excluded.branch),
-      workspace_path = COALESCE(sessions.workspace_path, excluded.workspace_path)
+      workspace_path = COALESCE(sessions.workspace_path, excluded.workspace_path),
+      normalizer_version = COALESCE(excluded.normalizer_version, sessions.normalizer_version),
+      capture_mode = COALESCE(excluded.capture_mode, sessions.capture_mode),
+      raw_source_ref = COALESCE(excluded.raw_source_ref, sessions.raw_source_ref)
   `,
   ).run(
     s.session_id,
@@ -432,6 +450,9 @@ function insertSession(db: Database, s: CanonicalSessionRecord): void {
     s.branch ?? null,
     s.schema_version,
     s.normalized_at,
+    s.normalizer_version ?? null,
+    s.capture_mode ?? null,
+    s.raw_source_ref ? JSON.stringify(s.raw_source_ref) : null,
   );
 }
 
@@ -441,8 +462,9 @@ function insertPrompt(db: Database, p: CanonicalPromptRecord): void {
     "prompt",
     `
     INSERT OR IGNORE INTO prompts
-      (prompt_id, session_id, occurred_at, prompt_kind, is_actionable, prompt_index, prompt_text)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+      (prompt_id, session_id, occurred_at, prompt_kind, is_actionable, prompt_index, prompt_text,
+       schema_version, platform, normalized_at, normalizer_version, capture_mode, raw_source_ref)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     p.prompt_id,
@@ -452,6 +474,12 @@ function insertPrompt(db: Database, p: CanonicalPromptRecord): void {
     p.is_actionable ? 1 : 0,
     p.prompt_index ?? null,
     p.prompt_text,
+    p.schema_version ?? null,
+    p.platform ?? null,
+    p.normalized_at ?? null,
+    p.normalizer_version ?? null,
+    p.capture_mode ?? null,
+    p.raw_source_ref ? JSON.stringify(p.raw_source_ref) : null,
   );
 }
 
@@ -483,8 +511,9 @@ function insertSkillInvocation(
     INSERT OR IGNORE INTO skill_invocations
       (skill_invocation_id, session_id, occurred_at, skill_name, invocation_mode,
        triggered, confidence, tool_name, matched_prompt_id, agent_type,
-       query, skill_path, skill_scope, source)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       query, skill_path, skill_scope, source,
+       schema_version, platform, normalized_at, normalizer_version, capture_mode, raw_source_ref)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     si.skill_invocation_id,
@@ -501,6 +530,12 @@ function insertSkillInvocation(
     ext.skill_path ?? null,
     ext.skill_scope ?? null,
     ext.source ?? null,
+    si.schema_version ?? null,
+    si.platform ?? null,
+    si.normalized_at ?? null,
+    ext.normalizer_version ?? null,
+    ext.capture_mode ?? null,
+    ext.raw_source_ref ? JSON.stringify(ext.raw_source_ref) : null,
   );
 }
 
@@ -512,8 +547,9 @@ function insertExecutionFact(db: Database, ef: CanonicalExecutionFactRecord): vo
     INSERT INTO execution_facts
       (session_id, occurred_at, prompt_id, tool_calls_json, total_tool_calls,
        assistant_turns, errors_encountered, input_tokens, output_tokens,
-       duration_ms, completion_status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       duration_ms, completion_status,
+       schema_version, platform, normalized_at, normalizer_version, capture_mode, raw_source_ref)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     ef.session_id,
@@ -527,5 +563,11 @@ function insertExecutionFact(db: Database, ef: CanonicalExecutionFactRecord): vo
     ef.output_tokens ?? null,
     ef.duration_ms ?? null,
     ef.completion_status ?? null,
+    ef.schema_version ?? null,
+    ef.platform ?? null,
+    ef.normalized_at ?? null,
+    ef.normalizer_version ?? null,
+    ef.capture_mode ?? null,
+    ef.raw_source_ref ? JSON.stringify(ef.raw_source_ref) : null,
   );
 }

@@ -4,14 +4,18 @@
  *
  * Converts hook logs into trigger eval sets compatible with run_eval / run_loop.
  *
- * Three input logs (all written automatically by hooks):
- *   ~/.claude/skill_usage_log.jsonl      - queries that DID trigger a skill
- *   ~/.claude/all_queries_log.jsonl      - ALL queries, triggered or not
- *   ~/.claude/session_telemetry_log.jsonl - per-session process metrics (Stop hook)
+ * Default read path is SQLite (via localdb/queries). JSONL fallback is used only
+ * when custom --skill-log / --query-log / --telemetry-log paths are supplied
+ * (test/custom-path override).
+ *
+ * Three underlying log sources (all written automatically by hooks):
+ *   skill_usage     - queries that DID trigger a skill
+ *   query_log       - ALL queries, triggered or not
+ *   session_telemetry - per-session process metrics (Stop hook)
  *
  * For a given skill:
- *   Positives (should_trigger=true)  -> queries in skill_usage_log for that skill
- *   Negatives (should_trigger=false) -> queries in all_queries_log that never triggered
+ *   Positives (should_trigger=true)  -> queries in skill_usage for that skill
+ *   Negatives (should_trigger=false) -> queries in query_log that never triggered
  *                                       that skill (cross-skill AND untriggered queries)
  */
 
@@ -468,6 +472,7 @@ export async function cliMain(): Promise<void> {
   let queryRecords: QueryLogRecord[];
   let telemetryRecords: SessionTelemetryRecord[];
 
+  // SQLite is the default path; JSONL fallback only for custom --*-log overrides
   if (
     skillLogPath === SKILL_LOG &&
     queryLogPath === QUERY_LOG &&
@@ -478,6 +483,7 @@ export async function cliMain(): Promise<void> {
     queryRecords = queryQueryLog(db) as QueryLogRecord[];
     telemetryRecords = querySessionTelemetry(db) as SessionTelemetryRecord[];
   } else {
+    // test/custom-path fallback
     skillRecords = readJsonl<SkillUsageRecord>(skillLogPath);
     queryRecords = readJsonl<QueryLogRecord>(queryLogPath);
     telemetryRecords = readJsonl<SessionTelemetryRecord>(telemetryLogPath);

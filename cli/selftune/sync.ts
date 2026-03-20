@@ -367,6 +367,7 @@ function rebuildSkillUsageOverlay(
       rawSkillRecords = readJsonl<SkillUsageRecord>(options.skillLogPath);
     }
   } else {
+    // Intentional JSONL fallback: custom --skill-log path overrides SQLite reads
     rawSkillRecords = readJsonl<SkillUsageRecord>(options.skillLogPath);
   }
   const { repairedRecords, repairedSessionIds } = rebuildSkillUsageFromTranscripts(

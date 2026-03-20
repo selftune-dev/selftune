@@ -228,6 +228,7 @@ export async function watch(options: WatchOptions): Promise<WatchResult> {
     skillRecords = querySkillUsageRecords(db) as SkillUsageRecord[];
     queryRecords = queryQueryLog(db) as QueryLogRecord[];
   } else {
+    // Intentional JSONL fallback: custom log path overrides bypass SQLite reads
     telemetry = readJsonl<SessionTelemetryRecord>(_telemetryLogPath);
     skillRecords = readJsonl<SkillUsageRecord>(_skillLogPath);
     queryRecords = readJsonl<QueryLogRecord>(_queryLogPath);

@@ -224,6 +224,7 @@ export function assembleBundle(options: {
   let allEvolutionRecords: EvolutionAuditEntry[];
 
   if (useJsonl) {
+    // JSONL fallback: only used when custom (non-default) log paths are provided (test isolation)
     allSkillRecords = readJsonl<SkillUsageRecord>(skillLogPath);
     allQueryRecords = readJsonl<QueryLogRecord>(queryLogPath);
     allTelemetryRecords = readJsonl<SessionTelemetryRecord>(telemetryLogPath);

@@ -17,16 +17,10 @@
  */
 
 import type { Database } from "bun:sqlite";
-import { existsSync, type FSWatcher, watch as fsWatch, readFileSync } from "node:fs";
+import { existsSync, readFileSync, unwatchFile, watchFile } from "node:fs";
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { BadgeFormat } from "./badge/badge-svg.js";
-import {
-  EVOLUTION_AUDIT_LOG,
-  LOG_DIR,
-  QUERY_LOG,
-  SELFTUNE_CONFIG_DIR,
-  TELEMETRY_LOG,
-} from "./constants.js";
+import { LOG_DIR, SELFTUNE_CONFIG_DIR } from "./constants.js";
 import type {
   HealthResponse,
   OverviewResponse,
@@ -237,14 +231,14 @@ export async function startDashboardServer(
     }
   }, SSE_KEEPALIVE_MS);
 
-  // -- File watchers on JSONL logs for push-based updates ---------------------
-  const WATCHED_LOGS = [TELEMETRY_LOG, QUERY_LOG, EVOLUTION_AUDIT_LOG];
-  const watchedLogPaths = new Set(WATCHED_LOGS);
+  // -- SQLite WAL watcher for push-based updates ------------------------------
+  const walPath = `${DB_PATH}-wal`;
+  let walWatcherActive = false;
 
   let fsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const FS_DEBOUNCE_MS = 500;
 
-  function onLogFileChange(): void {
+  function onWALChange(): void {
     if (fsDebounceTimer) return;
     fsDebounceTimer = setTimeout(() => {
       fsDebounceTimer = null;
@@ -253,47 +247,11 @@ export async function startDashboardServer(
     }, FS_DEBOUNCE_MS);
   }
 
-  const fileWatchers: FSWatcher[] = [];
-  const watchedFiles = new Set<string>();
-  let directoryWatcherActive = false;
-
-  function registerFileWatcher(logPath: string): void {
-    if (watchedFiles.has(logPath) || !existsSync(logPath)) return;
-    try {
-      fileWatchers.push(fsWatch(logPath, onLogFileChange));
-      watchedFiles.add(logPath);
-    } catch {
-      // Non-fatal: fall back to polling if watch fails
-    }
-  }
-
-  for (const logPath of WATCHED_LOGS) {
-    registerFileWatcher(logPath);
-  }
-
-  try {
-    fileWatchers.push(
-      fsWatch(LOG_DIR, (_eventType, filename) => {
-        if (typeof filename !== "string" || filename.length === 0) return;
-        const fullPath = join(LOG_DIR, filename);
-        if (!watchedLogPaths.has(fullPath)) return;
-        registerFileWatcher(fullPath);
-        onLogFileChange();
-      }),
-    );
-    directoryWatcherActive = true;
-  } catch {
-    directoryWatcherActive = false;
-  }
+  watchFile(walPath, { interval: 500 }, onWALChange);
+  walWatcherActive = true;
 
   function getWatcherMode(): HealthResponse["watcher_mode"] {
-    return directoryWatcherActive || watchedFiles.size > 0 ? "jsonl" : "none";
-  }
-
-  if (runtimeMode !== "test" && getWatcherMode() === "jsonl") {
-    console.warn(
-      "Dashboard freshness mode: JSONL watcher invalidation (legacy). Live updates can miss SQLite-only writes until WAL cutover lands.",
-    );
+    return walWatcherActive ? "wal" : "none";
   }
 
   let cachedStatusResult: StatusResult | null = null;
@@ -572,7 +530,7 @@ export async function startDashboardServer(
 
   // Graceful shutdown
   const shutdownHandler = () => {
-    for (const w of fileWatchers) w.close();
+    unwatchFile(walPath, onWALChange);
     clearInterval(sseKeepaliveTimer);
     for (const c of sseClients) {
       try {

@@ -101,6 +101,7 @@ Options:
     telRecords = querySessionTelemetry(db) as SessionTelemetryRecord[];
     skillUsageRecords = querySkillUsageRecords(db) as SkillUsageRecord[];
   } else {
+    // Intentional JSONL fallback: custom --telemetry-log path overrides SQLite reads
     telRecords = readJsonl<SessionTelemetryRecord>(telemetryLog);
     skillUsageRecords = [];
   }

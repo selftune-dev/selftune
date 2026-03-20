@@ -11,14 +11,11 @@ selftune dashboard
 ```
 
 Starts a Bun HTTP server with a React SPA dashboard and opens it in the
-default browser. The dashboard reads SQLite directly, but the current
-live-update invalidation path still watches JSONL logs and pushes
-updates via Server-Sent Events (SSE). That means the dashboard usually
-refreshes quickly, but SQLite-only writes can still lag until the WAL
-cutover lands. TanStack Query polling (60s) acts as a fallback. Action
-buttons trigger selftune commands directly from the dashboard. Use
-`selftune export` to generate JSONL from SQLite for debugging or
-offline analysis.
+default browser. The dashboard reads SQLite directly and uses WAL-based
+invalidation to push live updates via Server-Sent Events (SSE).
+TanStack Query polling (60s) acts as a fallback. Action buttons trigger
+selftune commands directly from the dashboard. Use `selftune export` to
+generate JSONL from SQLite for debugging or offline analysis.
 
 ## Options
 
@@ -56,11 +53,9 @@ override.
 ### Live Updates (SSE)
 
 The dashboard connects to `/api/v2/events` via Server-Sent Events.
-When watched JSONL log files change on disk, the server broadcasts an
-`update` event. The SPA invalidates all cached queries, triggering
-immediate refetches. New data usually appears quickly, but the runtime
-footer and Status page will warn when the server is still in this
-legacy JSONL watcher mode.
+The server watches the SQLite WAL file for changes and broadcasts an
+`update` event when new data is written. The SPA invalidates all cached
+queries, triggering immediate refetches (~1s latency).
 
 TanStack Query polling (60s) acts as a fallback safety net in case the
 SSE connection drops. Data also refreshes on window focus.
