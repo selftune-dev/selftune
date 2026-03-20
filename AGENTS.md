@@ -164,8 +164,9 @@ See ARCHITECTURE.md for domain map, module layering, and dependency rules.
 | Live Dashboard SSE | docs/design-docs/live-dashboard-sse.md | Current |
 | SQLite-First Migration | docs/design-docs/sqlite-first-migration.md | Current |
 | Product Specs | docs/product-specs/index.md | Current |
-| Active Plans | docs/exec-plans/active/ | Current |
+| Active Plans (~4 epics) | docs/exec-plans/active/ | Current |
 | Completed Plans | docs/exec-plans/completed/ | Current |
+| Deferred Plans | docs/exec-plans/deferred/ | Current |
 | Technical Debt | docs/exec-plans/tech-debt-tracker.md | Current |
 | Risk Policy | risk-policy.json | Current |
 | Golden Principles | docs/golden-principles.md | Current |

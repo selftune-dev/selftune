@@ -511,14 +511,17 @@ Options:
       since,
     );
     const rolloutPaths = findRolloutFiles(values["codex-home"] ?? DEFAULT_CODEX_HOME, since);
+    // SQLite-first: default paths read from SQLite; JSONL only for custom --skill-log overrides
     let rawSkillRecords: SkillUsageRecord[];
     let queryRecords: QueryLogRecord[];
-    try {
+    const skillLogPath = values["skill-log"] ?? SKILL_LOG;
+    if (skillLogPath === SKILL_LOG) {
       const db = getDb();
       rawSkillRecords = querySkillUsageRecords(db) as SkillUsageRecord[];
       queryRecords = queryQueryLog(db) as QueryLogRecord[];
-    } catch {
-      rawSkillRecords = readJsonl<SkillUsageRecord>(values["skill-log"] ?? SKILL_LOG);
+    } else {
+      // test/custom-path fallback
+      rawSkillRecords = readJsonl<SkillUsageRecord>(skillLogPath);
       queryRecords = readJsonl<QueryLogRecord>(QUERY_LOG);
     }
     const { repairedRecords, repairedSessionIds } = rebuildSkillUsageFromTranscripts(

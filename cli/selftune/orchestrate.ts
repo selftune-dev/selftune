@@ -16,12 +16,12 @@ import { parseArgs } from "node:util";
 
 import { readAlphaIdentity } from "./alpha-identity.js";
 import type { UploadCycleSummary } from "./alpha-upload/index.js";
-import { ORCHESTRATE_LOCK, SELFTUNE_CONFIG_PATH, SIGNAL_LOG } from "./constants.js";
+import { ORCHESTRATE_LOCK, SELFTUNE_CONFIG_PATH } from "./constants.js";
 import type { OrchestrateRunReport, OrchestrateRunSkillAction } from "./dashboard-contract.js";
 import type { EvolveResult } from "./evolution/evolve.js";
 import { readGradingResultsForSkill } from "./grading/results.js";
 import { getDb } from "./localdb/db.js";
-import { writeOrchestrateRunToDb } from "./localdb/direct-write.js";
+import { updateSignalConsumed, writeOrchestrateRunToDb } from "./localdb/direct-write.js";
 import {
   queryEvolutionAudit,
   queryImprovementSignals,
@@ -42,7 +42,6 @@ import type {
   SessionTelemetryRecord,
   SkillUsageRecord,
 } from "./types.js";
-import { readJsonl } from "./utils/jsonl.js";
 import { detectAgent } from "./utils/llm-call.js";
 import { getSelftuneVersion, readConfiguredAgentType } from "./utils/selftune-meta.js";
 import {
@@ -126,39 +125,12 @@ export function groupSignalsBySkill(signals: ImprovementSignalRecord[]): Map<str
 export function markSignalsConsumed(
   signals: ImprovementSignalRecord[],
   runId: string,
-  signalLogPath: string = SIGNAL_LOG,
 ): void {
   try {
     if (signals.length === 0) return;
-    if (!existsSync(signalLogPath)) return;
-
-    // Build lookup set for matching pending signals
-    const pendingKeys = new Set(signals.map((s) => `${s.timestamp}|${s.session_id}`));
-
-    const allRecords = readJsonl<ImprovementSignalRecord>(signalLogPath);
-    const now = new Date().toISOString();
-    const updated = allRecords.map((record) => {
-      const key = `${record.timestamp}|${record.session_id}`;
-      if (pendingKeys.has(key) && !record.consumed) {
-        return {
-          ...record,
-          consumed: true,
-          consumed_at: now,
-          consumed_by_run: runId,
-        };
-      }
-      return record;
-    });
-
-    // Re-read to capture any signals appended between our read and write
-    const freshRecords = readJsonl<ImprovementSignalRecord>(signalLogPath);
-    const existingKeys = new Set(updated.map((r) => `${r.timestamp}|${r.session_id}`));
-    const newlyAppended = freshRecords.filter(
-      (r) => !existingKeys.has(`${r.timestamp}|${r.session_id}`),
-    );
-    const merged = [...updated, ...newlyAppended];
-
-    writeFileSync(signalLogPath, `${merged.map((r) => JSON.stringify(r)).join("\n")}\n`);
+    for (const signal of signals) {
+      updateSignalConsumed(signal.session_id, signal.query, signal.signal_type, runId);
+    }
   } catch {
     // Silent on errors
   }

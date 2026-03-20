@@ -4,11 +4,10 @@
 
 ## Status
 
-This doc describes the intended end-state for live dashboard freshness, not the fully shipped runtime.
+Shipped. The dashboard uses SQLite WAL-based invalidation as the sole live update signal.
 
-- Current runtime: SSE exists, but invalidation still watches selected JSONL logs in `cli/selftune/dashboard-server.ts`.
-- Pending cutover: SQLite WAL should become the only live invalidation signal.
-- Canonical tracking plan: `docs/exec-plans/active/dashboard-data-integrity-recovery.md`
+- `fs.watchFile()` monitors `~/.selftune/selftune.db-wal` with 500ms stat polling.
+- JSONL file watchers have been removed from `cli/selftune/dashboard-server.ts`.
 
 ## Problem
 
@@ -49,15 +48,13 @@ sequenceDiagram
 
 ### SQLite WAL Watcher
 
-End-state design: `fs.watchFile()` monitors the SQLite WAL file (`~/.selftune/selftune.db-wal`) with 500ms polling. When hooks write directly to SQLite, the WAL file's modification time or size changes, triggering the watcher.
-
-Current runtime note: the old JSONL file watchers have not been fully removed yet. The shipped dashboard still warns when running in legacy JSONL watcher mode.
+`fs.watchFile()` monitors the SQLite WAL file (`~/.selftune/selftune.db-wal`) with 500ms stat polling. When hooks write directly to SQLite, the WAL file's modification time or size changes, triggering the watcher.
 
 A 500ms debounce timer coalesces rapid writes (e.g., a hook appending multiple records in sequence) into a single broadcast cycle.
 
 ### No Separate Materialization Step
 
-Target design: because hooks now write directly to SQLite, there is no separate materialization step in the hot path. The data is already in the database when the WAL watcher fires. The server simply broadcasts the SSE event and the next API query reads fresh data directly from SQLite.
+Because hooks write directly to SQLite, there is no separate materialization step in the hot path. The data is already in the database when the WAL watcher fires. The server simply broadcasts the SSE event and the next API query reads fresh data directly from SQLite.
 
 ### Fan-Out
 
@@ -65,7 +62,7 @@ Target design: because hooks now write directly to SQLite, there is no separate 
 
 ### Cleanup
 
-On shutdown (`SIGINT`/`SIGTERM`), the WAL file watcher is closed, SSE client controllers are closed, and debounce timers are cleared before the server stops.
+On shutdown (`SIGINT`/`SIGTERM`), the WAL file watcher is removed via `fs.unwatchFile()`, SSE client controllers are closed, and debounce timers are cleared before the server stops.
 
 ## Client Side
 
@@ -121,9 +118,8 @@ After the WAL cutover lands, new data should appear in the dashboard within ~1 s
 
 **Why keep polling?** SSE connections can drop. `EventSource` reconnects automatically, but during the reconnect window (up to 3s by default) no updates arrive. The 60s polling fallback ensures the dashboard never goes completely stale.
 
-## Current Limitations
+## Limitations
 
-- The runtime is still using legacy JSONL watcher invalidation in some paths, so the WAL-only freshness model described above is not yet the sole shipped behavior.
-- `fs.watchFile()` uses stat polling (500ms interval), so even after the WAL cutover there is an inherent latency floor compared to event-driven watchers.
+- `fs.watchFile()` uses stat polling (500ms interval), so there is an inherent latency floor compared to event-driven watchers.
 - On network filesystems, stat polling may be slower or return stale metadata.
 - The debounce means writes within the same 500ms window are coalesced; the dashboard won't show intermediate states within a burst.

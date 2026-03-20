@@ -2,9 +2,12 @@
  * Default activation rules for the auto-activate hook.
  *
  * Each rule evaluates session context and returns a suggestion string
- * (or null if the rule doesn't fire). Rules must be pure functions
- * that read from the filesystem — no network calls, no imports from
- * evolution/monitoring/grading layers.
+ * (or null if the rule doesn't fire). Rules must be pure functions —
+ * no network calls, no imports from evolution/monitoring/grading layers.
+ *
+ * SQLite is the default read path for log data. JSONL fallback is used
+ * only when context paths differ from the well-known constants
+ * (test/custom-path override).
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -16,27 +19,27 @@ import type { ActivationContext, ActivationRule } from "./types.js";
 import { readJsonl } from "./utils/jsonl.js";
 
 // ---------------------------------------------------------------------------
-// Rule: post-session diagnostic
+// Rule: post-session diagnostic (SQLite-first; JSONL for test/custom paths)
 // ---------------------------------------------------------------------------
 
 const postSessionDiagnostic: ActivationRule = {
   id: "post-session-diagnostic",
   description: "Suggest `selftune last` when session has >2 unmatched queries",
   evaluate(ctx: ActivationContext): string | null {
-    // Count queries for this session
+    // Count queries for this session — SQLite is the default path
     let queries: Array<{ session_id: string; query: string }>;
     if (ctx.query_log_path === QUERY_LOG) {
       const db = getDb();
       queries = queryQueryLog(db) as Array<{ session_id: string; query: string }>;
     } else {
+      // test/custom-path fallback
       queries = readJsonl<{ session_id: string; query: string }>(ctx.query_log_path);
     }
     const sessionQueries = queries.filter((q) => q.session_id === ctx.session_id);
 
     if (sessionQueries.length === 0) return null;
 
-    // Count skill usages for this session (skill log is in the same dir as query log)
-    const skillLogPath = join(dirname(ctx.query_log_path), "skill_usage_log.jsonl");
+    // Count skill usages for this session — SQLite is the default path
     let skillUsages: Array<{ session_id: string }>;
     if (ctx.query_log_path === QUERY_LOG) {
       const db = getDb();
@@ -44,6 +47,8 @@ const postSessionDiagnostic: ActivationRule = {
         (s) => s.session_id === ctx.session_id,
       );
     } else {
+      // test/custom-path fallback
+      const skillLogPath = join(dirname(ctx.query_log_path), "skill_usage_log.jsonl");
       skillUsages = existsSync(skillLogPath)
         ? readJsonl<{ session_id: string }>(skillLogPath).filter(
             (s) => s.session_id === ctx.session_id,
@@ -100,7 +105,7 @@ const gradingThresholdBreach: ActivationRule = {
 };
 
 // ---------------------------------------------------------------------------
-// Rule: stale evolution
+// Rule: stale evolution (SQLite-first; JSONL for test/custom paths)
 // ---------------------------------------------------------------------------
 
 const staleEvolution: ActivationRule = {
@@ -110,12 +115,13 @@ const staleEvolution: ActivationRule = {
   evaluate(ctx: ActivationContext): string | null {
     const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-    // Check last evolution timestamp
+    // Check last evolution timestamp — SQLite is the default path
     let auditEntries: Array<{ timestamp: string; action: string }>;
     if (ctx.evolution_audit_log_path === EVOLUTION_AUDIT_LOG) {
       const db = getDb();
       auditEntries = queryEvolutionAudit(db) as Array<{ timestamp: string; action: string }>;
     } else {
+      // test/custom-path fallback
       auditEntries = readJsonl<{ timestamp: string; action: string }>(ctx.evolution_audit_log_path);
     }
 

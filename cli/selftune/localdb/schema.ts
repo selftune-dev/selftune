@@ -21,7 +21,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   repo_remote       TEXT,
   branch            TEXT,
   schema_version    TEXT,
-  normalized_at     TEXT
+  normalized_at     TEXT,
+  normalizer_version TEXT,
+  capture_mode       TEXT,
+  raw_source_ref     TEXT
 )`;
 
 export const CREATE_PROMPTS = `
@@ -33,6 +36,12 @@ CREATE TABLE IF NOT EXISTS prompts (
   is_actionable INTEGER,
   prompt_index  INTEGER,
   prompt_text   TEXT,
+  schema_version     TEXT,
+  platform           TEXT,
+  normalized_at      TEXT,
+  normalizer_version TEXT,
+  capture_mode       TEXT,
+  raw_source_ref     TEXT,
   FOREIGN KEY (session_id) REFERENCES sessions(session_id)
 )`;
 
@@ -52,6 +61,12 @@ CREATE TABLE IF NOT EXISTS skill_invocations (
   skill_path          TEXT,
   skill_scope         TEXT,
   source              TEXT,
+  schema_version      TEXT,
+  platform            TEXT,
+  normalized_at       TEXT,
+  normalizer_version  TEXT,
+  capture_mode        TEXT,
+  raw_source_ref      TEXT,
   FOREIGN KEY (session_id) REFERENCES sessions(session_id)
 )`;
 
@@ -69,6 +84,12 @@ CREATE TABLE IF NOT EXISTS execution_facts (
   output_tokens       INTEGER,
   duration_ms         INTEGER,
   completion_status   TEXT,
+  schema_version      TEXT,
+  platform            TEXT,
+  normalized_at       TEXT,
+  normalizer_version  TEXT,
+  capture_mode        TEXT,
+  raw_source_ref      TEXT,
   FOREIGN KEY (session_id) REFERENCES sessions(session_id)
 )`;
 
@@ -283,6 +304,28 @@ export const MIGRATIONS = [
   `ALTER TABLE skill_invocations ADD COLUMN source TEXT`,
   // Track how many iteration loops each evolution run used
   `ALTER TABLE evolution_audit ADD COLUMN iterations_used INTEGER`,
+  // Canonical contract fields for upload staging (sessions already has schema_version, platform, normalized_at)
+  `ALTER TABLE sessions ADD COLUMN normalizer_version TEXT`,
+  `ALTER TABLE sessions ADD COLUMN capture_mode TEXT`,
+  `ALTER TABLE sessions ADD COLUMN raw_source_ref TEXT`,
+  `ALTER TABLE prompts ADD COLUMN schema_version TEXT`,
+  `ALTER TABLE prompts ADD COLUMN platform TEXT`,
+  `ALTER TABLE prompts ADD COLUMN normalized_at TEXT`,
+  `ALTER TABLE prompts ADD COLUMN normalizer_version TEXT`,
+  `ALTER TABLE prompts ADD COLUMN capture_mode TEXT`,
+  `ALTER TABLE prompts ADD COLUMN raw_source_ref TEXT`,
+  `ALTER TABLE skill_invocations ADD COLUMN schema_version TEXT`,
+  `ALTER TABLE skill_invocations ADD COLUMN platform TEXT`,
+  `ALTER TABLE skill_invocations ADD COLUMN normalized_at TEXT`,
+  `ALTER TABLE skill_invocations ADD COLUMN normalizer_version TEXT`,
+  `ALTER TABLE skill_invocations ADD COLUMN capture_mode TEXT`,
+  `ALTER TABLE skill_invocations ADD COLUMN raw_source_ref TEXT`,
+  `ALTER TABLE execution_facts ADD COLUMN schema_version TEXT`,
+  `ALTER TABLE execution_facts ADD COLUMN platform TEXT`,
+  `ALTER TABLE execution_facts ADD COLUMN normalized_at TEXT`,
+  `ALTER TABLE execution_facts ADD COLUMN normalizer_version TEXT`,
+  `ALTER TABLE execution_facts ADD COLUMN capture_mode TEXT`,
+  `ALTER TABLE execution_facts ADD COLUMN raw_source_ref TEXT`,
 ];
 
 /** Indexes that depend on migration columns — must run AFTER MIGRATIONS. */

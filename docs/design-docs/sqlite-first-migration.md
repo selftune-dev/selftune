@@ -4,11 +4,11 @@
 
 ## Status
 
-Most SQLite-first read-path work has landed, but this doc currently overstates the freshness cutover.
+Phase 2 is complete. Phase 3 is in progress.
 
-- Landed: hooks/sync write to SQLite, dashboard/status/report reads are primarily SQLite-backed.
-- Still open: SSE invalidation is not yet WAL-only in the shipped runtime.
-- Treat this document as migration design plus progress notes, not as a perfect description of current live freshness behavior.
+- Phase 1 (dual-write): Shipped. Hooks write to both SQLite and JSONL.
+- Phase 2 (cut over reads): Shipped. Dashboard reads SQLite, SSE invalidation uses WAL watcher.
+- Phase 3 (drop JSONL writes): In progress. Remaining JSONL reads being eliminated from hot paths.
 
 ## Problem
 
@@ -24,7 +24,7 @@ JSONL-as-source-of-truth caused:
 
 **Phase 1: Dual-Write** — Hooks INSERT into SQLite alongside JSONL appends via `localdb/direct-write.ts`. Zero risk: additive only, fully reversible.
 
-**Phase 2: Cut Over Reads** — Dashboard reads SQLite directly. Materializer is removed from the hot path for normal reads (runs once on startup for historical backfill). WAL-based SSE invalidation is the target end-state, but the shipped runtime still carries legacy JSONL watcher invalidation in `dashboard-server.ts`.
+**Phase 2: Cut Over Reads** (Shipped) — Dashboard reads SQLite directly. Materializer runs once on startup for historical backfill. WAL-based SSE invalidation is live — `fs.watchFile()` monitors the SQLite WAL file for changes and triggers SSE broadcasts.
 
 **Phase 3: Drop JSONL Writes** — Hooks stop appending JSONL. SQLite is the sole write target. A new `selftune export` command generates JSONL from SQLite on demand for portability.
 
@@ -36,7 +36,7 @@ Data flow (before):
 Hook → JSONL append → [15s wait] → Materializer reads JSONL → SQLite → Dashboard
 ```
 
-Target data flow (after full freshness cutover):
+Data flow (after Phase 2 — shipped):
 
 ```
 Hook → SQLite INSERT (via direct-write.ts) → WAL watcher → SSE broadcast → Dashboard
@@ -83,13 +83,12 @@ Hook → SQLite INSERT (via direct-write.ts) → WAL watcher → SSE broadcast �
 |--------|--------|-------|
 | Dashboard load (first call) | 9.5s | 86ms |
 | Dashboard load (subsequent) | ~2s (TTL hit) | 15ms |
-| Data latency (hook → dashboard) | 15–30s | target: <1s after WAL-only SSE cutover |
+| Data latency (hook → dashboard) | 15–30s | <1s (WAL-only SSE shipped) |
 | Schema change propagation | 7 files | 4 files |
 | Test delta | baseline | +2 passing, -2 failures |
 
 ## Limitations
 
-- The WAL-only SSE cutover is not yet complete — legacy JSONL watcher invalidation still exists in the current runtime
 - Phase 3 (drop JSONL writes) is not yet complete — dual-write is still active
 - Historical data prior to Phase 1 requires a one-time materializer backfill on first startup
 - `selftune export --since DATE` is supported for date-range filtering; per-skill filtering is not yet implemented

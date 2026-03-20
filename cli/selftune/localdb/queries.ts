@@ -578,6 +578,157 @@ export function queryImprovementSignals(
   }));
 }
 
+// -- Canonical record staging query -------------------------------------------
+
+/**
+ * Query canonical records from SQLite tables for upload staging.
+ *
+ * Reads from sessions, prompts, skill_invocations, and execution_facts tables,
+ * shaping each row into a CanonicalRecord-compatible object with record_kind.
+ *
+ * Returns all records; dedup is handled by INSERT OR IGNORE in the staging table.
+ */
+export function queryCanonicalRecordsForStaging(db: Database): Record<string, unknown>[] {
+  const records: Record<string, unknown>[] = [];
+
+  // Sessions
+  const sessions = db
+    .query(
+      `SELECT session_id, started_at, ended_at, platform, model, completion_status,
+              source_session_kind, agent_cli, workspace_path, repo_remote, branch,
+              schema_version, normalized_at, normalizer_version, capture_mode, raw_source_ref
+       FROM sessions ORDER BY normalized_at`,
+    )
+    .all() as Array<Record<string, unknown>>;
+  for (const s of sessions) {
+    records.push({
+      record_kind: "session",
+      schema_version: s.schema_version ?? undefined,
+      normalizer_version: s.normalizer_version ?? undefined,
+      normalized_at: s.normalized_at ?? undefined,
+      platform: s.platform ?? undefined,
+      capture_mode: s.capture_mode ?? undefined,
+      raw_source_ref: safeParseJson(s.raw_source_ref as string | null) ?? undefined,
+      source_session_kind: s.source_session_kind ?? undefined,
+      session_id: s.session_id,
+      started_at: s.started_at ?? undefined,
+      ended_at: s.ended_at ?? undefined,
+      model: s.model ?? undefined,
+      completion_status: s.completion_status ?? undefined,
+      agent_cli: s.agent_cli ?? undefined,
+      workspace_path: s.workspace_path ?? undefined,
+      repo_remote: s.repo_remote ?? undefined,
+      branch: s.branch ?? undefined,
+    });
+  }
+
+  // Prompts
+  const prompts = db
+    .query(
+      `SELECT prompt_id, session_id, occurred_at, prompt_kind, is_actionable, prompt_index, prompt_text,
+              schema_version, platform, normalized_at, normalizer_version, capture_mode, raw_source_ref
+       FROM prompts ORDER BY occurred_at`,
+    )
+    .all() as Array<Record<string, unknown>>;
+  for (const p of prompts) {
+    // Fall back to session-level envelope fields if prompt doesn't have its own
+    const sessionEnvelope = sessions.find((s) => s.session_id === p.session_id);
+    records.push({
+      record_kind: "prompt",
+      schema_version: p.schema_version ?? sessionEnvelope?.schema_version ?? undefined,
+      normalizer_version: p.normalizer_version ?? sessionEnvelope?.normalizer_version ?? undefined,
+      normalized_at: p.normalized_at ?? sessionEnvelope?.normalized_at ?? undefined,
+      platform: p.platform ?? sessionEnvelope?.platform ?? undefined,
+      capture_mode: p.capture_mode ?? sessionEnvelope?.capture_mode ?? undefined,
+      raw_source_ref: safeParseJson(p.raw_source_ref as string | null)
+        ?? safeParseJson(sessionEnvelope?.raw_source_ref as string | null)
+        ?? undefined,
+      source_session_kind: sessionEnvelope?.source_session_kind ?? undefined,
+      session_id: p.session_id,
+      prompt_id: p.prompt_id,
+      occurred_at: p.occurred_at,
+      prompt_text: p.prompt_text,
+      prompt_kind: p.prompt_kind,
+      is_actionable: (p.is_actionable as number) === 1,
+      prompt_index: p.prompt_index ?? undefined,
+    });
+  }
+
+  // Skill invocations
+  const invocations = db
+    .query(
+      `SELECT skill_invocation_id, session_id, occurred_at, skill_name, invocation_mode,
+              triggered, confidence, tool_name, matched_prompt_id, agent_type,
+              schema_version, platform, normalized_at, normalizer_version, capture_mode, raw_source_ref
+       FROM skill_invocations ORDER BY occurred_at`,
+    )
+    .all() as Array<Record<string, unknown>>;
+  for (const si of invocations) {
+    const sessionEnvelope = sessions.find((s) => s.session_id === si.session_id);
+    records.push({
+      record_kind: "skill_invocation",
+      schema_version: si.schema_version ?? sessionEnvelope?.schema_version ?? undefined,
+      normalizer_version: si.normalizer_version ?? sessionEnvelope?.normalizer_version ?? undefined,
+      normalized_at: si.normalized_at ?? sessionEnvelope?.normalized_at ?? undefined,
+      platform: si.platform ?? sessionEnvelope?.platform ?? undefined,
+      capture_mode: si.capture_mode ?? sessionEnvelope?.capture_mode ?? undefined,
+      raw_source_ref: safeParseJson(si.raw_source_ref as string | null)
+        ?? safeParseJson(sessionEnvelope?.raw_source_ref as string | null)
+        ?? undefined,
+      source_session_kind: sessionEnvelope?.source_session_kind ?? undefined,
+      session_id: si.session_id,
+      skill_invocation_id: si.skill_invocation_id,
+      occurred_at: si.occurred_at,
+      skill_name: si.skill_name,
+      invocation_mode: si.invocation_mode,
+      triggered: (si.triggered as number) === 1,
+      confidence: si.confidence,
+      tool_name: si.tool_name ?? undefined,
+      matched_prompt_id: si.matched_prompt_id ?? undefined,
+      agent_type: si.agent_type ?? undefined,
+    });
+  }
+
+  // Execution facts
+  const facts = db
+    .query(
+      `SELECT id, session_id, occurred_at, prompt_id, tool_calls_json, total_tool_calls,
+              assistant_turns, errors_encountered, input_tokens, output_tokens,
+              duration_ms, completion_status,
+              schema_version, platform, normalized_at, normalizer_version, capture_mode, raw_source_ref
+       FROM execution_facts ORDER BY occurred_at`,
+    )
+    .all() as Array<Record<string, unknown>>;
+  for (const ef of facts) {
+    const sessionEnvelope = sessions.find((s) => s.session_id === ef.session_id);
+    records.push({
+      record_kind: "execution_fact",
+      schema_version: ef.schema_version ?? sessionEnvelope?.schema_version ?? undefined,
+      normalizer_version: ef.normalizer_version ?? sessionEnvelope?.normalizer_version ?? undefined,
+      normalized_at: ef.normalized_at ?? sessionEnvelope?.normalized_at ?? undefined,
+      platform: ef.platform ?? sessionEnvelope?.platform ?? undefined,
+      capture_mode: ef.capture_mode ?? sessionEnvelope?.capture_mode ?? undefined,
+      raw_source_ref: safeParseJson(ef.raw_source_ref as string | null)
+        ?? safeParseJson(sessionEnvelope?.raw_source_ref as string | null)
+        ?? undefined,
+      source_session_kind: sessionEnvelope?.source_session_kind ?? undefined,
+      session_id: ef.session_id,
+      occurred_at: ef.occurred_at,
+      prompt_id: ef.prompt_id ?? undefined,
+      tool_calls_json: safeParseJson(ef.tool_calls_json as string | null) ?? {},
+      total_tool_calls: ef.total_tool_calls,
+      assistant_turns: ef.assistant_turns,
+      errors_encountered: ef.errors_encountered,
+      input_tokens: ef.input_tokens ?? undefined,
+      output_tokens: ef.output_tokens ?? undefined,
+      duration_ms: ef.duration_ms ?? undefined,
+      completion_status: ef.completion_status ?? undefined,
+    });
+  }
+
+  return records;
+}
+
 // -- Alpha upload query helpers -----------------------------------------------
 
 /**

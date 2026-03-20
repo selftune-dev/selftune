@@ -14,7 +14,11 @@ import { createHash } from "node:crypto";
 import type { CanonicalRecord } from "@selftune/telemetry-contract";
 import { isCanonicalRecord } from "@selftune/telemetry-contract";
 import { CANONICAL_LOG } from "../constants.js";
-import { getOrchestrateRuns, queryEvolutionEvidence } from "../localdb/queries.js";
+import {
+  getOrchestrateRuns,
+  queryCanonicalRecordsForStaging,
+  queryEvolutionEvidence,
+} from "../localdb/queries.js";
 import { readJsonl } from "../utils/jsonl.js";
 
 // -- Helpers ------------------------------------------------------------------
@@ -144,8 +148,13 @@ export function stageCanonicalRecords(db: Database, logPath: string = CANONICAL_
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
 
-  // 1. Stage canonical records from JSONL (enriching missing execution_fact_id)
-  const records = readAndEnrichCanonicalRecords(logPath);
+  // 1. Stage canonical records from SQLite (default) or JSONL (custom logPath override)
+  const records: CanonicalRecord[] =
+    logPath === CANONICAL_LOG
+      ? (queryCanonicalRecordsForStaging(db)
+          .map(enrichRecord)
+          .filter(isCanonicalRecord) as CanonicalRecord[])
+      : readAndEnrichCanonicalRecords(logPath);
   for (const record of records) {
     const recordId = extractRecordId(record);
     const result = stmt.run(

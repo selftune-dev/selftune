@@ -40,14 +40,14 @@ None. Doctor runs all checks unconditionally.
     },
     {
       "name": "dashboard_freshness_mode",
-      "status": "warn",
-      "message": "Dashboard still uses legacy JSONL watcher invalidation"
+      "status": "pass",
+      "message": "Dashboard reads SQLite and watches WAL for live updates"
     }
   ],
   "summary": {
-    "pass": 8,
+    "pass": 9,
     "fail": 1,
-    "warn": 1,
+    "warn": 0,
     "total": 10
   },
   "healthy": false

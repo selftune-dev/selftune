@@ -203,7 +203,7 @@ Rebuild Paths:
 └── selftune export — generates JSONL from SQLite on demand
 
 Alpha Upload Path (opted-in users only):
-├── stage-canonical.ts  — reads canonical JSONL + evolution evidence + orchestrate_runs into canonical_upload_staging table
+├── stage-canonical.ts  — reads canonical records from SQLite + evolution evidence + orchestrate_runs into canonical_upload_staging table
 ├── build-payloads.ts   — reads staging table via single monotonic cursor, produces V2 canonical push payloads
 ├── flush.ts            — POSTs to cloud API (POST /api/v1/push) with Bearer auth, handles 409/401/403
 └── Cloud storage: Neon Postgres (raw_pushes for lossless ingest → canonical tables for analysis)
@@ -215,9 +215,8 @@ through SQLite. The materializer runs once on startup to backfill any
 historical JSONL data not yet in the database. `selftune export` can
 regenerate JSONL from SQLite when needed for portability or debugging.
 
-Current freshness caveat: the shipped dashboard still uses legacy JSONL file
-watchers for SSE invalidation in `dashboard-server.ts`. WAL-only invalidation
-is the intended end-state, but it is not the sole live-refresh path yet.
+The dashboard uses WAL-based invalidation for SSE live updates — JSONL file
+watchers have been removed from the dashboard server.
 
 ## Repository Shape
 

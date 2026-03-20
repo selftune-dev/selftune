@@ -158,6 +158,11 @@ if (import.meta.main) {
     // Dynamically import default rules (keeps hook file lightweight)
     const { DEFAULT_RULES } = await import("../activation-rules.js");
 
+    /**
+     * The *_log_path fields exist for test overrides only; default code paths
+     * in activation-rules.ts read from SQLite when the path matches the
+     * constant (QUERY_LOG, EVOLUTION_AUDIT_LOG, etc.).
+     */
     const ctx: ActivationContext = {
       session_id: sessionId,
       query_log_path: QUERY_LOG,
