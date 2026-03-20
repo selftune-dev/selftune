@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -65,9 +65,9 @@ describe("readAlphaIdentity", () => {
 
     const result = readAlphaIdentity(configPath);
     expect(result).not.toBeNull();
-    expect(result!.enrolled).toBe(true);
-    expect(result!.user_id).toBe("test-uuid");
-    expect(result!.email).toBe("test@example.com");
+    expect(result?.enrolled).toBe(true);
+    expect(result?.user_id).toBe("test-uuid");
+    expect(result?.email).toBe("test@example.com");
   });
 });
 
@@ -150,13 +150,13 @@ describe("runInit with alpha", () => {
     const config = runInit(opts);
 
     expect(config.alpha).toBeDefined();
-    expect(config.alpha!.enrolled).toBe(true);
-    expect(config.alpha!.user_id).toMatch(
+    expect(config.alpha?.enrolled).toBe(true);
+    expect(config.alpha?.user_id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
-    expect(config.alpha!.email).toBe("user@example.com");
-    expect(config.alpha!.display_name).toBe("Test User");
-    expect(config.alpha!.consent_timestamp).toBeTruthy();
+    expect(config.alpha?.email).toBe("user@example.com");
+    expect(config.alpha?.display_name).toBe("Test User");
+    expect(config.alpha?.consent_timestamp).toBeTruthy();
   });
 
   test("does NOT write alpha block when alpha flag is absent", () => {
@@ -172,7 +172,7 @@ describe("runInit with alpha", () => {
 
   test("--no-alpha sets enrolled=false but preserves user_id", () => {
     const configDir = join(tmpDir, ".selftune");
-    const configPath = join(configDir, "config.json");
+    const _configPath = join(configDir, "config.json");
 
     // First, enroll
     const enrollConfig = runInit(
@@ -182,7 +182,7 @@ describe("runInit with alpha", () => {
         force: true,
       }),
     );
-    const originalUserId = enrollConfig.alpha!.user_id;
+    const originalUserId = enrollConfig.alpha?.user_id;
 
     // Then unenroll
     const unenrollConfig = runInit(
@@ -193,13 +193,13 @@ describe("runInit with alpha", () => {
     );
 
     expect(unenrollConfig.alpha).toBeDefined();
-    expect(unenrollConfig.alpha!.enrolled).toBe(false);
-    expect(unenrollConfig.alpha!.user_id).toBe(originalUserId);
+    expect(unenrollConfig.alpha?.enrolled).toBe(false);
+    expect(unenrollConfig.alpha?.user_id).toBe(originalUserId);
   });
 
   test("reinit with force + alpha preserves existing user_id", () => {
     const configDir = join(tmpDir, ".selftune");
-    const configPath = join(configDir, "config.json");
+    const _configPath = join(configDir, "config.json");
 
     // First enrollment
     const firstConfig = runInit(
@@ -209,7 +209,7 @@ describe("runInit with alpha", () => {
         force: true,
       }),
     );
-    const originalUserId = firstConfig.alpha!.user_id;
+    const originalUserId = firstConfig.alpha?.user_id;
 
     // Re-init with force + alpha (should preserve user_id)
     const secondConfig = runInit(
@@ -220,8 +220,8 @@ describe("runInit with alpha", () => {
       }),
     );
 
-    expect(secondConfig.alpha!.user_id).toBe(originalUserId);
-    expect(secondConfig.alpha!.email).toBe("second@example.com");
+    expect(secondConfig.alpha?.user_id).toBe(originalUserId);
+    expect(secondConfig.alpha?.email).toBe("second@example.com");
   });
 
   test("plain force reinit preserves existing alpha enrollment", () => {
@@ -240,9 +240,9 @@ describe("runInit with alpha", () => {
     );
 
     expect(secondConfig.alpha).toBeDefined();
-    expect(secondConfig.alpha!.enrolled).toBe(true);
-    expect(secondConfig.alpha!.user_id).toBe(firstConfig.alpha!.user_id);
-    expect(secondConfig.alpha!.email).toBe("first@example.com");
+    expect(secondConfig.alpha?.enrolled).toBe(true);
+    expect(secondConfig.alpha?.user_id).toBe(firstConfig.alpha?.user_id);
+    expect(secondConfig.alpha?.email).toBe("first@example.com");
   });
 
   test("config round-trips correctly (read after write)", () => {
@@ -257,16 +257,16 @@ describe("runInit with alpha", () => {
     // Read back from disk
     const raw = JSON.parse(readFileSync(opts.configPath, "utf-8")) as SelftuneConfig;
     expect(raw.alpha).toBeDefined();
-    expect(raw.alpha!.enrolled).toBe(true);
-    expect(raw.alpha!.email).toBe("roundtrip@example.com");
-    expect(raw.alpha!.display_name).toBe("Round Trip");
-    expect(raw.alpha!.user_id).toMatch(
+    expect(raw.alpha?.enrolled).toBe(true);
+    expect(raw.alpha?.email).toBe("roundtrip@example.com");
+    expect(raw.alpha?.display_name).toBe("Round Trip");
+    expect(raw.alpha?.user_id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
 
     // Read via the identity module
     const identity = readAlphaIdentity(opts.configPath);
     expect(identity).not.toBeNull();
-    expect(identity!.user_id).toBe(raw.alpha!.user_id);
+    expect(identity?.user_id).toBe(raw.alpha?.user_id);
   });
 });

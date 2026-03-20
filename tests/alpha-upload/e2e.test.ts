@@ -7,21 +7,15 @@
 
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import { buildV2PushPayload } from "../../cli/selftune/alpha-upload/build-payloads.js";
 import { flushQueue } from "../../cli/selftune/alpha-upload/flush.js";
 import { prepareUploads, runUploadCycle } from "../../cli/selftune/alpha-upload/index.js";
 import {
-  enqueueUpload,
   getPendingUploads,
   getQueueStats,
   readWatermark,
 } from "../../cli/selftune/alpha-upload/queue.js";
 import type { QueueItem, QueueOperations } from "../../cli/selftune/alpha-upload-contract.js";
-import {
-  getLastUploadError,
-  getLastUploadSuccess,
-  getOldestPendingAge,
-} from "../../cli/selftune/localdb/queries.js";
+import { getLastUploadError, getLastUploadSuccess } from "../../cli/selftune/localdb/queries.js";
 import { ALL_DDL, MIGRATIONS, POST_MIGRATION_INDEXES } from "../../cli/selftune/localdb/schema.js";
 import { checkAlphaQueueHealth } from "../../cli/selftune/observability.js";
 import { type AlphaStatusInfo, formatAlphaStatus } from "../../cli/selftune/status.js";
@@ -212,7 +206,7 @@ describe("e2e: full upload pipeline", () => {
     expect((postedPayload as Record<string, unknown>).schema_version).toBe("2.0");
     expect((postedPayload as Record<string, unknown>).push_id).toBeDefined();
     expect((postedPayload as Record<string, unknown>).canonical).toBeDefined();
-    expect(capturedHeaders["authorization"]).toBe("Bearer test-api-key-123");
+    expect(capturedHeaders.authorization).toBe("Bearer test-api-key-123");
     expect(capturedHeaders["content-type"]).toBe("application/json");
 
     // Step 6: Verify queue status updated to sent

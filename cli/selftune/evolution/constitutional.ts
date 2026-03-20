@@ -56,7 +56,7 @@ const ENUMERATION_MARKERS = /\b(?:including|such as|like)\b|e\.g\.|,\s*\w+\s*,/i
 export function checkConstitution(
   proposed: string,
   original: string,
-  skillName: string,
+  _skillName: string,
 ): ConstitutionalResult {
   const violations: string[] = [];
 

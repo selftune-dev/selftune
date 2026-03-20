@@ -18,7 +18,6 @@ import { PushPayloadV2Schema } from "@selftune/telemetry-contract/schemas";
 import { buildV2PushPayload } from "../../cli/selftune/alpha-upload/build-payloads.js";
 import {
   generateEvidenceId,
-  generateExecutionFactId,
   stageCanonicalRecords,
 } from "../../cli/selftune/alpha-upload/stage-canonical.js";
 import { ALL_DDL, MIGRATIONS, POST_MIGRATION_INDEXES } from "../../cli/selftune/localdb/schema.js";

@@ -5,18 +5,18 @@ import { join } from "node:path";
 import { processPrompt } from "../../cli/selftune/hooks/prompt-log.js";
 import { extractSkillName, processToolUse } from "../../cli/selftune/hooks/skill-eval.js";
 import { _setTestDb, getDb, openDb } from "../../cli/selftune/localdb/db.js";
-import type { PostToolUsePayload, SkillUsageRecord } from "../../cli/selftune/types.js";
+import type { PostToolUsePayload } from "../../cli/selftune/types.js";
 
 let tmpDir: string;
 let canonicalLogPath: string;
 let promptStatePath: string;
-let queryLogPath: string;
+let _queryLogPath: string;
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "selftune-skill-eval-"));
   canonicalLogPath = join(tmpDir, "canonical.jsonl");
   promptStatePath = join(tmpDir, "canonical-session-state.json");
-  queryLogPath = join(tmpDir, "queries.jsonl");
+  _queryLogPath = join(tmpDir, "queries.jsonl");
 
   const testDb = openDb(":memory:");
   _setTestDb(testDb);

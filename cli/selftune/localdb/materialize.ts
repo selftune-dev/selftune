@@ -42,7 +42,7 @@ import { readEffectiveSkillUsageRecords } from "../utils/skill-log.js";
 import { getMeta, setMeta } from "./db.js";
 
 /** Tables that contain SQLite-only data (written by hooks, not just materialized from JSONL). */
-const PROTECTED_TABLES = [
+const _PROTECTED_TABLES = [
   { table: "evolution_audit", tsColumn: "timestamp", jsonlLog: EVOLUTION_AUDIT_LOG },
   { table: "evolution_evidence", tsColumn: "timestamp", jsonlLog: EVOLUTION_EVIDENCE_LOG },
   { table: "orchestrate_runs", tsColumn: "timestamp", jsonlLog: ORCHESTRATE_RUN_LOG },

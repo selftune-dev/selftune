@@ -140,9 +140,9 @@ export function parseSession(transcriptPath: string): ParsedSession | null {
 export function writeSession(
   session: ParsedSession,
   dryRun = false,
-  queryLogPath: string = QUERY_LOG,
-  telemetryLogPath: string = TELEMETRY_LOG,
-  skillLogPath: string = SKILL_LOG,
+  _queryLogPath: string = QUERY_LOG,
+  _telemetryLogPath: string = TELEMETRY_LOG,
+  _skillLogPath: string = SKILL_LOG,
   canonicalLogPath: string = CANONICAL_LOG,
 ): void {
   if (dryRun) {

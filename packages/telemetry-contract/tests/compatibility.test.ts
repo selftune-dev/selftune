@@ -44,7 +44,6 @@ describe("PushPayloadV2Schema compatibility", () => {
 
   test("execution_fact_id is required on execution facts", () => {
     const badPayload = structuredClone(completePush);
-    // biome-ignore lint/performance/noDelete: test needs to remove field
     delete (badPayload.canonical.execution_facts[0] as Record<string, unknown>).execution_fact_id;
     const result = PushPayloadV2Schema.safeParse(badPayload);
     expect(result.success).toBe(false);

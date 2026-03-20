@@ -9,7 +9,7 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
-import { QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
+import { QUERY_LOG, SKILL_LOG } from "../constants.js";
 import type { BaselineMeasurement } from "../eval/baseline.js";
 import { measureBaseline } from "../eval/baseline.js";
 import { buildEvalSet } from "../eval/hooks-to-evals.js";

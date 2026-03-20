@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 
-import { _setTestDb, openDb } from "../../cli/selftune/localdb/db.js";
+import { openDb } from "../../cli/selftune/localdb/db.js";
 import {
   getOrchestrateRuns,
   getOverviewPayload,

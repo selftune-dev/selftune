@@ -21,9 +21,7 @@ function isPushUploadResult(value: unknown): value is PushUploadResult {
   );
 }
 
-function isAcceptedPushResponse(
-  value: unknown,
-): value is { status: "accepted"; push_id: string } {
+function isAcceptedPushResponse(value: unknown): value is { status: "accepted"; push_id: string } {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
   return record.status === "accepted" && typeof record.push_id === "string";

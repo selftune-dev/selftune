@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { processPrompt } from "../../cli/selftune/hooks/prompt-log.js";
 import { _setTestDb, getDb, openDb } from "../../cli/selftune/localdb/db.js";
-import type { PromptSubmitPayload, QueryLogRecord } from "../../cli/selftune/types.js";
+import type { PromptSubmitPayload } from "../../cli/selftune/types.js";
 
 let tmpDir: string;
 let canonicalLogPath: string;

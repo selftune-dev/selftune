@@ -478,8 +478,9 @@ export async function detectCrossSkillOverlap(
 
   for (let i = 0; i < skillNames.length; i++) {
     for (let j = i + 1; j < skillNames.length; j++) {
-      const setA = evalSets.get(skillNames[i])!;
-      const setB = evalSets.get(skillNames[j])!;
+      const setA = evalSets.get(skillNames[i]);
+      const setB = evalSets.get(skillNames[j]);
+      if (!setA || !setB) continue;
 
       if (setA.size === 0 || setB.size === 0) continue;
 

@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  type ConstitutionalResult,
-  checkConstitution,
-} from "../../cli/selftune/evolution/constitutional.js";
+import { checkConstitution } from "../../cli/selftune/evolution/constitutional.js";
 
 // ---------------------------------------------------------------------------
 // Principle 1: Size constraint

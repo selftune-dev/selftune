@@ -1,12 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { uploadPushPayload } from "../../cli/selftune/alpha-upload/client.js";
-import { type FlushOptions, flushQueue } from "../../cli/selftune/alpha-upload/flush.js";
-import type {
-  FlushSummary,
-  PushUploadResult,
-  QueueItem,
-  QueueOperations,
-} from "../../cli/selftune/alpha-upload-contract.js";
+import { flushQueue } from "../../cli/selftune/alpha-upload/flush.js";
+import type { QueueItem, QueueOperations } from "../../cli/selftune/alpha-upload-contract.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -409,7 +404,7 @@ describe("flushQueue", () => {
 
     await flushQueue(queue, "https://api.example.com/api/v1/push", { batchSize: 2 });
 
-    expect(queue.calls.getPending[0]![0]).toBe(2);
+    expect(queue.calls.getPending[0]?.[0]).toBe(2);
   });
 
   test("dry-run mode does not make HTTP calls", async () => {

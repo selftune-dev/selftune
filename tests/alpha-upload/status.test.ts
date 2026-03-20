@@ -5,17 +5,13 @@
 
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { getQueueStats } from "../../cli/selftune/alpha-upload/queue.js";
 import {
   getLastUploadError,
   getLastUploadSuccess,
   getOldestPendingAge,
 } from "../../cli/selftune/localdb/queries.js";
 import { ALL_DDL } from "../../cli/selftune/localdb/schema.js";
-import {
-  type AlphaQueueCheckOptions,
-  checkAlphaQueueHealth,
-} from "../../cli/selftune/observability.js";
+import { checkAlphaQueueHealth } from "../../cli/selftune/observability.js";
 import { type AlphaStatusInfo, formatAlphaStatus } from "../../cli/selftune/status.js";
 
 // ---------------------------------------------------------------------------
