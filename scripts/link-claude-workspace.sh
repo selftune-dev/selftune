@@ -7,6 +7,16 @@ claude_skills_dir="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
 claude_skill_path="$claude_skills_dir/selftune"
 backup_path="${claude_skill_path}.backup"
 
+next_backup_path() {
+  local candidate="$backup_path"
+  local suffix=1
+  while [ -e "$candidate" ]; do
+    candidate="${backup_path}.${suffix}"
+    suffix=$((suffix + 1))
+  done
+  printf '%s\n' "$candidate"
+}
+
 if ! command -v bun >/dev/null 2>&1; then
   echo "bun is required but was not found on PATH." >&2
   exit 1
@@ -25,12 +35,9 @@ if [ -L "$claude_skill_path" ]; then
 fi
 
 if [ "$current_target" != "$skill_src" ] && [ -e "$claude_skill_path" ]; then
-  if [ ! -e "$backup_path" ]; then
-    mv "$claude_skill_path" "$backup_path"
-    echo "Backed up existing Claude selftune skill to $backup_path"
-  else
-    rm -rf "$claude_skill_path"
-  fi
+  resolved_backup_path="$(next_backup_path)"
+  mv "$claude_skill_path" "$resolved_backup_path"
+  echo "Backed up existing Claude selftune skill to $resolved_backup_path"
 fi
 
 ln -sfn "$skill_src" "$claude_skill_path"

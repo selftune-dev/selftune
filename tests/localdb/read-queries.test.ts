@@ -862,8 +862,7 @@ describe("queryCanonicalRecordsForStaging", () => {
 
     const invocation = queryCanonicalRecordsForStaging(db).find(
       (record) =>
-        record.record_kind === "skill_invocation" &&
-        record.skill_invocation_id === "si-skill-path",
+        record.record_kind === "skill_invocation" && record.skill_invocation_id === "si-skill-path",
     ) as Record<string, unknown> | undefined;
 
     expect(invocation).toBeDefined();

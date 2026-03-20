@@ -458,7 +458,11 @@ export interface InitOptions {
   alphaName?: string;
 }
 
-function validateAlphaMetadataFlags(alpha: boolean | undefined, email?: string, name?: string): void {
+function validateAlphaMetadataFlags(
+  alpha: boolean | undefined,
+  email?: string,
+  name?: string,
+): void {
   if ((email !== undefined || name !== undefined) && !alpha) {
     throw new Error("--alpha-email and --alpha-name require --alpha");
   }
