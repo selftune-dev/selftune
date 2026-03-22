@@ -10,7 +10,9 @@
  */
 
 import type { Database } from "bun:sqlite";
+
 import type { CanonicalRecord } from "@selftune/telemetry-contract";
+
 import { buildPushPayloadV2 } from "../canonical-export.js";
 import type { EvolutionEvidenceEntry } from "../types.js";
 

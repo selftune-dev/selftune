@@ -12,6 +12,7 @@ gate that checks for regressions, validates eval set coverage, compares old
 vs. new descriptions, and provides an approve/reject verdict with reasoning.
 
 **Activate when the user says:**
+
 - "review evolution proposal"
 - "check before deploying evolution"
 - "is this evolution safe"
@@ -24,16 +25,19 @@ This agent is spawned by the main agent as a subagent to provide a safety
 review before deploying an evolution.
 
 **Connected workflows:**
+
 - **Evolve** — in the review-before-deploy step, spawn this agent to evaluate the proposal for regressions, scope creep, and eval set quality
 - **EvolveBody** — same role for full-body and routing-table evolutions
 
 **Mode behavior:**
+
 - **Interactive mode** — spawn this agent before deploying an evolution to get a human-readable safety review with an approve/reject verdict
 - **Autonomous mode** — the orchestrator handles validation internally using regression thresholds and auto-rollback; this agent is for interactive safety reviews only
 
 ## Context
 
 You need access to:
+
 - `~/.claude/evolution_audit_log.jsonl` — proposal entries with before/after data
 - The target skill's `SKILL.md` file (current version)
 - The skill's `SKILL.md.bak` file (pre-evolution backup, if it exists)
@@ -77,6 +81,7 @@ prefix, read the skill's `SKILL.md.bak` file (created by the evolve workflow
 as a pre-evolution backup) to obtain the original description.
 
 Check for:
+
 - **Preserved triggers** — all existing trigger phrases still present
 - **Added triggers** — new phrases covering missed queries
 - **Removed content** — anything removed that should not have been
@@ -86,6 +91,7 @@ Check for:
 ### Step 4: Validate eval set quality
 
 Read the eval set used for validation. Check:
+
 - **Size** — at least 20 entries for meaningful coverage
 - **Type balance** — mix of explicit, implicit, contextual, and negative
 - **Negative coverage** — enough negatives to catch overtriggering
@@ -96,6 +102,7 @@ Reference `skill/references/invocation-taxonomy.md` for healthy distribution.
 ### Step 5: Check regression metrics
 
 From the proposal output or audit log `validated` entry, verify:
+
 - **Pass rate improved** — proposed rate > original rate
 - **No excessive regressions** — regression count < 5% of total evals
 - **Confidence above threshold** — proposal confidence >= 0.7
@@ -104,6 +111,7 @@ From the proposal output or audit log `validated` entry, verify:
 ### Step 6: Review evolution history
 
 Check for patterns that suggest instability:
+
 - Multiple evolutions in a short time (churn)
 - Previous rollbacks for this skill (fragility)
 - Plateau pattern (evolution not producing meaningful gains)
@@ -124,12 +132,12 @@ Issue an approve or reject decision with full reasoning.
 
 ## Commands
 
-| Command | Purpose |
-|---------|---------|
-| `selftune evolve --skill <name> --skill-path <path> --dry-run` | Generate proposal without deploying |
-| Read eval file from evolve output or audit log | Inspect the exact eval set used for validation |
-| `selftune watch --skill <name> --skill-path <path>` | Check current performance baseline |
-| `selftune status` | Overall skill health context |
+| Command                                                        | Purpose                                        |
+| -------------------------------------------------------------- | ---------------------------------------------- |
+| `selftune evolve --skill <name> --skill-path <path> --dry-run` | Generate proposal without deploying            |
+| Read eval file from evolve output or audit log                 | Inspect the exact eval set used for validation |
+| `selftune watch --skill <name> --skill-path <path>`            | Check current performance baseline             |
+| `selftune status`                                              | Overall skill health context                   |
 
 ## Output
 

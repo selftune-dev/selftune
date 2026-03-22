@@ -20,6 +20,7 @@ This agent is spawned by the main agent as a subagent when deeper analysis is
 needed — it is not called directly by the user.
 
 **Connected workflows:**
+
 - **Doctor** — when `selftune doctor` reveals persistent issues with a specific skill, spawn this agent for root cause analysis
 - **Grade** — when grades are consistently low for a skill, spawn this agent to investigate why
 - **Status** — when `selftune status` shows CRITICAL or WARNING flags on a skill, spawn this agent for a deep dive
@@ -31,6 +32,7 @@ or unexplained failures warrant spawning this agent.
 ## Context
 
 You need access to:
+
 - `~/.claude/session_telemetry_log.jsonl` — session-level metrics
 - `~/.claude/skill_usage_log.jsonl` — skill trigger events
 - `~/.claude/all_queries_log.jsonl` — all user queries (triggered and missed)
@@ -62,6 +64,7 @@ selftune eval generate --skill <name> --stats
 ```
 
 Review aggregate metrics:
+
 - **Error rate** — high error rate suggests process failures, not trigger issues
 - **Tool call breakdown** — unusual patterns (e.g., excessive Bash retries) indicate thrashing
 - **Average turns** — abnormally high turn count suggests the agent is struggling
@@ -73,6 +76,7 @@ selftune eval generate --skill <name> --max 50
 ```
 
 Review the generated eval set. Count entries by invocation type:
+
 - **Explicit missed** = description is fundamentally broken (critical)
 - **Implicit missed** = description too narrow (common, fixable via evolve)
 - **Contextual missed** = lacks domain vocabulary (fixable via evolve)
@@ -84,6 +88,7 @@ Reference `skill/references/invocation-taxonomy.md` for the full taxonomy.
 
 Read the skill's `SKILL.md` and check recent grading results. For each
 failed expectation, look at:
+
 - **Trigger tier** — did the skill fire at all?
 - **Process tier** — did the agent follow the right steps?
 - **Quality tier** — was the output actually good?
@@ -94,6 +99,7 @@ Reference `skill/references/grading-methodology.md` for the 3-tier model.
 
 Read `~/.claude/evolution_audit_log.jsonl` for entries matching the skill.
 Look for:
+
 - Recent evolutions that may have introduced regressions
 - Rollbacks that suggest instability
 - Plateau patterns (repeated evolutions with no improvement)
@@ -101,6 +107,7 @@ Look for:
 ### Step 7: Inspect session transcripts
 
 For the worst-performing sessions, read the transcript JSONL files. Look for:
+
 - SKILL.md not being read (trigger failure)
 - Steps executed out of order (process failure)
 - Repeated errors or thrashing (quality failure)
@@ -112,13 +119,13 @@ Compile findings into a structured report.
 
 ## Commands
 
-| Command | Purpose |
-|---------|---------|
-| `selftune status` | Overall health snapshot |
-| `selftune last` | Most recent session details |
-| `selftune eval generate --skill <name> --stats` | Aggregate telemetry |
+| Command                                          | Purpose                                 |
+| ------------------------------------------------ | --------------------------------------- |
+| `selftune status`                                | Overall health snapshot                 |
+| `selftune last`                                  | Most recent session details             |
+| `selftune eval generate --skill <name> --stats`  | Aggregate telemetry                     |
 | `selftune eval generate --skill <name> --max 50` | Generate eval set for coverage analysis |
-| `selftune doctor` | Check infrastructure health |
+| `selftune doctor`                                | Check infrastructure health             |
 
 ## Output
 
@@ -128,29 +135,36 @@ Produce a structured diagnosis report:
 ## Diagnosis Report: <skill-name>
 
 ### Summary
+
 [One-paragraph overview of the problem]
 
 ### Health Metrics
+
 - Pass rate: X%
 - Sessions analyzed: N
 - Error rate: X%
 - Trigger coverage: explicit X% / implicit X% / contextual X%
 
 ### Root Cause
+
 [Primary reason for underperformance, categorized as:]
+
 - TRIGGER: Skill not firing when it should
 - PROCESS: Skill fires but agent follows wrong steps
 - QUALITY: Steps are correct but output is poor
 - INFRASTRUCTURE: Hooks, logs, or config issues
 
 ### Evidence
+
 [Specific log entries, transcript lines, or metrics supporting the diagnosis]
 
 ### Recommendations
+
 1. [Highest priority fix]
 2. [Secondary fix]
 3. [Optional improvement]
 
 ### Suggested Commands
+
 [Exact selftune commands to execute the recommended fixes]
 ```

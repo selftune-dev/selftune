@@ -11,8 +11,10 @@
 
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
+
 import type { CanonicalRecord } from "@selftune/telemetry-contract";
 import { isCanonicalRecord } from "@selftune/telemetry-contract";
+
 import { CANONICAL_LOG } from "../constants.js";
 import {
   getOrchestrateRuns,

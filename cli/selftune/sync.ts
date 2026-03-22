@@ -17,6 +17,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+
 import {
   CLAUDE_CODE_MARKER,
   CLAUDE_CODE_PROJECTS_DIR,

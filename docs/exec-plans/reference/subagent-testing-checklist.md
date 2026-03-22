@@ -22,6 +22,7 @@ Test through the parent selftune skill, not just by reading the markdown.
 - Pattern prompt: `which of my skills overlap`
 
 Pass criteria:
+
 - the parent chooses the correct bundled agent
 - the parent provides the required inputs
 - the subagent returns a structured worker report

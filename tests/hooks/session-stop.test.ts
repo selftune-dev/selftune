@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { processPrompt } from "../../cli/selftune/hooks/prompt-log.js";
 import { processSessionStop } from "../../cli/selftune/hooks/session-stop.js";
 import { _setTestDb, getDb, openDb } from "../../cli/selftune/localdb/db.js";

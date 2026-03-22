@@ -606,9 +606,8 @@ Output:
         const { readAlphaIdentity } = await import("./alpha-identity.js");
         const { getDb } = await import("./localdb/db.js");
         const { runUploadCycle } = await import("./alpha-upload/index.js");
-        const { getSelftuneVersion, readConfiguredAgentType } = await import(
-          "./utils/selftune-meta.js"
-        );
+        const { getSelftuneVersion, readConfiguredAgentType } =
+          await import("./utils/selftune-meta.js");
 
         const identity = readAlphaIdentity(SELFTUNE_CONFIG_PATH);
         if (!identity?.enrolled) {
@@ -670,9 +669,8 @@ Output:
       }
       case "relink": {
         const { SELFTUNE_CONFIG_PATH } = await import("./constants.js");
-        const { readAlphaIdentity, writeAlphaIdentity, generateUserId } = await import(
-          "./alpha-identity.js"
-        );
+        const { readAlphaIdentity, writeAlphaIdentity, generateUserId } =
+          await import("./alpha-identity.js");
         const { buildVerificationUrl, pollDeviceCode, requestDeviceCode, tryOpenUrl } =
           await import("./auth/device-code.js");
         const { chmodSync } = await import("node:fs");

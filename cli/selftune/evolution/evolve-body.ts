@@ -25,7 +25,6 @@ import type {
   QueryLogRecord,
   SkillUsageRecord,
 } from "../types.js";
-
 import { appendAuditEntry } from "./audit.js";
 import { checkConstitutionSizeOnly } from "./constitutional.js";
 import { parseSkillSections, replaceBody, replaceSection } from "./deploy-proposal.js";

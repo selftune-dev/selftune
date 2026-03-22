@@ -10,8 +10,8 @@
 
 import { execSync } from "node:child_process";
 import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { CANONICAL_LOG, ORCHESTRATE_LOCK, TELEMETRY_LOG } from "../constants.js";
 
+import { CANONICAL_LOG, ORCHESTRATE_LOCK, TELEMETRY_LOG } from "../constants.js";
 import {
   appendCanonicalRecords,
   buildCanonicalExecutionFact,

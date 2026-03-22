@@ -9,6 +9,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { SELFTUNE_CONFIG_DIR } from "./constants.js";
 
 const UPDATE_CHECK_PATH = join(SELFTUNE_CONFIG_DIR, "update-check.json");

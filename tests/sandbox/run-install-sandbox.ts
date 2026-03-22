@@ -26,7 +26,14 @@ interface TestResult {
 
 const PROJECT_ROOT = resolve(import.meta.dir, "..", "..");
 const CLI_PATH = join(PROJECT_ROOT, "cli", "selftune", "index.ts");
-const SANDBOX_ROOT = mkdtempSync(join(tmpdir(), "selftune-install-sandbox-"));
+const PACKAGE_JSON = JSON.parse(readFileSync(join(PROJECT_ROOT, "package.json"), "utf-8")) as {
+  version?: string;
+};
+const CLI_VERSION = PACKAGE_JSON.version ?? "0.0.0";
+const dateStamp = new Date().toISOString().slice(0, 10);
+const SANDBOX_ROOT = mkdtempSync(
+  join(tmpdir(), `selftune-install-sandbox-v${CLI_VERSION}-${dateStamp}-`),
+);
 const SANDBOX_HOME = join(SANDBOX_ROOT, "home");
 const CONFIG_PATH = join(SANDBOX_HOME, ".selftune", "config.json");
 const SETTINGS_PATH = join(SANDBOX_HOME, ".claude", "settings.json");
@@ -92,7 +99,10 @@ function formatRow(columns: string[], widths: number[]): string {
 function printSummary(results: TestResult[]): void {
   const nameWidth = Math.max(...results.map((r) => r.name.length), "Test".length);
   const statusWidth = Math.max(...results.map((r) => (r.passed ? 4 : 4)), "Status".length);
-  const durationWidth = Math.max(...results.map((r) => `${r.durationMs}ms`.length), "Duration".length);
+  const durationWidth = Math.max(
+    ...results.map((r) => `${r.durationMs}ms`.length),
+    "Duration".length,
+  );
   const widths = [nameWidth, statusWidth, durationWidth];
   const separator = `+${widths.map((w) => "-".repeat(w + 2)).join("+")}+`;
 
@@ -219,7 +229,8 @@ async function main(): Promise<void> {
       for (const failure of failures) {
         console.error(`[${failure.name}] exit=${failure.exitCode}`);
         if (failure.error) console.error(`  Error: ${failure.error}`);
-        if (failure.stderr.trim()) console.error(`  Stderr: ${failure.stderr.trim().slice(0, 400)}`);
+        if (failure.stderr.trim())
+          console.error(`  Stderr: ${failure.stderr.trim().slice(0, 400)}`);
       }
       process.exit(1);
     }

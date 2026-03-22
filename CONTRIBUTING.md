@@ -26,7 +26,7 @@ bun run cli/selftune/index.ts init
 
 ```bash
 make check    # Runs lint + architecture lint + all tests
-make lint     # Biome check + architecture lint only
+make lint     # oxlint + oxfmt + architecture lint only
 make test     # Tests only
 ```
 
@@ -51,6 +51,7 @@ This creates a temporary `HOME` directory in `/tmp`, copies test fixtures (3 ski
 Commands like `grade` and `evolve` need LLM calls. Test them in the devcontainer, based on the [official Claude Code devcontainer reference](https://code.claude.com/docs/en/devcontainer):
 
 **First-time setup** (one-time, auth persists in a Docker volume):
+
 ```bash
 make sandbox-shell       # drop into the container
 claude login             # paste your token
@@ -58,6 +59,7 @@ exit
 ```
 
 **Run LLM tests:**
+
 ```bash
 make sandbox-llm
 ```
@@ -82,10 +84,11 @@ Follow the conventions in [docs/golden-principles.md](docs/golden-principles.md)
 
 ## Code Style
 
-[Biome](https://biomejs.dev) handles formatting and linting. Run before submitting:
+[oxc](https://oxc.rs) handles linting (oxlint) and formatting (oxfmt). Run before submitting:
 
 ```bash
 bun run lint:fix
+bun run format
 ```
 
 ## Pull Request Expectations
@@ -131,25 +134,25 @@ While linked, hooks in `~/.claude/settings.json` point through the symlink to yo
 
 When modifying JSONL log schemas or adding new fields, update all of these to keep the pipeline consistent:
 
-| File | What to update |
-|------|---------------|
-| `cli/selftune/types.ts` | Add/modify the TypeScript interface |
-| `cli/selftune/constants.ts` | Add log path constant if new file |
-| `cli/selftune/localdb/schema.ts` | Add column to SQLite schema |
-| `cli/selftune/localdb/materialize.ts` | Map JSONL field → SQLite column |
-| `cli/selftune/normalization.ts` | Update canonical derivation if applicable |
-| `cli/selftune/dashboard-contract.ts` | Expose field to dashboard API |
-| `apps/local-dashboard/src/` | Consume field in UI components |
-| `skill/references/logs.md` | Document the field for agents |
+| File                                  | What to update                            |
+| ------------------------------------- | ----------------------------------------- |
+| `cli/selftune/types.ts`               | Add/modify the TypeScript interface       |
+| `cli/selftune/constants.ts`           | Add log path constant if new file         |
+| `cli/selftune/localdb/schema.ts`      | Add column to SQLite schema               |
+| `cli/selftune/localdb/materialize.ts` | Map JSONL field → SQLite column           |
+| `cli/selftune/normalization.ts`       | Update canonical derivation if applicable |
+| `cli/selftune/dashboard-contract.ts`  | Expose field to dashboard API             |
+| `apps/local-dashboard/src/`           | Consume field in UI components            |
+| `skill/references/logs.md`            | Document the field for agents             |
 
 ### Common Data Issues
 
-| Symptom | Fix |
-|---------|-----|
-| Dashboard shows stale data | `selftune sync --force` |
+| Symptom                                  | Fix                                                                                 |
+| ---------------------------------------- | ----------------------------------------------------------------------------------- |
+| Dashboard shows stale data               | `selftune sync --force`                                                             |
 | SQLite schema mismatch after code change | `selftune export` first, then `rm ~/.selftune/selftune.db && selftune sync --force` |
-| Missing invocations after hook changes | Verify `~/.claude/settings.json` matchers, then `selftune doctor` |
-| Need to backfill from transcripts | `selftune ingest claude --force` |
+| Missing invocations after hook changes   | Verify `~/.claude/settings.json` matchers, then `selftune doctor`                   |
+| Need to backfill from transcripts        | `selftune ingest claude --force`                                                    |
 
 ## Questions?
 

@@ -10,6 +10,7 @@
  */
 
 import type { Database } from "bun:sqlite";
+
 import type {
   CanonicalExecutionFactRecord,
   CanonicalPromptRecord,
@@ -17,6 +18,7 @@ import type {
   CanonicalSessionRecord,
   CanonicalSkillInvocationRecord,
 } from "@selftune/telemetry-contract";
+
 import type { OrchestrateRunReport } from "../dashboard-contract.js";
 import type {
   EvolutionAuditEntry,

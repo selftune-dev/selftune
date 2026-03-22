@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+
 import { CANONICAL_LOG, CLAUDE_CODE_PROJECTS_DIR } from "./constants.js";
 import {
   buildCanonicalRecordsFromReplay,

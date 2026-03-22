@@ -12,6 +12,7 @@ project structure, generate appropriate configuration, install hooks, and
 verify the setup is working end-to-end.
 
 **Activate when the user says:**
+
 - "set up selftune"
 - "integrate selftune"
 - "configure selftune for my project"
@@ -25,6 +26,7 @@ This agent is the deep-dive version of the Initialize workflow, spawned by
 the main agent as a subagent when the project structure is complex.
 
 **Connected workflows:**
+
 - **Initialize** — for complex project structures (monorepos, multi-skill repos, mixed agent platforms), spawn this agent instead of running the basic init workflow
 
 **When to spawn:** when the project has multiple SKILL.md files, multiple
@@ -34,6 +36,7 @@ structure where the standard `selftune init` needs project-specific guidance.
 ## Context
 
 You need access to:
+
 - The user's project root directory
 - `~/.selftune/config.json` (may not exist yet)
 - `~/.claude/settings.json` (for hook installation)
@@ -48,18 +51,22 @@ You need access to:
 Examine the workspace to determine the project type:
 
 **Single-skill project:**
+
 - One `SKILL.md` at or near the project root
 - Typical for focused tools and utilities
 
 **Multi-skill project:**
+
 - Multiple `SKILL.md` files in separate directories
 - Skills are independent but coexist in one repo
 
 **Monorepo:**
+
 - Multiple packages/projects with their own skill files
 - May have shared configuration at the root level
 
 **No skills yet:**
+
 - No `SKILL.md` files found
 - User needs to create skills before selftune can observe them
 
@@ -72,6 +79,7 @@ selftune doctor
 ```
 
 If selftune is already installed, parse the doctor output:
+
 - **All checks pass** — setup is complete, offer to run a health audit
 - **Some checks fail** — fix the failing checks (see Step 6)
 - **Command not found** — proceed to Step 3
@@ -102,6 +110,7 @@ Parse the output to confirm `~/.selftune/config.json` was created. Note the
 detected `agent_type` and `cli_path`.
 
 If the user is on a non-Claude agent platform:
+
 - **Codex** — inform about `ingest wrap-codex` and `ingest codex` options
 - **OpenCode** — inform about `ingest opencode` option
 
@@ -110,11 +119,11 @@ If the user is on a non-Claude agent platform:
 For **Claude Code** users, merge hook entries from `skill/settings_snippet.json`
 into `~/.claude/settings.json`. Three hooks are required:
 
-| Hook | Script | Purpose |
-|------|--------|---------|
-| `UserPromptSubmit` | `hooks/prompt-log.ts` | Log every user query |
-| `PostToolUse` (Read) | `hooks/skill-eval.ts` | Track skill triggers |
-| `Stop` | `hooks/session-stop.ts` | Capture session telemetry |
+| Hook                 | Script                  | Purpose                   |
+| -------------------- | ----------------------- | ------------------------- |
+| `UserPromptSubmit`   | `hooks/prompt-log.ts`   | Log every user query      |
+| `PostToolUse` (Read) | `hooks/skill-eval.ts`   | Track skill triggers      |
+| `Stop`               | `hooks/session-stop.ts` | Capture session telemetry |
 
 Derive script paths from `cli_path` in `~/.selftune/config.json`.
 
@@ -129,13 +138,13 @@ selftune doctor
 
 All checks must pass. For any failures:
 
-| Failed Check | Resolution |
-|-------------|------------|
-| Log files missing | Run a test session to generate initial entries |
-| Logs not parseable | Inspect and fix corrupted log lines |
-| Hooks not installed | Re-check settings.json merge from Step 5 |
-| Hook scripts missing | Verify paths point to actual files on disk |
-| Audit log invalid | Remove corrupted entries |
+| Failed Check         | Resolution                                     |
+| -------------------- | ---------------------------------------------- |
+| Log files missing    | Run a test session to generate initial entries |
+| Logs not parseable   | Inspect and fix corrupted log lines            |
+| Hooks not installed  | Re-check settings.json merge from Step 5       |
+| Hook scripts missing | Verify paths point to actual files on disk     |
+| Audit log invalid    | Remove corrupted entries                       |
 
 Re-run doctor after each fix until all checks pass.
 
@@ -176,12 +185,12 @@ Tell the user what to do next based on their goals:
 
 ## Commands
 
-| Command | Purpose |
-|---------|---------|
-| `selftune init` | Bootstrap configuration |
-| `selftune doctor` | Verify installation health |
-| `selftune status` | Post-setup health check |
-| `selftune last` | Verify telemetry capture |
+| Command                                | Purpose                          |
+| -------------------------------------- | -------------------------------- |
+| `selftune init`                        | Bootstrap configuration          |
+| `selftune doctor`                      | Verify installation health       |
+| `selftune status`                      | Post-setup health check          |
+| `selftune last`                        | Verify telemetry capture         |
 | `selftune eval generate --list-skills` | Confirm skills are being tracked |
 
 ## Output
@@ -192,20 +201,24 @@ Produce a setup completion summary:
 ## selftune Setup Complete
 
 ### Environment
+
 - Agent: <claude / codex / opencode>
 - Project type: <single-skill / multi-skill / monorepo>
 - Skills detected: <list of skill names>
 
 ### Configuration
+
 - Config: ~/.selftune/config.json [created / verified]
 - Hooks: [installed / N/A for non-Claude agents]
 - Doctor: [all checks pass / N failures — see below]
 
 ### Verification
+
 - Telemetry capture: [working / not verified]
 - Skill tracking: [working / not verified]
 
 ### Next Steps
+
 1. [Primary recommended action]
 2. [Secondary action]
 3. [Optional action]

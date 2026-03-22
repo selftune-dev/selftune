@@ -10,7 +10,16 @@
  *   bun run tests/sandbox/run-sandbox.ts [--keep]
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 // ---------------------------------------------------------------------------
@@ -21,6 +30,10 @@ const PROJECT_ROOT = resolve(import.meta.dir, "..", "..");
 const CLI_PATH = join(PROJECT_ROOT, "cli", "selftune", "index.ts");
 const FIXTURES_DIR = join(PROJECT_ROOT, "tests", "sandbox", "fixtures");
 const RESULTS_DIR = join(PROJECT_ROOT, "tests", "sandbox", "results");
+const PACKAGE_JSON = JSON.parse(readFileSync(join(PROJECT_ROOT, "package.json"), "utf-8")) as {
+  version?: string;
+};
+const CLI_VERSION = PACKAGE_JSON.version ?? "0.0.0";
 
 const keepSandbox = process.argv.includes("--keep");
 
@@ -44,7 +57,9 @@ interface TestResult {
 // ---------------------------------------------------------------------------
 
 const timestamp = Date.now();
-const SANDBOX_ROOT = `/tmp/selftune-sandbox-${timestamp}`;
+const dateStamp = new Date().toISOString().slice(0, 10);
+const sandboxRunId = `v${CLI_VERSION}-${dateStamp}-${timestamp}`;
+const SANDBOX_ROOT = join(tmpdir(), `selftune-sandbox-${sandboxRunId}`);
 const SANDBOX_HOME = join(SANDBOX_ROOT, "home");
 const SANDBOX_CLAUDE_DIR = join(SANDBOX_HOME, ".claude");
 const SANDBOX_PROJECTS_DIR = join(SANDBOX_CLAUDE_DIR, "projects", "default");
@@ -130,9 +145,6 @@ function setupSandbox(): void {
     copyFileSync(cronSrc, join(cronDir, "jobs.json"));
   }
 }
-
-// Need readdirSync for transcripts
-import { readdirSync } from "node:fs";
 
 // ---------------------------------------------------------------------------
 // Command runner
@@ -546,7 +558,10 @@ async function main(): Promise<void> {
     results.push(promptHookResult);
 
     // b. skill-eval hook
-    const skillInvocationsBefore = countCanonicalRecordsByKind(canonicalLogPath, "skill_invocation");
+    const skillInvocationsBefore = countCanonicalRecordsByKind(
+      canonicalLogPath,
+      "skill_invocation",
+    );
 
     const skillHookResult = await runHook(
       "hook: skill-eval",
@@ -841,7 +856,7 @@ async function main(): Promise<void> {
     if (!existsSync(RESULTS_DIR)) {
       mkdirSync(RESULTS_DIR, { recursive: true });
     }
-    const resultsPath = join(RESULTS_DIR, `sandbox-run-${timestamp}.json`);
+    const resultsPath = join(RESULTS_DIR, `sandbox-run-${sandboxRunId}.json`);
     // Strip fullStdout from saved results (internal-only field)
     const savedResults: TestResult[] = results.map((r) => ({
       name: r.name,
