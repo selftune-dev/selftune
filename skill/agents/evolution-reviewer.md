@@ -3,7 +3,7 @@ name: evolution-reviewer
 description: Use when reviewing a dry-run or pending evolution proposal before deployment, especially for high-stakes skills, marginal improvements, or recent regressions. Compares old vs new content, checks evidence quality, and returns an approve or reject verdict with conditions.
 tools: Read, Grep, Glob, Bash
 disallowedTools: Write, Edit
-model: sonnet
+model: opus
 maxTurns: 8
 ---
 
