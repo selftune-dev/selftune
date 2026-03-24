@@ -41,10 +41,13 @@ import {
   requestDeviceCode,
   tryOpenUrl,
 } from "./auth/device-code.js";
+import { installAgentFiles } from "./claude-agents.js";
 import { CLAUDE_CODE_HOOK_KEYS, SELFTUNE_CONFIG_DIR, SELFTUNE_CONFIG_PATH } from "./constants.js";
 import type { AgentCommandGuidance, AlphaIdentity, SelftuneConfig } from "./types.js";
 import { hookKeyHasSelftuneEntry } from "./utils/hooks.js";
 import { detectAgent } from "./utils/llm-call.js";
+
+export { installAgentFiles } from "./claude-agents.js";
 
 interface InitCliErrorPayload extends AgentCommandGuidance {
   error: string;
@@ -315,19 +318,6 @@ export function installClaudeCodeHooks(options?: {
 }
 
 // ---------------------------------------------------------------------------
-// Agent file installation
-// ---------------------------------------------------------------------------
-
-/**
- * @deprecated Agent files are now bundled in skill/agents/ and read directly
- * by the consuming agent via progressive disclosure. No installation needed.
- * Kept as a no-op for backwards compatibility with callers.
- */
-export function installAgentFiles(_options?: { homeDir?: string; force?: boolean }): string[] {
-  return [];
-}
-
-// ---------------------------------------------------------------------------
 // Workspace type detection
 // ---------------------------------------------------------------------------
 
@@ -513,7 +503,11 @@ export async function runInit(opts: InitOptions): Promise<SelftuneConfig> {
   if (!force && !hasAlphaMutation && existsSync(configPath)) {
     const raw = readFileSync(configPath, "utf-8");
     try {
-      return JSON.parse(raw) as SelftuneConfig;
+      const existingConfig = JSON.parse(raw) as SelftuneConfig;
+      if (existingConfig.agent_type === "claude_code") {
+        installAgentFiles({ homeDir: opts.homeDir });
+      }
+      return existingConfig;
     } catch (err) {
       throw new Error(
         `Config file at ${configPath} contains invalid JSON. Delete it or use --force to reinitialize. Cause: ${err instanceof Error ? err.message : String(err)}`,
@@ -611,11 +605,15 @@ export async function runInit(opts: InitOptions): Promise<SelftuneConfig> {
   mkdirSync(configDir, { recursive: true });
   writeSelftuneConfig(configPath, config);
 
-  // Agent files are bundled in skill/agents/ and read directly by the
-  // consuming agent — no installation step needed.
-
   // Auto-install hooks into ~/.claude/settings.json (Claude Code only)
   if (agentType === "claude_code") {
+    const syncedAgentFiles = installAgentFiles({ homeDir: home });
+    if (syncedAgentFiles.length > 0) {
+      console.error(
+        `[INFO] Synced ${syncedAgentFiles.length} selftune agent file(s) into ${join(home, ".claude", "agents")}: ${syncedAgentFiles.join(", ")}`,
+      );
+    }
+
     const addedHookKeys = installClaudeCodeHooks({
       settingsPath,
       cliPath,

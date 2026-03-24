@@ -5,10 +5,11 @@
  * Removes:
  *   1. Autonomy scheduling (launchd/cron/systemd + OpenClaw cron)
  *   2. Selftune hooks from ~/.claude/settings.json (surgical — preserves user hooks)
- *   3. JSONL telemetry logs from ~/.claude/
- *   4. Selftune config directory (~/.selftune/)
- *   5. Ingest marker files
- *   6. Optionally: `npm uninstall -g selftune`
+ *   3. Selftune-managed Claude subagents from ~/.claude/agents/
+ *   4. JSONL telemetry logs from ~/.claude/
+ *   5. Selftune config directory (~/.selftune/)
+ *   6. Ingest marker files
+ *   7. Optionally: `npm uninstall -g selftune`
  *
  * Usage:
  *   selftune uninstall [--dry-run] [--keep-logs] [--npm-uninstall]
@@ -19,6 +20,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 
+import { removeInstalledAgentFiles } from "./claude-agents.js";
 import {
   CLAUDE_CODE_MARKER,
   CLAUDE_SETTINGS_PATH,
@@ -47,6 +49,7 @@ interface UninstallResult {
   dryRun: boolean;
   schedule: { removed: boolean; details: string };
   hooks: { removed: number; details: string };
+  agents: { removed: number; files: string[] };
   logs: { removed: number; skipped: boolean; files: string[] };
   config: { removed: boolean; path: string };
   markers: { removed: number; files: string[] };
@@ -192,7 +195,15 @@ function removeHooksFromSettings(
 }
 
 // ---------------------------------------------------------------------------
-// Step 3: Remove JSONL log files
+// Step 3: Remove bundled Claude subagents
+// ---------------------------------------------------------------------------
+
+function removeAgents(dryRun: boolean): { removed: number; files: string[] } {
+  return removeInstalledAgentFiles({ dryRun });
+}
+
+// ---------------------------------------------------------------------------
+// Step 4: Remove JSONL log files
 // ---------------------------------------------------------------------------
 
 const LOG_FILES = [
@@ -230,7 +241,7 @@ function removeLogs(dryRun: boolean): { removed: number; files: string[] } {
 }
 
 // ---------------------------------------------------------------------------
-// Step 4: Remove config directory
+// Step 5: Remove config directory
 // ---------------------------------------------------------------------------
 
 function removeConfig(dryRun: boolean): { removed: boolean; path: string } {
@@ -251,7 +262,7 @@ function removeConfig(dryRun: boolean): { removed: boolean; path: string } {
 }
 
 // ---------------------------------------------------------------------------
-// Step 5: Remove ingest marker files
+// Step 6: Remove ingest marker files
 // ---------------------------------------------------------------------------
 
 const MARKER_FILES = [
@@ -284,7 +295,7 @@ function removeMarkers(dryRun: boolean): { removed: number; files: string[] } {
 }
 
 // ---------------------------------------------------------------------------
-// Step 6: npm uninstall
+// Step 7: npm uninstall
 // ---------------------------------------------------------------------------
 
 async function npmUninstall(dryRun: boolean): Promise<{ uninstalled: boolean }> {
@@ -323,23 +334,26 @@ export async function uninstall(options: UninstallOptions): Promise<UninstallRes
   // Step 2: Remove hooks
   const hooks = removeHooksFromSettings(dryRun, settingsPath);
 
-  // Step 3: Remove logs
+  // Step 3: Remove bundled Claude subagents
+  const agents = removeAgents(dryRun);
+
+  // Step 4: Remove logs
   const logs = keepLogs
     ? { removed: 0, skipped: true, files: [] }
     : { ...removeLogs(dryRun), skipped: false };
 
-  // Step 4: Remove config directory
+  // Step 5: Remove config directory
   const config = removeConfig(dryRun);
 
-  // Step 5: Remove ingest markers
+  // Step 6: Remove ingest markers
   const markers = removeMarkers(dryRun);
 
-  // Step 6: npm uninstall (optional)
+  // Step 7: npm uninstall (optional)
   const npm = options.npmUninstall
     ? { ...(await npmUninstall(dryRun)), skipped: false }
     : { uninstalled: false, skipped: true };
 
-  return { dryRun, schedule, hooks, logs, config, markers, npm };
+  return { dryRun, schedule, hooks, agents, logs, config, markers, npm };
 }
 
 // ---------------------------------------------------------------------------
@@ -372,10 +386,11 @@ Options:
 Removes:
   1. Autonomy scheduling (launchd/cron/systemd)
   2. Selftune hooks from ~/.claude/settings.json (preserves user hooks)
-  3. JSONL telemetry logs from ~/.claude/
-  4. Selftune config directory (~/.selftune/)
-  5. Ingest marker files
-  6. npm global package (with --npm-uninstall)`);
+  3. Selftune-managed Claude subagents from ~/.claude/agents/
+  4. JSONL telemetry logs from ~/.claude/
+  5. Selftune config directory (~/.selftune/)
+  6. Ingest marker files
+  7. npm global package (with --npm-uninstall)`);
     process.exit(0);
   }
 

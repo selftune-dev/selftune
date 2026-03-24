@@ -5,7 +5,7 @@
     "": {
       "name": "selftune",
       "dependencies": {
-        "@selftune/telemetry-contract": "workspace:*",
+        "@selftune/telemetry-contract": "file:packages/telemetry-contract",
       },
       "devDependencies": {
         "@types/bun": "^1.1.0",
@@ -42,7 +42,7 @@
         "zod": "^4.3.6",
       },
       "devDependencies": {
-        "@selftune/telemetry-contract": "workspace:*",
+        "@selftune/telemetry-contract": "file:../../packages/telemetry-contract",
         "@tailwindcss/vite": "^4.2.1",
         "@types/react": "^19.1.6",
         "@types/react-dom": "^19.1.6",
@@ -451,7 +451,7 @@
 
     "@selftune/local-dashboard": ["@selftune/local-dashboard@workspace:apps/local-dashboard"],
 
-    "@selftune/telemetry-contract": ["@selftune/telemetry-contract@workspace:packages/telemetry-contract"],
+    "@selftune/telemetry-contract": ["@selftune/telemetry-contract@file:packages/telemetry-contract", { "dependencies": { "zod": "^4.3.6" } }],
 
     "@selftune/ui": ["@selftune/ui@workspace:packages/ui"],
 
@@ -1444,6 +1444,8 @@
     "@dotenvx/dotenvx/execa": ["execa@5.1.1", "", { "dependencies": { "cross-spawn": "^7.0.3", "get-stream": "^6.0.0", "human-signals": "^2.1.0", "is-stream": "^2.0.0", "merge-stream": "^2.0.0", "npm-run-path": "^4.0.1", "onetime": "^5.1.2", "signal-exit": "^3.0.3", "strip-final-newline": "^2.0.0" } }, "sha512-8uSpZZocAZRBAPIEINJj3Lo9HyGitllczc27Eh5YYojjMFMn8yHMDMaUHE2Jqfq05D/wucwI4JGURyXt1vchyg=="],
 
     "@inquirer/core/wrap-ansi": ["wrap-ansi@6.2.0", "", { "dependencies": { "ansi-styles": "^4.0.0", "string-width": "^4.1.0", "strip-ansi": "^6.0.0" } }, "sha512-r6lPcBGxZXlIcymEu7InxDMhdW0KDxpLgoFLcguasxCaJ/SOIZwINatK9KY/tf+ZrlywOKU0UDj3ATXUBfxJXA=="],
+
+    "@selftune/local-dashboard/@selftune/telemetry-contract": ["@selftune/telemetry-contract@file:packages/telemetry-contract", { "dependencies": { "zod": "^4.3.6" } }],
 
     "@tailwindcss/oxide-wasm32-wasi/@emnapi/core": ["@emnapi/core@1.9.1", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.0", "tslib": "^2.4.0" }, "bundled": true }, "sha512-mukuNALVsoix/w1BJwFzwXBN/dHeejQtuVzcDsfOEsdpCumXb/E9j8w11h5S54tT1xhifGfbbSm/ICrObRb3KA=="],
 

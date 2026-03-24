@@ -119,6 +119,11 @@ The init output will report what was installed, e.g.:
 [INFO] Installed 4 selftune hook(s) into ~/.claude/settings.json: UserPromptSubmit, PreToolUse, PostToolUse, Stop
 ```
 
+For Claude Code, `selftune init` also syncs selftune's bundled specialized
+agents from `skill/agents/` into `~/.claude/agents/`. The bundled files remain
+the source of truth; the `~/.claude/agents/` copies exist only so native Claude
+Code subagent calls stay up to date.
+
 **Hook reference** (for troubleshooting):
 
 | Hook                       | Script                        | Purpose                                         |

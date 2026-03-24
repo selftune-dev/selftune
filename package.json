@@ -47,7 +47,6 @@
     "packages/telemetry-contract/",
     "packages/ui/",
     "templates/",
-    ".claude/agents/",
     "skill/",
     "README.md",
     "CHANGELOG.md"
@@ -75,7 +74,7 @@
     "start": "bun run cli/selftune/index.ts --help"
   },
   "dependencies": {
-    "@selftune/telemetry-contract": "workspace:*"
+    "@selftune/telemetry-contract": "file:packages/telemetry-contract"
   },
   "devDependencies": {
     "@types/bun": "^1.1.0",

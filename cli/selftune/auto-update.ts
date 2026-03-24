@@ -8,6 +8,7 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { SELFTUNE_CONFIG_DIR } from "./constants.js";
@@ -119,6 +120,16 @@ async function performUpdate(currentVersion: string, latestVersion: string): Pro
     console.error(`[selftune] Updated to v${latestVersion}.`);
     // Update cache to reflect new version
     writeCache({ lastCheck: Date.now(), currentVersion: latestVersion, latestVersion });
+
+    try {
+      const claudeDir = join(homedir(), ".claude");
+      if (existsSync(claudeDir)) {
+        const { installAgentFiles } = await import("./claude-agents.js");
+        installAgentFiles({ force: true });
+      }
+    } catch {
+      // Non-critical — updated CLI is usable even if agent sync fails
+    }
   } else {
     const stderr = result.stderr?.toString().trim();
     console.error(

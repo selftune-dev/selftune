@@ -179,6 +179,10 @@ selftune bundles focused agents in `agents/`. When you need deeper analysis,
 read the relevant agent file and follow its instructions — either inline or
 by spawning a subagent with those instructions as its prompt.
 
+On Claude Code, `selftune init` also syncs compatibility copies into
+`~/.claude/agents/` so native `--agent <name>` calls keep matching these
+bundled definitions.
+
 Treat these as worker-style subagents:
 
 - pass the required inputs from the parent agent

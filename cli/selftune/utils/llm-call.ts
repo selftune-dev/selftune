@@ -224,7 +224,7 @@ export async function callViaAgent(
 
 /** Options for calling a named Claude Code subagent. */
 export interface SubagentCallOptions {
-  /** Name of the subagent (must be installed in ~/.claude/agents/). */
+  /** Name of the subagent (synced into ~/.claude/agents/ by selftune init/update). */
   agentName: string;
   /** The task prompt for the subagent. */
   prompt: string;

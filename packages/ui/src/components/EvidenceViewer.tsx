@@ -47,11 +47,25 @@ interface Props {
 
 /** Parse YAML-ish frontmatter from text, returns { meta, body } */
 function parseFrontmatter(text: string): { meta: Record<string, string>; body: string } {
-  const match = text.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
-  if (!match) return { meta: {}, body: text };
+  const lines = text.split("\n");
+  if (lines.length < 3 || lines[0].trim() !== "---") {
+    return { meta: {}, body: text };
+  }
+
+  let closingIndex = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim() === "---") {
+      closingIndex = i;
+      break;
+    }
+  }
+
+  if (closingIndex === -1) {
+    return { meta: {}, body: text };
+  }
 
   const meta: Record<string, string> = {};
-  for (const line of match[1].split("\n")) {
+  for (const line of lines.slice(1, closingIndex)) {
     const idx = line.indexOf(":");
     if (idx > 0) {
       const key = line.slice(0, idx).trim();
@@ -59,7 +73,8 @@ function parseFrontmatter(text: string): { meta: Record<string, string>; body: s
       if (key && val) meta[key] = val;
     }
   }
-  return { meta, body: match[2] };
+
+  return { meta, body: lines.slice(closingIndex + 1).join("\n") };
 }
 
 function FrontmatterTable({ meta }: { meta: Record<string, string> }) {

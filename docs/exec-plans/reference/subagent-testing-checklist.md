@@ -54,7 +54,7 @@ Pass criteria:
 
 If you also want to verify native Claude Code compatibility:
 
-- copy one agent into `.claude/agents/`
+- run `selftune init` to sync the bundled selftune agents into `.claude/agents/`
 - invoke it directly or let Claude auto-delegate
 - verify the tool restrictions and output shape match the file contract
 

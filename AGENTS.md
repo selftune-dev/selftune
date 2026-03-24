@@ -112,7 +112,7 @@ selftune/
 ├── skill/                   # Agent-facing selftune skill (self-contained)
 │   ├── SKILL.md             # Skill definition + routing
 │   ├── settings_snippet.json
-│   ├── agents/              # Specialized subagents (bundled, copied to ~/.claude/agents/ on init)
+│   ├── agents/              # Specialized subagents (bundled source of truth, synced to ~/.claude/agents/ on init)
 │   │   ├── diagnosis-analyst.md
 │   │   ├── evolution-reviewer.md
 │   │   ├── integration-guide.md
