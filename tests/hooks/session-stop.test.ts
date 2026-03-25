@@ -8,11 +8,7 @@ import {
   maybeSpawnReactiveOrchestrate,
   processSessionStop,
 } from "../../cli/selftune/hooks/session-stop.js";
-import {
-  _setTestDb,
-  getDb,
-  openDb,
-} from "../../cli/selftune/localdb/db.js";
+import { _setTestDb, getDb, openDb } from "../../cli/selftune/localdb/db.js";
 import { writeImprovementSignalToDb } from "../../cli/selftune/localdb/direct-write.js";
 
 let tmpDir: string;
