@@ -347,13 +347,13 @@ export function SkillHealthGrid({
     if (activeView === "attention") {
       filtered = cards.filter((c) => c.status === "CRITICAL" || c.status === "WARNING");
     } else if (activeView === "recent") {
-      filtered = cards
-        .filter((c) => c.lastSeen !== null)
-        .toSorted((a, b) => {
+      filtered = [...cards.filter((c) => c.lastSeen !== null)].sort(
+        (a: SkillCard, b: SkillCard) => {
           const aTime = a.lastSeen ? new Date(a.lastSeen).getTime() : 0;
           const bTime = b.lastSeen ? new Date(b.lastSeen).getTime() : 0;
           return bTime - aTime;
-        });
+        },
+      );
     } else if (activeView === "ungraded") {
       filtered = cards.filter((c) => c.status === "UNGRADED" || c.status === "UNKNOWN");
     }
