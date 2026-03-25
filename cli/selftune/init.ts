@@ -703,6 +703,7 @@ export async function cliMain(): Promise<void> {
     values["alpha-email"] ||
     values["alpha-name"]
   );
+  let existingConfigDetected = false;
   if (!force && !enableAutonomy && !hasAlphaMutation && existsSync(configPath)) {
     try {
       const raw = readFileSync(configPath, "utf-8");
@@ -714,6 +715,14 @@ export async function cliMain(): Promise<void> {
       console.error(
         `[WARN] Config at ${configPath} is corrupted: ${err instanceof Error ? err.message : String(err)}. Reinitializing...`,
       );
+    }
+  }
+  if (!force && !hasAlphaMutation && existsSync(configPath)) {
+    try {
+      JSON.parse(readFileSync(configPath, "utf-8")) as SelftuneConfig;
+      existingConfigDetected = true;
+    } catch {
+      existingConfigDetected = false;
     }
   }
 
@@ -735,6 +744,9 @@ export async function cliMain(): Promise<void> {
     safeConfig.alpha.api_key = "<redacted>";
   }
   console.log(JSON.stringify(safeConfig, null, 2));
+  if (existingConfigDetected) {
+    console.error("Already initialized. Use --force to reinitialize.");
+  }
 
   // Alpha enrollment output
   if (values.alpha) {
