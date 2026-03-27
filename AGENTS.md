@@ -138,6 +138,7 @@ See ARCHITECTURE.md for domain map, module layering, and dependency rules.
 | Skill Definition | skill/SKILL.md | Current |
 | Design Docs | docs/design-docs/index.md | Current |
 | Core Beliefs | docs/design-docs/core-beliefs.md | Current |
+| Live Dashboard SSE | docs/design-docs/live-dashboard-sse.md | Current |
 | Product Specs | docs/product-specs/index.md | Current |
 | Active Plans | docs/exec-plans/active/ | Current |
 | Completed Plans | docs/exec-plans/completed/ | Current |

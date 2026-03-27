@@ -44,7 +44,8 @@ flowchart LR
   Monitoring --> LocalDB
 
   LocalDB --> API[dashboard-server v2 API]
-  API --> SPA[apps/local-dashboard]
+  Logs -. fs.watch .-> API
+  API -. SSE push .-> SPA[apps/local-dashboard]
   API --> CLI[status / last / badge]
 ```
 
@@ -72,7 +73,7 @@ flowchart LR
 | Orchestrator | `cli/selftune/orchestrate.ts` | Autonomy-first sync -> candidate selection -> evolve -> watch loop | B |
 | Monitoring | `cli/selftune/monitoring/` | Post-deploy regression detection and rollback triggers | B |
 | Local DB | `cli/selftune/localdb/` | SQLite materialization and payload-oriented queries | B |
-| Dashboard | `cli/selftune/dashboard.ts`, `cli/selftune/dashboard-server.ts`, `apps/local-dashboard/` | Local SPA shell, v2 API, overview/report/status UI | B |
+| Dashboard | `cli/selftune/dashboard.ts`, `cli/selftune/dashboard-server.ts`, `apps/local-dashboard/` | Local SPA shell, v2 API with SSE live updates, overview/report/status UI | B |
 | Observability CLI | `cli/selftune/status.ts`, `cli/selftune/last.ts`, `cli/selftune/badge/` | Fast local readouts of health, recent activity, and badge state | B |
 | Contribute | `cli/selftune/contribute/` | Opt-in anonymized export for community signal pooling | C |
 | Skill | `skill/` | Agent-facing routing table, workflows, and references | B |
@@ -198,7 +199,7 @@ cli/selftune/
 ├── orchestrate.ts        Main autonomous loop
 ├── schedule.ts           Generic scheduler install/preview
 ├── dashboard.ts          Dashboard command entry point
-├── dashboard-server.ts   Bun.serve API + SPA shell
+├── dashboard-server.ts   Bun.serve API + SPA shell + SSE live updates
 ├── dashboard-contract.ts Shared overview/report/run-report payload types
 ├── constants.ts          Paths and log file constants
 ├── types.ts              Shared TypeScript interfaces
@@ -219,7 +220,7 @@ cli/selftune/
 apps/local-dashboard/
 ├── src/pages/            Overview, per-skill report, and system status routes
 ├── src/components/       Dashboard components
-├── src/hooks/            Data-fetch hooks against the v2 API
+├── src/hooks/            Data-fetch hooks + SSE live update hook
 └── src/types.ts          Frontend types from dashboard-contract.ts
 
 skill/
@@ -387,3 +388,4 @@ marked consumed so they don't affect subsequent runs.
 - [docs/integration-guide.md](docs/integration-guide.md)
 - [docs/design-docs/evolution-pipeline.md](docs/design-docs/evolution-pipeline.md)
 - [docs/design-docs/monitoring-pipeline.md](docs/design-docs/monitoring-pipeline.md)
+- [docs/design-docs/live-dashboard-sse.md](docs/design-docs/live-dashboard-sse.md)

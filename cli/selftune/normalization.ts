@@ -439,14 +439,30 @@ export interface InvocationClassification {
 
 /**
  * Classify how a skill was invoked.
+ *
+ * When `hook_invocation_type` is provided (from the skill-eval hook's
+ * classifyInvocationType), it takes precedence over the legacy heuristics:
+ *   - "explicit"   → user typed /skill (slash command)            → explicit,  confidence 1.0
+ *   - "implicit"   → user named the skill, Claude invoked it      → implicit,  confidence 0.85
+ *   - "inferred"   → Claude chose skill autonomously               → inferred,  confidence 0.6
+ *   - "contextual" → SKILL.md was read (Read tool, not Skill tool) → inferred,  confidence 0.5
  */
 export function deriveInvocationMode(opts: {
   has_skill_tool_call?: boolean;
   has_skill_md_read?: boolean;
   is_text_mention_only?: boolean;
   is_repaired?: boolean;
+  hook_invocation_type?: "explicit" | "implicit" | "inferred" | "contextual";
 }): InvocationClassification {
   if (opts.is_repaired) return { invocation_mode: "repaired", confidence: 0.9 };
+
+  // Prefer hook-level classification when available
+  if (opts.hook_invocation_type === "explicit") return { invocation_mode: "explicit", confidence: 1.0 };
+  if (opts.hook_invocation_type === "implicit") return { invocation_mode: "implicit", confidence: 0.85 };
+  if (opts.hook_invocation_type === "inferred") return { invocation_mode: "inferred", confidence: 0.6 };
+  if (opts.hook_invocation_type === "contextual") return { invocation_mode: "inferred", confidence: 0.5 };
+
+  // Legacy fallback for callers that don't pass hook_invocation_type
   if (opts.has_skill_tool_call) return { invocation_mode: "explicit", confidence: 1.0 };
   if (opts.has_skill_md_read) return { invocation_mode: "implicit", confidence: 0.7 };
   if (opts.is_text_mention_only) return { invocation_mode: "inferred", confidence: 0.4 };
@@ -613,6 +629,7 @@ export interface BuildSkillInvocationInput extends CanonicalBaseInput {
   confidence: number;
   tool_name?: string;
   tool_call_id?: string;
+  agent_type?: string;
 }
 
 export function buildCanonicalSkillInvocation(
@@ -636,6 +653,7 @@ export function buildCanonicalSkillInvocation(
   if (input.skill_version_hash !== undefined) record.skill_version_hash = input.skill_version_hash;
   if (input.tool_name !== undefined) record.tool_name = input.tool_name;
   if (input.tool_call_id !== undefined) record.tool_call_id = input.tool_call_id;
+  if (input.agent_type !== undefined) record.agent_type = input.agent_type;
 
   return record;
 }

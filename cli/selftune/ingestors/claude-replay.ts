@@ -233,7 +233,9 @@ export function buildCanonicalRecordsFromReplay(session: ParsedSession): Canonic
   records.push(
     buildCanonicalSession({
       ...baseInput,
-      started_at: session.timestamp,
+      started_at: session.metrics.started_at ?? session.timestamp,
+      ended_at: session.metrics.ended_at,
+      model: session.metrics.model,
     }),
   );
 

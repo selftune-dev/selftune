@@ -100,6 +100,57 @@ bun run lint:fix
 
 selftune intentionally has zero runtime dependencies. All functionality uses Bun built-ins. Do not add `dependencies` to `package.json`.
 
+## Local Data Management
+
+selftune's data pipeline: **hooks write JSONL → `selftune sync` normalizes → SQLite materializes → dashboard queries SQLite**. JSONL logs in `~/.claude/` are the source of truth; the SQLite DB at `~/.selftune/selftune.db` is a disposable cache.
+
+### Rebuilding the Dashboard Database
+
+When developing locally (especially after schema changes), the SQLite cache can become stale or incompatible. To rebuild:
+
+```bash
+rm ~/.selftune/selftune.db
+selftune sync --force
+```
+
+`--force` ignores per-source markers and rescans all JSONL logs from scratch. The next `selftune dashboard` will serve fresh data.
+
+### Linking Local Source for Testing
+
+The globally installed `selftune` runs from npm, not your working tree. To test local changes end-to-end (hooks, materialization, dashboard):
+
+```bash
+npm link                     # global selftune → your source tree
+# ... test ...
+npm install -g selftune@latest  # revert to published version
+```
+
+While linked, hooks in `~/.claude/settings.json` point through the symlink to your local code — changes take effect immediately.
+
+### Schema Change Checklist
+
+When modifying JSONL log schemas or adding new fields, update all of these to keep the pipeline consistent:
+
+| File | What to update |
+|------|---------------|
+| `cli/selftune/types.ts` | Add/modify the TypeScript interface |
+| `cli/selftune/constants.ts` | Add log path constant if new file |
+| `cli/selftune/localdb/schema.ts` | Add column to SQLite schema |
+| `cli/selftune/localdb/materialize.ts` | Map JSONL field → SQLite column |
+| `cli/selftune/normalization.ts` | Update canonical derivation if applicable |
+| `cli/selftune/dashboard-contract.ts` | Expose field to dashboard API |
+| `apps/local-dashboard/src/` | Consume field in UI components |
+| `skill/references/logs.md` | Document the field for agents |
+
+### Common Data Issues
+
+| Symptom | Fix |
+|---------|-----|
+| Dashboard shows stale data | `selftune sync --force` |
+| SQLite schema mismatch after code change | `rm ~/.selftune/selftune.db && selftune sync --force` |
+| Missing invocations after hook changes | Verify `~/.claude/settings.json` matchers, then `selftune doctor` |
+| Need to backfill from transcripts | `selftune ingest claude --force` |
+
 ## Questions?
 
 Open a [discussion](https://github.com/selftune-dev/selftune/discussions) or file an [issue](https://github.com/selftune-dev/selftune/issues).

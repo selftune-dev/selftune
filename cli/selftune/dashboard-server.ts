@@ -4,6 +4,7 @@
  *
  * Endpoints:
  *   GET  /                     — Serve dashboard SPA shell
+ *   GET  /api/v2/events        — SSE stream for live dashboard updates
  *   GET  /api/health           — Dashboard server health probe
  *   GET  /api/v2/doctor        — System health diagnostics (config, logs, hooks, evolution)
  *   GET  /api/v2/overview      — SQLite-backed overview payload
@@ -16,7 +17,7 @@
  */
 
 import type { Database } from "bun:sqlite";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, watch as fsWatch, type FSWatcher } from "node:fs";
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { BadgeData } from "./badge/badge-data.js";
 import { findSkillBadgeData } from "./badge/badge-data.js";
@@ -454,6 +455,9 @@ export async function startDashboardServer(
       // Continue serving; refreshV2Data will retry on demand.
     }
   }
+  // Throttle for polling-initiated materializations. SSE file watchers bypass
+  // this via refreshV2DataImmediate(). This TTL only limits how often a direct
+  // GET /api/v2/* request triggers re-materialization as a fallback.
   const V2_MATERIALIZE_TTL_MS = 15_000;
 
   function refreshV2Data(): void {
@@ -472,10 +476,83 @@ export async function startDashboardServer(
     }
   }
 
+  /** Force-refresh materialization (bypasses TTL) and notify SSE clients. */
+  function refreshV2DataImmediate(): void {
+    if (!db) return;
+    try {
+      materializeIncremental(db);
+      lastV2MaterializedAt = Date.now();
+      lastV2RefreshAttemptAt = Date.now();
+    } catch (error: unknown) {
+      console.error("Failed to refresh v2 dashboard data (immediate)", error);
+    }
+  }
+
+  // -- SSE (Server-Sent Events) live update layer -----------------------------
+  const sseClients = new Set<ReadableStreamDefaultController>();
+
+  function broadcastSSE(eventType: string): void {
+    const payload = `event: ${eventType}\ndata: ${JSON.stringify({ type: eventType, ts: Date.now() })}\n\n`;
+    for (const controller of sseClients) {
+      try {
+        controller.enqueue(new TextEncoder().encode(payload));
+      } catch {
+        // Client disconnected — will be cleaned up on close
+        sseClients.delete(controller);
+      }
+    }
+  }
+
+  // Keepalive: send SSE comment every 30s to prevent idle timeout disconnects
+  const SSE_KEEPALIVE_MS = 30_000;
+  const sseKeepaliveTimer = setInterval(() => {
+    for (const controller of sseClients) {
+      try {
+        controller.enqueue(new TextEncoder().encode(": keepalive\n\n"));
+      } catch {
+        sseClients.delete(controller);
+      }
+    }
+  }, SSE_KEEPALIVE_MS);
+
+  // -- File watchers on JSONL logs for push-based updates ---------------------
+  const WATCHED_LOGS = [
+    TELEMETRY_LOG,
+    QUERY_LOG,
+    EVOLUTION_AUDIT_LOG,
+  ];
+
+  // Debounce: coalesce rapid writes into a single refresh + broadcast
+  let fsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const FS_DEBOUNCE_MS = 500;
+
+  function onLogFileChange(): void {
+    if (fsDebounceTimer) return;
+    fsDebounceTimer = setTimeout(() => {
+      fsDebounceTimer = null;
+      refreshV2DataImmediate();
+      broadcastSSE("update");
+    }, FS_DEBOUNCE_MS);
+  }
+
+  const fileWatchers: FSWatcher[] = [];
+  for (const logPath of WATCHED_LOGS) {
+    if (existsSync(logPath)) {
+      try {
+        fileWatchers.push(fsWatch(logPath, onLogFileChange));
+      } catch {
+        // Non-fatal: fall back to polling if watch fails
+      }
+    }
+  }
+
   let cachedStatusResult: StatusResult | null = null;
   let lastStatusCacheRefreshAt = 0;
   let statusRefreshPromise: Promise<void> | null = null;
 
+  // Throttle for status computation (badge/report endpoints). SSE pushes
+  // handle dashboard freshness; this TTL limits redundant recomputation
+  // when multiple badge/report requests arrive in quick succession.
   const STATUS_CACHE_TTL_MS = 30_000;
 
   async function refreshStatusCache(force = false): Promise<void> {
@@ -508,6 +585,7 @@ export async function startDashboardServer(
   const server = Bun.serve({
     port,
     hostname,
+    idleTimeout: 255, // seconds — max allowed by Bun; needed for SSE long-lived connections
     async fetch(req) {
       const url = new URL(req.url);
 
@@ -527,6 +605,28 @@ export async function startDashboardServer(
           },
           { headers: corsHeaders() },
         );
+      }
+
+      // ---- GET /api/v2/events ---- SSE stream for live updates
+      if (url.pathname === "/api/v2/events" && req.method === "GET") {
+        const stream = new ReadableStream({
+          start(controller) {
+            sseClients.add(controller);
+            // Send initial heartbeat so the client knows it's connected
+            controller.enqueue(new TextEncoder().encode(": connected\n\n"));
+          },
+          cancel(controller) {
+            sseClients.delete(controller);
+          },
+        });
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+            ...corsHeaders(),
+          },
+        });
       }
 
       // ---- GET /api/v2/doctor ---- System health diagnostics
@@ -865,17 +965,36 @@ export async function startDashboardServer(
           run_count: selftuneRunCount,
         };
 
-        // 4. Skill invocations with confidence scores
+        // 4. Skill invocations — canonical preferred, raw as fallback for unnormalized entries
         const invocationsWithConfidence = db
           .query(
-            `SELECT si.occurred_at as timestamp, si.session_id, si.skill_name,
-                    si.invocation_mode, si.triggered, si.confidence, si.tool_name
-             FROM skill_invocations si
-             WHERE si.skill_name = ?
-             ORDER BY si.occurred_at DESC
+            `SELECT timestamp, session_id, skill_name, invocation_mode, triggered, confidence, tool_name, agent_type
+             FROM (
+               SELECT si.occurred_at as timestamp, si.session_id, si.skill_name,
+                      si.invocation_mode, si.triggered, si.confidence, si.tool_name,
+                      si.agent_type,
+                      1 as priority
+               FROM skill_invocations si
+               WHERE si.skill_name = ?
+               UNION ALL
+               SELECT su.timestamp, su.session_id, su.skill_name,
+                      NULL as invocation_mode, su.triggered, NULL as confidence, NULL as tool_name,
+                      NULL as agent_type,
+                      2 as priority
+               FROM skill_usage su
+               WHERE su.skill_name = ?
+                 AND NOT EXISTS (
+                   SELECT 1 FROM skill_invocations si2
+                   WHERE si2.session_id = su.session_id
+                     AND si2.skill_name = su.skill_name
+                 )
+             )
+             GROUP BY session_id, skill_name, timestamp
+             HAVING priority = MIN(priority)
+             ORDER BY timestamp DESC
              LIMIT 100`,
           )
-          .all(skillName) as Array<{
+          .all(skillName, skillName) as Array<{
           timestamp: string;
           session_id: string;
           skill_name: string;
@@ -883,6 +1002,7 @@ export async function startDashboardServer(
           triggered: number;
           confidence: number | null;
           tool_name: string | null;
+          agent_type: string | null;
         }>;
 
         // Not-found check — after all enrichment queries so evidence-only skills aren't 404'd
@@ -900,7 +1020,7 @@ export async function startDashboardServer(
           );
         }
 
-        // 5. Duration/error stats from execution_facts (session-level metrics)
+        // 5. Duration stats from execution_facts + missed trigger count
         const executionRow = db
           .query(
             `${skillSessionsCte}
@@ -908,7 +1028,6 @@ export async function startDashboardServer(
                COALESCE(AVG(ef.duration_ms), 0) AS avg_duration_ms,
                COALESCE(SUM(ef.duration_ms), 0) AS total_duration_ms,
                COUNT(ef.duration_ms) AS execution_count,
-               COALESCE(SUM(ef.errors_encountered), 0) AS total_errors,
                COALESCE(SUM(ef.input_tokens), 0) AS total_input_tokens,
                COALESCE(SUM(ef.output_tokens), 0) AS total_output_tokens
              FROM execution_facts ef
@@ -918,29 +1037,42 @@ export async function startDashboardServer(
           avg_duration_ms: number;
           total_duration_ms: number;
           execution_count: number;
-          total_errors: number;
           total_input_tokens: number;
           total_output_tokens: number;
         } | null;
 
-        // 6. Prompt texts from sessions that invoked this skill
+        // Missed triggers: checks where the skill was evaluated but did not fire
+        const missedRow = db
+          .query(
+            `SELECT COUNT(*) AS missed_triggers
+             FROM skill_usage
+             WHERE skill_name = ? AND triggered = 0`,
+          )
+          .get(skillName) as { missed_triggers: number } | null;
+
+        // 6. Prompt texts — prefer matched prompts (the prompt that invoked the skill),
+        //    fall back to all prompts from sessions that used the skill.
         const promptSamples = db
           .query(
             `${skillSessionsCte}
-             SELECT p.prompt_text, p.prompt_kind, p.is_actionable, p.occurred_at, p.session_id
+             SELECT p.prompt_text, p.prompt_kind, p.is_actionable, p.occurred_at, p.session_id,
+                    CASE WHEN si.matched_prompt_id IS NOT NULL THEN 1 ELSE 0 END AS is_matched
              FROM prompts p
+             LEFT JOIN skill_invocations si ON si.matched_prompt_id = p.prompt_id
+               AND si.skill_name = ?
              WHERE p.session_id IN (SELECT session_id FROM skill_sessions)
                AND p.prompt_text IS NOT NULL
                AND p.prompt_text != ''
-             ORDER BY p.occurred_at DESC
+             ORDER BY is_matched DESC, p.occurred_at DESC
              LIMIT 50`,
           )
-          .all(skillName) as Array<{
+          .all(skillName, skillName) as Array<{
           prompt_text: string;
           prompt_kind: string | null;
           is_actionable: number;
           occurred_at: string;
           session_id: string;
+          is_matched: number;
         }>;
 
         // 7. Session metadata for sessions that used this skill
@@ -983,7 +1115,7 @@ export async function startDashboardServer(
               avg_duration_ms: executionRow?.avg_duration_ms ?? 0,
               total_duration_ms: executionRow?.total_duration_ms ?? 0,
               execution_count: executionRow?.execution_count ?? 0,
-              total_errors: executionRow?.total_errors ?? 0,
+              missed_triggers: missedRow?.missed_triggers ?? 0,
             },
             selftune_stats: selftuneStats,
             prompt_samples: promptSamples.map((p) => ({
@@ -1030,12 +1162,19 @@ export async function startDashboardServer(
 
   // Graceful shutdown
   const shutdownHandler = () => {
+    for (const w of fileWatchers) w.close();
+    clearInterval(sseKeepaliveTimer);
+    for (const c of sseClients) {
+      try { c.close(); } catch { /* already closed */ }
+    }
+    sseClients.clear();
+    if (fsDebounceTimer) clearTimeout(fsDebounceTimer);
     db?.close();
     server.stop();
   };
 
-  process.on("SIGINT", shutdownHandler);
-  process.on("SIGTERM", shutdownHandler);
+  process.on("SIGINT", () => { shutdownHandler(); process.exit(0); });
+  process.on("SIGTERM", () => { shutdownHandler(); process.exit(0); });
 
   return {
     server,

@@ -119,10 +119,12 @@ execution mode, model selection, and key parameters.
 
 Each mutating workflow has a **Pre-Flight Configuration** step. Follow this pattern:
 
-1. Present a summary of what the command will do
-2. Show numbered options with `(recommended)` markers for suggested defaults
-3. Ask the user to pick options or say "use defaults" / "go with defaults"
+1. Present a brief summary of what the command will do
+2. Use the `AskUserQuestion` tool to present structured options (max 4 questions per call — split into multiple calls if needed). Mark recommended defaults in option text with `(recommended)`.
+3. Parse the user's selections from the tool response
 4. Show a confirmation summary of selected options before executing
+
+**IMPORTANT:** Always use `AskUserQuestion` for pre-flight — never present options as inline numbered text. The tool provides a structured UI that is easier for users to interact with. If `AskUserQuestion` is not available, fall back to inline numbered options.
 
 ### Model Tier Reference
 

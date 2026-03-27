@@ -68,6 +68,12 @@ if (command && command !== "--help" && command !== "-h") {
     .catch(() => {});
 }
 
+// Auto-update check (skip for hooks — they must be fast — and --help)
+if (command && command !== "hook" && command !== "--help" && command !== "-h") {
+  const { autoUpdate } = await import("./auto-update.js");
+  await autoUpdate();
+}
+
 if (!command) {
   // Show status by default — same as `selftune status`
   const { cliMain: statusMain } = await import("./status.js");

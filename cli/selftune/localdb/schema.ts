@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS skill_invocations (
   confidence          REAL,
   tool_name           TEXT,
   matched_prompt_id   TEXT,
+  agent_type          TEXT,
   FOREIGN KEY (session_id) REFERENCES sessions(session_id)
 )`;
 

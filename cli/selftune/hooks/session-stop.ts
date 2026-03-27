@@ -7,6 +7,7 @@
  * Appends one record per session to ~/.claude/session_telemetry_log.jsonl.
  */
 
+import { execSync } from "node:child_process";
 import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { CANONICAL_LOG, ORCHESTRATE_LOCK, SIGNAL_LOG, TELEMETRY_LOG } from "../constants.js";
 import {
@@ -129,9 +130,39 @@ export function processSessionStop(
   };
   const latestPrompt = getLatestPromptIdentity(sessionId, promptStatePath, canonicalLogPath);
 
+  // Extract git metadata from workspace (silent on failure)
+  let branch: string | undefined;
+  let repoRemote: string | undefined;
+  if (cwd) {
+    try {
+      branch = execSync("git rev-parse --abbrev-ref HEAD", {
+        cwd,
+        timeout: 3000,
+        stdio: ["ignore", "pipe", "ignore"],
+      })
+        .toString()
+        .trim() || undefined;
+    } catch { /* not a git repo or git not available */ }
+    try {
+      repoRemote = execSync("git remote get-url origin", {
+        cwd,
+        timeout: 3000,
+        stdio: ["ignore", "pipe", "ignore"],
+      })
+        .toString()
+        .trim() || undefined;
+    } catch { /* no remote configured */ }
+  }
+
   const canonicalSession = buildCanonicalSession({
     ...baseInput,
     workspace_path: cwd || undefined,
+    model: metrics.model,
+    started_at: metrics.started_at,
+    ended_at: metrics.ended_at ?? record.timestamp,
+    branch,
+    repo_remote: repoRemote,
+    agent_cli: "claude-code",
   });
 
   const canonicalFact = buildCanonicalExecutionFact({
