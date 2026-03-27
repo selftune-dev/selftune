@@ -380,13 +380,13 @@ marked consumed so they don't affect subsequent runs.
 
 | Artifact                                | Writer                                              | Reader                                                                                     |
 | --------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `~/.claude/session_telemetry_log.jsonl` | Legacy (no longer written)                          | Materializer recovery, export                                                              |
-| `~/.claude/skill_usage_log.jsonl`       | Legacy (no longer written)                          | Materializer recovery (deprecated — consolidated into `skill_invocations` table in SQLite) |
-| `~/.claude/skill_usage_repaired.jsonl`  | Legacy (no longer written)                          | Materializer recovery (deprecated — consolidated into `skill_invocations` table in SQLite) |
-| `~/.claude/all_queries_log.jsonl`       | Legacy (no longer written)                          | Materializer recovery, export                                                              |
-| `~/.claude/evolution_audit_log.jsonl`   | Legacy (no longer written)                          | Materializer recovery, export                                                              |
-| `~/.claude/orchestrate_runs.jsonl`      | Legacy (no longer written)                          | Materializer recovery, export                                                              |
-| `~/.claude/improvement_signals.jsonl`   | Legacy (no longer written)                          | Materializer recovery, export                                                              |
+| `~/.claude/session_telemetry_log.jsonl` | Legacy / export-only (`selftune export`)            | Materializer recovery, export                                                              |
+| `~/.claude/skill_usage_log.jsonl`       | Legacy / export-only (`selftune export`)            | Materializer recovery (deprecated — consolidated into `skill_invocations` table in SQLite) |
+| `~/.claude/skill_usage_repaired.jsonl`  | Legacy / export-only (`selftune export`)            | Materializer recovery (deprecated — consolidated into `skill_invocations` table in SQLite) |
+| `~/.claude/all_queries_log.jsonl`       | Legacy / export-only (`selftune export`)            | Materializer recovery, export                                                              |
+| `~/.claude/evolution_audit_log.jsonl`   | Legacy / export-only (`selftune export`)            | Materializer recovery, export                                                              |
+| `~/.claude/orchestrate_runs.jsonl`      | Legacy / export-only (`selftune export`)            | Materializer recovery, export                                                              |
+| `~/.claude/improvement_signals.jsonl`   | Legacy / export-only (`selftune export`)            | Materializer recovery, export                                                              |
 | `~/.claude/.orchestrate.lock`           | Orchestrator                                        | session-stop hook (staleness check)                                                        |
 | `~/.selftune/*.sqlite`                  | Hooks (direct-write), sync, materializer (backfill) | All reads: orchestrate, evolve, grade, status, dashboard                                   |
 

@@ -861,7 +861,10 @@ export async function orchestrate(
     // Step 2a: Auto-grade ungraded skills with sufficient data
     // -------------------------------------------------------------------------
     let autoGradedCount = 0;
-    const ungradedWithData = statusResult.skills.filter(
+    const scopedSkills = options.skillFilter
+      ? statusResult.skills.filter((s) => s.name === options.skillFilter)
+      : statusResult.skills;
+    const ungradedWithData = scopedSkills.filter(
       (s) => s.status === "UNGRADED" && (s.snapshot?.skill_checks ?? 0) > 0,
     );
 
@@ -872,7 +875,7 @@ export async function orchestrate(
           `[orchestrate] Auto-grading ${Math.min(ungradedWithData.length, options.maxAutoGrade)} ungraded skill(s)...`,
         );
         autoGradedCount = await autoGradeTopUngraded(
-          statusResult.skills,
+          scopedSkills,
           options.maxAutoGrade,
           gradeAgent,
           { readTelemetry: _readTelemetry, readSkillRecords: _readSkillRecords },
@@ -1243,7 +1246,9 @@ Examples:
 
   const maxAutoGrade = Number.parseInt(values["max-auto-grade"] ?? "5", 10);
   if (Number.isNaN(maxAutoGrade) || maxAutoGrade < 0) {
-    console.error("[ERROR] --max-auto-grade must be a non-negative integer");
+    console.error(
+      "[ERROR] --max-auto-grade must be a non-negative integer. Retry with: selftune orchestrate --max-auto-grade 5",
+    );
     process.exit(1);
   }
 
