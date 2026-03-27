@@ -16,7 +16,6 @@ import { appendAuditEntry, readAuditTrail } from "../../cli/selftune/evolution/a
 import { replaceDescription } from "../../cli/selftune/evolution/deploy-proposal.js";
 import { extractFailurePatterns } from "../../cli/selftune/evolution/extract-patterns.js";
 import { rollback } from "../../cli/selftune/evolution/rollback.js";
-import type { ValidationResult } from "../../cli/selftune/evolution/validate-proposal.js";
 import { _setTestDb, openDb } from "../../cli/selftune/localdb/db.js";
 import type {
   EvalEntry,
@@ -65,19 +64,6 @@ function makeProposal(overrides: Partial<EvolutionProposal> = {}): EvolutionProp
     confidence: 0.85,
     created_at: "2026-02-28T12:00:00Z",
     status: "validated",
-    ...overrides,
-  };
-}
-
-function makeValidation(overrides: Partial<ValidationResult> = {}): ValidationResult {
-  return {
-    proposal_id: "evo-integ-001",
-    before_pass_rate: 0.7,
-    after_pass_rate: 0.9,
-    improved: true,
-    regressions: [],
-    new_passes: [{ query: "generate a template", should_trigger: true }],
-    net_change: 0.2,
     ...overrides,
   };
 }
