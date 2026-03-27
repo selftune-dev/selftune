@@ -316,7 +316,7 @@ Imports external evaluation tasks from the SkillsBench corpus:
 | `evolution/propose-description.ts` | LLM-based description improvement (single + multi-candidate)                     |
 | `evolution/validate-proposal.ts`   | Before/after eval set validation (with cached mode)                              |
 | `evolution/pareto.ts`              | Pareto frontier computation, candidate selection, token efficiency               |
-| `evolution/deploy-proposal.ts`     | SKILL.md update, backup, description replacement, section parsing                |
+| `evolution/deploy-proposal.ts`     | SKILL.md description replacement, section parsing, body replacement              |
 | `evolution/evolve.ts`              | Description orchestrator with retry loop (standard + Pareto paths)               |
 | `evolution/propose-routing.ts`     | LLM-based routing table proposal generation                                      |
 | `evolution/validate-routing.ts`    | Routing table structural + trigger validation                                    |

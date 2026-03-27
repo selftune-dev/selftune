@@ -5,6 +5,8 @@
  * Extracts name, description, and version without a YAML library.
  */
 
+import { replaceDescription } from "../evolution/deploy-proposal.js";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -146,7 +148,8 @@ export function parseFrontmatter(content: string): SkillFrontmatter {
 export function replaceFrontmatterDescription(content: string, newDescription: string): string {
   const lines = content.split("\n");
 
-  if (lines[0]?.trim() !== "---") return content;
+  // No frontmatter — fall back to markdown heading-based replacement
+  if (lines[0]?.trim() !== "---") return replaceDescription(content, newDescription);
 
   let endIdx = -1;
   for (let i = 1; i < lines.length; i++) {
@@ -155,7 +158,7 @@ export function replaceFrontmatterDescription(content: string, newDescription: s
       break;
     }
   }
-  if (endIdx < 0) return content;
+  if (endIdx < 0) return replaceDescription(content, newDescription);
 
   // Find and replace the description within frontmatter lines
   const yamlLines = lines.slice(1, endIdx);

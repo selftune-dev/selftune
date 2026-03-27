@@ -216,12 +216,14 @@ description: Short
     expect(result).toContain("audit SEO issues");
   });
 
-  test("preserves content when no frontmatter exists", () => {
+  test("falls back to markdown replacement when no frontmatter exists", () => {
     const content = `# No Frontmatter
 
 Just body.`;
     const result = replaceFrontmatterDescription(content, "New desc");
-    expect(result).toBe(content);
+    expect(result).toContain("# No Frontmatter");
+    expect(result).toContain("New desc");
+    expect(result).not.toContain("Just body.");
   });
 
   test("round-trips: parse after replace returns new description", () => {
