@@ -52,7 +52,7 @@ describe("publish dependency protocol", () => {
   });
 
   test("prepack rewrite produces file: protocol in package.json", () => {
-    execSync("node scripts/publish-package-json.cjs prepare", { cwd: ROOT });
+    execSync("node scripts/publish-package-json.cjs prepare", { cwd: ROOT, stdio: "pipe" });
     try {
       const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf-8"));
       const spec = pkg.dependencies?.["@selftune/telemetry-contract"];
@@ -62,7 +62,7 @@ describe("publish dependency protocol", () => {
         );
       }
     } finally {
-      execSync("node scripts/publish-package-json.cjs restore", { cwd: ROOT });
+      execSync("node scripts/publish-package-json.cjs restore", { cwd: ROOT, stdio: "pipe" });
     }
   });
 });
