@@ -5,7 +5,7 @@
     "": {
       "name": "selftune",
       "dependencies": {
-        "@selftune/telemetry-contract": "workspace:*",
+        "@selftune/telemetry-contract": "file:packages/telemetry-contract",
       },
       "devDependencies": {
         "@types/bun": "^1.1.0",
@@ -42,7 +42,6 @@
         "zod": "^4.3.6",
       },
       "devDependencies": {
-        "@selftune/telemetry-contract": "workspace:*",
         "@tailwindcss/vite": "^4.2.1",
         "@types/react": "^19.1.6",
         "@types/react-dom": "^19.1.6",
@@ -53,13 +52,6 @@
         "typescript": "^5.8.3",
         "vite": "^8.0.1",
         "vitest": "^4.1.0",
-      },
-    },
-    "packages/telemetry-contract": {
-      "name": "@selftune/telemetry-contract",
-      "version": "1.0.0",
-      "dependencies": {
-        "zod": "^4.3.6",
       },
     },
     "packages/ui": {
@@ -387,7 +379,7 @@
 
     "@selftune/local-dashboard": ["@selftune/local-dashboard@workspace:apps/local-dashboard"],
 
-    "@selftune/telemetry-contract": ["@selftune/telemetry-contract@workspace:packages/telemetry-contract"],
+    "@selftune/telemetry-contract": ["@selftune/telemetry-contract@file:packages/telemetry-contract", { "dependencies": { "zod": "^4.3.6" } }],
 
     "@selftune/ui": ["@selftune/ui@workspace:packages/ui"],
 
