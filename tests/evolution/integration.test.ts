@@ -233,7 +233,6 @@ describe("integration: deploy proposal writes SKILL.md correctly", () => {
       proposal,
       validation,
       skillPath,
-      createPr: false,
     });
 
     // Verify: backup created
@@ -282,7 +281,6 @@ describe("integration: deploy then rollback restores original SKILL.md", () => {
       proposal,
       validation,
       skillPath,
-      createPr: false,
     });
 
     // Verify deploy happened
@@ -338,7 +336,6 @@ describe("integration: deploy then rollback restores original SKILL.md", () => {
       proposal: proposal1,
       validation: makeValidation({ proposal_id: "evo-cycle-001" }),
       skillPath,
-      createPr: false,
     });
 
     appendAuditEntry({
@@ -361,7 +358,6 @@ describe("integration: deploy then rollback restores original SKILL.md", () => {
       proposal: proposal2,
       validation: makeValidation({ proposal_id: "evo-cycle-002" }),
       skillPath,
-      createPr: false,
     });
 
     appendAuditEntry({
@@ -472,7 +468,6 @@ describe("integration: description replacement preserves markdown structure", ()
       proposal,
       validation: makeValidation(),
       skillPath,
-      createPr: false,
     });
 
     const content = readFileSync(skillPath, "utf-8");

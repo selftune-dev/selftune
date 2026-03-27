@@ -2,11 +2,10 @@
  * Tests for evolution deploy-proposal (TASK-14).
  *
  * Verifies SKILL.md reading, description replacement, commit message
- * building, and the full deployProposal pipeline including backup,
- * branch creation, and PR generation.
+ * building, and the full deployProposal pipeline including backup.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -224,7 +223,6 @@ describe("deployProposal - backup", () => {
       proposal: makeProposal(),
       validation: makeValidation(),
       skillPath,
-      createPr: false,
     });
 
     expect(result.backupPath).not.toBeNull();
@@ -241,7 +239,6 @@ describe("deployProposal - backup", () => {
       proposal: makeProposal(),
       validation: makeValidation(),
       skillPath,
-      createPr: false,
     });
 
     expect(result.backupPath).toMatch(/\.bak$/);
@@ -265,7 +262,6 @@ describe("deployProposal - SKILL.md update", () => {
       proposal,
       validation: makeValidation(),
       skillPath,
-      createPr: false,
     });
 
     const updated = readFileSync(skillPath, "utf-8");
@@ -281,7 +277,6 @@ describe("deployProposal - SKILL.md update", () => {
       proposal: makeProposal(),
       validation: makeValidation(),
       skillPath,
-      createPr: false,
     });
 
     expect(result.skillMdUpdated).toBe(true);
@@ -301,87 +296,10 @@ describe("deployProposal - commit message", () => {
       proposal: makeProposal({ skill_name: "router" }),
       validation: makeValidation({ before_pass_rate: 0.6, after_pass_rate: 0.8, net_change: 0.2 }),
       skillPath,
-      createPr: false,
     });
 
     expect(result.commitMessage).toMatch(/^evolve\(router\):/);
     expect(result.commitMessage).toContain("+20%");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// deployProposal - no PR mode
-// ---------------------------------------------------------------------------
-
-describe("deployProposal - no PR mode", () => {
-  test("branchName is null when createPr is false", async () => {
-    const skillPath = join(tmpDir, "SKILL.md");
-    writeFileSync(skillPath, SAMPLE_SKILL_MD, "utf-8");
-
-    const result = await deployProposal({
-      proposal: makeProposal(),
-      validation: makeValidation(),
-      skillPath,
-      createPr: false,
-    });
-
-    expect(result.branchName).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// deployProposal - PR mode (mocked git/gh)
-// ---------------------------------------------------------------------------
-
-describe("deployProposal - PR mode", () => {
-  // Mock Bun.spawn so git/gh commands don't actually run (and don't switch branches)
-  const originalSpawn = Bun.spawn;
-  beforeEach(() => {
-    // @ts-expect-error — replacing Bun.spawn with a mock
-    Bun.spawn = mock((_args: string[]) => ({
-      stdout: new ReadableStream({ start(c) { c.close(); } }),
-      stderr: new ReadableStream({ start(c) { c.close(); } }),
-      exited: Promise.resolve(0),
-      kill() {},
-    }));
-  });
-  afterEach(() => {
-    Bun.spawn = originalSpawn;
-  });
-
-  test("generates a branch name with the default prefix", async () => {
-    const skillPath = join(tmpDir, "SKILL.md");
-    writeFileSync(skillPath, SAMPLE_SKILL_MD, "utf-8");
-
-    const result = await deployProposal({
-      proposal: makeProposal({ skill_name: "test-skill" }),
-      validation: makeValidation(),
-      skillPath,
-      createPr: true,
-    });
-
-    // Branch name should use the default prefix
-    expect(result.branchName).not.toBeNull();
-    const branch = result.branchName ?? "";
-    expect(branch.startsWith("selftune/evolve")).toBe(true);
-    expect(branch).toContain("test-skill");
-  });
-
-  test("uses custom branchPrefix when provided", async () => {
-    const skillPath = join(tmpDir, "SKILL.md");
-    writeFileSync(skillPath, SAMPLE_SKILL_MD, "utf-8");
-
-    const result = await deployProposal({
-      proposal: makeProposal({ skill_name: "router" }),
-      validation: makeValidation(),
-      skillPath,
-      createPr: true,
-      branchPrefix: "custom/prefix",
-    });
-
-    const branch = result.branchName ?? "";
-    expect(branch.startsWith("custom/prefix")).toBe(true);
-    expect(branch).toContain("router");
   });
 });
 

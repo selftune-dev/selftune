@@ -1,9 +1,14 @@
 /**
  * deploy-proposal.ts
  *
- * Deploys a validated evolution proposal by updating SKILL.md, creating a
- * backup, building a commit message with metrics, and optionally creating
- * a git branch and PR via `gh pr create`.
+ * Deploys a validated evolution proposal by updating SKILL.md locally:
+ * creating a backup, replacing the description, and building a commit message.
+ *
+ * Evolution is a local personalization — the evolved description reflects how
+ * *this user* works, not a change the skill creator should adopt. A future
+ * upstream feedback channel (anonymized patterns, not raw descriptions) may
+ * let end-users send useful signal back to skill creators, but that's a
+ * separate concern from deploy. See TD-019 in tech-debt-tracker.md.
  */
 
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -19,14 +24,11 @@ export interface DeployOptions {
   proposal: EvolutionProposal;
   validation: ValidationResult;
   skillPath: string;
-  createPr: boolean;
-  branchPrefix?: string; // default "selftune/evolve"
 }
 
 export interface DeployResult {
   skillMdUpdated: boolean;
   backupPath: string | null;
-  branchName: string | null;
   commitMessage: string;
 }
 
@@ -252,71 +254,12 @@ export function buildCommitMessage(
 }
 
 // ---------------------------------------------------------------------------
-// Git/GH operations (PR creation)
-// ---------------------------------------------------------------------------
-
-/** Sanitize a string for use in a git branch name. */
-function sanitizeForGitRef(name: string): string {
-  return name
-    .replace(/[^a-zA-Z0-9._-]/g, "-")
-    .replace(/\.{2,}/g, ".")
-    .replace(/^[.-]|[.-]$/g, "")
-    .replace(/-{2,}/g, "-");
-}
-
-/** Generate a branch name from the prefix and skill name. */
-function makeBranchName(prefix: string, skillName: string): string {
-  const timestamp = Date.now();
-  const safeName = sanitizeForGitRef(skillName) || "untitled";
-  return `${prefix}/${safeName}-${timestamp}`;
-}
-
-/**
- * Run a git/gh command via Bun.spawn. Returns stdout on success.
- * Throws on non-zero exit code or if the command exceeds timeoutMs.
- */
-async function runCommand(args: string[], cwd?: string, timeoutMs = 30_000): Promise<string> {
-  const proc = Bun.spawn(args, {
-    cwd,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    proc.kill();
-  }, timeoutMs);
-
-  try {
-    // Read stdout and stderr concurrently to avoid deadlock when both pipes fill.
-    const [stdout, stderr] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ]);
-    const exitCode = await proc.exited;
-
-    if (timedOut) {
-      throw new Error(`Command timed out after ${timeoutMs}ms: ${args.join(" ")}`);
-    }
-
-    if (exitCode !== 0) {
-      throw new Error(`Command failed (exit ${exitCode}): ${args.join(" ")}\n${stderr}`);
-    }
-
-    return stdout.trim();
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Main deploy function
 // ---------------------------------------------------------------------------
 
-/** Deploy a validated evolution proposal to SKILL.md and optionally create a PR. */
+/** Deploy a validated evolution proposal to the local SKILL.md. */
 export async function deployProposal(options: DeployOptions): Promise<DeployResult> {
-  const { proposal, validation, skillPath, createPr, branchPrefix = "selftune/evolve" } = options;
+  const { proposal, validation, skillPath } = options;
 
   // Step 1: Read current SKILL.md
   const currentContent = readSkillMd(skillPath);
@@ -333,46 +276,9 @@ export async function deployProposal(options: DeployOptions): Promise<DeployResu
   // Step 4: Build commit message
   const commitMessage = buildCommitMessage(proposal, validation);
 
-  // Step 5: Optionally create branch and PR
-  let branchName: string | null = null;
-
-  if (createPr) {
-    branchName = makeBranchName(branchPrefix, proposal.skill_name);
-
-    try {
-      // Create and checkout branch
-      await runCommand(["git", "checkout", "-b", branchName]);
-
-      // Stage the SKILL.md
-      await runCommand(["git", "add", skillPath]);
-
-      // Commit
-      await runCommand(["git", "commit", "-m", commitMessage]);
-
-      // Push
-      await runCommand(["git", "push", "-u", "origin", branchName]);
-
-      // Create PR
-      await runCommand([
-        "gh",
-        "pr",
-        "create",
-        "--title",
-        commitMessage,
-        "--body",
-        `Proposal: ${proposal.proposal_id}\nRationale: ${proposal.rationale}\nNet change: ${validation.net_change > 0 ? "+" : ""}${Math.round(validation.net_change * 100)}%`,
-      ]);
-    } catch (err) {
-      // Git/GH operations are best-effort in test environments.
-      // The branch name is still returned for tracking.
-      console.error(`[WARN] Git/GH operation failed: ${err instanceof Error ? err.message : err}`);
-    }
-  }
-
   return {
     skillMdUpdated: true,
     backupPath,
-    branchName,
     commitMessage,
   };
 }

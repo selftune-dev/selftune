@@ -12,7 +12,7 @@ Track known technical debt with priority and ownership.
 | TD-004 | Tests for grade-session.ts                                                                                                                                               | Grading   | Medium   | —     | Closed | 2026-02-28 | 2026-02-28 |
 | TD-005 | Implement v0.3 Evolution module                                                                                                                                          | Evolution | Low      | —     | Closed | 2026-02-28 | 2026-02-28 |
 | TD-006 | Migrate Python to Bun/TypeScript                                                                                                                                         | Infra     | High     | —     | Closed | 2026-02-28 | 2026-02-28 |
-| TD-007 | Wire deployProposal into evolve orchestrator. Note: module implementation (`deploy-proposal.ts`) is complete with tests, but is not yet imported/wired into `evolve.ts`. | Evolution | Medium   | —     | Open   | 2026-02-28 | 2026-03-02 |
+| TD-007 | Wire deployProposal into evolve orchestrator. Resolved: git/gh PR path removed — evolution is local personalization, not upstream contribution. `evolve.ts` writes SKILL.md directly. | Evolution | Medium   | —     | Closed | 2026-02-28 | 2026-03-27 |
 | TD-008 | End-to-end integration test with real LLM call                                                                                                                           | Evolution | Low      | —     | Open   | 2026-02-28 | 2026-02-28 |
 | TD-009 | Add evolution/monitoring to lint-architecture.ts import rules                                                                                                            | Infra     | Medium   | —     | Closed | 2026-02-28 | 2026-02-28 |
 | TD-010 | `cli/selftune/utils/logging.ts` has no test file — violates golden-principles testing rule                                                                               | Testing   | Medium   | —     | Open   | 2026-03-01 | 2026-03-01 |
@@ -24,6 +24,7 @@ Track known technical debt with priority and ownership.
 | TD-016 | Wire SPA action buttons (watch/evolve/rollback) to `/api/actions/*` endpoints                                                                                            | Dashboard | Medium   | —     | Open   | 2026-03-17 | 2026-03-17 |
 | TD-017 | `readJsonl` fallback still exists in some modules for test paths — should migrate tests to use `_setTestDb()` injection pattern                                          | Testing   | Medium   | —     | Open   | 2026-03-17 | 2026-03-17 |
 | TD-018 | `contribute/bundle.ts` still has JSONL fallback for custom paths — should use SQLite exclusively                                                                         | Data      | Medium   | —     | Open   | 2026-03-17 | 2026-03-17 |
+| TD-019 | Upstream feedback channel: let skill end-users send anonymized evolution signal (e.g. failure patterns, trigger gaps) back to skill creators without leaking personalized descriptions | Evolution | Low      | —     | Open   | 2026-03-27 | 2026-03-27 |
 
 ## Priority Definitions
 
