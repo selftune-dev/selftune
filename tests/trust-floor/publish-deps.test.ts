@@ -21,9 +21,16 @@ describe("publishable dependency protocols", () => {
     const deps = pkg.dependencies ?? {};
 
     for (const [name, spec] of Object.entries(deps)) {
-      expect(
-        (spec as string).startsWith("workspace:"),
-      ).toBe(false);
+      if (typeof spec !== "string") {
+        throw new Error(
+          `Invalid dependencies.${name}: expected string spec. Next: bun test tests/trust-floor/publish-deps.test.ts`,
+        );
+      }
+      if (spec.startsWith("workspace:")) {
+        throw new Error(
+          `Disallowed protocol in dependencies.${name}=${spec}. Use file:... Next: bun test tests/trust-floor/publish-deps.test.ts`,
+        );
+      }
     }
   });
 
@@ -31,7 +38,10 @@ describe("publishable dependency protocols", () => {
     const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf-8"));
     const spec = pkg.dependencies?.["@selftune/telemetry-contract"];
 
-    expect(spec).toBeDefined();
-    expect(spec).toStartWith("file:");
+    if (typeof spec !== "string" || !spec.startsWith("file:")) {
+      throw new Error(
+        `dependencies.@selftune/telemetry-contract must start with file:. Got: ${spec}. Next: bun test tests/trust-floor/publish-deps.test.ts`,
+      );
+    }
   });
 });
