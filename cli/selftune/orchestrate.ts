@@ -54,13 +54,13 @@ import type {
   SkillUsageRecord,
 } from "./types.js";
 import { detectAgent } from "./utils/llm-call.js";
-import { readExcerpt } from "./utils/transcript.js";
 import { getSelftuneVersion, readConfiguredAgentType } from "./utils/selftune-meta.js";
 import {
   findInstalledSkillPath,
   findRepositoryClaudeSkillDirs,
   findRepositorySkillDirs,
 } from "./utils/skill-discovery.js";
+import { readExcerpt } from "./utils/transcript.js";
 
 // ---------------------------------------------------------------------------
 // Lockfile management
@@ -718,7 +718,9 @@ export async function autoGradeTopUngraded(
       graded++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`  [auto-grade] ${skill.name}: error — ${msg}. Retry with: selftune grade ${skill.name}`);
+      console.error(
+        `  [auto-grade] ${skill.name}: error — ${msg}. Retry with: selftune grade ${skill.name}`,
+      );
       // fail-open: continue to next skill
     }
   }

@@ -387,11 +387,11 @@ export function getLatestPromptIdentity(
   };
 }
 
-export function appendCanonicalRecord(record: CanonicalRecord, logPath?: string): void {
+export function appendCanonicalRecord(record: CanonicalRecord, _logPath?: string): void {
   writeCanonicalToDb(record);
 }
 
-export function appendCanonicalRecords(records: CanonicalRecord[], logPath?: string): void {
+export function appendCanonicalRecords(records: CanonicalRecord[], _logPath?: string): void {
   writeCanonicalBatchToDb(records);
 }
 

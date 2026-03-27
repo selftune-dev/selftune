@@ -51,11 +51,7 @@ function seedSkill(record: {
   } as SkillInvocationWriteInput);
 }
 
-function seedQuery(record: {
-  timestamp: string;
-  session_id: string;
-  query: string;
-}): void {
+function seedQuery(record: { timestamp: string; session_id: string; query: string }): void {
   writeQueryToDb(record);
 }
 

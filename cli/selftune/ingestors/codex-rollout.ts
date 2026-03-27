@@ -28,6 +28,11 @@ import { parseArgs } from "node:util";
 
 import { CANONICAL_LOG, QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
 import {
+  writeQueryToDb,
+  writeSessionTelemetryToDb,
+  writeSkillUsageToDb,
+} from "../localdb/direct-write.js";
+import {
   appendCanonicalRecords,
   buildCanonicalExecutionFact,
   buildCanonicalPrompt,
@@ -44,11 +49,6 @@ import type {
   SessionTelemetryRecord,
   SkillUsageRecord,
 } from "../types.js";
-import {
-  writeQueryToDb,
-  writeSessionTelemetryToDb,
-  writeSkillUsageToDb,
-} from "../localdb/direct-write.js";
 import { loadMarker, saveMarker } from "../utils/jsonl.js";
 import { extractActionableQueryText } from "../utils/query-filter.js";
 import {

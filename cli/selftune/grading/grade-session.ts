@@ -28,7 +28,6 @@ import type {
   SessionTelemetryRecord,
   SkillUsageRecord,
 } from "../types.js";
-
 import {
   detectAgent as _detectAgent,
   stripMarkdownFences as _stripMarkdownFences,

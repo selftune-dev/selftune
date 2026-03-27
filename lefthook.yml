@@ -1,0 +1,12 @@
+# lefthook — pre-commit lint gate
+# Install: npx lefthook install (runs automatically via package.json prepare script)
+
+pre-commit:
+  parallel: true
+  commands:
+    oxlint:
+      run: bunx oxlint --quiet
+    oxfmt:
+      run: bunx oxfmt --check
+    lint-arch:
+      run: bun run lint-architecture.ts

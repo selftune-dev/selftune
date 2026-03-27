@@ -22,6 +22,11 @@ import { join } from "node:path";
 
 import { CANONICAL_LOG, QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
 import {
+  writeQueryToDb,
+  writeSessionTelemetryToDb,
+  writeSkillUsageToDb,
+} from "../localdb/direct-write.js";
+import {
   appendCanonicalRecords,
   buildCanonicalExecutionFact,
   buildCanonicalPrompt,
@@ -38,11 +43,6 @@ import type {
   SessionTelemetryRecord,
   SkillUsageRecord,
 } from "../types.js";
-import {
-  writeQueryToDb,
-  writeSessionTelemetryToDb,
-  writeSkillUsageToDb,
-} from "../localdb/direct-write.js";
 import {
   classifySkillPath,
   containsWholeSkillMention,
@@ -245,7 +245,7 @@ export function parseJsonlStream(lines: string[], skillNames: Set<string>): Pars
 }
 
 /** Append the user prompt to all_queries_log.jsonl. */
-export function logQuery(prompt: string, sessionId: string, logPath: string = QUERY_LOG): void {
+export function logQuery(prompt: string, sessionId: string, _logPath: string = QUERY_LOG): void {
   if (!prompt || prompt.length < 4) return;
   const record: QueryLogRecord = {
     timestamp: new Date().toISOString(),
@@ -262,7 +262,7 @@ export function logTelemetry(
   prompt: string,
   sessionId: string,
   cwd: string,
-  logPath: string = TELEMETRY_LOG,
+  _logPath: string = TELEMETRY_LOG,
 ): void {
   const record: SessionTelemetryRecord = {
     timestamp: new Date().toISOString(),

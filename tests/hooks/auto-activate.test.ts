@@ -176,10 +176,26 @@ describe("default activation rules", () => {
     expect(rule).toBeDefined();
 
     // Seed SQLite with 4 queries for this session
-    writeQueryToDb({ timestamp: "2025-01-01T00:00:00Z", session_id: "sess-default", query: "query 1" });
-    writeQueryToDb({ timestamp: "2025-01-01T00:01:00Z", session_id: "sess-default", query: "query 2" });
-    writeQueryToDb({ timestamp: "2025-01-01T00:02:00Z", session_id: "sess-default", query: "query 3" });
-    writeQueryToDb({ timestamp: "2025-01-01T00:03:00Z", session_id: "sess-default", query: "query 4" });
+    writeQueryToDb({
+      timestamp: "2025-01-01T00:00:00Z",
+      session_id: "sess-default",
+      query: "query 1",
+    });
+    writeQueryToDb({
+      timestamp: "2025-01-01T00:01:00Z",
+      session_id: "sess-default",
+      query: "query 2",
+    });
+    writeQueryToDb({
+      timestamp: "2025-01-01T00:02:00Z",
+      session_id: "sess-default",
+      query: "query 3",
+    });
+    writeQueryToDb({
+      timestamp: "2025-01-01T00:03:00Z",
+      session_id: "sess-default",
+      query: "query 4",
+    });
 
     // Seed SQLite with only 1 matched skill usage for this session
     writeSkillCheckToDb({

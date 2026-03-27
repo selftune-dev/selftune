@@ -35,6 +35,11 @@ import {
   TELEMETRY_LOG,
 } from "../constants.js";
 import {
+  writeQueryToDb,
+  writeSessionTelemetryToDb,
+  writeSkillUsageToDb,
+} from "../localdb/direct-write.js";
+import {
   appendCanonicalRecords,
   buildCanonicalExecutionFact,
   buildCanonicalPrompt,
@@ -46,11 +51,6 @@ import {
   deriveSkillInvocationId,
 } from "../normalization.js";
 import type { CanonicalRecord, QueryLogRecord, SkillUsageRecord } from "../types.js";
-import {
-  writeQueryToDb,
-  writeSessionTelemetryToDb,
-  writeSkillUsageToDb,
-} from "../localdb/direct-write.js";
 import { loadMarker, saveMarker } from "../utils/jsonl.js";
 
 export interface SessionFile {

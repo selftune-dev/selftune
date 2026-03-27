@@ -194,18 +194,14 @@ export function assembleBundle(options: {
   telemetryLogPath?: string;
   evolutionAuditLogPath?: string;
 }): ContributionBundle {
-  const {
-    skillName,
-    since,
-    sanitizationLevel,
-  } = options;
+  const { skillName, since, sanitizationLevel } = options;
 
   const db = getDb();
   const allSkillRecords = querySkillUsageRecords(db) as SkillUsageRecord[];
   const allQueryRecords = queryQueryLog(db) as QueryLogRecord[];
   const allTelemetryRecords = querySessionTelemetry(db) as SessionTelemetryRecord[];
   // queryEvolutionAudit returns DESC order; reverse to ASC for chronological processing
-  const allEvolutionRecords = (queryEvolutionAudit(db) as EvolutionAuditEntry[]).reverse();
+  const allEvolutionRecords = (queryEvolutionAudit(db) as EvolutionAuditEntry[]).toReversed();
 
   // Filter by skill and since
   const skillRecords = filterSince(

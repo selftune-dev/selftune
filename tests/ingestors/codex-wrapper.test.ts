@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -200,18 +200,14 @@ describe("logQuery", () => {
   test("skips short prompts", () => {
     logQuery("hi", "session-1");
     const db = getDb();
-    const count = (
-      db.query("SELECT COUNT(*) as cnt FROM queries").get() as { cnt: number }
-    ).cnt;
+    const count = (db.query("SELECT COUNT(*) as cnt FROM queries").get() as { cnt: number }).cnt;
     expect(count).toBe(0);
   });
 
   test("skips empty prompts", () => {
     logQuery("", "session-1");
     const db = getDb();
-    const count = (
-      db.query("SELECT COUNT(*) as cnt FROM queries").get() as { cnt: number }
-    ).cnt;
+    const count = (db.query("SELECT COUNT(*) as cnt FROM queries").get() as { cnt: number }).cnt;
     expect(count).toBe(0);
   });
 });

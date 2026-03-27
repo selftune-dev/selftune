@@ -22,7 +22,6 @@ import {
 } from "../normalization.js";
 import type { ImprovementSignalRecord, PromptSubmitPayload, QueryLogRecord } from "../types.js";
 
-
 // ---------------------------------------------------------------------------
 // Installed skill name cache
 // ---------------------------------------------------------------------------

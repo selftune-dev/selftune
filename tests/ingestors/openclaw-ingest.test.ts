@@ -535,9 +535,8 @@ describe("writeSession", () => {
 
     // Query should NOT be written to SQLite (query too short)
     const db = getDb();
-    const queryCount = (
-      db.query("SELECT COUNT(*) as cnt FROM queries").get() as { cnt: number }
-    ).cnt;
+    const queryCount = (db.query("SELECT COUNT(*) as cnt FROM queries").get() as { cnt: number })
+      .cnt;
     expect(queryCount).toBe(0);
     // But telemetry should still be written
     const telemetryRow = db

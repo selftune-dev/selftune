@@ -73,12 +73,14 @@
     "prepublishOnly": "bun run sync-version && bun run build:dashboard",
     "typecheck:dashboard": "cd apps/local-dashboard && bunx tsc --noEmit",
     "check": "bun run lint && bun run format:check && bun run lint:arch && bun run typecheck:dashboard && bun run test",
+    "prepare": "npx lefthook install || true",
     "start": "bun run cli/selftune/index.ts --help"
   },
   "dependencies": {
     "@selftune/telemetry-contract": "workspace:*"
   },
   "devDependencies": {
+    "@evilmartians/lefthook": "^1.11.0",
     "@types/bun": "^1.1.0",
     "oxfmt": "^0.41.0",
     "oxlint": "^1.56.0"

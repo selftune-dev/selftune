@@ -17,7 +17,6 @@ import { AGENT_CANDIDATES, TELEMETRY_LOG } from "../constants.js";
 import { getDb } from "../localdb/db.js";
 import { querySessionTelemetry, querySkillUsageRecords } from "../localdb/queries.js";
 import type { GradingResult, SessionTelemetryRecord, SkillUsageRecord } from "../types.js";
-
 import { detectAgent as _detectAgent } from "../utils/llm-call.js";
 import { readExcerpt } from "../utils/transcript.js";
 import {

@@ -36,7 +36,6 @@ import type {
   SessionTelemetryRecord,
   SkillUsageRecord,
 } from "../types.js";
-
 import { detectAgent } from "../utils/llm-call.js";
 import {
   filterActionableQueryRecords,
@@ -464,11 +463,7 @@ export async function cliMain(): Promise<void> {
     return;
   }
 
-  // --- Log-based mode (original behavior) ---
-  const skillLogPath = values["skill-log"] ?? SKILL_LOG;
-  const queryLogPath = values["query-log"] ?? QUERY_LOG;
-  const telemetryLogPath = values["telemetry-log"] ?? TELEMETRY_LOG;
-
+  // --- SQLite-based mode ---
   let skillRecords: SkillUsageRecord[];
   let queryRecords: QueryLogRecord[];
   let telemetryRecords: SessionTelemetryRecord[];

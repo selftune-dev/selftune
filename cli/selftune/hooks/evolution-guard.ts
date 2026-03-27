@@ -45,7 +45,7 @@ function extractSkillName(filePath: string): string {
  */
 export async function checkActiveMonitoring(
   skillName: string,
-  auditLogPath: string,
+  _auditLogPath: string,
 ): Promise<boolean> {
   const { getDb } = await import("../localdb/db.js");
   const { queryEvolutionAudit } = await import("../localdb/queries.js");
