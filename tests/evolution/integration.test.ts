@@ -222,7 +222,10 @@ describe("integration: deploy writes SKILL.md correctly", () => {
     // Backup, replace, write — same as evolve.ts does inline
     const backupPath = `${skillPath}.bak`;
     copyFileSync(skillPath, backupPath);
-    const updated = replaceDescription(SAMPLE_SKILL_MD, proposal.proposed_description);
+    const updated = replaceDescription(
+      readFileSync(skillPath, "utf-8"),
+      proposal.proposed_description,
+    );
     writeFileSync(skillPath, updated, "utf-8");
 
     // Verify: backup exists with original content
@@ -256,7 +259,10 @@ describe("integration: deploy then rollback restores original SKILL.md", () => {
     // Step 2: Deploy a proposal (backup + replace + write)
     const proposal = makeProposal({ skill_path: skillPath });
     copyFileSync(skillPath, `${skillPath}.bak`);
-    const updated = replaceDescription(SAMPLE_SKILL_MD, proposal.proposed_description);
+    const updated = replaceDescription(
+      readFileSync(skillPath, "utf-8"),
+      proposal.proposed_description,
+    );
     writeFileSync(skillPath, updated, "utf-8");
 
     // Verify deploy happened
