@@ -8,7 +8,15 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -301,7 +309,11 @@ describe("integration: deploy then rollback restores original SKILL.md", () => {
       proposed_description: "Description from cycle 1",
     });
     copyFileSync(skillPath, `${skillPath}.bak`);
-    writeFileSync(skillPath, replaceDescription(readFileSync(skillPath, "utf-8"), proposal1.proposed_description), "utf-8");
+    writeFileSync(
+      skillPath,
+      replaceDescription(readFileSync(skillPath, "utf-8"), proposal1.proposed_description),
+      "utf-8",
+    );
 
     appendAuditEntry({
       timestamp: new Date().toISOString(),
@@ -320,7 +332,11 @@ describe("integration: deploy then rollback restores original SKILL.md", () => {
       proposed_description: "Description from cycle 2",
     });
     copyFileSync(skillPath, `${skillPath}.bak`);
-    writeFileSync(skillPath, replaceDescription(readFileSync(skillPath, "utf-8"), proposal2.proposed_description), "utf-8");
+    writeFileSync(
+      skillPath,
+      replaceDescription(readFileSync(skillPath, "utf-8"), proposal2.proposed_description),
+      "utf-8",
+    );
 
     appendAuditEntry({
       timestamp: new Date().toISOString(),

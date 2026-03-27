@@ -206,4 +206,3 @@ export function replaceBody(currentContent: string, proposedBody: string): strin
 
   return `${parts.join("\n").trimEnd()}\n`;
 }
-
