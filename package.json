@@ -75,9 +75,6 @@
     "check": "bun run lint && bun run format:check && bun run lint:arch && bun run typecheck:dashboard && bun run test",
     "start": "bun run cli/selftune/index.ts --help"
   },
-  "bundledDependencies": [
-    "@selftune/telemetry-contract"
-  ],
   "dependencies": {
     "@selftune/telemetry-contract": "workspace:*"
   },
@@ -85,5 +82,8 @@
     "@types/bun": "^1.1.0",
     "oxfmt": "^0.41.0",
     "oxlint": "^1.56.0"
-  }
+  },
+  "bundledDependencies": [
+    "@selftune/telemetry-contract"
+  ]
 }
