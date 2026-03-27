@@ -887,7 +887,7 @@ export async function orchestrate(
           const freshSkillRecords = _readSkillRecords();
           const freshQueryRecords = _readQueryRecords();
           const freshAudit = _readAuditEntries();
-          const freshDoctor = await _doctor();
+          const freshDoctor = doctorResult; // reuse — environment unchanged during grading
           statusResult = _computeStatus(
             freshTelemetry,
             freshSkillRecords,

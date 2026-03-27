@@ -11,10 +11,8 @@
  * The wrapper:
  *   1. Runs `codex exec --json <your args>` as a subprocess
  *   2. Streams stdout (JSONL events) to your terminal in real time
- *   3. Parses events and writes to:
- *        ~/.claude/all_queries_log.jsonl
- *        ~/.claude/session_telemetry_log.jsonl
- *        ~/.claude/skill_usage_log.jsonl
+ *   3. Writes to SQLite via writeQueryToDb, writeSessionTelemetryToDb,
+ *      writeSkillUsageToDb (Phase 3: JSONL writes removed)
  */
 
 import { homedir } from "node:os";
@@ -244,7 +242,7 @@ export function parseJsonlStream(lines: string[], skillNames: Set<string>): Pars
   };
 }
 
-/** Append the user prompt to all_queries_log.jsonl. */
+/** Write the user prompt to SQLite. */
 export function logQuery(prompt: string, sessionId: string, _logPath: string = QUERY_LOG): void {
   if (!prompt || prompt.length < 4) return;
   const record: QueryLogRecord = {

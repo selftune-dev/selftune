@@ -28,6 +28,10 @@ afterEach(() => {
 // Seed helpers
 let skillInvCounter = 0;
 
+function mustWrite(ok: boolean, label: string): void {
+  if (!ok) throw new Error(`Failed to seed ${label}`);
+}
+
 function seedSkill(record: {
   timestamp: string;
   session_id: string;
@@ -37,22 +41,25 @@ function seedSkill(record: {
   triggered: boolean;
   source?: string;
 }): void {
-  writeSkillCheckToDb({
-    skill_invocation_id: `si_bundle_${Date.now()}_${skillInvCounter++}`,
-    session_id: record.session_id,
-    occurred_at: record.timestamp,
-    skill_name: record.skill_name,
-    invocation_mode: "implicit",
-    triggered: record.triggered,
-    confidence: record.triggered ? 1.0 : 0.0,
-    query: record.query,
-    skill_path: record.skill_path,
-    source: record.source,
-  } as SkillInvocationWriteInput);
+  mustWrite(
+    writeSkillCheckToDb({
+      skill_invocation_id: `si_bundle_${Date.now()}_${skillInvCounter++}`,
+      session_id: record.session_id,
+      occurred_at: record.timestamp,
+      skill_name: record.skill_name,
+      invocation_mode: "implicit",
+      triggered: record.triggered,
+      confidence: record.triggered ? 1.0 : 0.0,
+      query: record.query,
+      skill_path: record.skill_path,
+      source: record.source,
+    } as SkillInvocationWriteInput),
+    "skill",
+  );
 }
 
 function seedQuery(record: { timestamp: string; session_id: string; query: string }): void {
-  writeQueryToDb(record);
+  mustWrite(writeQueryToDb(record), "query");
 }
 
 function seedTelemetry(record: {
@@ -70,12 +77,15 @@ function seedTelemetry(record: {
   last_user_query: string;
   source?: string;
 }): void {
-  writeSessionTelemetryToDb({
-    ...record,
-    tool_calls_json: JSON.stringify(record.tool_calls),
-    bash_commands_json: JSON.stringify(record.bash_commands),
-    skills_triggered_json: JSON.stringify(record.skills_triggered),
-  });
+  mustWrite(
+    writeSessionTelemetryToDb({
+      ...record,
+      tool_calls_json: JSON.stringify(record.tool_calls),
+      bash_commands_json: JSON.stringify(record.bash_commands),
+      skills_triggered_json: JSON.stringify(record.skills_triggered),
+    }),
+    "telemetry",
+  );
 }
 
 function seedEvolution(record: {
@@ -85,7 +95,7 @@ function seedEvolution(record: {
   details: string;
   eval_snapshot?: { total: number; passed: number; failed: number; pass_rate: number };
 }): void {
-  writeEvolutionAuditToDb(record);
+  mustWrite(writeEvolutionAuditToDb(record), "evolution");
 }
 
 const skillRecords = [
