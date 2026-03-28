@@ -36,7 +36,6 @@ import type {
   SessionTelemetryRecord,
   SkillUsageRecord,
 } from "../types.js";
-import { readJsonl } from "../utils/jsonl.js";
 import { detectAgent } from "../utils/llm-call.js";
 import {
   filterActionableQueryRecords,
@@ -464,31 +463,15 @@ export async function cliMain(): Promise<void> {
     return;
   }
 
-  // --- Log-based mode (original behavior) ---
-  const skillLogPath = values["skill-log"] ?? SKILL_LOG;
-  const queryLogPath = values["query-log"] ?? QUERY_LOG;
-  const telemetryLogPath = values["telemetry-log"] ?? TELEMETRY_LOG;
-
+  // --- SQLite-based mode ---
   let skillRecords: SkillUsageRecord[];
   let queryRecords: QueryLogRecord[];
   let telemetryRecords: SessionTelemetryRecord[];
 
-  // SQLite is the default path; JSONL fallback only for custom --*-log overrides
-  if (
-    skillLogPath === SKILL_LOG &&
-    queryLogPath === QUERY_LOG &&
-    telemetryLogPath === TELEMETRY_LOG
-  ) {
-    const db = getDb();
-    skillRecords = querySkillUsageRecords(db) as SkillUsageRecord[];
-    queryRecords = queryQueryLog(db) as QueryLogRecord[];
-    telemetryRecords = querySessionTelemetry(db) as SessionTelemetryRecord[];
-  } else {
-    // test/custom-path fallback
-    skillRecords = readJsonl<SkillUsageRecord>(skillLogPath);
-    queryRecords = readJsonl<QueryLogRecord>(queryLogPath);
-    telemetryRecords = readJsonl<SessionTelemetryRecord>(telemetryLogPath);
-  }
+  const db = getDb();
+  skillRecords = querySkillUsageRecords(db) as SkillUsageRecord[];
+  queryRecords = queryQueryLog(db) as QueryLogRecord[];
+  telemetryRecords = querySessionTelemetry(db) as SessionTelemetryRecord[];
 
   if (values["list-skills"]) {
     listSkills(skillRecords, queryRecords, telemetryRecords);
