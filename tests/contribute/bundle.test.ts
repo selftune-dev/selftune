@@ -196,17 +196,19 @@ const evolutionRecords = [
   },
 ];
 
-function seedAll(): void {
+function seedBase(): void {
   for (const r of skillRecords) seedSkill(r);
   for (const r of queryRecords) seedQuery(r);
   for (const r of telemetryRecords) seedTelemetry(r);
+}
+
+function seedAll(): void {
+  seedBase();
   for (const r of evolutionRecords) seedEvolution(r);
 }
 
 function seedWithoutEvolution(): void {
-  for (const r of skillRecords) seedSkill(r);
-  for (const r of queryRecords) seedQuery(r);
-  for (const r of telemetryRecords) seedTelemetry(r);
+  seedBase();
 }
 
 describe("assembleBundle", () => {
@@ -343,9 +345,7 @@ describe("assembleBundle", () => {
       // p2 is deployed (terminal) — should NOT be pending
     ];
 
-    for (const r of skillRecords) seedSkill(r);
-    for (const r of queryRecords) seedQuery(r);
-    for (const r of telemetryRecords) seedTelemetry(r);
+    seedBase();
     for (const r of pendingEvolutionRecords) seedEvolution(r);
 
     const bundle = assembleBundle({

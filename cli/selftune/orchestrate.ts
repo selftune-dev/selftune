@@ -678,9 +678,14 @@ export async function autoGradeTopUngraded(
 
       // Derive expectations from SKILL.md
       const derived = deriveExpectationsFromSkill(skill.name);
-      const transcriptExcerpt = resolved.transcriptPath
-        ? readExcerpt(resolved.transcriptPath)
-        : "(no transcript)";
+      let transcriptExcerpt = "(no transcript)";
+      if (resolved.transcriptPath) {
+        try {
+          transcriptExcerpt = readExcerpt(resolved.transcriptPath);
+        } catch {
+          transcriptExcerpt = "(no transcript)";
+        }
+      }
 
       console.error(`  [auto-grade] Grading "${skill.name}" (session ${resolved.sessionId})...`);
 
@@ -886,21 +891,29 @@ export async function orchestrate(
           console.error(
             `[orchestrate] Recomputing status after grading ${autoGradedCount} skill(s)...`,
           );
-          const freshTelemetry = _readTelemetry();
-          const freshSkillRecords = _readSkillRecords();
-          const freshQueryRecords = _readQueryRecords();
-          const freshAudit = _readAuditEntries();
-          const freshDoctor = doctorResult; // reuse — environment unchanged during grading
-          statusResult = _computeStatus(
-            freshTelemetry,
-            freshSkillRecords,
-            freshQueryRecords,
-            freshAudit,
-            freshDoctor,
-          );
+          try {
+            const freshTelemetry = _readTelemetry();
+            const freshSkillRecords = _readSkillRecords();
+            const freshQueryRecords = _readQueryRecords();
+            const freshAudit = _readAuditEntries();
+            const freshDoctor = doctorResult; // reuse — environment unchanged during grading
+            statusResult = _computeStatus(
+              freshTelemetry,
+              freshSkillRecords,
+              freshQueryRecords,
+              freshAudit,
+              freshDoctor,
+            );
+          } catch (recomputeErr) {
+            console.error(
+              `[orchestrate] Warning: failed to recompute status after grading — using pre-grade status. ${recomputeErr instanceof Error ? recomputeErr.message : String(recomputeErr)}`,
+            );
+          }
         }
       } else {
-        console.error("[orchestrate] No agent CLI found — skipping auto-grade.");
+        console.error(
+          "[orchestrate] No agent CLI found — skipping auto-grade. To disable, rerun with: selftune orchestrate --max-auto-grade 0",
+        );
       }
     }
 
@@ -1244,13 +1257,14 @@ Examples:
     process.exit(1);
   }
 
-  const maxAutoGrade = Number.parseInt(values["max-auto-grade"] ?? "5", 10);
-  if (Number.isNaN(maxAutoGrade) || maxAutoGrade < 0) {
+  const maxAutoGradeRaw = values["max-auto-grade"] ?? "5";
+  if (!/^\d+$/.test(maxAutoGradeRaw)) {
     console.error(
       "[ERROR] --max-auto-grade must be a non-negative integer. Retry with: selftune orchestrate --max-auto-grade 5",
     );
     process.exit(1);
   }
+  const maxAutoGrade = Number(maxAutoGradeRaw);
 
   const loopInterval = Number.parseInt(values["loop-interval"] ?? "3600", 10);
   if (values.loop && (Number.isNaN(loopInterval) || loopInterval < 60)) {

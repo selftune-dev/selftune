@@ -8,7 +8,7 @@
         "@selftune/telemetry-contract": "workspace:*",
       },
       "devDependencies": {
-        "@evilmartians/lefthook": "^1.11.0",
+        "@evilmartians/lefthook": "^1.13.6",
         "@types/bun": "^1.1.0",
         "oxfmt": "^0.41.0",
         "oxlint": "^1.56.0",
