@@ -29,7 +29,7 @@
  *   selftune hook <name>        — Run a hook by name (prompt-log, session-stop, etc.)
  */
 
-import { handleCLIError } from "./utils/cli-error.js";
+import { CLIError, handleCLIError } from "./utils/cli-error.js";
 
 process.on("uncaughtException", handleCLIError);
 process.on("unhandledRejection", handleCLIError);

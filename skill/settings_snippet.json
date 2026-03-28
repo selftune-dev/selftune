@@ -28,14 +28,28 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Write(*SKILL.md)|Edit(*SKILL.md)",
+            "if": "Write(*SKILL.md)",
             "command": "bun run /PATH/TO/cli/selftune/hooks/skill-change-guard.ts",
             "timeout": 5,
             "statusMessage": "selftune: checking skill change guard"
           },
           {
             "type": "command",
-            "if": "Write(*SKILL.md)|Edit(*SKILL.md)",
+            "if": "Edit(*SKILL.md)",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/skill-change-guard.ts",
+            "timeout": 5,
+            "statusMessage": "selftune: checking skill change guard"
+          },
+          {
+            "type": "command",
+            "if": "Write(*SKILL.md)",
+            "command": "bun run /PATH/TO/cli/selftune/hooks/evolution-guard.ts",
+            "timeout": 5,
+            "statusMessage": "selftune: checking evolution guard"
+          },
+          {
+            "type": "command",
+            "if": "Edit(*SKILL.md)",
             "command": "bun run /PATH/TO/cli/selftune/hooks/evolution-guard.ts",
             "timeout": 5,
             "statusMessage": "selftune: checking evolution guard"

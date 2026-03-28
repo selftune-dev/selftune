@@ -55,7 +55,7 @@ import type {
   SessionTelemetryRecord,
   TranscriptMetrics,
 } from "../types.js";
-import { handleCLIError } from "../utils/cli-error.js";
+import { CLIError, handleCLIError } from "../utils/cli-error.js";
 import { loadMarker, saveMarker } from "../utils/jsonl.js";
 import { isActionableQueryText } from "../utils/query-filter.js";
 import {

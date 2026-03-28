@@ -18,7 +18,7 @@ import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 
 import { DEFAULT_CRON_JOBS } from "./cron/setup.js";
-import { handleCLIError } from "./utils/cli-error.js";
+import { CLIError, handleCLIError } from "./utils/cli-error.js";
 
 // ---------------------------------------------------------------------------
 // Binary resolution — launchd runs with minimal PATH, so we need full paths
