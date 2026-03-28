@@ -260,7 +260,9 @@ export async function evolve(
       llmCallCount,
       elapsedMs: Date.now() - pipelineStart,
       ...(syncResult ? { sync_result: syncResult } : {}),
-      ...(descQualityBeforeScore != null ? { descriptionQualityBefore: descQualityBeforeScore } : {}),
+      ...(descQualityBeforeScore != null
+        ? { descriptionQualityBefore: descQualityBeforeScore }
+        : {}),
       ...(descQualityAfterScore != null ? { descriptionQualityAfter: descQualityAfterScore } : {}),
     };
   };
@@ -1264,8 +1266,12 @@ Options:
       rationale: result.proposal?.rationale ?? "",
       ...(result.skillVersion ? { version: result.skillVersion } : {}),
       dashboard_url: `http://localhost:3141/report/${encodeURIComponent(values.skill)}`,
-      ...(result.descriptionQualityBefore != null ? { description_quality_before: result.descriptionQualityBefore } : {}),
-      ...(result.descriptionQualityAfter != null ? { description_quality_after: result.descriptionQualityAfter } : {}),
+      ...(result.descriptionQualityBefore != null
+        ? { description_quality_before: result.descriptionQualityBefore }
+        : {}),
+      ...(result.descriptionQualityAfter != null
+        ? { description_quality_after: result.descriptionQualityAfter }
+        : {}),
     };
     console.log(JSON.stringify(summary, null, 2));
   }

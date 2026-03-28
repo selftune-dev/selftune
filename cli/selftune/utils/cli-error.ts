@@ -72,8 +72,13 @@ export class CLIError extends Error {
  * cliMain().catch(handleCLIError);
  * ```
  */
+/** Detect JSON output mode: explicit --json flag or non-TTY stdout (automation). */
+export function isJsonOutputMode(): boolean {
+  return process.argv.includes("--json") || process.stdout?.isTTY === false;
+}
+
 export function handleCLIError(error: unknown): never {
-  const jsonMode = process.argv.includes("--json");
+  const jsonMode = isJsonOutputMode();
 
   if (error instanceof CLIError) {
     if (jsonMode) {

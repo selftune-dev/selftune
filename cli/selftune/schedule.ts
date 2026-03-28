@@ -534,10 +534,11 @@ export function cliMain(): void {
       applyCronArtifact(values["apply-cron-artifact"]);
       return;
     } catch (err) {
-      console.error(
+      throw new CLIError(
         `Failed to apply selftune cron artifact: ${err instanceof Error ? err.message : String(err)}`,
+        "OPERATION_FAILED",
+        "selftune schedule --install --dry-run",
       );
-      process.exit(1);
     }
   }
 
@@ -570,8 +571,11 @@ For OpenClaw-specific scheduling, see: selftune cron`);
         dryRun: values["dry-run"] ?? false,
       });
       if (!result.dryRun && !result.activated) {
-        console.error("Failed to activate installed schedule artifacts.");
-        process.exit(1);
+        throw new CLIError(
+          "Failed to activate installed schedule artifacts.",
+          "OPERATION_FAILED",
+          "selftune schedule --install --dry-run",
+        );
       }
       console.log(
         JSON.stringify(
@@ -588,17 +592,21 @@ For OpenClaw-specific scheduling, see: selftune cron`);
       );
       return;
     } catch (err) {
-      console.error(
+      throw new CLIError(
         `Failed to install schedule artifacts: ${err instanceof Error ? err.message : String(err)}`,
+        "OPERATION_FAILED",
+        "selftune schedule --install --dry-run",
       );
-      process.exit(1);
     }
   }
 
   const result = formatOutput(values.format);
   if (!result.ok) {
-    console.error(result.error);
-    process.exit(1);
+    throw new CLIError(
+      result.error ?? "Invalid schedule format",
+      "INVALID_FLAG",
+      "selftune schedule --format cron",
+    );
   }
   console.log(result.data);
 }
