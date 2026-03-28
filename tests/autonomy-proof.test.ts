@@ -235,11 +235,6 @@ function makeSkillUsageRecord(overrides: Partial<SkillUsageRecord> = {}): SkillU
   };
 }
 
-function writeJsonl<T>(records: T[], filePath: string): void {
-  const content = records.length > 0 ? `${records.map((r) => JSON.stringify(r)).join("\n")}\n` : "";
-  writeFileSync(filePath, content, "utf-8");
-}
-
 /** Seed telemetry, skill usage, and query records into the in-memory SQLite DB. */
 let seedCounter = 0;
 function seedWatchData(
