@@ -327,16 +327,25 @@ export function buildCanonicalRecordsFromReplay(session: ParsedSession): Canonic
 
 // --- CLI main ---
 export function cliMain(): void {
-  const { values } = parseArgs({
-    options: {
-      "projects-dir": { type: "string", default: CLAUDE_CODE_PROJECTS_DIR },
-      since: { type: "string" },
-      "dry-run": { type: "boolean", default: false },
-      force: { type: "boolean", default: false },
-      verbose: { type: "boolean", short: "v", default: false },
-    },
-    strict: true,
-  });
+  let values: Record<string, string | boolean | undefined>;
+  try {
+    ({ values } = parseArgs({
+      options: {
+        "projects-dir": { type: "string", default: CLAUDE_CODE_PROJECTS_DIR },
+        since: { type: "string" },
+        "dry-run": { type: "boolean", default: false },
+        force: { type: "boolean", default: false },
+        verbose: { type: "boolean", short: "v", default: false },
+      },
+      strict: true,
+    }));
+  } catch (err) {
+    throw new CLIError(
+      err instanceof Error ? err.message : String(err),
+      "INVALID_FLAG",
+      "selftune ingest claude --since 2026-01-01",
+    );
+  }
 
   const projectsDir = values["projects-dir"] ?? CLAUDE_CODE_PROJECTS_DIR;
   let since: Date | undefined;
@@ -346,7 +355,7 @@ export function cliMain(): void {
       throw new CLIError(
         `Invalid --since date: "${values.since}"`,
         "INVALID_FLAG",
-        "selftune replay --since 2026-01-01",
+        "selftune ingest claude --since 2026-01-01",
       );
     }
   }

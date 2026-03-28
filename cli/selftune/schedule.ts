@@ -592,6 +592,7 @@ For OpenClaw-specific scheduling, see: selftune cron`);
       );
       return;
     } catch (err) {
+      if (err instanceof CLIError) throw err;
       throw new CLIError(
         `Failed to install schedule artifacts: ${err instanceof Error ? err.message : String(err)}`,
         "OPERATION_FAILED",

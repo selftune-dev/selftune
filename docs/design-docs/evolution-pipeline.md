@@ -225,7 +225,7 @@ Pure heuristic scorer that evaluates skill description quality without LLM calls
 | `specificity`     | 0.20   | Concrete details: file extensions, CLI commands, tool names |
 | `not_just_name`   | 0.15   | Description adds info beyond restating the skill name       |
 
-Used during evolution proposal validation to reject descriptions that regress in quality, and in the dashboard to surface descriptions that need improvement.
+Used during evolution runs to record before/after description quality in results, and in the dashboard to surface descriptions that need improvement. Quality-regression rejection is not currently enforced by the runtime validator.
 
 ## Stopping Criteria (`stopping-criteria.ts`)
 

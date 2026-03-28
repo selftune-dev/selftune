@@ -89,6 +89,7 @@ if (!command) {
   // Show status by default — same as `selftune status`
   const { cliMain: statusMain } = await import("./status.js");
   statusMain();
+  process.exit(0);
 }
 
 // Route to the appropriate subcommand module.
