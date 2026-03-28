@@ -42,6 +42,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -88,10 +89,27 @@ jobs:
         run: |
           echo "Skipping publish: selftune@${{ steps.check.outputs.current }} already exists on npm."
 
+      - name: Pack tarball
+        if: steps.check.outputs.should_publish == 'true'
+        id: pack
+        run: |
+          TARBALL=$(npm pack --json | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'))[0].filename")
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+
       - name: Publish to npm
         if: steps.check.outputs.should_publish == 'true'
         id: publish
-        run: npm publish --provenance --access public
+        run: npm publish "${{ steps.pack.outputs.tarball }}" --provenance --access public
+
+      - name: Generate SBOM
+        if: steps.check.outputs.should_publish == 'true' && steps.publish.outcome == 'success'
+        run: npx --yes @cyclonedx/cyclonedx-npm@4 --output-file sbom.cdx.json
+
+      - name: Attest build provenance
+        if: steps.check.outputs.should_publish == 'true' && steps.publish.outcome == 'success'
+        uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018 # v2
+        with:
+          subject-path: "${{ steps.pack.outputs.tarball }}"
 
       - name: Create GitHub Release
         if: steps.check.outputs.should_publish == 'true' && steps.publish.outcome == 'success'
@@ -101,3 +119,6 @@ jobs:
           name: v${{ steps.check.outputs.current }}
           generate_release_notes: true
           make_latest: true
+          files: |
+            ${{ steps.pack.outputs.tarball }}
+            sbom.cdx.json

@@ -6,12 +6,13 @@ on:
   schedule:
     - cron: "0 9 * * 1"
 
-permissions: read-all
+permissions: {}
 
 jobs:
   analysis:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       security-events: write
       id-token: write
     steps:
