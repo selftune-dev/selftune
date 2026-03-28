@@ -285,9 +285,7 @@ export function installClaudeCodeHooks(options?: {
   // Resolve the package root for path substitution
   // cliPath points to cli/selftune/index.ts → package root is two levels up
   const cliPath = options?.cliPath;
-  const packageRoot = cliPath
-    ? resolve(dirname(cliPath), "..", "..").replace(/\\/g, "/")
-    : null;
+  const packageRoot = cliPath ? resolve(dirname(cliPath), "..", "..").replace(/\\/g, "/") : null;
 
   const changedKeys: string[] = [];
 
@@ -439,10 +437,7 @@ export function updateExistingSelftuneHooks(
 function isHookSelftune(hook: Record<string, unknown>): boolean {
   if (typeof hook.command !== "string") return false;
   const normalized = hook.command.replace(/\\/g, "/");
-  return (
-    normalized.includes("/cli/selftune/hooks/") ||
-    normalized.includes("/bin/run-hook.cjs")
-  );
+  return normalized.includes("/cli/selftune/hooks/") || normalized.includes("/bin/run-hook.cjs");
 }
 
 /** Sort object keys recursively for order-independent JSON comparison. */

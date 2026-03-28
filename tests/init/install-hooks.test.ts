@@ -3,10 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  installClaudeCodeHooks,
-  updateExistingSelftuneHooks,
-} from "../../cli/selftune/init.js";
+import { installClaudeCodeHooks, updateExistingSelftuneHooks } from "../../cli/selftune/init.js";
 
 let tmpDir: string;
 let settingsPath: string;
@@ -81,12 +78,14 @@ describe("installClaudeCodeHooks", () => {
             hooks: [
               {
                 type: "command",
-                command: "bun run /opt/homebrew/lib/node_modules/selftune/cli/selftune/hooks/skill-change-guard.ts",
+                command:
+                  "bun run /opt/homebrew/lib/node_modules/selftune/cli/selftune/hooks/skill-change-guard.ts",
                 timeout: 5,
               },
               {
                 type: "command",
-                command: "bun run /opt/homebrew/lib/node_modules/selftune/cli/selftune/hooks/evolution-guard.ts",
+                command:
+                  "bun run /opt/homebrew/lib/node_modules/selftune/cli/selftune/hooks/evolution-guard.ts",
                 timeout: 5,
               },
             ],
@@ -97,7 +96,8 @@ describe("installClaudeCodeHooks", () => {
             hooks: [
               {
                 type: "command",
-                command: "bun run /opt/homebrew/lib/node_modules/selftune/cli/selftune/hooks/session-stop.ts",
+                command:
+                  "bun run /opt/homebrew/lib/node_modules/selftune/cli/selftune/hooks/session-stop.ts",
                 timeout: 15,
               },
             ],
@@ -384,8 +384,7 @@ describe("flat entry migration", () => {
     const hooks: Record<string, unknown[]> = {
       Stop: [
         {
-          command:
-            "node /some/path/bin/run-hook.cjs /some/path/cli/selftune/hooks/session-stop.ts",
+          command: "node /some/path/bin/run-hook.cjs /some/path/cli/selftune/hooks/session-stop.ts",
           timeout: 15,
         },
       ],

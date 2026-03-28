@@ -105,10 +105,21 @@ describe("checkClaudeCodeHooks", () => {
     const settingsPath = join(settingsDir, "settings.json");
     const settings = {
       hooks: {
-        UserPromptSubmit: [{ command: "node /opt/pkg/bin/run-hook.cjs /opt/pkg/cli/selftune/hooks/prompt-log.ts" }],
-        PreToolUse: [{ command: "node /opt/pkg/bin/run-hook.cjs /opt/pkg/cli/selftune/hooks/skill-change-guard.ts" }],
-        PostToolUse: [{ command: "node /opt/pkg/bin/run-hook.cjs /opt/pkg/cli/selftune/hooks/skill-eval.ts" }],
-        Stop: [{ command: "node /opt/pkg/bin/run-hook.cjs /opt/pkg/cli/selftune/hooks/session-stop.ts" }],
+        UserPromptSubmit: [
+          { command: "node /opt/pkg/bin/run-hook.cjs /opt/pkg/cli/selftune/hooks/prompt-log.ts" },
+        ],
+        PreToolUse: [
+          {
+            command:
+              "node /opt/pkg/bin/run-hook.cjs /opt/pkg/cli/selftune/hooks/skill-change-guard.ts",
+          },
+        ],
+        PostToolUse: [
+          { command: "node /opt/pkg/bin/run-hook.cjs /opt/pkg/cli/selftune/hooks/skill-eval.ts" },
+        ],
+        Stop: [
+          { command: "node /opt/pkg/bin/run-hook.cjs /opt/pkg/cli/selftune/hooks/session-stop.ts" },
+        ],
       },
     };
     writeFileSync(settingsPath, JSON.stringify(settings), "utf-8");
@@ -122,21 +133,49 @@ describe("checkClaudeCodeHooks", () => {
     const settings = {
       hooks: {
         UserPromptSubmit: [
-          { hooks: [{ type: "command", command: "node /opt/pkg/bin/run-hook.cjs /opt/pkg/cli/selftune/hooks/prompt-log.ts" }] },
+          {
+            hooks: [
+              {
+                type: "command",
+                command: "node /opt/pkg/bin/run-hook.cjs /opt/pkg/cli/selftune/hooks/prompt-log.ts",
+              },
+            ],
+          },
         ],
         PreToolUse: [
           {
             matcher: "Write|Edit",
-            hooks: [{ type: "command", command: "node /opt/pkg/bin/run-hook.cjs /opt/pkg/cli/selftune/hooks/skill-change-guard.ts" }],
+            hooks: [
+              {
+                type: "command",
+                command:
+                  "node /opt/pkg/bin/run-hook.cjs /opt/pkg/cli/selftune/hooks/skill-change-guard.ts",
+              },
+            ],
           },
         ],
         PostToolUse: [
           {
             matcher: "Read",
-            hooks: [{ type: "command", command: "node /opt/pkg/bin/run-hook.cjs /opt/pkg/cli/selftune/hooks/skill-eval.ts" }],
+            hooks: [
+              {
+                type: "command",
+                command: "node /opt/pkg/bin/run-hook.cjs /opt/pkg/cli/selftune/hooks/skill-eval.ts",
+              },
+            ],
           },
         ],
-        Stop: [{ hooks: [{ type: "command", command: "node /opt/pkg/bin/run-hook.cjs /opt/pkg/cli/selftune/hooks/session-stop.ts" }] }],
+        Stop: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command:
+                  "node /opt/pkg/bin/run-hook.cjs /opt/pkg/cli/selftune/hooks/session-stop.ts",
+              },
+            ],
+          },
+        ],
       },
     };
     writeFileSync(settingsPath, JSON.stringify(settings), "utf-8");

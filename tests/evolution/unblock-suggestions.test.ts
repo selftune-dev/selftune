@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildUnblockSuggestions } from "../../cli/selftune/evolution/unblock-suggestions.js";
 import type { EvolveResult } from "../../cli/selftune/evolution/evolve.js";
+import { buildUnblockSuggestions } from "../../cli/selftune/evolution/unblock-suggestions.js";
 
 /** Minimal EvolveResult stub for testing. */
 function stubResult(overrides: Partial<EvolveResult> = {}): EvolveResult {
@@ -73,7 +73,10 @@ describe("buildUnblockSuggestions", () => {
           proposed_description: "stuff",
           rationale: "",
           failure_patterns: [],
-          eval_results: { before: { total: 0, passed: 0, failed: 0, pass_rate: 0 }, after: { total: 0, passed: 0, failed: 0, pass_rate: 0 } },
+          eval_results: {
+            before: { total: 0, passed: 0, failed: 0, pass_rate: 0 },
+            after: { total: 0, passed: 0, failed: 0, pass_rate: 0 },
+          },
           confidence: 0.5,
           created_at: "",
           status: "pending",
