@@ -5,20 +5,73 @@ import { join } from "node:path";
 
 import { assembleBundle } from "../../cli/selftune/contribute/bundle.js";
 import { sanitizeBundle } from "../../cli/selftune/contribute/sanitize.js";
+import { _setTestDb, openDb } from "../../cli/selftune/localdb/db.js";
+import {
+  type SkillInvocationWriteInput,
+  writeQueryToDb,
+  writeSessionTelemetryToDb,
+  writeSkillCheckToDb,
+} from "../../cli/selftune/localdb/direct-write.js";
 import type { ContributionBundle } from "../../cli/selftune/types.js";
 
 let tmpDir: string;
+let seedCounter = 0;
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "selftune-contribute-test-"));
+  _setTestDb(openDb(":memory:"));
 });
 
 afterEach(() => {
+  _setTestDb(null);
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
-function writeJsonl(path: string, records: unknown[]): void {
-  writeFileSync(path, `${records.map((r) => JSON.stringify(r)).join("\n")}\n`);
+function seedSkill(record: {
+  timestamp: string;
+  session_id: string;
+  skill_name: string;
+  skill_path: string;
+  query: string;
+  triggered: boolean;
+}): void {
+  writeSkillCheckToDb({
+    skill_invocation_id: `si_contrib_${Date.now()}_${seedCounter++}`,
+    session_id: record.session_id,
+    occurred_at: record.timestamp,
+    skill_name: record.skill_name,
+    invocation_mode: "implicit",
+    triggered: record.triggered,
+    confidence: record.triggered ? 1.0 : 0.0,
+    query: record.query,
+    skill_path: record.skill_path,
+  } as SkillInvocationWriteInput);
+}
+
+function seedQuery(record: { timestamp: string; session_id: string; query: string }): void {
+  writeQueryToDb(record);
+}
+
+function seedTelemetry(record: {
+  timestamp: string;
+  session_id: string;
+  cwd: string;
+  transcript_path: string;
+  tool_calls: Record<string, number>;
+  total_tool_calls: number;
+  bash_commands: string[];
+  skills_triggered: string[];
+  assistant_turns: number;
+  errors_encountered: number;
+  transcript_chars: number;
+  last_user_query: string;
+}): void {
+  writeSessionTelemetryToDb({
+    ...record,
+    tool_calls_json: JSON.stringify(record.tool_calls),
+    bash_commands_json: JSON.stringify(record.bash_commands),
+    skills_triggered_json: JSON.stringify(record.skills_triggered),
+  });
 }
 
 const skillRecords = [
@@ -54,22 +107,19 @@ const telemetryRecords = [
   },
 ];
 
+function seedAll(): void {
+  for (const r of skillRecords) seedSkill(r);
+  for (const r of queryRecords) seedQuery(r);
+  for (const r of telemetryRecords) seedTelemetry(r);
+}
+
 describe("contribute end-to-end", () => {
   test("assembles and sanitizes a bundle", () => {
-    const skillLogPath = join(tmpDir, "skill.jsonl");
-    const queryLogPath = join(tmpDir, "query.jsonl");
-    const telemetryLogPath = join(tmpDir, "telemetry.jsonl");
-
-    writeJsonl(skillLogPath, skillRecords);
-    writeJsonl(queryLogPath, queryRecords);
-    writeJsonl(telemetryLogPath, telemetryRecords);
+    seedAll();
 
     const raw = assembleBundle({
       skillName: "selftune",
       sanitizationLevel: "conservative",
-      queryLogPath,
-      skillLogPath,
-      telemetryLogPath,
     });
 
     const sanitized = sanitizeBundle(raw, "conservative");
@@ -79,20 +129,11 @@ describe("contribute end-to-end", () => {
   });
 
   test("output can be written to file and parsed back", () => {
-    const skillLogPath = join(tmpDir, "skill.jsonl");
-    const queryLogPath = join(tmpDir, "query.jsonl");
-    const telemetryLogPath = join(tmpDir, "telemetry.jsonl");
-
-    writeJsonl(skillLogPath, skillRecords);
-    writeJsonl(queryLogPath, queryRecords);
-    writeJsonl(telemetryLogPath, telemetryRecords);
+    seedAll();
 
     const raw = assembleBundle({
       skillName: "selftune",
       sanitizationLevel: "conservative",
-      queryLogPath,
-      skillLogPath,
-      telemetryLogPath,
     });
 
     const sanitized = sanitizeBundle(raw, "conservative");
@@ -107,33 +148,20 @@ describe("contribute end-to-end", () => {
 
   test("aggressive sanitization truncates long queries in bundle", () => {
     const longQuery = "a".repeat(300);
-    const longSkillRecords = [
-      {
-        timestamp: "2025-06-01T00:00:00Z",
-        session_id: "s1",
-        skill_name: "selftune",
-        skill_path: "/skills/selftune",
-        query: longQuery,
-        triggered: true,
-      },
-    ];
-
-    const skillLogPath = join(tmpDir, "skill.jsonl");
-    const queryLogPath = join(tmpDir, "query.jsonl");
-    const telemetryLogPath = join(tmpDir, "telemetry.jsonl");
-
-    writeJsonl(skillLogPath, longSkillRecords);
-    writeJsonl(queryLogPath, [
-      { timestamp: "2025-06-01T00:00:00Z", session_id: "s1", query: longQuery },
-    ]);
-    writeJsonl(telemetryLogPath, telemetryRecords);
+    seedSkill({
+      timestamp: "2025-06-01T00:00:00Z",
+      session_id: "s1",
+      skill_name: "selftune",
+      skill_path: "/skills/selftune",
+      query: longQuery,
+      triggered: true,
+    });
+    seedQuery({ timestamp: "2025-06-01T00:00:00Z", session_id: "s1", query: longQuery });
+    for (const r of telemetryRecords) seedTelemetry(r);
 
     const raw = assembleBundle({
       skillName: "selftune",
       sanitizationLevel: "aggressive",
-      queryLogPath,
-      skillLogPath,
-      telemetryLogPath,
     });
 
     const sanitized = sanitizeBundle(raw, "aggressive");
@@ -144,20 +172,11 @@ describe("contribute end-to-end", () => {
   });
 
   test("bundle with no matching skill produces empty queries", () => {
-    const skillLogPath = join(tmpDir, "skill.jsonl");
-    const queryLogPath = join(tmpDir, "query.jsonl");
-    const telemetryLogPath = join(tmpDir, "telemetry.jsonl");
-
-    writeJsonl(skillLogPath, skillRecords);
-    writeJsonl(queryLogPath, queryRecords);
-    writeJsonl(telemetryLogPath, telemetryRecords);
+    seedAll();
 
     const bundle = assembleBundle({
       skillName: "nonexistent-skill",
       sanitizationLevel: "conservative",
-      queryLogPath,
-      skillLogPath,
-      telemetryLogPath,
     });
 
     expect(bundle.positive_queries).toEqual([]);
