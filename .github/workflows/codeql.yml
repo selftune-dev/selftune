@@ -17,9 +17,6 @@ jobs:
       security-events: write
       actions: read
       contents: read
-    # Code scanning must be enabled in repo Settings > Security & Analysis.
-    # Until enabled, allow this job to pass so it does not block PRs.
-    continue-on-error: ${{ fromJSON(vars.CODEQL_NON_BLOCKING || 'true') }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 

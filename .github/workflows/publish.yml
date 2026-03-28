@@ -42,6 +42,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -93,6 +94,20 @@ jobs:
         id: publish
         run: npm publish --provenance --access public
 
+      - name: Pack tarball for attestation
+        if: steps.check.outputs.should_publish == 'true' && steps.publish.outcome == 'success'
+        run: npm pack
+
+      - name: Generate SBOM
+        if: steps.check.outputs.should_publish == 'true' && steps.publish.outcome == 'success'
+        run: npx --yes @cyclonedx/cyclonedx-npm --output-file sbom.cdx.json
+
+      - name: Attest build provenance
+        if: steps.check.outputs.should_publish == 'true' && steps.publish.outcome == 'success'
+        uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018 # v2
+        with:
+          subject-path: 'selftune-*.tgz'
+
       - name: Create GitHub Release
         if: steps.check.outputs.should_publish == 'true' && steps.publish.outcome == 'success'
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
@@ -101,3 +116,6 @@ jobs:
           name: v${{ steps.check.outputs.current }}
           generate_release_notes: true
           make_latest: true
+          files: |
+            selftune-*.tgz
+            sbom.cdx.json
