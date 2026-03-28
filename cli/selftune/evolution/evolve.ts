@@ -41,6 +41,7 @@ import { parseFrontmatter, replaceDescription } from "../utils/frontmatter.js";
 import { createEvolveTUI } from "../utils/tui.js";
 import { appendAuditEntry } from "./audit.js";
 import { checkConstitution } from "./constitutional.js";
+import { scoreDescription } from "./description-quality.js";
 import { appendEvidenceEntry } from "./evidence.js";
 import { extractFailurePatterns } from "./extract-patterns.js";
 import {
@@ -282,7 +283,10 @@ export async function evolve(
     const versionTag = skillVersion ? `, v${skillVersion}` : "";
     const createdAuditDetails = (message: string) =>
       `original_description:${rawContent}\n${message}`;
-    tui.done(`Loaded SKILL.md (desc: ${currentDescription.length} chars${versionTag})`);
+    const descQualityBefore = scoreDescription(currentDescription, skillName);
+    tui.done(
+      `Loaded SKILL.md (desc: ${currentDescription.length} chars${versionTag}, quality: ${descQualityBefore.composite})`,
+    );
 
     if (options.syncFirst) {
       tui.step(`Syncing source-truth telemetry${options.syncForce ? " (force)" : ""}...`);
@@ -1232,6 +1236,13 @@ Options:
   if (values.verbose) {
     console.log(JSON.stringify(result, null, 2));
   } else {
+    const descQualityAfter = result.proposal
+      ? scoreDescription(result.proposal.proposed_description, values.skill)
+      : undefined;
+    const descQualityBeforeCli = scoreDescription(
+      result.proposal?.original_description ?? "",
+      values.skill,
+    );
     const summary: EvolveResultSummary = {
       skill: values.skill,
       deployed: result.deployed,
@@ -1249,6 +1260,8 @@ Options:
       rationale: result.proposal?.rationale ?? "",
       ...(result.skillVersion ? { version: result.skillVersion } : {}),
       dashboard_url: `http://localhost:3141/report/${encodeURIComponent(values.skill)}`,
+      description_quality_before: descQualityBeforeCli.composite,
+      ...(descQualityAfter ? { description_quality_after: descQualityAfter.composite } : {}),
     };
     console.log(JSON.stringify(summary, null, 2));
   }

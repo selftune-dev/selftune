@@ -121,6 +121,7 @@ cliMain().catch(handleCLIError);
 - `GUARD_BLOCKED` — Evolution guard prevented the operation
 - `OPERATION_FAILED` — Command execution failed after validation passed
 - `MISSING_DATA` — Required data (e.g., skill, session) not found in database
+- `INTERNAL_ERROR` — Unexpected error (fallback for untyped exceptions)
 
 **Migration status:** `orchestrate.ts` is the reference implementation. Other CLI entry points adopt incrementally — new code uses `CLIError`; existing code is migrated as files are touched.
 
