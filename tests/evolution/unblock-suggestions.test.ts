@@ -103,7 +103,7 @@ describe("buildUnblockSuggestions", () => {
       "my-skill",
     );
     expect(s[0]).toContain("--confidence 0.4");
-    expect(s[1]).toContain("--candidate-count");
+    expect(s[1]).toContain("--candidates");
   });
 
   // --- Validation failures ---
@@ -161,7 +161,7 @@ describe("buildUnblockSuggestions", () => {
       stubResult({ reason: "Gate validation failed (sonnet): net_change=-0.02" }),
       "my-skill",
     );
-    expect(s[1]).toContain("--no-gate");
+    expect(s[1]).toContain("--full-model");
   });
 
   // --- Constitutional ---

@@ -86,7 +86,9 @@ export function buildUnblockSuggestions(result: EvolveResult, skillName: string)
   // --- Confidence failures (specific before general) ---
   if (reason.includes("No candidates met confidence")) {
     suggestions.push(`Lower the threshold: selftune evolve --skill ${skillName} --confidence 0.4`);
-    suggestions.push("Or increase candidates: --candidate-count 5 --pareto");
+    suggestions.push(
+      `Or increase candidates: selftune evolve --skill ${skillName} --pareto --candidates 5`,
+    );
     appendQualityHints(suggestions, descText, skillName);
     return suggestions;
   }
@@ -103,7 +105,7 @@ export function buildUnblockSuggestions(result: EvolveResult, skillName: string)
       `The eval set may be contradictory — review with: selftune evolve --skill ${skillName} --verbose`,
     );
     suggestions.push(
-      `Try: selftune evolve --skill ${skillName} --pareto --candidate-count 5 (more diverse proposals)`,
+      `Try: selftune evolve --skill ${skillName} --pareto --candidates 5 (more diverse proposals)`,
     );
     if (result.validation && result.validation.regressions.length > 0) {
       suggestions.push(
@@ -128,7 +130,7 @@ export function buildUnblockSuggestions(result: EvolveResult, skillName: string)
   if (reason.includes("Gate validation failed")) {
     suggestions.push("The gate model rejected the proposal — it may be too aggressive");
     suggestions.push(
-      `Try without gate: selftune evolve --skill ${skillName} --no-gate (if you trust the primary validation)`,
+      `Try: selftune evolve --skill ${skillName} --full-model (disables cheap-loop gate)`,
     );
     return suggestions;
   }

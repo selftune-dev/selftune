@@ -464,7 +464,7 @@ function sortKeys(obj: unknown): unknown {
  * Handles paths with spaces (e.g. "/Users/Alice Smith/...") and
  * optional surrounding quotes in the command string.
  */
-function derivePackageRootFromCommand(command: string): string | null {
+export function derivePackageRootFromCommand(command: string): string | null {
   // Normalize: strip quotes, collapse backslashes (for Windows-style paths)
   const normalized = command.replace(/["']/g, "").replace(/\\/g, "/");
   // Split on the known directory marker and take the prefix.
