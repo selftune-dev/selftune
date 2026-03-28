@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 /**
- * Hook runner — executes a TypeScript hook script with bun or tsx fallback.
+ * Hook runner — executes a TypeScript hook script via Bun.
  *
  * Usage: node run-hook.cjs <path-to-hook.ts>
  *
  * Stdin is piped through to the hook script (Claude Code sends JSON on stdin).
- * Exit code is propagated from the hook. If no TS runtime is found, exits 0
+ * Exit code is propagated from the hook. If bun is not found, exits 0
  * (fail-open: hooks must never block Claude).
+ *
+ * Note: selftune hooks depend on Bun-specific APIs (Bun.stdin.text(),
+ * Bun.spawn()) and cannot run under tsx/node. The runner exists so that
+ * hook commands use `node run-hook.cjs` (universally available) as the
+ * entry point, avoiding a hard dependency on bun being in PATH for the
+ * shell that Claude Code invokes.
  */
 
 const { execFileSync } = require("child_process");
@@ -17,23 +23,14 @@ if (!hookScript) {
   process.exit(0);
 }
 
-const runners = [
-  ["bun", ["run", hookScript]],
-  ["npx", ["tsx", hookScript]],
-];
-
-for (const [cmd, args] of runners) {
-  try {
-    execFileSync(cmd, args, { stdio: "inherit" });
-    process.exit(0);
-  } catch (e) {
-    // Runner exits non-zero → propagate (hook wants to block or signal)
-    if (e.status != null) {
-      process.exit(e.status);
-    }
-    // Runner not found (ENOENT) → try next
+try {
+  execFileSync("bun", ["run", hookScript], { stdio: "inherit" });
+  process.exit(0);
+} catch (e) {
+  // Hook exited non-zero → propagate (e.g. exit 2 = block in PreToolUse)
+  if (e.status != null) {
+    process.exit(e.status);
   }
+  // bun not found (ENOENT) — fail-open
+  process.exit(0);
 }
-
-// No runtime found — fail-open (hooks must never block Claude)
-process.exit(0);

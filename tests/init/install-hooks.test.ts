@@ -233,20 +233,17 @@ describe("installClaudeCodeHooks", () => {
     const stopGroup = hooks.Stop[0] as Record<string, unknown>;
     const stopHooks = stopGroup.hooks as Array<Record<string, unknown>>;
 
-    // Custom hook should be preserved
-    const customHook = stopHooks.find(
-      (h) => h.command === "/my/custom/stop-hook.sh",
-    );
-    expect(customHook).toBeDefined();
-    expect(customHook!.timeout).toBe(10);
+    // Custom hook should be preserved at its original position (index 0)
+    expect(stopHooks[0].command).toBe("/my/custom/stop-hook.sh");
+    expect(stopHooks[0].timeout).toBe(10);
 
-    // Selftune hook should be updated
+    // Selftune hook should be updated (after the custom hook, preserving order)
     const selftuneHook = stopHooks.find(
       (h) => typeof h.command === "string" && (h.command as string).includes("selftune"),
     );
     expect(selftuneHook).toBeDefined();
-    expect(selftuneHook!.timeout).toBe(60);
-    expect(selftuneHook!.async).toBe(true);
+    expect(selftuneHook?.timeout).toBe(60);
+    expect(selftuneHook?.async).toBe(true);
   });
 
   test("no-op when hooks are already up to date", () => {

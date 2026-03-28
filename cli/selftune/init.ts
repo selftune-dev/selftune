@@ -363,18 +363,14 @@ export function updateExistingSelftuneHooks(
     const hooks = g.hooks as Array<Record<string, unknown>> | undefined;
     if (!Array.isArray(hooks)) continue;
 
-    // Separate selftune hooks from non-selftune hooks in this group
-    const nonSelftuneHooks: Array<Record<string, unknown>> = [];
+    // Derive package root from the first selftune hook in this group
     let packageRoot: string | null = null;
-
     for (const hook of hooks) {
       if (isHookSelftune(hook)) {
-        // Derive package root from the first selftune hook we find
-        packageRoot ??= derivePackageRootFromCommand(
+        packageRoot = derivePackageRootFromCommand(
           typeof hook.command === "string" ? hook.command : "",
         );
-      } else {
-        nonSelftuneHooks.push(hook);
+        if (packageRoot) break;
       }
     }
 
@@ -395,7 +391,24 @@ export function updateExistingSelftuneHooks(
       modified = true;
     }
 
-    g.hooks = [...nonSelftuneHooks, ...resolvedSnippetHooks];
+    // Rebuild hooks preserving original ordering of non-selftune entries:
+    // replace the first selftune hook with all resolved snippet hooks,
+    // remove remaining old selftune hooks, keep non-selftune hooks in place
+    const updatedHooks: Array<Record<string, unknown>> = [];
+    let selftuneInserted = false;
+    for (const hook of hooks) {
+      if (isHookSelftune(hook)) {
+        if (!selftuneInserted) {
+          // Insert all resolved snippet hooks at the position of the first selftune hook
+          updatedHooks.push(...resolvedSnippetHooks);
+          selftuneInserted = true;
+        }
+        // Skip remaining old selftune hooks (replaced by snippet set above)
+      } else {
+        updatedHooks.push(hook);
+      }
+    }
+    g.hooks = updatedHooks;
   }
 
   return modified;
@@ -424,16 +437,31 @@ function sortKeys(obj: unknown): unknown {
  * Supports both old format ("bun run .../cli/selftune/hooks/X.ts")
  * and new format ("node .../bin/run-hook.cjs .../cli/selftune/hooks/X.ts").
  *
- * The regex matches an absolute path starting with / and captures everything
- * up to /cli/selftune/hooks/ or /bin/run-hook.cjs.
+ * Handles paths with spaces (e.g. "/Users/Alice Smith/...") and
+ * optional surrounding quotes in the command string.
  */
 function derivePackageRootFromCommand(command: string): string | null {
-  // Match an absolute path ending in /cli/selftune/hooks/
-  const match = command.match(/(\/[^\s]*?)\/cli\/selftune\/hooks\//);
-  if (match) return match[1];
-  // Match an absolute path ending in /bin/run-hook.cjs
-  const binMatch = command.match(/(\/[^\s]*?)\/bin\/run-hook\.cjs/);
-  if (binMatch) return binMatch[1];
+  // Normalize: strip quotes, collapse backslashes (for Windows-style paths)
+  const normalized = command.replace(/["']/g, "").replace(/\\/g, "/");
+  // Split on the known directory marker and take the prefix.
+  // The command may contain the package root multiple times (e.g.
+  // "node /root/bin/run-hook.cjs /root/cli/selftune/hooks/script.ts")
+  // so we split on the LAST occurrence of the marker.
+  for (const marker of ["/cli/selftune/hooks/", "/bin/run-hook.cjs"]) {
+    const idx = normalized.lastIndexOf(marker);
+    if (idx === -1) continue;
+    // Everything before the marker is "<prefix> <package-root>" or just "<package-root>"
+    const beforeMarker = normalized.slice(0, idx);
+    // Find the start of the path: scan backwards from end for the path start.
+    // Paths start with / (Unix) or a drive letter like C:/ (Windows).
+    // The command prefix (e.g. "node " or "bun run ") precedes the path.
+    const pathMatch = beforeMarker.match(/.*\s(\/.*|[A-Za-z]:\/.*)/);
+    if (pathMatch) return pathMatch[1];
+    // No space prefix — the entire string is the path (e.g. no "node " prefix)
+    if (beforeMarker.startsWith("/") || /^[A-Za-z]:\//.test(beforeMarker)) {
+      return beforeMarker;
+    }
+  }
   return null;
 }
 
