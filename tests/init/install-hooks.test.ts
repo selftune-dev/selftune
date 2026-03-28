@@ -182,6 +182,14 @@ describe("installClaudeCodeHooks", () => {
     const selftuneHooks = preHooks.filter(
       (h) => typeof h.command === "string" && (h.command as string).includes("selftune"),
     );
+    // Should expand from 2 hooks to 4 (Write/Edit split per guard)
+    expect(selftuneHooks.length).toBe(4);
+    expect(selftuneHooks.map((h) => h.if)).toEqual([
+      "Write(*SKILL.md)",
+      "Edit(*SKILL.md)",
+      "Write(*SKILL.md)",
+      "Edit(*SKILL.md)",
+    ]);
     // All selftune hooks should have statusMessage
     for (const hook of selftuneHooks) {
       expect(hook.statusMessage).toBeTruthy();

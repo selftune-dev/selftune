@@ -13,14 +13,20 @@ function isHookEntry(value: unknown): value is ClaudeCodeHookEntry {
   return typeof value === "object" && value !== null;
 }
 
+/** Check if a command string references a selftune-managed hook. */
+function isSelftuneCommand(command: string): boolean {
+  const normalized = command.replace(/\\/g, "/");
+  return normalized.includes("/cli/selftune/hooks/") || normalized.includes("/bin/run-hook.cjs");
+}
+
 export function entryReferencesSelftune(entry: ClaudeCodeHookEntry): boolean {
-  if (typeof entry.command === "string" && entry.command.includes("selftune")) {
+  if (typeof entry.command === "string" && isSelftuneCommand(entry.command)) {
     return true;
   }
 
   if (Array.isArray(entry.hooks)) {
     return entry.hooks.some(
-      (hook) => typeof hook.command === "string" && hook.command.includes("selftune"),
+      (hook) => typeof hook.command === "string" && isSelftuneCommand(hook.command),
     );
   }
 
