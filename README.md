@@ -95,11 +95,11 @@ Some agents claim self-improvement by saving notes about what worked. That's kno
 
 selftune is empirical. It observes real sessions, grades execution quality, detects missed triggers, proposes changes, validates them against eval sets, deploys with automatic backup, monitors for regressions, and rolls back on failure. Twelve interlocking mechanisms — not one background thread writing markdown.
 
-| Approach | Measures quality? | Validates changes? | Detects regressions? | Rolls back? |
-| -------- | ----------------- | ------------------ | -------------------- | ----------- |
-| Agent saves its own notes | No | No | No | No |
-| Manual skill rewrites | No | No | No | No |
-| **selftune** | 3-tier grading | Eval sets + majority voting | Post-deploy monitoring | Automatic |
+| Approach                  | Measures quality? | Validates changes?          | Detects regressions?   | Rolls back? |
+| ------------------------- | ----------------- | --------------------------- | ---------------------- | ----------- |
+| Agent saves its own notes | No                | No                          | No                     | No          |
+| Manual skill rewrites     | No                | No                          | No                     | No          |
+| **selftune**              | 3-tier grading    | Eval sets + majority voting | Post-deploy monitoring | Automatic   |
 
 ## Commands
 
