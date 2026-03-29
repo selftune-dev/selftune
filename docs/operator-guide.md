@@ -208,15 +208,8 @@ It is still supported, but it is not the primary product path.
 
 ## Running The First Alpha Cohort
 
-For the first 3-5 testers, use the operator pack in
-[`docs/alpha/`](./alpha/README.md):
-
-- [`alpha-invite-script.md`](./alpha/alpha-invite-script.md) for concise
-  outreach copy
-- [`alpha-tester-checklist.md`](./alpha/alpha-tester-checklist.md) for live
-  onboarding and readiness verification
-- [`alpha-cohort-tracker.md`](./alpha/alpha-cohort-tracker.md) to track who is
-  live, whether uploads are flowing, and what trust issues show up
+For the first 3-5 testers, maintain the invite script, onboarding checklist,
+and cohort tracker outside the public OSS repo.
 
 Do not treat early alpha as self-serve. Keep it high-touch until:
 

@@ -283,8 +283,8 @@ This does **not** need to be a polished end-user product first. A Daniel-only op
 **Effort:** Small  
 **Risk:** Low
 
-**Operator assets:** `docs/alpha/README.md`, `docs/alpha/alpha-invite-script.md`,
-`docs/alpha/alpha-tester-checklist.md`, `docs/alpha/alpha-cohort-tracker.md`
+**Operator assets:** maintain the invite script, onboarding checklist, and
+cohort tracker outside the public OSS repo
 
 **Primary outcome:** the first 3-5 testers are actually live.
 
