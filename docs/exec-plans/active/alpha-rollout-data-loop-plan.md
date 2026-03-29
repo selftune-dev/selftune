@@ -283,6 +283,9 @@ This does **not** need to be a polished end-user product first. A Daniel-only op
 **Effort:** Small  
 **Risk:** Low
 
+**Operator assets:** `docs/alpha/README.md`, `docs/alpha/alpha-invite-script.md`,
+`docs/alpha/alpha-tester-checklist.md`, `docs/alpha/alpha-cohort-tracker.md`
+
 **Primary outcome:** the first 3-5 testers are actually live.
 
 **Changes:**
