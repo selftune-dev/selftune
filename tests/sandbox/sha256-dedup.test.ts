@@ -75,9 +75,8 @@ describe("SHA256 content hashing for upload dedup", () => {
     expect(hash).toHaveLength(64);
     expect(hash).toMatch(/^[a-f0-9]{64}$/);
 
-    // Verify it matches the expected hash for this exact input
-    const expected = computeSha256(input);
-    expect(hash).toBe(expected);
+    // Verify against known SHA256 value
+    expect(hash).toBe("164c2c2519458131bded2a441a5407fde2f3a64e90ee9c89de002189fc8155ca");
   });
 
   it("same record staged twice produces the same hash", () => {
@@ -187,11 +186,13 @@ describe("SHA256 content hashing for upload dedup", () => {
 
     const result = buildV2PushPayload(db, 0);
     expect(result).not.toBeNull();
+    expect(result).toBeDefined();
 
     // The payload should contain content_hashes keyed by record_kind:record_id
-    const payload = result!.payload as Record<string, unknown>;
-    const hashes = payload.content_hashes as Record<string, string> | undefined;
+    const payload = result?.payload as Record<string, unknown> | undefined;
+    expect(payload).toBeDefined();
+    const hashes = payload?.content_hashes as Record<string, string> | undefined;
     expect(hashes).toBeDefined();
-    expect(hashes!["session:sess-payload-test"]).toBe(sha);
+    expect(hashes?.["session:sess-payload-test"]).toBe(sha);
   });
 });

@@ -130,13 +130,15 @@ describe("hook fast-path keyword detection", () => {
       // Build a payload where the event name is near the 4096 boundary
       const padding = "x".repeat(4070);
       const late = `{"padding":"${padding}","hook_event_name":"PostToolUse"}`;
-      const _smallPreview = late.slice(0, 4096);
-      // The keyword starts around byte 4085, so a 4096-byte preview should catch it
-      // but let's verify: if the keyword is cut off, we fall through to full parse (safe)
-      const fullIncludes = late.includes('"PostToolUse"');
-      expect(fullIncludes).toBe(true);
-      // The preview may or may not include it depending on exact offset — that's OK
-      // because the hook falls through to full parse on miss (conservative/safe)
+      const smallPreview = late.slice(0, 4096);
+
+      // The prefix '{"padding":"' is 13 bytes, then 4070 x's, then '","hook_event_name":"PostToolUse"}'
+      // Total offset to '"PostToolUse"' = 13 + 4070 + 22 = 4105, which exceeds the 4096 preview
+      // So the keyword should NOT appear in the truncated preview
+      expect(smallPreview.includes('"PostToolUse"')).toBe(false);
+
+      // But the full payload does contain it — the hook falls through to full parse (safe)
+      expect(late.includes('"PostToolUse"')).toBe(true);
     });
 
     it("custom preview size works correctly", () => {

@@ -12,8 +12,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { parseTranscript } from "../../cli/selftune/utils/transcript.js";
-import { calculateCost } from "../../cli/selftune/utils/transcript.js";
+import { parseTranscript, calculateCost } from "../../cli/selftune/utils/transcript.js";
 
 // ---------------------------------------------------------------------------
 // Helpers — build JSONL transcript content from message objects
@@ -304,7 +303,7 @@ describe("Win 3: Cost Calculation", () => {
     const cost = calculateCost("claude-sonnet-4-20250514", 1_000_000, 100_000);
     expect(cost).toBeDefined();
     // 1M * 3/1M + 100K * 15/1M = 3.0 + 1.5 = 4.5
-    expect(cost!).toBeCloseTo(4.5, 2);
+    expect(cost).toBeCloseTo(4.5, 2);
   });
 
   it("calculates cost for claude-opus-4-20250514", () => {
@@ -312,7 +311,7 @@ describe("Win 3: Cost Calculation", () => {
     const cost = calculateCost("claude-opus-4-20250514", 1_000_000, 100_000);
     expect(cost).toBeDefined();
     // 1M * 15/1M + 100K * 75/1M = 15.0 + 7.5 = 22.5
-    expect(cost!).toBeCloseTo(22.5, 2);
+    expect(cost).toBeCloseTo(22.5, 2);
   });
 
   it("returns undefined for unknown model", () => {
@@ -340,6 +339,6 @@ describe("Win 3: Cost Calculation", () => {
 
     const metrics = parseTranscript(path);
     expect(metrics.cost_usd).toBeDefined();
-    expect(metrics.cost_usd!).toBeCloseTo(4.5, 1);
+    expect(metrics.cost_usd).toBeCloseTo(4.5, 1);
   });
 });
