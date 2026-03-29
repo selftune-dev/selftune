@@ -1,3 +1,44 @@
+// -- Cursor-based pagination types -------------------------------------------
+
+export interface PaginationCursor {
+  timestamp: string;
+  id: number | string;
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  next_cursor: PaginationCursor | null;
+  has_more: boolean;
+}
+
+// -- Paginated overview payload (returned when cursor params are provided) ----
+
+export interface OverviewPaginatedPayload {
+  telemetry_page: PaginatedResult<TelemetryRecord>;
+  skills_page: PaginatedResult<SkillUsageRecord>;
+  evolution: EvolutionEntry[];
+  counts: OverviewPayload["counts"];
+  unmatched_queries: UnmatchedQuery[];
+  pending_proposals: PendingProposal[];
+  active_sessions: number;
+  recent_activity: RecentActivityItem[];
+}
+
+export interface SkillReportPaginatedPayload extends Omit<
+  SkillReportPayload,
+  "recent_invocations"
+> {
+  invocations_page: PaginatedResult<{
+    timestamp: string;
+    session_id: string;
+    query: string;
+    triggered: boolean;
+    source: string | null;
+  }>;
+}
+
+// -- Core record types -------------------------------------------------------
+
 export interface TelemetryRecord {
   timestamp: string;
   session_id: string;
