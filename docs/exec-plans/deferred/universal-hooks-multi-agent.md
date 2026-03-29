@@ -19,6 +19,7 @@ agentlogs solved this with a **thin adapter → CLI router → shared logic** pa
 ```
 
 Each agent has:
+
 1. A **platform adapter** — a tiny shim that translates native events to a JSON payload on stdin
 2. A **CLI subcommand** — `agentlogs <agent> hook` that reads stdin and calls shared logic
 3. **Shared hook utilities** — git commit detection, transcript parsing, upload orchestration
@@ -104,12 +105,12 @@ For Claude Code, the existing `settings_snippet.json` approach continues to work
 
 ### Event Mapping
 
-| Selftune Event | Claude Code | Codex | OpenCode | Pi | Cline |
-|---|---|---|---|---|---|
-| pre_tool_use | PreToolUse | PreToolUse | tool.execute.before | tool_call | — |
-| post_tool_use | PostToolUse | PostToolUse | tool.execute.after | tool_result | PostToolUse |
-| prompt_submit | UserPromptSubmit | SessionStart | — | — | — |
-| session_end | Stop | Stop | session.idle | session_shutdown | TaskComplete |
+| Selftune Event | Claude Code      | Codex        | OpenCode            | Pi               | Cline        |
+| -------------- | ---------------- | ------------ | ------------------- | ---------------- | ------------ |
+| pre_tool_use   | PreToolUse       | PreToolUse   | tool.execute.before | tool_call        | —            |
+| post_tool_use  | PostToolUse      | PostToolUse  | tool.execute.after  | tool_result      | PostToolUse  |
+| prompt_submit  | UserPromptSubmit | SessionStart | —                   | —                | —            |
+| session_end    | Stop             | Stop         | session.idle        | session_shutdown | TaskComplete |
 
 ### Migration Path
 
