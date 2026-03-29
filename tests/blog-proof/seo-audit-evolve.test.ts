@@ -369,6 +369,7 @@ describe("Blog Proof: seo-audit skill evolution", () => {
         extractFailurePatterns: mock(() => failurePatterns),
         generateProposal: mock(async () => proposal),
         validateProposal: mock(async () => validationResult),
+        gateValidateProposal: mock(async () => validationResult),
         appendAuditEntry: mock(() => {}),
         buildEvalSet: mock(() => evalSet),
         updateContextAfterEvolve: mock(() => {}),
@@ -383,6 +384,8 @@ describe("Blog Proof: seo-audit skill evolution", () => {
           dryRun: false,
           confidenceThreshold: 0.6,
           maxIterations: 3,
+          cheapLoop: false,
+          gateModel: undefined,
         },
         deps,
       );
