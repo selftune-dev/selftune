@@ -15,6 +15,7 @@ import {
   IDENTIFIER_PATTERN,
   IP_PATTERN,
   MODULE_PATTERN,
+  PII_PATTERNS,
   SECRET_PATTERNS,
 } from "../constants.js";
 import type { ContributionBundle } from "../types.js";
@@ -26,6 +27,15 @@ const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 const DOUBLE_QUOTED_PATTERN = /"[^"]*"/g;
 const SINGLE_QUOTED_PATTERN = /'[^']*'/g;
 
+/** Apply a set of regex patterns to text, replacing matches with a token. Clones each regex to reset lastIndex. */
+function applyPatterns(text: string, patterns: readonly RegExp[], token: string): string {
+  let result = text;
+  for (const pattern of patterns) {
+    result = result.replace(new RegExp(pattern.source, pattern.flags), token);
+  }
+  return result;
+}
+
 // ---------------------------------------------------------------------------
 // Secret-only sanitization (used by redactSecretsDeep for defense-in-depth)
 // ---------------------------------------------------------------------------
@@ -36,11 +46,7 @@ const SINGLE_QUOTED_PATTERN = /'[^']*'/g;
  */
 export function sanitizeSecrets(text: string): string {
   if (!text) return text;
-  let result = text;
-  for (const pattern of SECRET_PATTERNS) {
-    result = result.replace(new RegExp(pattern.source, pattern.flags), "[SECRET]");
-  }
-  return result;
+  return applyPatterns(text, SECRET_PATTERNS, "[SECRET]");
 }
 
 /**
@@ -71,10 +77,10 @@ export function sanitizeConservative(text: string, projectName?: string): string
   let result = text;
 
   // Secrets first (longest/most specific patterns)
-  for (const pattern of SECRET_PATTERNS) {
-    // Clone regex to reset lastIndex
-    result = result.replace(new RegExp(pattern.source, pattern.flags), "[SECRET]");
-  }
+  result = applyPatterns(result, SECRET_PATTERNS, "[SECRET]");
+
+  // PII (phone numbers, credit cards, SSNs, IPv6, DOBs)
+  result = applyPatterns(result, PII_PATTERNS, "[PII]");
 
   // File paths
   result = result.replace(new RegExp(FILE_PATH_PATTERN.source, FILE_PATH_PATTERN.flags), "[PATH]");

@@ -229,6 +229,33 @@ export const EMAIL_PATTERN = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\
 /** Regex for IP addresses (v4). */
 export const IP_PATTERN = /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g;
 
+// ---------------------------------------------------------------------------
+// PII patterns — high-confidence, low-false-positive personally identifiable info
+// ---------------------------------------------------------------------------
+
+export const PII_PATTERNS = [
+  // -- Phone numbers --
+  /\+\d{1,3}\s?\d{1,4}\s?\d{1,4}\s?\d{1,9}/g, // E.164 intl: +1 555 123 4567, +44 20 7946 0958
+  /\b\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/g, // US/CA phone: (555) 123-4567, 555-123-4567, 555.123.4567
+
+  // -- Credit card numbers (major networks, with optional separators) --
+  /\b4\d{3}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g, // Visa (starts with 4)
+  /\b5[1-5]\d{2}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g, // Mastercard (51-55)
+  /\b3[47]\d{2}[\s-]?\d{6}[\s-]?\d{5}\b/g, // Amex (34/37)
+  /\b6(?:011|5\d{2})[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g, // Discover (6011/65)
+
+  // -- SSN / national IDs --
+  /\b\d{3}-\d{2}-\d{4}\b/g, // US SSN: 123-45-6789
+
+  // -- IPv6 --
+  /\b(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b/g, // Full IPv6
+  /\b(?:[0-9a-fA-F]{1,4}:){1,7}:(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4})*)?(?!\w)/g, // Abbreviated IPv6 (with ::)
+  /::(?:[0-9a-fA-F]{1,4}:){0,5}[0-9a-fA-F]{1,4}\b/g, // Abbreviated IPv6 (leading ::1, ::ffff:...)
+
+  // -- Date of birth patterns (in structured contexts) --
+  /\b(?:dob|date\.of\.birth|birthday|born)\s*[:=]\s*\d{1,4}[-/]\d{1,2}[-/]\d{1,4}\b/gi, // DOB in key-value context
+] as const;
+
 /** Regex for camelCase/PascalCase identifiers longer than 8 chars (aggressive mode). */
 export const IDENTIFIER_PATTERN = /\b[a-z][a-zA-Z0-9]{8,}\b|\b[A-Z][a-zA-Z0-9]{8,}\b/g;
 
