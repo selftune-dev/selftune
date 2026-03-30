@@ -56,7 +56,19 @@ selftune/
 │   │   ├── auto-activate.ts # UserPromptSubmit activation suggestions
 │   │   ├── skill-change-guard.ts # PreToolUse guard for uncontrolled edits
 │   │   └── evolution-guard.ts    # PreToolUse guard for monitored skills
-│   ├── ingestors/           # Platform adapters (Codex, OpenCode, Claude replay, OpenClaw)
+│   ├── hooks-shared/        # Universal hook types + shared utilities for multi-platform
+│   │   ├── types.ts         # UnifiedHookEvent, HookResponse, PLATFORM_EVENT_MAP
+│   │   ├── normalize.ts     # Per-platform payload normalizers
+│   │   ├── session-state.ts # Generic session state persistence
+│   │   ├── git-metadata.ts  # Git branch/remote/commit extraction
+│   │   ├── skill-paths.ts   # SKILL.md detection and skill name extraction
+│   │   ├── hook-output.ts   # Platform-aware response formatting
+│   │   └── stdin-dispatch.ts # Fast-path stdin keyword filtering
+│   ├── adapters/            # Per-platform real-time hook adapters
+│   │   ├── codex/           # Codex hook handler + install (hooks.json)
+│   │   ├── opencode/        # OpenCode hook handler + install (shell shim)
+│   │   └── cline/           # Cline hook handler + install (hook scripts)
+│   ├── ingestors/           # Batch platform adapters (Codex, OpenCode, Claude replay, OpenClaw)
 │   │   ├── claude-replay.ts # Claude Code transcript replay ingestor
 │   │   ├── codex-wrapper.ts # Real-time Codex wrapper (experimental)
 │   │   ├── codex-rollout.ts # Batch Codex ingestor (experimental)

@@ -27,6 +27,9 @@
  *   selftune telemetry          — Manage anonymous usage analytics (status, enable, disable)
  *   selftune alpha <subcommand> — Alpha program management (upload)
  *   selftune hook <name>        — Run a hook by name (prompt-log, session-stop, etc.)
+ *   selftune codex <subcommand> — Codex platform hooks (hook, install)
+ *   selftune opencode <sub>     — OpenCode platform hooks (hook, install)
+ *   selftune cline <subcommand> — Cline platform hooks (hook, install)
  */
 
 import { CLIError, handleCLIError } from "./utils/cli-error.js";
@@ -67,6 +70,9 @@ Commands:
   alpha <subcommand> Alpha program management (upload)
   telemetry          Manage anonymous usage analytics (status, enable, disable)
   hook <name>        Run a hook by name (prompt-log, session-stop, etc.)
+  codex <sub>        Codex platform hooks (hook, install)
+  opencode <sub>     OpenCode platform hooks (hook, install)
+  cline <sub>        Cline platform hooks (hook, install)
 
 Run 'selftune <command> --help' for command-specific options.`);
   process.exit(0);
@@ -79,8 +85,9 @@ if (command && command !== "--help" && command !== "-h") {
     .catch(() => {});
 }
 
-// Auto-update check (skip for hooks — they must be fast — and --help)
-if (command && command !== "hook" && command !== "--help" && command !== "-h") {
+// Auto-update check (skip for hooks and platform hook commands — they must be fast — and --help)
+const FAST_COMMANDS: ReadonlySet<string> = new Set(["hook", "codex", "opencode", "cline"]);
+if (command && !FAST_COMMANDS.has(command) && command !== "--help" && command !== "-h") {
   const { autoUpdate } = await import("./auto-update.js");
   await autoUpdate();
 }
@@ -779,6 +786,49 @@ Output:
     process.exit(result.status ?? 1);
     break;
   }
+  // ── Platform hook adapters ─────────────────────────────────────────
+
+  case "codex":
+  case "opencode":
+  case "cline": {
+    const platform = command;
+    const displayName = { codex: "Codex", opencode: "OpenCode", cline: "Cline" }[platform];
+    const sub = process.argv[2];
+    if (!sub || sub === "--help" || sub === "-h") {
+      console.log(`selftune ${platform} — ${displayName} platform hooks
+
+Usage:
+  selftune ${platform} <subcommand> [options]
+
+Subcommands:
+  hook       Handle a real-time hook event from ${displayName}
+  install    Install or remove selftune hooks in ${displayName} config
+
+Run 'selftune ${platform} <subcommand> --help' for subcommand-specific options.`);
+      process.exit(0);
+    }
+    process.argv = [process.argv[0], process.argv[1], ...process.argv.slice(3)];
+    switch (sub) {
+      case "hook": {
+        const { cliMain } = await import(`./adapters/${platform}/hook.js`);
+        await cliMain();
+        break;
+      }
+      case "install": {
+        const { cliMain } = await import(`./adapters/${platform}/install.js`);
+        await cliMain();
+        break;
+      }
+      default:
+        throw new CLIError(
+          `Unknown ${platform} subcommand: ${sub}`,
+          "UNKNOWN_COMMAND",
+          `selftune ${platform} --help`,
+        );
+    }
+    break;
+  }
+
   default:
     throw new CLIError(`Unknown command: ${command}`, "UNKNOWN_COMMAND", "selftune --help");
 }

@@ -125,6 +125,9 @@ Your agent runs these — you just say what you want ("improve my skills", "show
 |            | `selftune eval unit-test --skill <name>`     | Run or generate skill-level unit tests                                                      |
 |            | `selftune eval composability --skill <name>` | Detect conflicts between co-occurring skills                                                |
 |            | `selftune eval import`                       | Import external eval corpus from [SkillsBench](https://github.com/benchflow-ai/skillsbench) |
+| **hooks**  | `selftune codex install`                     | Install selftune hooks into Codex (`--dry-run`, `--uninstall`)                              |
+|            | `selftune opencode install`                  | Install selftune hooks into OpenCode                                                        |
+|            | `selftune cline install`                     | Install selftune hooks into Cline                                                           |
 | **auto**   | `selftune cron setup`                        | Install OS-level scheduling (cron/launchd/systemd)                                          |
 |            | `selftune watch --skill <name>`              | Monitor after deploy. Auto-rollback on regression.                                          |
 | **other**  | `selftune workflows`                         | Discover and manage multi-skill workflows                                                   |
@@ -162,11 +165,13 @@ selftune is complementary to these tools, not competitive. They trace what happe
 
 **Claude Code** (fully supported) — Hooks install automatically. `selftune ingest claude` backfills existing transcripts. This is the primary supported platform.
 
-**Codex** (experimental) — `selftune ingest wrap-codex -- <args>` or `selftune ingest codex`. Adapter exists but is not actively tested.
+**Codex** (hooks + ingest) — `selftune codex install` for real-time hooks, `selftune ingest codex` for batch backfill. Hooks write to `~/.codex/hooks.json`.
 
-**OpenCode** (experimental) — `selftune ingest opencode`. Adapter exists but is not actively tested.
+**OpenCode** (hooks + ingest) — `selftune opencode install` for real-time hooks, `selftune ingest opencode` for batch backfill. Hooks write a shell shim to `~/.config/opencode/`.
 
-**OpenClaw** (experimental) — `selftune ingest openclaw` + `selftune cron setup` for autonomous evolution. Adapter exists but is not actively tested.
+**Cline** (hooks) — `selftune cline install` for real-time hooks. Creates hook scripts in `~/Documents/Cline/Hooks/`.
+
+**OpenClaw** (ingest only) — `selftune ingest openclaw` + `selftune cron setup` for autonomous evolution.
 
 Requires [Bun](https://bun.sh) or Node.js 18+. No extra API keys.
 
@@ -176,6 +181,6 @@ Requires [Bun](https://bun.sh) or Node.js 18+. No extra API keys.
 
 [Architecture](ARCHITECTURE.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Integration Guide](docs/integration-guide.md) · [Sponsor](https://github.com/sponsors/WellDunDun)
 
-MIT licensed. Free forever. Primary support for Claude Code; experimental adapters for Codex, OpenCode, and OpenClaw.
+MIT licensed. Free forever. Hooks for Claude Code, Codex, OpenCode, and Cline; batch ingest for OpenClaw.
 
 </div>
