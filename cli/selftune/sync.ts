@@ -58,6 +58,7 @@ import {
 import { getDb } from "./localdb/db.js";
 import { querySkillUsageRecords } from "./localdb/queries.js";
 import {
+  persistRepairedSkillUsageToDb,
   rebuildSkillUsageFromCodexRollouts,
   rebuildSkillUsageFromTranscripts,
 } from "./repair/skill-usage.js";
@@ -389,6 +390,7 @@ function rebuildSkillUsageOverlay(
   repairedRecords.push(...codexRecords);
 
   if (!options.dryRun) {
+    persistRepairedSkillUsageToDb(getDb(), repairedRecords);
     writeRepairedSkillUsageRecords(
       repairedRecords,
       repairedSessionIds,

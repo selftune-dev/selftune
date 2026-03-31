@@ -9,8 +9,11 @@ import type { Database } from "bun:sqlite";
 
 import type {
   AnalyticsResponse,
+  AttentionItem,
+  AutonomousDecision,
   CommitRecord,
   CommitSummary,
+  DecisionKind,
   ExecutionMetrics,
   OrchestrateRunReport,
   OverviewPaginatedPayload,
@@ -1614,6 +1617,217 @@ export function getSkillCommitSummary(db: Database, skillName: string): CommitSu
       timestamp: r.timestamp,
     })),
   };
+}
+
+// -- Helpers ------------------------------------------------------------------
+
+// -- Autonomy-first dashboard queries -----------------------------------------
+
+export interface SkillTrustSummary {
+  skill_name: string;
+  total_checks: number;
+  triggered_count: number;
+  miss_rate: number;
+  system_like_count: number;
+  system_like_rate: number;
+  prompt_link_rate: number;
+  latest_action: string | null;
+  pass_rate: number;
+  last_seen: string | null;
+}
+
+export function getSkillTrustSummaries(db: Database): SkillTrustSummary[] {
+  const rows = db
+    .query(
+      `SELECT
+         si.skill_name,
+         COUNT(*) AS total_checks,
+         SUM(CASE WHEN si.triggered = 1 THEN 1 ELSE 0 END) AS triggered_count,
+         SUM(CASE WHEN si.matched_prompt_id IS NOT NULL THEN 1 ELSE 0 END) AS prompt_linked,
+         MAX(si.occurred_at) AS last_seen
+       FROM skill_invocations si
+       GROUP BY si.skill_name`,
+    )
+    .all() as Array<{
+    skill_name: string;
+    total_checks: number;
+    triggered_count: number;
+    prompt_linked: number;
+    last_seen: string | null;
+  }>;
+
+  const systemLikeCounts = new Map<string, number>();
+  const systemRows = db
+    .query(
+      `SELECT si.skill_name, COUNT(*) AS cnt
+       FROM skill_invocations si
+       JOIN prompts p ON si.matched_prompt_id = p.prompt_id
+       WHERE p.prompt_text LIKE '<system_instruction>%'
+          OR p.prompt_text LIKE '<system-instruction>%'
+          OR p.prompt_text LIKE '<command-name>%'
+       GROUP BY si.skill_name`,
+    )
+    .all() as Array<{ skill_name: string; cnt: number }>;
+  for (const sr of systemRows) {
+    systemLikeCounts.set(sr.skill_name, sr.cnt);
+  }
+
+  const latestActions = new Map<string, string>();
+  const actionRows = db
+    .query(
+      `SELECT ea.skill_name, ea.action
+       FROM evolution_audit ea
+       INNER JOIN (
+         SELECT skill_name, MAX(timestamp) AS max_ts
+         FROM evolution_audit
+         WHERE skill_name IS NOT NULL
+         GROUP BY skill_name
+       ) latest ON ea.skill_name = latest.skill_name AND ea.timestamp = latest.max_ts`,
+    )
+    .all() as Array<{ skill_name: string; action: string }>;
+  for (const ar of actionRows) {
+    latestActions.set(ar.skill_name, ar.action);
+  }
+
+  return rows.map((row) => {
+    const total = row.total_checks;
+    const triggered = row.triggered_count;
+    const missRate = total > 0 ? (total - triggered) / total : 0;
+    const passRate = total > 0 ? triggered / total : 0;
+    const systemLike = systemLikeCounts.get(row.skill_name) ?? 0;
+
+    return {
+      skill_name: row.skill_name,
+      total_checks: total,
+      triggered_count: triggered,
+      miss_rate: missRate,
+      system_like_count: systemLike,
+      system_like_rate: total > 0 ? systemLike / total : 0,
+      prompt_link_rate: total > 0 ? row.prompt_linked / total : 0,
+      latest_action: latestActions.get(row.skill_name) ?? null,
+      pass_rate: passRate,
+      last_seen: row.last_seen,
+    };
+  });
+}
+
+export function getAttentionQueue(db: Database): AttentionItem[] {
+  const summaries = getSkillTrustSummaries(db);
+  const pending = getPendingProposals(db);
+  const pendingSkills = new Set(pending.map((p) => p.skill_name).filter(Boolean));
+
+  const items: AttentionItem[] = [];
+
+  for (const s of summaries) {
+    if (s.total_checks < 5) continue;
+
+    if (s.latest_action === "rolled_back") {
+      items.push({
+        skill_name: s.skill_name,
+        category: "needs_review",
+        severity: "critical",
+        reason: "Rolled back after deployment",
+        recommended_action: "Review rollback evidence and decide whether to re-evolve",
+        timestamp: s.last_seen ?? "",
+      });
+      continue;
+    }
+
+    if (s.miss_rate > 0.1) {
+      items.push({
+        skill_name: s.skill_name,
+        category: "regression",
+        severity: "warning",
+        reason: `High miss rate (${Math.round(s.miss_rate * 100)}%)`,
+        recommended_action: "Review missed invocations and consider evolving the skill description",
+        timestamp: s.last_seen ?? "",
+      });
+      continue;
+    }
+
+    if (s.system_like_rate > 0.1) {
+      items.push({
+        skill_name: s.skill_name,
+        category: "polluted",
+        severity: "warning",
+        reason: `Possible telemetry pollution (${Math.round(s.system_like_rate * 100)}% system-like)`,
+        recommended_action: "Inspect prompts for system-injected noise",
+        timestamp: s.last_seen ?? "",
+      });
+      continue;
+    }
+
+    if (pendingSkills.has(s.skill_name)) {
+      items.push({
+        skill_name: s.skill_name,
+        category: "needs_review",
+        severity: "info",
+        reason: "Proposal awaiting review",
+        recommended_action: "Review and approve or reject the pending proposal",
+        timestamp: s.last_seen ?? "",
+      });
+    }
+  }
+
+  return items;
+}
+
+export function getRecentDecisions(db: Database, limit = 20): AutonomousDecision[] {
+  const rows = db
+    .query(
+      `SELECT timestamp, proposal_id, skill_name, action, details, eval_snapshot_json
+       FROM evolution_audit
+       WHERE timestamp >= datetime('now', '-7 days')
+       ORDER BY timestamp DESC
+       LIMIT ?`,
+    )
+    .all(limit) as Array<{
+    timestamp: string;
+    proposal_id: string;
+    skill_name: string | null;
+    action: string;
+    details: string;
+    eval_snapshot_json: string | null;
+  }>;
+
+  return rows
+    .filter((row) => row.skill_name != null)
+    .map((row) => {
+      const evalSnapshot = safeParseJson(row.eval_snapshot_json) as {
+        regressions?: unknown[];
+      } | null;
+
+      let kind: DecisionKind;
+      switch (row.action) {
+        case "proposed":
+        case "created":
+          kind = "proposal_created";
+          break;
+        case "validated":
+          kind =
+            evalSnapshot?.regressions && evalSnapshot.regressions.length > 0
+              ? "validation_failed"
+              : "proposal_created"; // validated without regressions is still a creation step
+          break;
+        case "deployed":
+          kind = "proposal_deployed";
+          break;
+        case "rolled_back":
+          kind = "rollback_triggered";
+          break;
+        default:
+          kind = "proposal_created";
+          break;
+      }
+
+      return {
+        timestamp: row.timestamp,
+        kind,
+        skill_name: row.skill_name!,
+        proposal_id: row.proposal_id,
+        summary: row.details ?? "",
+      };
+    });
 }
 
 // -- Helpers ------------------------------------------------------------------

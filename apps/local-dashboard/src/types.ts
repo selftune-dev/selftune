@@ -17,9 +17,15 @@ export type {
 // Types that remain local (only used by pages/hooks, not by shared components)
 export type {
   AnalyticsResponse,
+  AttentionCategory,
+  AttentionItem,
+  AutonomousDecision,
+  AutonomyStatus,
+  AutonomyStatusLevel,
   CanonicalInvocation,
   CommitRecord,
   CommitSummary,
+  DecisionKind,
   DoctorResult,
   ExampleRow,
   ExecutionMetrics,
@@ -41,6 +47,8 @@ export type {
   SkillSummary,
   SkillUsageRecord,
   TelemetryRecord,
+  TrustBucket,
   TrustFields,
   TrustState,
+  TrustWatchlistEntry,
 } from "../../../cli/selftune/dashboard-contract";

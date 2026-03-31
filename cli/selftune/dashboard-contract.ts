@@ -136,6 +136,62 @@ export interface SkillSummary {
   has_evidence: boolean;
 }
 
+// -- Autonomy-first overview types -------------------------------------------
+
+export type AutonomyStatusLevel = "healthy" | "watching" | "needs_review" | "blocked";
+
+export interface AutonomyStatus {
+  level: AutonomyStatusLevel;
+  summary: string;
+  last_run: string | null;
+  skills_observed: number;
+  pending_reviews: number;
+  attention_required: number;
+}
+
+export type AttentionCategory =
+  | "needs_review"
+  | "regression"
+  | "low_trust"
+  | "polluted"
+  | "blocked";
+
+export interface AttentionItem {
+  skill_name: string;
+  category: AttentionCategory;
+  severity: "critical" | "warning" | "info";
+  reason: string;
+  recommended_action: string;
+  timestamp: string;
+}
+
+export type TrustBucket = "at_risk" | "improving" | "uncertain" | "stable";
+
+export interface TrustWatchlistEntry {
+  skill_name: string;
+  bucket: TrustBucket;
+  trust_state: TrustState;
+  reason: string;
+  pass_rate: number | null;
+  checks: number;
+  last_seen: string | null;
+}
+
+export type DecisionKind =
+  | "proposal_created"
+  | "validation_failed"
+  | "proposal_deployed"
+  | "rollback_triggered"
+  | "regression_found";
+
+export interface AutonomousDecision {
+  timestamp: string;
+  kind: DecisionKind;
+  skill_name: string;
+  proposal_id?: string;
+  summary: string;
+}
+
 export interface OverviewPayload {
   telemetry: TelemetryRecord[];
   skills: SkillUsageRecord[];
@@ -158,6 +214,10 @@ export interface OverviewResponse {
   overview: OverviewPayload;
   skills: SkillSummary[];
   version?: string;
+  autonomy_status: AutonomyStatus;
+  attention_queue: AttentionItem[];
+  trust_watchlist: TrustWatchlistEntry[];
+  recent_decisions: AutonomousDecision[];
 }
 
 export interface EvidenceEntry {
@@ -188,6 +248,7 @@ export interface CanonicalInvocation {
   source?: string | null;
   skill_path?: string | null;
   skill_scope?: string | null;
+  observation_kind?: ObservationKind;
 }
 
 export interface PromptSample {
@@ -362,7 +423,19 @@ export interface CommitSummary {
 
 // -- Trust-oriented types for skill report ------------------------------------
 
-export type TrustState = "low_sample" | "observed" | "watch" | "validated" | "deployed" | "rolled_back";
+export type TrustState =
+  | "low_sample"
+  | "observed"
+  | "watch"
+  | "validated"
+  | "deployed"
+  | "rolled_back";
+
+export type ObservationKind =
+  | "canonical"
+  | "repaired_trigger"
+  | "repaired_contextual_miss"
+  | "legacy_materialized";
 
 export interface ExampleRow {
   timestamp: string | null;
@@ -377,6 +450,7 @@ export interface ExampleRow {
   workspace_path: string | null;
   query_origin: "inline_query" | "matched_prompt" | "missing";
   is_system_like: boolean;
+  observation_kind: ObservationKind;
 }
 
 export interface TrustFields {
@@ -422,6 +496,7 @@ export interface TrustFields {
     naming_variants: string[];
     source_breakdown: Array<{ source: string; count: number }>;
     prompt_kind_breakdown: Array<{ kind: string; count: number }>;
+    observation_breakdown: Array<{ kind: ObservationKind; count: number }>;
   };
   examples: {
     good: ExampleRow[];

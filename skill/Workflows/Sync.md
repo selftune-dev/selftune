@@ -1,8 +1,11 @@
 # selftune Sync Workflow
 
 Refresh source-truth telemetry across supported agent CLIs, then rebuild the
-repaired skill-usage overlay so status, dashboard, grading, and evolution work
-from real transcripts/rollouts instead of stale hook data.
+repaired skill-usage layer so status, dashboard, grading, and evolution work
+from real transcripts/rollouts instead of stale hook data. The repair phase
+updates canonical SQLite skill invocations for legacy historical rows,
+reconstructs contextual misses from transcript `SKILL.md` reads, and also
+writes the compatibility repaired overlay JSONL.
 
 ## When to Use
 
@@ -38,6 +41,7 @@ Writes/refreshed data:
 - `~/.claude/session_telemetry_log.jsonl`
 - `~/.claude/all_queries_log.jsonl`
 - `~/.claude/skill_usage_log.jsonl`
+- canonical SQLite `skill_invocations` repair rows / legacy-row cleanup
 - `~/.claude/skill_usage_repaired.jsonl`
 - per-source marker files
 

@@ -120,6 +120,8 @@ export function handleSkillReport(
     query: string | null;
     source: string | null;
     skill_invocation_id: string;
+    capture_mode: string | null;
+    raw_source_ref: string | null;
   }>;
 
   if (invCursor) {
@@ -128,7 +130,7 @@ export function handleSkillReport(
         `SELECT si.occurred_at as timestamp, si.session_id, si.skill_name,
                 si.invocation_mode, si.triggered, si.confidence, si.tool_name,
                 si.agent_type, COALESCE(si.query, p.prompt_text) as query, si.source,
-                si.skill_invocation_id
+                si.skill_invocation_id, si.capture_mode, si.raw_source_ref
          FROM skill_invocations si
          LEFT JOIN prompts p ON si.matched_prompt_id = p.prompt_id
          WHERE si.skill_name = ?
@@ -149,7 +151,7 @@ export function handleSkillReport(
         `SELECT si.occurred_at as timestamp, si.session_id, si.skill_name,
                 si.invocation_mode, si.triggered, si.confidence, si.tool_name,
                 si.agent_type, COALESCE(si.query, p.prompt_text) as query, si.source,
-                si.skill_invocation_id
+                si.skill_invocation_id, si.capture_mode, si.raw_source_ref
          FROM skill_invocations si
          LEFT JOIN prompts p ON si.matched_prompt_id = p.prompt_id
          WHERE si.skill_name = ?
@@ -294,6 +296,24 @@ export function handleSkillReport(
     const trimmed = text.trimStart();
     return SYSTEM_LIKE_PREFIXES.some((p) => trimmed.startsWith(p));
   };
+  const classifyObservationKind = (
+    skillInvocationId: string,
+    captureMode: string | null,
+    triggered: number,
+    rawSourceRefJson: string | null,
+  ): "canonical" | "repaired_trigger" | "repaired_contextual_miss" | "legacy_materialized" => {
+    if (skillInvocationId.includes(":su:")) return "legacy_materialized";
+    if (captureMode === "repair") {
+      const rawSourceRef = safeParseJson(rawSourceRefJson) as {
+        metadata?: { miss_type?: string };
+      } | null;
+      if (triggered === 0 && rawSourceRef?.metadata?.miss_type === "contextual_read") {
+        return "repaired_contextual_miss";
+      }
+      return "repaired_trigger";
+    }
+    return "canonical";
+  };
 
   // Fetch all invocations for this skill with joined prompt + session data
   const allInvocations = db
@@ -302,7 +322,7 @@ export function handleSkillReport(
               si.invocation_mode, si.triggered, si.confidence, si.tool_name,
               si.agent_type, si.query AS inline_query, si.source,
               si.matched_prompt_id, si.skill_scope, si.skill_path,
-              si.skill_invocation_id,
+              si.skill_invocation_id, si.capture_mode, si.raw_source_ref,
               p.prompt_text, p.prompt_kind,
               s.platform, s.workspace_path
        FROM skill_invocations si
@@ -326,6 +346,8 @@ export function handleSkillReport(
     skill_scope: string | null;
     skill_path: string | null;
     skill_invocation_id: string;
+    capture_mode: string | null;
+    raw_source_ref: string | null;
     prompt_text: string | null;
     prompt_kind: string | null;
     platform: string | null;
@@ -337,9 +359,7 @@ export function handleSkillReport(
 
   // Coverage
   const distinctSessions = new Set(allInvocations.map((r) => r.session_id));
-  const distinctWorkspaces = new Set(
-    allInvocations.map((r) => r.workspace_path).filter(Boolean),
-  );
+  const distinctWorkspaces = new Set(allInvocations.map((r) => r.workspace_path).filter(Boolean));
   const allTimestamps = allInvocations
     .map((r) => r.timestamp)
     .filter((t): t is string => t != null);
@@ -368,7 +388,8 @@ export function handleSkillReport(
     if (inv.inline_query != null && inv.inline_query !== "") inlineQueryCount++;
     if (inv.prompt_kind === "user") userPromptCount++;
     if (inv.prompt_kind === "meta") metaPromptCount++;
-    if (inv.matched_prompt_id == null && (inv.inline_query == null || inv.inline_query === "")) noPromptCount++;
+    if (inv.matched_prompt_id == null && (inv.inline_query == null || inv.inline_query === ""))
+      noPromptCount++;
     const queryText = inv.inline_query || inv.prompt_text || "";
     if (isSystemLike(queryText)) systemLikeCount++;
     if (inv.invocation_mode != null && inv.invocation_mode !== "") invModeCount++;
@@ -404,7 +425,8 @@ export function handleSkillReport(
     miss_rate: safeDiv(missedTriggers, totalInv),
     avg_confidence: avgConfidence,
     confidence_coverage: safeDiv(confCount, totalInv),
-    low_confidence_rate: withConfidence.length > 0 ? safeDiv(lowConfCount, withConfidence.length) : null,
+    low_confidence_rate:
+      withConfidence.length > 0 ? safeDiv(lowConfCount, withConfidence.length) : null,
   };
 
   // Evolution state
@@ -437,9 +459,7 @@ export function handleSkillReport(
 
   // Data hygiene
   const namingVariants = db
-    .query(
-      `SELECT DISTINCT skill_name FROM skill_invocations WHERE lower(skill_name) = lower(?)`,
-    )
+    .query(`SELECT DISTINCT skill_name FROM skill_invocations WHERE lower(skill_name) = lower(?)`)
     .all(skillName) as Array<{ skill_name: string }>;
 
   const sourceBreakdown = db
@@ -460,10 +480,28 @@ export function handleSkillReport(
     )
     .all(skillName) as Array<{ kind: string; count: number }>;
 
+  const observationBreakdownMap = new Map<
+    "canonical" | "repaired_trigger" | "repaired_contextual_miss" | "legacy_materialized",
+    number
+  >();
+  for (const inv of allInvocations) {
+    const kind = classifyObservationKind(
+      inv.skill_invocation_id,
+      inv.capture_mode,
+      inv.triggered,
+      inv.raw_source_ref,
+    );
+    observationBreakdownMap.set(kind, (observationBreakdownMap.get(kind) ?? 0) + 1);
+  }
+
   const data_hygiene = {
     naming_variants: namingVariants.map((r) => r.skill_name),
     source_breakdown: sourceBreakdown,
     prompt_kind_breakdown: promptKindBreakdown,
+    observation_breakdown: [...observationBreakdownMap.entries()].map(([kind, count]) => ({
+      kind,
+      count,
+    })),
   };
 
   // Examples (limit 10 per category)
@@ -480,6 +518,11 @@ export function handleSkillReport(
     workspace_path: string | null;
     query_origin: "inline_query" | "matched_prompt" | "missing";
     is_system_like: boolean;
+    observation_kind:
+      | "canonical"
+      | "repaired_trigger"
+      | "repaired_contextual_miss"
+      | "legacy_materialized";
   };
 
   const goodExamples: ExampleRowInternal[] = [];
@@ -508,6 +551,12 @@ export function handleSkillReport(
       workspace_path: inv.workspace_path,
       query_origin: queryOrigin,
       is_system_like: sysLike,
+      observation_kind: classifyObservationKind(
+        inv.skill_invocation_id,
+        inv.capture_mode,
+        inv.triggered,
+        inv.raw_source_ref,
+      ),
     };
 
     if (sysLike && noisyExamples.length < 10) {
@@ -526,7 +575,13 @@ export function handleSkillReport(
   };
 
   // Trust state determination
-  type TrustStateType = "low_sample" | "observed" | "watch" | "validated" | "deployed" | "rolled_back";
+  type TrustStateType =
+    | "low_sample"
+    | "observed"
+    | "watch"
+    | "validated"
+    | "deployed"
+    | "rolled_back";
   let trustState: TrustStateType;
   let trustSummary: string;
 
@@ -553,7 +608,9 @@ export function handleSkillReport(
     if (evidence_quality.system_like_rate > 0.1)
       reasons.push(`${(evidence_quality.system_like_rate * 100).toFixed(0)}% system-like queries`);
     if (evidence_quality.prompt_link_rate < 0.3)
-      reasons.push(`low prompt link rate (${(evidence_quality.prompt_link_rate * 100).toFixed(0)}%)`);
+      reasons.push(
+        `low prompt link rate (${(evidence_quality.prompt_link_rate * 100).toFixed(0)}%)`,
+      );
     trustSummary = `Needs attention — ${reasons.join(", ")}.`;
   } else {
     trustState = "observed";
@@ -579,6 +636,12 @@ export function handleSkillReport(
     canonical_invocations: invPageRows.map((i) => ({
       ...i,
       triggered: i.triggered === 1,
+      observation_kind: classifyObservationKind(
+        i.skill_invocation_id,
+        i.capture_mode,
+        i.triggered,
+        i.raw_source_ref,
+      ),
     })),
     invocations_pagination:
       invNextCursor || invCursor ? { next_cursor: invNextCursor, has_more: invHasMore } : undefined,

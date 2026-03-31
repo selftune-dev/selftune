@@ -46,6 +46,7 @@ import {
   DatabaseIcon,
   GitBranchIcon,
   FilterIcon,
+  ChevronDownIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -53,6 +54,28 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSkillReport } from "@/hooks/useSkillReport";
 import type { ExampleRow, TrustState } from "@/types";
+
+type ObservationKind =
+  | "canonical"
+  | "repaired_trigger"
+  | "repaired_contextual_miss"
+  | "legacy_materialized";
+
+function observationBadge(kind: ObservationKind | null | undefined): {
+  label: string;
+  variant: "default" | "secondary" | "destructive" | "outline";
+} | null {
+  switch (kind) {
+    case "repaired_contextual_miss":
+      return { label: "repaired miss", variant: "destructive" };
+    case "repaired_trigger":
+      return { label: "repaired trigger", variant: "secondary" };
+    case "legacy_materialized":
+      return { label: "legacy row", variant: "outline" };
+    default:
+      return null;
+  }
+}
 
 /* ─── Trust badge config ──────────────────────────────── */
 
@@ -124,7 +147,7 @@ function RateBar({
       <span
         className={`text-xs font-mono tabular-nums w-10 text-right ${warn ? "text-destructive" : "text-muted-foreground"}`}
       >
-        {pct != null ? `${pct}%` : "--"}
+        {pct != null ? `${pct}%` : "No data"}
       </span>
     </div>
   );
@@ -134,6 +157,7 @@ function RateBar({
 
 function ExampleRowItem({ row }: { row: ExampleRow }) {
   const workspace = row.workspace_path ? row.workspace_path.split("/").slice(-2).join("/") : null;
+  const observation = observationBadge(row.observation_kind);
 
   return (
     <TableRow className={!row.triggered ? "bg-destructive/5" : ""}>
@@ -146,21 +170,28 @@ function ExampleRowItem({ row }: { row: ExampleRow }) {
         )}
       </TableCell>
       <TableCell className="py-2">
-        {row.triggered ? (
-          <Badge
-            variant="outline"
-            className="text-[10px] font-normal text-green-600 border-green-600/30"
-          >
-            triggered
-          </Badge>
-        ) : (
-          <Badge variant="destructive" className="text-[10px] font-normal">
-            missed
-          </Badge>
-        )}
+        <div className="flex items-center gap-1.5">
+          {row.triggered ? (
+            <Badge
+              variant="outline"
+              className="text-[10px] font-normal text-green-600 border-green-600/30"
+            >
+              triggered
+            </Badge>
+          ) : (
+            <Badge variant="destructive" className="text-[10px] font-normal">
+              missed
+            </Badge>
+          )}
+          {observation && (
+            <Badge variant={observation.variant} className="text-[10px] font-normal">
+              {observation.label}
+            </Badge>
+          )}
+        </div>
       </TableCell>
       <TableCell className="py-2 font-mono text-xs text-muted-foreground tabular-nums">
-        {row.confidence != null ? `${Math.round(row.confidence * 100)}%` : "--"}
+        {row.confidence != null ? `${Math.round(row.confidence * 100)}%` : "Not recorded"}
       </TableCell>
       <TableCell className="py-2">
         {row.invocation_mode ? (
@@ -168,21 +199,23 @@ function ExampleRowItem({ row }: { row: ExampleRow }) {
             {row.invocation_mode}
           </Badge>
         ) : (
-          <span className="text-[11px] text-muted-foreground">--</span>
+          <span className="text-[11px] text-muted-foreground">Unknown mode</span>
         )}
       </TableCell>
       <TableCell className="py-2 text-[11px] text-muted-foreground">
-        {row.prompt_kind ?? "--"}
+        {row.prompt_kind ?? "Unclassified"}
       </TableCell>
-      <TableCell className="py-2 text-[11px] text-muted-foreground">{row.source ?? "--"}</TableCell>
       <TableCell className="py-2 text-[11px] text-muted-foreground">
-        {row.platform ?? "--"}
+        {row.source ?? "No data"}
+      </TableCell>
+      <TableCell className="py-2 text-[11px] text-muted-foreground">
+        {row.platform ?? "No data"}
       </TableCell>
       <TableCell
         className="py-2 text-[11px] text-muted-foreground font-mono"
         title={row.workspace_path ?? undefined}
       >
-        {workspace ?? "--"}
+        {workspace ?? "No data"}
       </TableCell>
       <TableCell className="py-2">
         <Badge
@@ -218,15 +251,33 @@ function ExamplesTable({ rows, emptyMessage }: { rows: ExampleRow[]; emptyMessag
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent bg-muted/40">
-            <TableHead className="text-[11px] h-8">Prompt</TableHead>
-            <TableHead className="text-[11px] h-8 w-[80px]">Status</TableHead>
-            <TableHead className="text-[11px] h-8 w-[70px]">Confidence</TableHead>
-            <TableHead className="text-[11px] h-8 w-[80px]">Mode</TableHead>
-            <TableHead className="text-[11px] h-8 w-[80px]">Kind</TableHead>
-            <TableHead className="text-[11px] h-8 w-[70px]">Source</TableHead>
-            <TableHead className="text-[11px] h-8 w-[70px]">Platform</TableHead>
-            <TableHead className="text-[11px] h-8 w-[100px]">Workspace</TableHead>
-            <TableHead className="text-[11px] h-8 w-[100px]">Origin</TableHead>
+            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8">
+              Prompt
+            </TableHead>
+            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[80px]">
+              Status
+            </TableHead>
+            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[70px]">
+              Confidence
+            </TableHead>
+            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[80px]">
+              Mode
+            </TableHead>
+            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[80px]">
+              Kind
+            </TableHead>
+            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[70px]">
+              Source
+            </TableHead>
+            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[70px]">
+              Platform
+            </TableHead>
+            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[100px]">
+              Workspace
+            </TableHead>
+            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[100px]">
+              Origin
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -260,6 +311,7 @@ function SessionGroup({
     confidence: number | null;
     tool_name: string | null;
     agent_type: string | null;
+    observation_kind?: ObservationKind | null;
   }>;
   defaultExpanded: boolean;
 }) {
@@ -329,22 +381,27 @@ function SessionGroup({
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent bg-muted/40">
-                <TableHead className="text-[11px] h-8">
+                <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8">
                   Prompt <InfoTip text="The user prompt that led to this skill being invoked" />
                 </TableHead>
-                <TableHead className="text-[11px] h-8 w-[90px]">
+                <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[90px]">
                   Mode{" "}
                   <InfoTip text="explicit = user typed /skillname; implicit = user mentioned skill by name; inferred = agent chose skill autonomously" />
                 </TableHead>
-                <TableHead className="text-[11px] h-8 w-[70px]">
+                <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[70px]">
                   Confidence{" "}
                   <InfoTip text="Model's confidence score (0-100%) when routing this prompt to the skill" />
                 </TableHead>
-                <TableHead className="text-[11px] h-8 w-[90px]">
+                <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[90px]">
                   Agent{" "}
                   <InfoTip text="Which agent invoked the skill -- main agent or a subagent type" />
                 </TableHead>
-                <TableHead className="text-[11px] h-8 w-[70px] text-right">Time</TableHead>
+                <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[120px]">
+                  Evidence
+                </TableHead>
+                <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[70px] text-right">
+                  Time
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -369,11 +426,13 @@ function SessionGroup({
                         {inv.invocation_mode}
                       </Badge>
                     ) : (
-                      <span className="text-[11px] text-muted-foreground">--</span>
+                      <span className="text-[11px] text-muted-foreground">Unknown mode</span>
                     )}
                   </TableCell>
                   <TableCell className="py-2 font-mono text-xs text-muted-foreground tabular-nums">
-                    {inv.confidence !== null ? `${Math.round(inv.confidence * 100)}%` : "--"}
+                    {inv.confidence !== null
+                      ? `${Math.round(inv.confidence * 100)}%`
+                      : "Not recorded"}
                   </TableCell>
                   <TableCell className="py-2">
                     {inv.agent_type ? (
@@ -381,8 +440,20 @@ function SessionGroup({
                         {inv.agent_type}
                       </Badge>
                     ) : (
-                      <span className="text-[11px] text-muted-foreground">--</span>
+                      <span className="text-[11px] text-muted-foreground">No data</span>
                     )}
+                  </TableCell>
+                  <TableCell className="py-2">
+                    {(() => {
+                      const observation = observationBadge(inv.observation_kind);
+                      return observation ? (
+                        <Badge variant={observation.variant} className="text-[10px] font-normal">
+                          {observation.label}
+                        </Badge>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">canonical</span>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell className="py-2 font-mono text-[11px] text-muted-foreground text-right whitespace-nowrap">
                     {inv.timestamp ? timeAgo(inv.timestamp) : ""}
@@ -412,12 +483,14 @@ function deriveNextAction(
 ): {
   icon: React.ReactNode;
   text: string;
+  actionLabel: string;
   variant: "default" | "secondary" | "destructive" | "outline";
 } {
   if (trustState === "low_sample") {
     return {
       icon: <EyeIcon className="size-5" />,
       text: "Keep observing. This skill needs more sessions before trust can be assessed.",
+      actionLabel: "Keep observing",
       variant: "secondary",
     };
   }
@@ -425,6 +498,7 @@ function deriveNextAction(
     return {
       icon: <AlertTriangleIcon className="size-5 text-destructive" />,
       text: "Inspect rollback evidence before re-deploying.",
+      actionLabel: "Inspect rollback",
       variant: "destructive",
     };
   }
@@ -432,6 +506,7 @@ function deriveNextAction(
     return {
       icon: <AlertTriangleIcon className="size-5 text-amber-500" />,
       text: "Clean source-truth data or routing data before trusting this report.",
+      actionLabel: "Clean data",
       variant: "secondary",
     };
   }
@@ -439,6 +514,15 @@ function deriveNextAction(
     return {
       icon: <SearchIcon className="size-5 text-amber-500" />,
       text: "Generate evals to investigate missed triggers.",
+      actionLabel: "Generate evals",
+      variant: "secondary",
+    };
+  }
+  if (trustState === "watch") {
+    return {
+      icon: <EyeIcon className="size-5 text-amber-500" />,
+      text: "This skill is under active observation. Review recent invocations to verify routing accuracy.",
+      actionLabel: "Review invocations",
       variant: "secondary",
     };
   }
@@ -446,6 +530,7 @@ function deriveNextAction(
     return {
       icon: <GitBranchIcon className="size-5 text-primary" />,
       text: "Review pending proposal.",
+      actionLabel: "Review proposal",
       variant: "default",
     };
   }
@@ -453,6 +538,7 @@ function deriveNextAction(
     return {
       icon: <ArrowRightIcon className="size-5 text-primary" />,
       text: "Deploy the validated candidate.",
+      actionLabel: "Deploy candidate",
       variant: "default",
     };
   }
@@ -460,12 +546,14 @@ function deriveNextAction(
     return {
       icon: <CheckCircleIcon className="size-5 text-green-500" />,
       text: "No action needed. Skill is healthy and being monitored.",
+      actionLabel: "Healthy",
       variant: "outline",
     };
   }
   return {
     icon: <EyeIcon className="size-5" />,
     text: "Continue monitoring this skill.",
+    actionLabel: "Monitor",
     variant: "outline",
   };
 }
@@ -480,8 +568,20 @@ function BreakdownTable({
   data: Array<{ source?: string; kind?: string; count: number }> | null | undefined;
 }) {
   if (!data || data.length === 0) return null;
+  const labelForValue = (value: string) => {
+    switch (value) {
+      case "repaired_contextual_miss":
+        return "repaired contextual miss";
+      case "repaired_trigger":
+        return "repaired trigger";
+      case "legacy_materialized":
+        return "legacy materialized";
+      default:
+        return value;
+    }
+  };
   const entries = data
-    .map((d) => [d.source ?? d.kind ?? "(unknown)", d.count] as [string, number])
+    .map((d) => [labelForValue(d.source ?? d.kind ?? "(unknown)"), d.count] as [string, number])
     .sort(([, a], [, b]) => b - a);
   const total = entries.reduce((s, [, v]) => s + v, 0);
 
@@ -493,9 +593,15 @@ function BreakdownTable({
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="text-[11px] h-7">Value</TableHead>
-            <TableHead className="text-[11px] h-7 w-[80px] text-right">Count</TableHead>
-            <TableHead className="text-[11px] h-7 w-[80px] text-right">Rate</TableHead>
+            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-7">
+              Value
+            </TableHead>
+            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-7 w-[80px] text-right">
+              Count
+            </TableHead>
+            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-7 w-[80px] text-right">
+              Rate
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -513,6 +619,45 @@ function BreakdownTable({
         </TableBody>
       </Table>
     </div>
+  );
+}
+
+/* ─── Collapsible timeline sidebar ────────────────────── */
+
+function TimelineSidebar({
+  evolution,
+  activeProposal,
+  onSelect,
+}: {
+  evolution: Array<{ proposal_id: string; action: string; timestamp: string }>;
+  activeProposal: string | null;
+  onSelect: (proposalId: string) => void;
+}) {
+  const shouldCollapse = evolution.length > 10;
+  const [expanded, setExpanded] = useState(!shouldCollapse);
+
+  const visibleEntries = expanded ? evolution : evolution.slice(0, 10);
+
+  return (
+    <aside className="w-[220px] shrink-0 bg-card/50 border-l border-border/15 pr-4 pl-3 pt-2 sticky top-28 self-start max-h-[calc(100svh-7rem)] overflow-y-auto themed-scroll text-xs">
+      <EvolutionTimeline
+        entries={visibleEntries}
+        selectedProposalId={activeProposal}
+        onSelect={onSelect}
+      />
+      {shouldCollapse && (
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="mt-2 w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronDownIcon
+            className={`size-3 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
+          />
+          {expanded ? "Collapse timeline" : `Show full timeline (${evolution.length} entries)`}
+        </button>
+      )}
+    </aside>
   );
 }
 
@@ -582,6 +727,7 @@ export function SkillReport() {
       confidence: ci.confidence ?? null,
       tool_name: ci.tool_name ?? null,
       agent_type: ci.agent_type ?? null,
+      observation_kind: ci.observation_kind ?? "canonical",
     }));
     invs.sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
     return invs;
@@ -704,7 +850,7 @@ export function SkillReport() {
     <Tabs defaultValue={defaultTab}>
       <div className="@container/main flex flex-1 flex-col gap-6 p-4 lg:px-6 lg:pb-6 lg:pt-0">
         {/* ─── 1. Trust Header (sticky) ───────────────── */}
-        <div className="sticky top-0 z-30 bg-background py-3 border-b border-border/50 space-y-3">
+        <div className="sticky top-0 z-30 bg-gradient-to-r from-card via-card to-primary/5 py-3 border-b border-primary/10 space-y-3">
           <div className="flex items-center gap-3">
             <Button variant="outline" size="sm" render={<Link to="/" />} className="shrink-0">
               <ArrowLeftIcon className="size-3.5" />
@@ -712,15 +858,13 @@ export function SkillReport() {
             <h1 className="text-base font-semibold tracking-tight lg:text-lg font-headline shrink-0">
               {data.skill_name}
             </h1>
-            <Badge variant={trustBadge.variant} className="gap-1 shrink-0 text-[10px]">
+            <Badge
+              variant={trustBadge.variant}
+              className="gap-1 shrink-0 text-[10px] shadow-[0_0_8px_rgba(79,242,255,0.2)]"
+            >
               {trustBadge.icon}
               {trustBadge.label}
             </Badge>
-            {trust?.summary && (
-              <span className="text-sm text-muted-foreground truncate hidden @xl/main:inline">
-                {trust.summary}
-              </span>
-            )}
             <div className="ml-auto flex items-center gap-4 shrink-0">
               <div className="hidden @xl/main:flex items-center gap-3 text-xs text-muted-foreground">
                 <span className="tabular-nums">
@@ -738,7 +882,7 @@ export function SkillReport() {
                 </span>
                 <span className="text-border">|</span>
                 <span className="tabular-nums">
-                  <strong className="text-foreground">{coverage?.workspaces ?? "--"}</strong>{" "}
+                  <strong className="text-foreground">{coverage?.workspaces ?? "No data"}</strong>{" "}
                   workspaces
                 </span>
               </div>
@@ -755,15 +899,43 @@ export function SkillReport() {
               )}
             </div>
           </div>
+          {/* Trust summary -- full-width line */}
+          {trust?.summary && (
+            <div className="flex items-center gap-3 text-sm leading-relaxed text-muted-foreground">
+              <span>{trust.summary}</span>
+              {evolutionState?.latest_action && evolutionState?.latest_timestamp && (
+                <span className="text-[11px] text-muted-foreground/70 font-mono">
+                  Latest: {evolutionState.latest_action} ({timeAgo(evolutionState.latest_timestamp)}
+                  )
+                </span>
+              )}
+            </div>
+          )}
           <TabsList variant="line">
             {hasEvolutionData && (
               <Tooltip>
-                <TooltipTrigger render={<TabsTrigger value="evidence" />}>Evidence</TooltipTrigger>
+                <TooltipTrigger
+                  render={
+                    <TabsTrigger
+                      value="evidence"
+                      className="font-headline text-xs uppercase tracking-wider"
+                    />
+                  }
+                >
+                  Evidence
+                </TooltipTrigger>
                 <TooltipContent>Change history and validation results</TooltipContent>
               </Tooltip>
             )}
             <Tooltip>
-              <TooltipTrigger render={<TabsTrigger value="invocations" />}>
+              <TooltipTrigger
+                render={
+                  <TabsTrigger
+                    value="invocations"
+                    className="font-headline text-xs uppercase tracking-wider"
+                  />
+                }
+              >
                 Invocations
                 <Badge variant="secondary" className="text-[10px] ml-1.5">
                   {mergedInvocations.length}
@@ -772,7 +944,14 @@ export function SkillReport() {
               <TooltipContent>Recent skill triggers and their outcomes</TooltipContent>
             </Tooltip>
             <Tooltip>
-              <TooltipTrigger render={<TabsTrigger value="data-quality" />}>
+              <TooltipTrigger
+                render={
+                  <TabsTrigger
+                    value="data-quality"
+                    className="font-headline text-xs uppercase tracking-wider"
+                  />
+                }
+              >
                 Data Quality
               </TooltipTrigger>
               <TooltipContent>Evidence quality metrics and data hygiene</TooltipContent>
@@ -780,138 +959,187 @@ export function SkillReport() {
           </TabsList>
         </div>
 
-        {/* ─── 2. Trust Summary Cards ─────────────────── */}
-        <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
-          {/* Coverage */}
-          <Card className="rounded-2xl bg-muted @container/card">
-            <CardHeader>
-              <CardDescription className="flex items-center gap-1.5">
-                <ActivityIcon className="size-3.5" />
-                <span className="text-[10px] uppercase tracking-[0.2em] font-headline">
-                  Coverage
-                </span>
-              </CardDescription>
-              <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-                {coverage?.checks ?? data.usage.total_checks}
-              </CardTitle>
-              <CardAction>
-                <span className="text-[10px] text-muted-foreground font-mono">
-                  {coverage?.sessions ?? data.sessions_with_skill} sessions /{" "}
-                  {coverage?.workspaces ?? "--"} dirs
-                </span>
-              </CardAction>
-            </CardHeader>
-          </Card>
+        {/* ─── 2. Next Best Action (prominent, full-width) ─ */}
+        <Card
+          className={`rounded-2xl border-2 border-l-2 border-l-primary bg-gradient-to-r from-primary/5 via-transparent to-transparent ${nextAction.variant === "destructive" ? "border-destructive/40" : nextAction.variant === "default" ? "border-primary/40" : "border-border"}`}
+        >
+          <CardContent className="flex items-center gap-4 py-5">
+            <div className="shrink-0">{nextAction.icon}</div>
+            <div className="flex-1">
+              <h3 className="font-headline text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                Next Best Action
+              </h3>
+              <p className="text-sm font-medium text-foreground">{nextAction.text}</p>
+            </div>
+            <Badge variant={nextAction.variant} className="shrink-0">
+              {nextAction.actionLabel}
+            </Badge>
+          </CardContent>
+        </Card>
 
-          {/* Evidence Quality */}
-          <Card className="rounded-2xl bg-muted @container/card">
-            <CardHeader>
-              <CardDescription className="flex items-center gap-1.5">
-                <SearchIcon className="size-3.5" />
-                <span className="text-[10px] uppercase tracking-[0.2em] font-headline">
-                  Evidence Quality
-                </span>
-                <InfoTip text="How well prompts are linked to invocations. Higher prompt-link rate = more trustworthy data." />
-              </CardDescription>
-              <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-                {evidenceQuality?.prompt_link_rate != null
-                  ? formatRate(evidenceQuality.prompt_link_rate)
-                  : "--"}
-              </CardTitle>
-              <CardAction>
-                <div className="flex flex-col items-end gap-0.5">
-                  <span className="text-[10px] text-muted-foreground">
-                    inline:{" "}
-                    {evidenceQuality?.inline_query_rate != null
-                      ? formatRate(evidenceQuality.inline_query_rate)
-                      : "--"}
+        {/* ─── 3. Why We Believe This (summary cards) ── */}
+        <div>
+          <h2 className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-headline mb-3">
+            Why We Believe This
+          </h2>
+          <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
+            {/* Coverage */}
+            <Card className="rounded-2xl bg-card border border-border/15 hover:border-border/30 transition-colors @container/card">
+              <CardHeader>
+                <CardDescription className="flex items-center gap-1.5">
+                  <ActivityIcon className="size-3.5" />
+                  <span className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                    Coverage
                   </span>
-                  {(evidenceQuality?.system_like_rate ?? 0) > 0.05 && (
-                    <Badge variant="destructive" className="text-[9px]">
-                      {formatRate(evidenceQuality?.system_like_rate ?? 0)} system-like
-                    </Badge>
-                  )}
-                </div>
-              </CardAction>
-            </CardHeader>
-          </Card>
-
-          {/* Routing */}
-          <Card className="rounded-2xl bg-muted @container/card">
-            <CardHeader>
-              <CardDescription className="flex items-center gap-1.5">
-                <TargetIcon className="size-3.5" />
-                <span className="text-[10px] uppercase tracking-[0.2em] font-headline">
-                  Routing
-                </span>
-                <InfoTip text="Routing accuracy: average confidence when triggering, and miss rate" />
-              </CardDescription>
-              <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-                {routingQuality?.avg_confidence != null
-                  ? formatRate(routingQuality.avg_confidence)
-                  : "--"}
-              </CardTitle>
-              <CardAction>
-                <div className="flex flex-col items-end gap-0.5">
-                  <span className="text-[10px] text-muted-foreground">
-                    miss:{" "}
-                    {routingQuality?.miss_rate != null
-                      ? formatRate(routingQuality.miss_rate)
-                      : "--"}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground tabular-nums">
-                    {routingQuality?.missed_triggers ?? "--"} missed
-                  </span>
-                </div>
-              </CardAction>
-            </CardHeader>
-          </Card>
-
-          {/* Evolution */}
-          <Card className="rounded-2xl bg-muted @container/card">
-            <CardHeader>
-              <CardDescription className="flex items-center gap-1.5">
-                <SparklesIcon className="size-3.5" />
-                <span className="text-[10px] uppercase tracking-[0.2em] font-headline">
-                  Evolution
-                </span>
-              </CardDescription>
-              {hasEvolutionData ? (
-                <>
-                  <CardTitle className="text-sm font-medium">
-                    {evolutionState?.latest_action ?? evolution[0]?.action ?? "--"}
-                  </CardTitle>
-                  <CardAction>
-                    <div className="flex flex-col items-end gap-0.5">
-                      <span className="text-[10px] text-muted-foreground tabular-nums">
-                        {evolutionState?.evidence_rows ?? data.evidence.length} evidence
-                      </span>
-                      <span className="text-[10px] text-muted-foreground tabular-nums">
-                        {evolutionState?.evolution_rows ?? evolution.length} evolution
-                      </span>
-                      {evolutionState?.latest_timestamp && (
-                        <span className="text-[10px] text-muted-foreground font-mono">
-                          {timeAgo(evolutionState.latest_timestamp)}
-                        </span>
-                      )}
-                    </div>
-                  </CardAction>
-                </>
-              ) : (
-                <CardTitle className="text-sm font-normal text-muted-foreground">
-                  No evolution yet
+                </CardDescription>
+                <CardTitle className="text-2xl font-semibold text-foreground tabular-nums @[250px]/card:text-3xl">
+                  {coverage?.checks ?? data.usage.total_checks}
                 </CardTitle>
-              )}
-            </CardHeader>
-          </Card>
+                <CardAction>
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    {coverage?.sessions ?? data.sessions_with_skill} sessions /{" "}
+                    {coverage?.workspaces ?? "No data"} dirs
+                  </span>
+                </CardAction>
+              </CardHeader>
+            </Card>
+
+            {/* Evidence Quality */}
+            <Card className="rounded-2xl bg-card border border-border/15 hover:border-border/30 transition-colors @container/card">
+              <CardHeader>
+                <CardDescription className="flex items-center gap-1.5">
+                  <SearchIcon className="size-3.5" />
+                  <span className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                    Evidence Quality
+                  </span>
+                  <InfoTip text="How well prompts are linked to invocations. Higher prompt-link rate = more trustworthy data." />
+                </CardDescription>
+                <CardTitle className="text-2xl font-semibold text-foreground tabular-nums @[250px]/card:text-3xl">
+                  {evidenceQuality?.prompt_link_rate != null
+                    ? formatRate(evidenceQuality.prompt_link_rate)
+                    : "No data"}
+                </CardTitle>
+                <CardAction>
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className="text-[10px] text-muted-foreground">
+                      inline:{" "}
+                      {evidenceQuality?.inline_query_rate != null
+                        ? formatRate(evidenceQuality.inline_query_rate)
+                        : "No data"}
+                    </span>
+                    {(evidenceQuality?.system_like_rate ?? 0) > 0.05 && (
+                      <Badge variant="destructive" className="text-[9px]">
+                        {formatRate(evidenceQuality?.system_like_rate ?? 0)} system-like
+                      </Badge>
+                    )}
+                  </div>
+                </CardAction>
+              </CardHeader>
+            </Card>
+
+            {/* Routing */}
+            <Card className="rounded-2xl bg-card border border-border/15 hover:border-border/30 transition-colors @container/card">
+              <CardHeader>
+                <CardDescription className="flex items-center gap-1.5">
+                  <TargetIcon className="size-3.5" />
+                  <span className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                    Routing
+                  </span>
+                  <InfoTip text="Routing accuracy: average confidence when triggering, and miss rate" />
+                </CardDescription>
+                <CardTitle className="text-2xl font-semibold text-foreground tabular-nums @[250px]/card:text-3xl">
+                  {routingQuality?.avg_confidence != null
+                    ? formatRate(routingQuality.avg_confidence)
+                    : "No data"}
+                </CardTitle>
+                <CardAction>
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span className="text-[10px] text-muted-foreground">
+                      miss:{" "}
+                      {routingQuality?.miss_rate != null
+                        ? formatRate(routingQuality.miss_rate)
+                        : "No data"}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground tabular-nums">
+                      {routingQuality?.missed_triggers ?? "No data"} missed
+                    </span>
+                  </div>
+                </CardAction>
+              </CardHeader>
+            </Card>
+
+            {/* Evolution */}
+            <Card className="rounded-2xl bg-card border border-border/15 hover:border-border/30 transition-colors @container/card">
+              <CardHeader>
+                <CardDescription className="flex items-center gap-1.5">
+                  <SparklesIcon className="size-3.5" />
+                  <span className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                    Evolution
+                  </span>
+                </CardDescription>
+                {hasEvolutionData ? (
+                  <>
+                    <CardTitle className="text-sm font-medium">
+                      {evolutionState?.latest_action ?? evolution[0]?.action ?? "No data"}
+                    </CardTitle>
+                    <CardAction>
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                          {evolutionState?.evidence_rows ?? data.evidence.length} evidence
+                        </span>
+                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                          {evolutionState?.evolution_rows ?? evolution.length} evolution
+                        </span>
+                        {evolutionState?.latest_timestamp && (
+                          <span className="text-[10px] text-muted-foreground font-mono">
+                            {timeAgo(evolutionState.latest_timestamp)}
+                          </span>
+                        )}
+                      </div>
+                    </CardAction>
+                  </>
+                ) : (
+                  <CardTitle className="text-sm font-normal text-muted-foreground">
+                    No evolution yet
+                  </CardTitle>
+                )}
+              </CardHeader>
+            </Card>
+          </div>
         </div>
 
-        {/* ─── 4. Prompt Evidence Section (always visible) ─ */}
+        {/* ─── 4. Latest Decision ──────────────────────── */}
+        {hasEvolutionData && evolutionState?.latest_action && (
+          <Card className="rounded-2xl bg-card border border-border/15">
+            <CardContent className="flex items-center gap-4 py-4">
+              <GitBranchIcon className="size-4 text-primary shrink-0" />
+              <div className="flex-1">
+                <h3 className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-0.5">
+                  Latest Decision
+                </h3>
+                <p className="text-sm font-medium">{evolutionState.latest_action}</p>
+              </div>
+              {evolutionState.latest_timestamp && (
+                <span className="text-[10px] text-muted-foreground font-mono shrink-0">
+                  {timeAgo(evolutionState.latest_timestamp)}
+                </span>
+              )}
+              <Badge variant="outline" className="shrink-0 text-[10px]">
+                {evolutionState.evolution_rows ?? evolution.length} evolution
+                {(evolutionState.evolution_rows ?? evolution.length) !== 1 ? "s" : ""}
+              </Badge>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ─── 5. Prompt Evidence Section (always visible) ─ */}
         {examples &&
           (examples.good.length > 0 || examples.missed.length > 0 || examples.noisy.length > 0) && (
-            <Card className="rounded-2xl bg-muted">
+            <Card className="rounded-2xl bg-card border border-border/15">
               <CardHeader>
-                <CardTitle className="font-headline text-sm">Prompt Evidence</CardTitle>
+                <CardTitle className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Prompt Evidence
+                </CardTitle>
                 <CardDescription>Sampled prompts categorized by quality</CardDescription>
               </CardHeader>
               <CardContent>
@@ -967,15 +1195,13 @@ export function SkillReport() {
 
         {/* ─── Main content: sidebar timeline + tabbed detail ─ */}
         <div className="flex gap-6">
-          {/* Left sidebar: Evolution Timeline -- sticky */}
+          {/* Left sidebar: Evolution Timeline -- sticky, collapsible if > 10 */}
           {evolution.length > 0 && (
-            <aside className="w-[220px] shrink-0 border-r pr-4 sticky top-28 self-start max-h-[calc(100svh-7rem)] overflow-y-auto themed-scroll">
-              <EvolutionTimeline
-                entries={evolution}
-                selectedProposalId={activeProposal}
-                onSelect={handleSelectProposal}
-              />
-            </aside>
+            <TimelineSidebar
+              evolution={evolution}
+              activeProposal={activeProposal}
+              onSelect={handleSelectProposal}
+            />
           )}
 
           {/* Right content area */}
@@ -1069,6 +1295,12 @@ export function SkillReport() {
                       </Badge>{" "}
                       agent chose autonomously
                     </span>
+                    <span className="flex items-center gap-1">
+                      <Badge variant="destructive" className="text-[9px] font-normal">
+                        repaired miss
+                      </Badge>{" "}
+                      transcript showed skill read without invocation
+                    </span>
                   </div>
 
                   {groupedSessions.length === 0 ? (
@@ -1097,14 +1329,14 @@ export function SkillReport() {
             <TabsContent value="data-quality">
               <div className="space-y-6">
                 {/* Rate bars */}
-                <Card className="rounded-2xl bg-muted">
+                <Card className="rounded-2xl bg-card border border-border/15">
                   <CardHeader>
-                    <CardTitle className="font-headline text-sm flex items-center gap-2">
+                    <CardTitle className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-2">
                       <BarChart3Icon className="size-4" />
                       Evidence Quality Rates
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-3">
+                  <CardContent className="space-y-3 p-4">
                     <RateBar label="Prompt-linked" value={evidenceQuality?.prompt_link_rate} />
                     <RateBar label="Inline query" value={evidenceQuality?.inline_query_rate} />
                     <RateBar label="User prompt" value={evidenceQuality?.user_prompt_rate} />
@@ -1128,14 +1360,14 @@ export function SkillReport() {
 
                 {/* Data hygiene */}
                 {dataHygiene && (
-                  <Card className="rounded-2xl bg-muted">
+                  <Card className="rounded-2xl bg-card border border-border/15">
                     <CardHeader>
-                      <CardTitle className="font-headline text-sm flex items-center gap-2">
+                      <CardTitle className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-2">
                         <DatabaseIcon className="size-4" />
                         Data Hygiene
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-6">
+                    <CardContent className="space-y-6 p-4">
                       {/* Naming variants */}
                       {dataHygiene.naming_variants && dataHygiene.naming_variants.length > 1 && (
                         <div>
@@ -1163,6 +1395,10 @@ export function SkillReport() {
                         title="Prompt Kind Breakdown"
                         data={dataHygiene.prompt_kind_breakdown}
                       />
+                      <BreakdownTable
+                        title="Observation Breakdown"
+                        data={dataHygiene.observation_breakdown}
+                      />
                     </CardContent>
                   </Card>
                 )}
@@ -1170,24 +1406,6 @@ export function SkillReport() {
             </TabsContent>
           </div>
         </div>
-
-        {/* ─── 7. Next Best Action Panel ──────────────── */}
-        <Card
-          className={`rounded-2xl border-2 ${nextAction.variant === "destructive" ? "border-destructive/40" : nextAction.variant === "default" ? "border-primary/40" : "border-border"}`}
-        >
-          <CardContent className="flex items-center gap-4 py-5">
-            <div className="shrink-0">{nextAction.icon}</div>
-            <div className="flex-1">
-              <h3 className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-headline mb-1">
-                Next Best Action
-              </h3>
-              <p className="text-sm font-medium">{nextAction.text}</p>
-            </div>
-            <Badge variant={nextAction.variant} className="shrink-0">
-              {trustBadge.label}
-            </Badge>
-          </CardContent>
-        </Card>
       </div>
     </Tabs>
   );
