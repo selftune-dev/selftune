@@ -63,7 +63,7 @@ export async function cliMain(): Promise<void> {
     }
 
     // Fast-path: for tool.execute.before, skip full parse if not interesting
-    const preview = raw.slice(0, 4096);
+    const preview = raw.slice(0, 8192);
     const isBefore = preview.includes("tool.execute.before");
     if (isBefore) {
       // Only parse fully if it might be a git commit or SKILL.md write

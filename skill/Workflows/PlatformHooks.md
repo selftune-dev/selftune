@@ -11,14 +11,21 @@ Install and configure selftune hooks for non-Claude-Code platforms (Codex, OpenC
 ## Commands
 
 ### Install hooks for a platform
-```
+
+```bash
 selftune <platform> install [--dry-run] [--uninstall]
 ```
 
 Supported platforms: `codex`, `opencode`, `cline`
 
+| Flag          | Description                                    |
+| ------------- | ---------------------------------------------- |
+| `--dry-run`   | Preview what would be installed without writing |
+| `--uninstall` | Remove selftune hooks from the platform         |
+
 ### Hook handler (called by the agent, not the user)
-```
+
+```bash
 selftune <platform> hook
 ```
 
@@ -44,16 +51,19 @@ This is called automatically by the agent's hook system. Users don't run this di
 ## Examples
 
 Install selftune for Codex:
-```
+
+```bash
 selftune codex install
 ```
 
 Preview what would be installed:
-```
+
+```bash
 selftune codex install --dry-run
 ```
 
 Remove selftune hooks:
-```
+
+```bash
 selftune codex install --uninstall
 ```

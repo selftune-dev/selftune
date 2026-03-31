@@ -57,7 +57,9 @@ function readConfig(configPath: string): OpenCodeConfig {
   try {
     return JSON.parse(readFileSync(configPath, "utf-8")) as OpenCodeConfig;
   } catch {
-    return {};
+    throw new Error(
+      `OpenCode config at ${configPath} is not valid JSON; refusing to overwrite it.`,
+    );
   }
 }
 
@@ -114,6 +116,13 @@ function doInstall(options: InstallOptions): void {
   }
 
   for (const event of HOOK_EVENTS) {
+    const existing = config.hooks[event];
+    if (existing?.command && existing.command !== shimPath) {
+      console.log(
+        `[selftune] Warning: hook '${event}' already configured (${existing.command}); skipping.`,
+      );
+      continue;
+    }
     config.hooks[event] = { command: shimPath };
   }
 
@@ -149,6 +158,7 @@ function doUninstall(options: InstallOptions): void {
     const config = readConfig(configPath);
     if (config.hooks) {
       for (const event of HOOK_EVENTS) {
+        if (config.hooks[event]?.command !== shimPath) continue;
         delete config.hooks[event];
       }
       // Clean up empty hooks object

@@ -25,12 +25,12 @@ const MARKER = "# selftune-managed";
 
 function hookScript(hookName: string): string {
   if (hookName === "PostToolUse") {
-    // Inline — commit tracking is fast; finish before Cline moves on
+    // Inline — commit tracking is fast; finish before Cline moves on.
+    // hook.ts writes {"cancel": false} to stdout, so we suppress only stderr.
     return `#!/usr/bin/env bash
 ${MARKER}
 input=$(cat)
-echo "$input" | npx selftune cline hook 2>/dev/null
-echo '{"cancel": false}'
+echo "$input" | npx selftune cline hook 2>/dev/null || echo '{"cancel": false}'
 `;
   }
 
@@ -178,5 +178,12 @@ export async function cliMain(): Promise<void> {
 
 // --- stdin main (only when executed directly, not when imported) ---
 if (import.meta.main) {
-  await cliMain();
+  try {
+    await cliMain();
+  } catch (err) {
+    console.error(
+      `[selftune] Cline install failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    process.exit(1);
+  }
 }

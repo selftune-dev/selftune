@@ -45,9 +45,9 @@ function outputResponse(): void {
   process.stdout.write(JSON.stringify({ cancel: false }));
 }
 
-async function readStdin(): Promise<{ preview: string; full: string }> {
+async function readStdin(): Promise<{ full: string }> {
   const raw = await Bun.stdin.text();
-  return { preview: raw.slice(0, 4096), full: raw };
+  return { full: raw };
 }
 
 // ---------------------------------------------------------------------------
@@ -125,17 +125,9 @@ async function handleTaskEnd(input: ClineHookInput): Promise<void> {
 
 export async function cliMain(): Promise<void> {
   try {
-    const { preview, full } = await readStdin();
+    const { full } = await readStdin();
 
     if (!full.trim()) {
-      outputResponse();
-      return;
-    }
-
-    // Fast path: skip PostToolUse that aren't git commits
-    const isPostToolUse = preview.includes('"PostToolUse"');
-    const mightBeGitCommit = preview.includes("git") && preview.includes("commit");
-    if (isPostToolUse && !mightBeGitCommit) {
       outputResponse();
       return;
     }

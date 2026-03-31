@@ -104,7 +104,7 @@ function readHooksFile(path: string): CodexHooksFile {
 }
 
 /** Check if a hook entry was installed by selftune. */
-function isSelftunHook(entry: CodexHookEntry): boolean {
+function isSelftuneHook(entry: CodexHookEntry): boolean {
   // Check marker field first
   if (entry._selftune === true) return true;
   // Fallback: check if command references selftune
@@ -121,14 +121,14 @@ export function mergeHooks(
   incoming: CodexHookEntry[],
 ): CodexHookEntry[] {
   // Keep all non-selftune hooks
-  const preserved = existing.filter((h) => !isSelftunHook(h));
+  const preserved = existing.filter((h) => !isSelftuneHook(h));
   // Append new selftune hooks
   return [...preserved, ...incoming];
 }
 
 /** Remove all selftune hooks from the list. */
-export function removeSelftunHooks(existing: CodexHookEntry[]): CodexHookEntry[] {
-  return existing.filter((h) => !isSelftunHook(h));
+export function removeSelftuneHooks(existing: CodexHookEntry[]): CodexHookEntry[] {
+  return existing.filter((h) => !isSelftuneHook(h));
 }
 
 // ---------------------------------------------------------------------------
@@ -177,7 +177,7 @@ export function installHooks(options: { dryRun?: boolean } = {}): InstallResult 
     hooksPath,
     action: "installed",
     hooksWritten: SELFTUNE_HOOKS.length,
-    hooksRemoved: existingHooks.filter((h) => isSelftunHook(h)).length,
+    hooksRemoved: existingHooks.filter((h) => isSelftuneHook(h)).length,
     dryRun: options.dryRun ?? false,
   };
 }
@@ -187,7 +187,7 @@ export function uninstallHooks(options: { dryRun?: boolean } = {}): InstallResul
   const hooksFile = readHooksFile(hooksPath);
   const existingHooks = hooksFile.hooks ?? [];
 
-  const cleaned = removeSelftunHooks(existingHooks);
+  const cleaned = removeSelftuneHooks(existingHooks);
   const removedCount = existingHooks.length - cleaned.length;
 
   if (removedCount === 0) {
