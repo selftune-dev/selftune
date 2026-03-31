@@ -7,6 +7,7 @@ Bootstrap selftune for first-time use or after changing environments.
 - The user asks to set up selftune, configure selftune, or initialize selftune
 - The agent detects `~/.selftune/config.json` does not exist
 - The user has switched agent platforms (Claude Code, Codex, OpenCode)
+- The user wants to add hooks for additional platforms (multi-agent setup)
 
 ## Default Command
 
@@ -136,15 +137,44 @@ Code subagent calls stay up to date.
 | `PostToolUse` (Bash)       | `hooks/commit-track.ts`       | Track git commits for session traceability      | Fast-path: skips non-git Bash commands          |
 | `Stop`                     | `hooks/session-stop.ts`       | Capture session telemetry                       | Runs async (non-blocking), 60s timeout          |
 
-**Codex agents:**
+### 4b. Multi-Platform Hooks
 
-- Use `selftune ingest wrap-codex` for real-time telemetry capture (see `Workflows/Ingest.md`)
-- Or batch-ingest existing sessions with `selftune ingest codex`
+After Claude Code hooks are installed, check whether the user has **other** agent
+CLIs available. Run these checks:
 
-**OpenCode agents:**
+```bash
+which codex 2>/dev/null && echo "codex available"
+which opencode 2>/dev/null && echo "opencode available"
+ls ~/Documents/Cline/Hooks/ 2>/dev/null && echo "cline available"
+```
 
-- Use `selftune ingest opencode` to import sessions from the SQLite database
-- See `Workflows/Ingest.md` for details
+If **any** additional platforms are detected, use `AskUserQuestion` to ask:
+
+> I detected these agent platforms in addition to your primary one:
+> - Codex
+> - OpenCode
+> - Cline
+>
+> Would you like to install selftune hooks for any of them? This enables
+> real-time skill tracking across all your agents.
+
+Options:
+- `Yes — install hooks for all detected platforms`
+- `Let me pick — show me the list` (then present checkboxes per platform)
+- `No — skip for now` (they can always run `selftune <platform> install` later)
+
+For each platform the user selects, run the install command:
+
+```bash
+selftune codex install      # writes hooks.json entries
+selftune opencode install   # writes shell shim + config entries
+selftune cline install      # creates hook scripts
+```
+
+Use `--dry-run` first if the user wants to preview. See `Workflows/PlatformHooks.md`
+for platform-specific details.
+
+**Batch ingest** is still available for platforms without real-time hooks:
 
 ### 5. Initialize Memory Directory
 
@@ -367,6 +397,13 @@ retrying with `selftune init --alpha --alpha-email <email> --force`.
 > Use `AskUserQuestion` for the yes or no opt-in decision. If yes, collect email
 > and optional display name in chat, then run `selftune init --alpha --alpha-email ...`.
 > The browser opens automatically for approval. No manual key management needed.
+
+**User uses multiple agents (Claude Code + Codex, etc.)**
+
+> Run `selftune init` for the primary agent, then offer to install hooks for
+> additional detected platforms. Run `selftune codex install`, `selftune opencode install`,
+> or `selftune cline install` as needed. All platforms write to the same shared
+> log schema — no extra config required.
 
 **Hooks not capturing data**
 
