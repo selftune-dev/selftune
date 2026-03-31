@@ -25,27 +25,43 @@ const ACTION_ICON: Record<string, React.ReactNode> = {
 };
 
 const ACTION_COLOR: Record<string, string> = {
-  created: "bg-blue-500",
-  validated: "bg-amber-500",
-  deployed: "bg-emerald-500",
-  rejected: "bg-red-500",
-  rolled_back: "bg-red-400",
+  created: "bg-primary/15",
+  validated: "bg-primary/25",
+  deployed: "bg-primary/30",
+  rejected: "bg-destructive/20",
+  rolled_back: "bg-destructive/15",
+};
+
+const ACTION_ICON_COLOR: Record<string, string> = {
+  created: "text-primary/70",
+  validated: "text-primary/85",
+  deployed: "text-primary",
+  rejected: "text-destructive",
+  rolled_back: "text-destructive/70",
 };
 
 const ACTION_RING: Record<string, string> = {
-  created: "ring-blue-500/30",
-  validated: "ring-amber-500/30",
-  deployed: "ring-emerald-500/30",
-  rejected: "ring-red-500/30",
-  rolled_back: "ring-red-400/30",
+  created: "ring-primary/15",
+  validated: "ring-primary/25",
+  deployed: "ring-primary/30",
+  rejected: "ring-destructive/25",
+  rolled_back: "ring-destructive/15",
+};
+
+const ACTION_DOT: Record<string, string> = {
+  created: "bg-primary/40 ring-primary/30",
+  validated: "bg-primary/60 ring-primary/40",
+  deployed: "bg-primary ring-primary/50",
+  rejected: "bg-destructive/60 ring-destructive/40",
+  rolled_back: "bg-destructive/40 ring-destructive/30",
 };
 
 const ACTION_LINE: Record<string, string> = {
-  created: "bg-blue-500/30",
-  validated: "bg-amber-500/30",
-  deployed: "bg-emerald-500/30",
-  rejected: "bg-red-500/30",
-  rolled_back: "bg-red-400/30",
+  created: "bg-primary/15",
+  validated: "bg-primary/20",
+  deployed: "bg-primary/25",
+  rejected: "bg-destructive/20",
+  rolled_back: "bg-destructive/15",
 };
 
 interface Props {
@@ -93,7 +109,7 @@ function PassRateDelta({ snapshot }: { snapshot: EvalSnapshot }) {
     <span
       className={cn(
         "inline-flex items-center gap-0.5 text-[10px] font-mono font-medium",
-        isPositive ? "text-emerald-600 dark:text-emerald-400" : "text-red-500",
+        isPositive ? "text-primary" : "text-destructive",
       )}
     >
       {isPositive ? (
@@ -129,13 +145,20 @@ function LifecycleLegend() {
         Lifecycle stages
       </button>
       {open && (
-        <div className="mt-1.5 space-y-1.5 rounded-md border bg-muted/30 p-2">
+        <div className="mt-1.5 space-y-2.5 rounded-md border bg-muted/30 p-2">
           {LIFECYCLE_STEPS.map((step) => (
             <div key={step.action} className="flex items-start gap-2">
-              <div className={cn("size-2 rounded-full mt-1 shrink-0", ACTION_COLOR[step.action])} />
-              <div className="min-w-0">
-                <span className="text-[10px] font-medium">{step.label}</span>
-                <p className="text-[10px] text-muted-foreground/70 leading-tight">{step.desc}</p>
+              <div
+                className={cn(
+                  "size-2 rounded-full shrink-0 ring-1 mt-[3px]",
+                  ACTION_DOT[step.action],
+                )}
+              />
+              <div className="min-w-0 flex flex-col gap-0.5">
+                <span className="text-[10px] font-medium leading-none">{step.label}</span>
+                <span className="text-[10px] text-muted-foreground/70 leading-tight">
+                  {step.desc}
+                </span>
               </div>
             </div>
           ))}
@@ -167,7 +190,8 @@ export function EvolutionTimeline({ entries, selectedProposalId, onSelect }: Pro
           const terminal = terminalAction(steps);
           const isSelected = selectedProposalId === proposalId;
           const lastStep = steps[steps.length - 1];
-          const dotColor = ACTION_COLOR[terminal] ?? "bg-muted-foreground";
+          const dotColor = ACTION_COLOR[terminal] ?? "bg-muted-foreground/20";
+          const iconColor = ACTION_ICON_COLOR[terminal] ?? "text-muted-foreground";
           const ringColor = ACTION_RING[terminal] ?? "ring-muted-foreground/30";
           const lineColor = ACTION_LINE[terminal] ?? "bg-border";
           const isLast = groupIdx === groups.length - 1;
@@ -179,14 +203,15 @@ export function EvolutionTimeline({ entries, selectedProposalId, onSelect }: Pro
               <div className="flex flex-col items-center">
                 <div
                   className={cn(
-                    "flex items-center justify-center size-7 rounded-full ring-2 text-white shrink-0 z-10",
+                    "flex items-center justify-center size-7 rounded-full ring-2 shrink-0 z-10",
                     dotColor,
                     ringColor,
+                    iconColor,
                   )}
                 >
                   {ACTION_ICON[terminal] ?? <CircleDotIcon className="size-3.5" />}
                 </div>
-                {!isLast && <div className={cn("w-0.5 flex-1 min-h-[16px]", lineColor)} />}
+                {!isLast && <div className={cn("w-0.5 flex-1 min-h-[8px] my-1", lineColor)} />}
               </div>
 
               {/* Content */}
@@ -241,7 +266,7 @@ export function EvolutionTimeline({ entries, selectedProposalId, onSelect }: Pro
                           key={`${s.action}-${i}`}
                           className={cn(
                             "size-1.5 rounded-full",
-                            ACTION_COLOR[s.action] ?? "bg-muted-foreground",
+                            ACTION_DOT[s.action] ?? "bg-muted-foreground/40",
                           )}
                         />
                       ))}

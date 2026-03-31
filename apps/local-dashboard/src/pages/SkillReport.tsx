@@ -1,16 +1,12 @@
 import { EvolutionTimeline } from "@selftune/ui/components";
 import { EvidenceViewer } from "@selftune/ui/components";
 import { InfoTip } from "@selftune/ui/components";
-import { formatRate, timeAgo } from "@selftune/ui/lib";
+import { timeAgo } from "@selftune/ui/lib";
 import {
   Badge,
   Button,
   Card,
-  CardAction,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   Table,
   TableBody,
   TableCell,
@@ -28,7 +24,6 @@ import {
 import {
   AlertCircleIcon,
   ArrowLeftIcon,
-  ActivityIcon,
   EyeIcon,
   RefreshCwIcon,
   ChevronRightIcon,
@@ -36,14 +31,10 @@ import {
   ShieldAlertIcon,
   ShieldIcon,
   ShieldQuestionIcon,
-  TargetIcon,
   SearchIcon,
-  SparklesIcon,
   AlertTriangleIcon,
   CheckCircleIcon,
   ArrowRightIcon,
-  BarChart3Icon,
-  DatabaseIcon,
   GitBranchIcon,
   FilterIcon,
   ChevronDownIcon,
@@ -51,31 +42,22 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
+import {
+  DataQualityPanel,
+  observationBadge,
+  PromptEvidencePanel,
+  SkillReportTopRow,
+  TrustSignalsGrid,
+} from "@/components/skill-report-panels";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSkillReport } from "@/hooks/useSkillReport";
-import type { ExampleRow, TrustState } from "@/types";
+import type { TrustState } from "@/types";
 
 type ObservationKind =
   | "canonical"
   | "repaired_trigger"
   | "repaired_contextual_miss"
   | "legacy_materialized";
-
-function observationBadge(kind: ObservationKind | null | undefined): {
-  label: string;
-  variant: "default" | "secondary" | "destructive" | "outline";
-} | null {
-  switch (kind) {
-    case "repaired_contextual_miss":
-      return { label: "repaired miss", variant: "destructive" };
-    case "repaired_trigger":
-      return { label: "repaired trigger", variant: "secondary" };
-    case "legacy_materialized":
-      return { label: "legacy row", variant: "outline" };
-    default:
-      return null;
-  }
-}
 
 /* ─── Trust badge config ──────────────────────────────── */
 
@@ -118,177 +100,6 @@ const TRUST_BADGE: Record<
     icon: <ShieldIcon className="size-3" />,
   },
 };
-
-/* ─── Rate bar component ──────────────────────────────── */
-
-function RateBar({
-  label,
-  value,
-  warn,
-}: {
-  label: string;
-  value: number | null | undefined;
-  warn?: boolean;
-}) {
-  const pct = value != null ? Math.round(value * 100) : null;
-  return (
-    <div className="flex items-center gap-3">
-      <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground w-40 shrink-0 font-headline">
-        {label}
-      </span>
-      <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-        {pct != null && (
-          <div
-            className={`h-full rounded-full transition-all ${warn ? "bg-destructive" : "bg-primary"}`}
-            style={{ width: `${Math.min(pct, 100)}%` }}
-          />
-        )}
-      </div>
-      <span
-        className={`text-xs font-mono tabular-nums w-10 text-right ${warn ? "text-destructive" : "text-muted-foreground"}`}
-      >
-        {pct != null ? `${pct}%` : "No data"}
-      </span>
-    </div>
-  );
-}
-
-/* ─── Example row renderer ────────────────────────────── */
-
-function ExampleRowItem({ row }: { row: ExampleRow }) {
-  const workspace = row.workspace_path ? row.workspace_path.split("/").slice(-2).join("/") : null;
-  const observation = observationBadge(row.observation_kind);
-
-  return (
-    <TableRow className={!row.triggered ? "bg-destructive/5" : ""}>
-      <TableCell
-        className="max-w-[400px] truncate text-sm py-2"
-        title={row.query_text || undefined}
-      >
-        {row.query_text || (
-          <span className="text-muted-foreground/40 italic">No prompt recorded</span>
-        )}
-      </TableCell>
-      <TableCell className="py-2">
-        <div className="flex items-center gap-1.5">
-          {row.triggered ? (
-            <Badge
-              variant="outline"
-              className="text-[10px] font-normal text-green-600 border-green-600/30"
-            >
-              triggered
-            </Badge>
-          ) : (
-            <Badge variant="destructive" className="text-[10px] font-normal">
-              missed
-            </Badge>
-          )}
-          {observation && (
-            <Badge variant={observation.variant} className="text-[10px] font-normal">
-              {observation.label}
-            </Badge>
-          )}
-        </div>
-      </TableCell>
-      <TableCell className="py-2 font-mono text-xs text-muted-foreground tabular-nums">
-        {row.confidence != null ? `${Math.round(row.confidence * 100)}%` : "Not recorded"}
-      </TableCell>
-      <TableCell className="py-2">
-        {row.invocation_mode ? (
-          <Badge variant="secondary" className="text-[10px] font-normal">
-            {row.invocation_mode}
-          </Badge>
-        ) : (
-          <span className="text-[11px] text-muted-foreground">Unknown mode</span>
-        )}
-      </TableCell>
-      <TableCell className="py-2 text-[11px] text-muted-foreground">
-        {row.prompt_kind ?? "Unclassified"}
-      </TableCell>
-      <TableCell className="py-2 text-[11px] text-muted-foreground">
-        {row.source ?? "No data"}
-      </TableCell>
-      <TableCell className="py-2 text-[11px] text-muted-foreground">
-        {row.platform ?? "No data"}
-      </TableCell>
-      <TableCell
-        className="py-2 text-[11px] text-muted-foreground font-mono"
-        title={row.workspace_path ?? undefined}
-      >
-        {workspace ?? "No data"}
-      </TableCell>
-      <TableCell className="py-2">
-        <Badge
-          variant={
-            row.query_origin === "inline_query"
-              ? "outline"
-              : row.query_origin === "matched_prompt"
-                ? "secondary"
-                : "destructive"
-          }
-          className="text-[10px] font-normal"
-        >
-          {row.query_origin}
-        </Badge>
-      </TableCell>
-    </TableRow>
-  );
-}
-
-/* ─── Examples table wrapper ──────────────────────────── */
-
-function ExamplesTable({ rows, emptyMessage }: { rows: ExampleRow[]; emptyMessage: string }) {
-  if (rows.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-        {emptyMessage}
-      </div>
-    );
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent bg-muted/40">
-            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8">
-              Prompt
-            </TableHead>
-            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[80px]">
-              Status
-            </TableHead>
-            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[70px]">
-              Confidence
-            </TableHead>
-            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[80px]">
-              Mode
-            </TableHead>
-            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[80px]">
-              Kind
-            </TableHead>
-            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[70px]">
-              Source
-            </TableHead>
-            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[70px]">
-              Platform
-            </TableHead>
-            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[100px]">
-              Workspace
-            </TableHead>
-            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[100px]">
-              Origin
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row, i) => (
-            <ExampleRowItem key={`${row.session_id}-${i}`} row={row} />
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
 
 /* ─── Session group (kept from V1) ────────────────────── */
 
@@ -558,70 +369,6 @@ function deriveNextAction(
   };
 }
 
-/* ─── Breakdown table ─────────────────────────────────── */
-
-function BreakdownTable({
-  title,
-  data,
-}: {
-  title: string;
-  data: Array<{ source?: string; kind?: string; count: number }> | null | undefined;
-}) {
-  if (!data || data.length === 0) return null;
-  const labelForValue = (value: string) => {
-    switch (value) {
-      case "repaired_contextual_miss":
-        return "repaired contextual miss";
-      case "repaired_trigger":
-        return "repaired trigger";
-      case "legacy_materialized":
-        return "legacy materialized";
-      default:
-        return value;
-    }
-  };
-  const entries = data
-    .map((d) => [labelForValue(d.source ?? d.kind ?? "(unknown)"), d.count] as [string, number])
-    .sort(([, a], [, b]) => b - a);
-  const total = entries.reduce((s, [, v]) => s + v, 0);
-
-  return (
-    <div>
-      <h4 className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-headline mb-2">
-        {title}
-      </h4>
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-7">
-              Value
-            </TableHead>
-            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-7 w-[80px] text-right">
-              Count
-            </TableHead>
-            <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-7 w-[80px] text-right">
-              Rate
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {entries.map(([key, count]) => (
-            <TableRow key={key}>
-              <TableCell className="py-1.5 text-sm font-mono">{key || "(empty)"}</TableCell>
-              <TableCell className="py-1.5 text-xs tabular-nums text-right text-muted-foreground">
-                {count}
-              </TableCell>
-              <TableCell className="py-1.5 text-xs tabular-nums text-right text-muted-foreground">
-                {total > 0 ? `${Math.round((count / total) * 100)}%` : "--"}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
-
 /* ─── Collapsible timeline sidebar ────────────────────── */
 
 function TimelineSidebar({
@@ -850,7 +597,7 @@ export function SkillReport() {
     <Tabs defaultValue={defaultTab}>
       <div className="@container/main flex flex-1 flex-col gap-6 p-4 lg:px-6 lg:pb-6 lg:pt-0">
         {/* ─── 1. Trust Header (sticky) ───────────────── */}
-        <div className="sticky top-0 z-30 bg-gradient-to-r from-card via-card to-primary/5 py-3 border-b border-primary/10 space-y-3">
+        <div className="sticky top-0 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85 py-3 border-b border-border/15 space-y-3">
           <div className="flex items-center gap-3">
             <Button variant="outline" size="sm" render={<Link to="/" />} className="shrink-0">
               <ArrowLeftIcon className="size-3.5" />
@@ -858,10 +605,7 @@ export function SkillReport() {
             <h1 className="text-base font-semibold tracking-tight lg:text-lg font-headline shrink-0">
               {data.skill_name}
             </h1>
-            <Badge
-              variant={trustBadge.variant}
-              className="gap-1 shrink-0 text-[10px] shadow-[0_0_8px_rgba(79,242,255,0.2)]"
-            >
+            <Badge variant={trustBadge.variant} className="gap-1 shrink-0 text-[10px]">
               {trustBadge.icon}
               {trustBadge.label}
             </Badge>
@@ -911,6 +655,33 @@ export function SkillReport() {
               )}
             </div>
           )}
+        </div>
+
+        <SkillReportTopRow
+          nextAction={nextAction}
+          latestDecision={
+            hasEvolutionData && evolutionState?.latest_action
+              ? {
+                  action: evolutionState.latest_action,
+                  timestamp: evolutionState.latest_timestamp,
+                  evolutionCount: evolutionState.evolution_rows ?? evolution.length,
+                }
+              : undefined
+          }
+        />
+
+        <TrustSignalsGrid
+          coverage={coverage}
+          evidenceQuality={evidenceQuality}
+          routingQuality={routingQuality}
+          evolutionState={evolutionState}
+          fallbackChecks={data.usage.total_checks}
+          fallbackSessions={data.sessions_with_skill}
+          fallbackEvidenceRows={data.evidence.length}
+          fallbackEvolutionRows={evolution.length}
+          fallbackLatestAction={evolution[0]?.action}
+        />
+        <div className="space-y-4">
           <TabsList variant="line">
             {hasEvolutionData && (
               <Tooltip>
@@ -937,7 +708,7 @@ export function SkillReport() {
                 }
               >
                 Invocations
-                <Badge variant="secondary" className="text-[10px] ml-1.5">
+                <Badge variant="secondary" className="ml-1.5 text-[10px]">
                   {mergedInvocations.length}
                 </Badge>
               </TooltipTrigger>
@@ -957,454 +728,137 @@ export function SkillReport() {
               <TooltipContent>Evidence quality metrics and data hygiene</TooltipContent>
             </Tooltip>
           </TabsList>
-        </div>
 
-        {/* ─── 2. Next Best Action (prominent, full-width) ─ */}
-        <Card
-          className={`rounded-2xl border-2 border-l-2 border-l-primary bg-gradient-to-r from-primary/5 via-transparent to-transparent ${nextAction.variant === "destructive" ? "border-destructive/40" : nextAction.variant === "default" ? "border-primary/40" : "border-border"}`}
-        >
-          <CardContent className="flex items-center gap-4 py-5">
-            <div className="shrink-0">{nextAction.icon}</div>
-            <div className="flex-1">
-              <h3 className="font-headline text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-                Next Best Action
-              </h3>
-              <p className="text-sm font-medium text-foreground">{nextAction.text}</p>
-            </div>
-            <Badge variant={nextAction.variant} className="shrink-0">
-              {nextAction.actionLabel}
-            </Badge>
-          </CardContent>
-        </Card>
+          {/* ─── Evidence Tab ─────────────────────────── */}
+          {hasEvolutionData && (
+            <TabsContent value="evidence" className="space-y-6">
+              <PromptEvidencePanel examples={examples} />
 
-        {/* ─── 3. Why We Believe This (summary cards) ── */}
-        <div>
-          <h2 className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-headline mb-3">
-            Why We Believe This
-          </h2>
-          <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
-            {/* Coverage */}
-            <Card className="rounded-2xl bg-card border border-border/15 hover:border-border/30 transition-colors @container/card">
-              <CardHeader>
-                <CardDescription className="flex items-center gap-1.5">
-                  <ActivityIcon className="size-3.5" />
-                  <span className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                    Coverage
-                  </span>
-                </CardDescription>
-                <CardTitle className="text-2xl font-semibold text-foreground tabular-nums @[250px]/card:text-3xl">
-                  {coverage?.checks ?? data.usage.total_checks}
-                </CardTitle>
-                <CardAction>
-                  <span className="text-[10px] text-muted-foreground font-mono">
-                    {coverage?.sessions ?? data.sessions_with_skill} sessions /{" "}
-                    {coverage?.workspaces ?? "No data"} dirs
-                  </span>
-                </CardAction>
-              </CardHeader>
-            </Card>
-
-            {/* Evidence Quality */}
-            <Card className="rounded-2xl bg-card border border-border/15 hover:border-border/30 transition-colors @container/card">
-              <CardHeader>
-                <CardDescription className="flex items-center gap-1.5">
-                  <SearchIcon className="size-3.5" />
-                  <span className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                    Evidence Quality
-                  </span>
-                  <InfoTip text="How well prompts are linked to invocations. Higher prompt-link rate = more trustworthy data." />
-                </CardDescription>
-                <CardTitle className="text-2xl font-semibold text-foreground tabular-nums @[250px]/card:text-3xl">
-                  {evidenceQuality?.prompt_link_rate != null
-                    ? formatRate(evidenceQuality.prompt_link_rate)
-                    : "No data"}
-                </CardTitle>
-                <CardAction>
-                  <div className="flex flex-col items-end gap-0.5">
-                    <span className="text-[10px] text-muted-foreground">
-                      inline:{" "}
-                      {evidenceQuality?.inline_query_rate != null
-                        ? formatRate(evidenceQuality.inline_query_rate)
-                        : "No data"}
-                    </span>
-                    {(evidenceQuality?.system_like_rate ?? 0) > 0.05 && (
-                      <Badge variant="destructive" className="text-[9px]">
-                        {formatRate(evidenceQuality?.system_like_rate ?? 0)} system-like
-                      </Badge>
-                    )}
-                  </div>
-                </CardAction>
-              </CardHeader>
-            </Card>
-
-            {/* Routing */}
-            <Card className="rounded-2xl bg-card border border-border/15 hover:border-border/30 transition-colors @container/card">
-              <CardHeader>
-                <CardDescription className="flex items-center gap-1.5">
-                  <TargetIcon className="size-3.5" />
-                  <span className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                    Routing
-                  </span>
-                  <InfoTip text="Routing accuracy: average confidence when triggering, and miss rate" />
-                </CardDescription>
-                <CardTitle className="text-2xl font-semibold text-foreground tabular-nums @[250px]/card:text-3xl">
-                  {routingQuality?.avg_confidence != null
-                    ? formatRate(routingQuality.avg_confidence)
-                    : "No data"}
-                </CardTitle>
-                <CardAction>
-                  <div className="flex flex-col items-end gap-0.5">
-                    <span className="text-[10px] text-muted-foreground">
-                      miss:{" "}
-                      {routingQuality?.miss_rate != null
-                        ? formatRate(routingQuality.miss_rate)
-                        : "No data"}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground tabular-nums">
-                      {routingQuality?.missed_triggers ?? "No data"} missed
-                    </span>
-                  </div>
-                </CardAction>
-              </CardHeader>
-            </Card>
-
-            {/* Evolution */}
-            <Card className="rounded-2xl bg-card border border-border/15 hover:border-border/30 transition-colors @container/card">
-              <CardHeader>
-                <CardDescription className="flex items-center gap-1.5">
-                  <SparklesIcon className="size-3.5" />
-                  <span className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                    Evolution
-                  </span>
-                </CardDescription>
-                {hasEvolutionData ? (
-                  <>
-                    <CardTitle className="text-sm font-medium">
-                      {evolutionState?.latest_action ?? evolution[0]?.action ?? "No data"}
-                    </CardTitle>
-                    <CardAction>
-                      <div className="flex flex-col items-end gap-0.5">
-                        <span className="text-[10px] text-muted-foreground tabular-nums">
-                          {evolutionState?.evidence_rows ?? data.evidence.length} evidence
-                        </span>
-                        <span className="text-[10px] text-muted-foreground tabular-nums">
-                          {evolutionState?.evolution_rows ?? evolution.length} evolution
-                        </span>
-                        {evolutionState?.latest_timestamp && (
-                          <span className="text-[10px] text-muted-foreground font-mono">
-                            {timeAgo(evolutionState.latest_timestamp)}
-                          </span>
-                        )}
-                      </div>
-                    </CardAction>
-                  </>
-                ) : (
-                  <CardTitle className="text-sm font-normal text-muted-foreground">
-                    No evolution yet
-                  </CardTitle>
-                )}
-              </CardHeader>
-            </Card>
-          </div>
-        </div>
-
-        {/* ─── 4. Latest Decision ──────────────────────── */}
-        {hasEvolutionData && evolutionState?.latest_action && (
-          <Card className="rounded-2xl bg-card border border-border/15">
-            <CardContent className="flex items-center gap-4 py-4">
-              <GitBranchIcon className="size-4 text-primary shrink-0" />
-              <div className="flex-1">
-                <h3 className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-0.5">
-                  Latest Decision
-                </h3>
-                <p className="text-sm font-medium">{evolutionState.latest_action}</p>
-              </div>
-              {evolutionState.latest_timestamp && (
-                <span className="text-[10px] text-muted-foreground font-mono shrink-0">
-                  {timeAgo(evolutionState.latest_timestamp)}
-                </span>
-              )}
-              <Badge variant="outline" className="shrink-0 text-[10px]">
-                {evolutionState.evolution_rows ?? evolution.length} evolution
-                {(evolutionState.evolution_rows ?? evolution.length) !== 1 ? "s" : ""}
-              </Badge>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* ─── 5. Prompt Evidence Section (always visible) ─ */}
-        {examples &&
-          (examples.good.length > 0 || examples.missed.length > 0 || examples.noisy.length > 0) && (
-            <Card className="rounded-2xl bg-card border border-border/15">
-              <CardHeader>
-                <CardTitle className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Prompt Evidence
-                </CardTitle>
-                <CardDescription>Sampled prompts categorized by quality</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Tabs defaultValue="good">
-                  <TabsList variant="line">
-                    <TabsTrigger value="good">
-                      Good Evidence
-                      <Badge variant="outline" className="text-[10px] ml-1.5">
-                        {examples.good.length}
-                      </Badge>
-                    </TabsTrigger>
-                    <TabsTrigger value="missed">
-                      Missed Opportunities
-                      <Badge
-                        variant={examples.missed.length > 0 ? "destructive" : "outline"}
-                        className="text-[10px] ml-1.5"
-                      >
-                        {examples.missed.length}
-                      </Badge>
-                    </TabsTrigger>
-                    <TabsTrigger value="noisy">
-                      Probably Polluted
-                      <Badge
-                        variant={examples.noisy.length > 0 ? "destructive" : "outline"}
-                        className="text-[10px] ml-1.5"
-                      >
-                        {examples.noisy.length}
-                      </Badge>
-                    </TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="good" className="mt-4">
-                    <ExamplesTable
-                      rows={examples.good}
-                      emptyMessage="No good evidence samples yet."
-                    />
-                  </TabsContent>
-                  <TabsContent value="missed" className="mt-4">
-                    <ExamplesTable
-                      rows={examples.missed}
-                      emptyMessage="No missed opportunities detected."
-                    />
-                  </TabsContent>
-                  <TabsContent value="noisy" className="mt-4">
-                    <ExamplesTable
-                      rows={examples.noisy}
-                      emptyMessage="No polluted samples detected."
-                    />
-                  </TabsContent>
-                </Tabs>
-              </CardContent>
-            </Card>
-          )}
-
-        {/* ─── Main content: sidebar timeline + tabbed detail ─ */}
-        <div className="flex gap-6">
-          {/* Left sidebar: Evolution Timeline -- sticky, collapsible if > 10 */}
-          {evolution.length > 0 && (
-            <TimelineSidebar
-              evolution={evolution}
-              activeProposal={activeProposal}
-              onSelect={handleSelectProposal}
-            />
-          )}
-
-          {/* Right content area */}
-          <div className="flex-1 min-w-0">
-            {/* ─── 3. Evidence Tab ─────────────────────── */}
-            {hasEvolutionData && (
-              <TabsContent value="evidence">
-                {activeProposal ? (
-                  <EvidenceViewer
-                    proposalId={activeProposal}
+              <div className="flex gap-6">
+                {evolution.length > 0 && (
+                  <TimelineSidebar
                     evolution={evolution}
-                    evidence={data.evidence}
+                    activeProposal={activeProposal}
+                    onSelect={handleSelectProposal}
                   />
-                ) : (
-                  <Card className="rounded-2xl">
-                    <CardContent className="py-12">
-                      <div className="flex flex-col items-center justify-center gap-3 text-center">
-                        <EyeIcon className="size-8 text-muted-foreground/40" />
-                        <p className="text-sm text-muted-foreground">
-                          This skill is being observed but has no reviewable evolution evidence yet.
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
                 )}
-              </TabsContent>
-            )}
 
-            {/* ─── 5. Invocations Tab ─────────────────── */}
-            <TabsContent value="invocations">
-              {mergedInvocations.length === 0 ? (
-                <Card className="rounded-2xl">
-                  <CardContent className="py-12">
-                    <p className="text-sm text-muted-foreground text-center">
-                      No invocation records yet.
-                    </p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-3">
-                  {/* Filters */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <FilterIcon className="size-3.5 text-muted-foreground" />
-                      {(
-                        [
-                          ["all", "All"],
-                          ["misses", "Misses"],
-                          ["low_confidence", "Low confidence"],
-                          ["system_meta", "System/meta"],
-                        ] as const
-                      ).map(([key, label]) => (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => setInvocationFilter(key)}
-                          className="inline-block"
-                        >
-                          <Badge
-                            variant={invocationFilter === key ? "default" : "outline"}
-                            className="text-[10px] cursor-pointer"
-                          >
-                            {label}
-                          </Badge>
-                        </button>
-                      ))}
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {filteredInvocations.length} invocations across {groupedSessions.length}{" "}
-                      sessions
-                    </span>
-                  </div>
-
-                  {/* Legend */}
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Badge variant="secondary" className="text-[9px] font-normal">
-                        explicit
-                      </Badge>{" "}
-                      user typed /skill
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Badge variant="secondary" className="text-[9px] font-normal">
-                        implicit
-                      </Badge>{" "}
-                      mentioned by name
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Badge variant="secondary" className="text-[9px] font-normal">
-                        inferred
-                      </Badge>{" "}
-                      agent chose autonomously
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Badge variant="destructive" className="text-[9px] font-normal">
-                        repaired miss
-                      </Badge>{" "}
-                      transcript showed skill read without invocation
-                    </span>
-                  </div>
-
-                  {groupedSessions.length === 0 ? (
-                    <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-                      No invocations match this filter.
-                    </div>
+                <div className="min-w-0 flex-1">
+                  {activeProposal ? (
+                    <EvidenceViewer
+                      proposalId={activeProposal}
+                      evolution={evolution}
+                      evidence={data.evidence}
+                    />
                   ) : (
-                    groupedSessions.map(([sessionId, invocations], idx) => {
-                      const meta = sessionMetaMap.get(sessionId);
-                      return (
-                        <SessionGroup
-                          key={sessionId}
-                          sessionId={sessionId}
-                          meta={meta}
-                          invocations={invocations}
-                          defaultExpanded={idx < 3}
-                        />
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </TabsContent>
-
-            {/* ─── 6. Data Quality Tab ────────────────── */}
-            <TabsContent value="data-quality">
-              <div className="space-y-6">
-                {/* Rate bars */}
-                <Card className="rounded-2xl bg-card border border-border/15">
-                  <CardHeader>
-                    <CardTitle className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-2">
-                      <BarChart3Icon className="size-4" />
-                      Evidence Quality Rates
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3 p-4">
-                    <RateBar label="Prompt-linked" value={evidenceQuality?.prompt_link_rate} />
-                    <RateBar label="Inline query" value={evidenceQuality?.inline_query_rate} />
-                    <RateBar label="User prompt" value={evidenceQuality?.user_prompt_rate} />
-                    <RateBar label="Meta prompt" value={evidenceQuality?.meta_prompt_rate} />
-                    <RateBar label="No prompt" value={evidenceQuality?.no_prompt_rate} />
-                    <RateBar
-                      label="System-like"
-                      value={evidenceQuality?.system_like_rate}
-                      warn={(evidenceQuality?.system_like_rate ?? 0) > 0.05}
-                    />
-                    <div className="border-t border-border/40 pt-3 mt-3" />
-                    <RateBar
-                      label="Invocation mode"
-                      value={evidenceQuality?.invocation_mode_coverage}
-                    />
-                    <RateBar label="Confidence" value={evidenceQuality?.confidence_coverage} />
-                    <RateBar label="Source" value={evidenceQuality?.source_coverage} />
-                    <RateBar label="Scope" value={evidenceQuality?.scope_coverage} />
-                  </CardContent>
-                </Card>
-
-                {/* Data hygiene */}
-                {dataHygiene && (
-                  <Card className="rounded-2xl bg-card border border-border/15">
-                    <CardHeader>
-                      <CardTitle className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-2">
-                        <DatabaseIcon className="size-4" />
-                        Data Hygiene
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-6 p-4">
-                      {/* Naming variants */}
-                      {dataHygiene.naming_variants && dataHygiene.naming_variants.length > 1 && (
-                        <div>
-                          <h4 className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground font-headline mb-2">
-                            Naming Variants
-                          </h4>
-                          <div className="flex flex-wrap gap-1.5">
-                            {dataHygiene.naming_variants.map((v) => (
-                              <Badge key={v} variant="outline" className="text-[10px] font-mono">
-                                {v}
-                              </Badge>
-                            ))}
-                          </div>
-                          <p className="text-[11px] text-muted-foreground mt-1">
-                            Multiple naming variants may indicate inconsistent skill registration.
+                    <Card className="rounded-2xl">
+                      <CardContent className="py-12">
+                        <div className="flex flex-col items-center justify-center gap-3 text-center">
+                          <EyeIcon className="size-8 text-muted-foreground/40" />
+                          <p className="text-sm text-muted-foreground">
+                            This skill is being observed but has no reviewable evolution evidence
+                            yet.
                           </p>
                         </div>
-                      )}
-
-                      <BreakdownTable
-                        title="Source Breakdown"
-                        data={dataHygiene.source_breakdown}
-                      />
-                      <BreakdownTable
-                        title="Prompt Kind Breakdown"
-                        data={dataHygiene.prompt_kind_breakdown}
-                      />
-                      <BreakdownTable
-                        title="Observation Breakdown"
-                        data={dataHygiene.observation_breakdown}
-                      />
-                    </CardContent>
-                  </Card>
-                )}
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
               </div>
             </TabsContent>
-          </div>
+          )}
+
+          {/* ─── Invocations Tab ─────────────────────── */}
+          <TabsContent value="invocations">
+            {mergedInvocations.length === 0 ? (
+              <Card className="rounded-2xl">
+                <CardContent className="py-12">
+                  <p className="text-sm text-muted-foreground text-center">
+                    No invocation records yet.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-2">
+                {/* Filters */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <FilterIcon className="size-3.5 text-muted-foreground" />
+                    {(
+                      [
+                        ["all", "All"],
+                        ["misses", "Misses"],
+                        ["low_confidence", "Low confidence"],
+                        ["system_meta", "System/meta"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setInvocationFilter(key)}
+                        className="inline-block"
+                      >
+                        <Badge
+                          variant={invocationFilter === key ? "default" : "outline"}
+                          className="text-[10px] cursor-pointer"
+                        >
+                          {label}
+                        </Badge>
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {filteredInvocations.length} invocations across {groupedSessions.length}{" "}
+                    sessions
+                  </span>
+                </div>
+
+                {/* Legend */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="size-1.5 rounded-full bg-muted-foreground/70" />
+                    explicit = user typed /skill
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="size-1.5 rounded-full bg-muted-foreground/70" />
+                    implicit = mentioned by name
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="size-1.5 rounded-full bg-muted-foreground/70" />
+                    inferred = agent chose autonomously
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="size-1.5 rounded-full bg-destructive/70" />
+                    repaired miss = transcript showed skill read without invocation
+                  </span>
+                </div>
+
+                {groupedSessions.length === 0 ? (
+                  <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+                    No invocations match this filter.
+                  </div>
+                ) : (
+                  groupedSessions.map(([sessionId, invocations], idx) => {
+                    const meta = sessionMetaMap.get(sessionId);
+                    return (
+                      <SessionGroup
+                        key={sessionId}
+                        sessionId={sessionId}
+                        meta={meta}
+                        invocations={invocations}
+                        defaultExpanded={idx < 3}
+                      />
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ─── Data Quality Tab ────────────────────── */}
+          <TabsContent value="data-quality">
+            <DataQualityPanel evidenceQuality={evidenceQuality} dataHygiene={dataHygiene} />
+          </TabsContent>
         </div>
       </div>
     </Tabs>
