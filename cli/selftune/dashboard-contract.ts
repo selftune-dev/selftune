@@ -360,7 +360,77 @@ export interface CommitSummary {
   recent_commits: Array<{ sha: string; title: string; branch: string; timestamp: string }>;
 }
 
-export interface SkillReportResponse extends SkillReportPayload {
+// -- Trust-oriented types for skill report ------------------------------------
+
+export type TrustState = "low_sample" | "observed" | "watch" | "validated" | "deployed" | "rolled_back";
+
+export interface ExampleRow {
+  timestamp: string | null;
+  session_id: string;
+  query_text: string;
+  triggered: boolean;
+  confidence: number | null;
+  invocation_mode: string | null;
+  prompt_kind: string | null;
+  source: string | null;
+  platform: string | null;
+  workspace_path: string | null;
+  query_origin: "inline_query" | "matched_prompt" | "missing";
+  is_system_like: boolean;
+}
+
+export interface TrustFields {
+  trust: {
+    state: TrustState;
+    summary: string;
+  };
+  coverage: {
+    checks: number;
+    sessions: number;
+    workspaces: number;
+    first_seen: string | null;
+    last_seen: string | null;
+  };
+  evidence_quality: {
+    prompt_link_rate: number;
+    inline_query_rate: number;
+    user_prompt_rate: number;
+    meta_prompt_rate: number;
+    no_prompt_rate: number;
+    system_like_rate: number;
+    invocation_mode_coverage: number;
+    confidence_coverage: number;
+    source_coverage: number;
+    scope_coverage: number;
+  };
+  routing_quality: {
+    missed_triggers: number;
+    miss_rate: number;
+    avg_confidence: number | null;
+    confidence_coverage: number;
+    low_confidence_rate: number | null;
+  };
+  evolution_state: {
+    has_evidence: boolean;
+    has_pending_proposals: boolean;
+    latest_action: string | null;
+    latest_timestamp: string | null;
+    evidence_rows: number;
+    evolution_rows: number;
+  };
+  data_hygiene: {
+    naming_variants: string[];
+    source_breakdown: Array<{ source: string; count: number }>;
+    prompt_kind_breakdown: Array<{ kind: string; count: number }>;
+  };
+  examples: {
+    good: ExampleRow[];
+    missed: ExampleRow[];
+    noisy: ExampleRow[];
+  };
+}
+
+export interface SkillReportResponse extends SkillReportPayload, TrustFields {
   evolution: EvolutionEntry[];
   pending_proposals: PendingProposal[];
   token_usage: {

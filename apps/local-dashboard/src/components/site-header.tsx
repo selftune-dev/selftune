@@ -150,7 +150,7 @@ export function SiteHeader() {
                             key={s.skill_name}
                             value={s.skill_name}
                             onSelect={() =>
-                              handleSelect(`/skills-v2/${encodeURIComponent(s.skill_name)}`)
+                              handleSelect(`/skills/${encodeURIComponent(s.skill_name)}`)
                             }
                             className="gap-3 rounded-lg cursor-pointer"
                           >

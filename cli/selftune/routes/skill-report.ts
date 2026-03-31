@@ -286,6 +286,288 @@ export function handleSkillReport(
     ? scoreDescription(currentDescriptionText, skillName)
     : null;
 
+  // ── Trust field computation ──────────────────────────────────────────────
+
+  const SYSTEM_LIKE_PREFIXES = ["<system_instruction>", "<system-instruction>", "<command-name>"];
+  const isSystemLike = (text: string | null | undefined): boolean => {
+    if (!text) return false;
+    const trimmed = text.trimStart();
+    return SYSTEM_LIKE_PREFIXES.some((p) => trimmed.startsWith(p));
+  };
+
+  // Fetch all invocations for this skill with joined prompt + session data
+  const allInvocations = db
+    .query(
+      `SELECT si.occurred_at AS timestamp, si.session_id, si.skill_name,
+              si.invocation_mode, si.triggered, si.confidence, si.tool_name,
+              si.agent_type, si.query AS inline_query, si.source,
+              si.matched_prompt_id, si.skill_scope, si.skill_path,
+              si.skill_invocation_id,
+              p.prompt_text, p.prompt_kind,
+              s.platform, s.workspace_path
+       FROM skill_invocations si
+       LEFT JOIN prompts p ON si.matched_prompt_id = p.prompt_id
+       LEFT JOIN sessions s ON si.session_id = s.session_id
+       WHERE si.skill_name = ?
+       ORDER BY si.occurred_at DESC`,
+    )
+    .all(skillName) as Array<{
+    timestamp: string | null;
+    session_id: string;
+    skill_name: string;
+    invocation_mode: string | null;
+    triggered: number;
+    confidence: number | null;
+    tool_name: string | null;
+    agent_type: string | null;
+    inline_query: string | null;
+    source: string | null;
+    matched_prompt_id: string | null;
+    skill_scope: string | null;
+    skill_path: string | null;
+    skill_invocation_id: string;
+    prompt_text: string | null;
+    prompt_kind: string | null;
+    platform: string | null;
+    workspace_path: string | null;
+  }>;
+
+  const totalInv = allInvocations.length;
+  const safeDiv = (num: number, den: number): number => (den > 0 ? num / den : 0);
+
+  // Coverage
+  const distinctSessions = new Set(allInvocations.map((r) => r.session_id));
+  const distinctWorkspaces = new Set(
+    allInvocations.map((r) => r.workspace_path).filter(Boolean),
+  );
+  const allTimestamps = allInvocations
+    .map((r) => r.timestamp)
+    .filter((t): t is string => t != null);
+  const coverage = {
+    checks: report.usage.total_checks,
+    sessions: distinctSessions.size,
+    workspaces: distinctWorkspaces.size,
+    first_seen: allTimestamps.length > 0 ? allTimestamps[allTimestamps.length - 1] : null,
+    last_seen: allTimestamps.length > 0 ? allTimestamps[0] : null,
+  };
+
+  // Evidence quality
+  let promptLinked = 0;
+  let inlineQueryCount = 0;
+  let userPromptCount = 0;
+  let metaPromptCount = 0;
+  let noPromptCount = 0;
+  let systemLikeCount = 0;
+  let invModeCount = 0;
+  let confCount = 0;
+  let sourceCount = 0;
+  let scopeCount = 0;
+
+  for (const inv of allInvocations) {
+    if (inv.matched_prompt_id != null) promptLinked++;
+    if (inv.inline_query != null && inv.inline_query !== "") inlineQueryCount++;
+    if (inv.prompt_kind === "user") userPromptCount++;
+    if (inv.prompt_kind === "meta") metaPromptCount++;
+    if (inv.matched_prompt_id == null && (inv.inline_query == null || inv.inline_query === "")) noPromptCount++;
+    const queryText = inv.inline_query || inv.prompt_text || "";
+    if (isSystemLike(queryText)) systemLikeCount++;
+    if (inv.invocation_mode != null && inv.invocation_mode !== "") invModeCount++;
+    if (inv.confidence != null) confCount++;
+    if (inv.source != null && inv.source !== "") sourceCount++;
+    if (inv.skill_scope != null && inv.skill_scope !== "") scopeCount++;
+  }
+
+  const evidence_quality = {
+    prompt_link_rate: safeDiv(promptLinked, totalInv),
+    inline_query_rate: safeDiv(inlineQueryCount, totalInv),
+    user_prompt_rate: safeDiv(userPromptCount, totalInv),
+    meta_prompt_rate: safeDiv(metaPromptCount, totalInv),
+    no_prompt_rate: safeDiv(noPromptCount, totalInv),
+    system_like_rate: safeDiv(systemLikeCount, totalInv),
+    invocation_mode_coverage: safeDiv(invModeCount, totalInv),
+    confidence_coverage: safeDiv(confCount, totalInv),
+    source_coverage: safeDiv(sourceCount, totalInv),
+    scope_coverage: safeDiv(scopeCount, totalInv),
+  };
+
+  // Routing quality
+  const missedTriggers = allInvocations.filter((r) => r.triggered === 0).length;
+  const withConfidence = allInvocations.filter((r) => r.confidence != null);
+  const avgConfidence =
+    withConfidence.length > 0
+      ? withConfidence.reduce((s, r) => s + (r.confidence ?? 0), 0) / withConfidence.length
+      : null;
+  const lowConfCount = withConfidence.filter((r) => (r.confidence ?? 0) < 0.5).length;
+
+  const routing_quality = {
+    missed_triggers: missedTriggers,
+    miss_rate: safeDiv(missedTriggers, totalInv),
+    avg_confidence: avgConfidence,
+    confidence_coverage: safeDiv(confCount, totalInv),
+    low_confidence_rate: withConfidence.length > 0 ? safeDiv(lowConfCount, withConfidence.length) : null,
+  };
+
+  // Evolution state
+  const evidenceCountRow = db
+    .query(`SELECT COUNT(*) AS cnt FROM evolution_evidence WHERE skill_name = ?`)
+    .get(skillName) as { cnt: number } | null;
+  const evolutionCountRow = db
+    .query(
+      `SELECT COUNT(*) AS cnt FROM evolution_audit
+       WHERE skill_name = ? OR (skill_name IS NULL AND proposal_id LIKE 'evo-' || ? || '-%')`,
+    )
+    .get(skillName, skillName) as { cnt: number } | null;
+  const latestAuditRow = db
+    .query(
+      `SELECT action, timestamp FROM evolution_audit
+       WHERE (skill_name = ? OR (skill_name IS NULL AND proposal_id LIKE 'evo-' || ? || '-%'))
+         AND action IN ('deployed', 'rolled_back', 'validated', 'proposed', 'approved')
+       ORDER BY timestamp DESC LIMIT 1`,
+    )
+    .get(skillName, skillName) as { action: string; timestamp: string } | null;
+
+  const evolution_state = {
+    has_evidence: (evidenceCountRow?.cnt ?? 0) > 0,
+    has_pending_proposals: pending_proposals.length > 0,
+    latest_action: latestAuditRow?.action ?? null,
+    latest_timestamp: latestAuditRow?.timestamp ?? null,
+    evidence_rows: evidenceCountRow?.cnt ?? 0,
+    evolution_rows: evolutionCountRow?.cnt ?? 0,
+  };
+
+  // Data hygiene
+  const namingVariants = db
+    .query(
+      `SELECT DISTINCT skill_name FROM skill_invocations WHERE lower(skill_name) = lower(?)`,
+    )
+    .all(skillName) as Array<{ skill_name: string }>;
+
+  const sourceBreakdown = db
+    .query(
+      `SELECT COALESCE(source, '(null)') AS source, COUNT(*) AS count
+       FROM skill_invocations WHERE skill_name = ?
+       GROUP BY source ORDER BY count DESC`,
+    )
+    .all(skillName) as Array<{ source: string; count: number }>;
+
+  const promptKindBreakdown = db
+    .query(
+      `SELECT COALESCE(p.prompt_kind, '(null)') AS kind, COUNT(*) AS count
+       FROM skill_invocations si
+       LEFT JOIN prompts p ON si.matched_prompt_id = p.prompt_id
+       WHERE si.skill_name = ?
+       GROUP BY p.prompt_kind ORDER BY count DESC`,
+    )
+    .all(skillName) as Array<{ kind: string; count: number }>;
+
+  const data_hygiene = {
+    naming_variants: namingVariants.map((r) => r.skill_name),
+    source_breakdown: sourceBreakdown,
+    prompt_kind_breakdown: promptKindBreakdown,
+  };
+
+  // Examples (limit 10 per category)
+  type ExampleRowInternal = {
+    timestamp: string | null;
+    session_id: string;
+    query_text: string;
+    triggered: boolean;
+    confidence: number | null;
+    invocation_mode: string | null;
+    prompt_kind: string | null;
+    source: string | null;
+    platform: string | null;
+    workspace_path: string | null;
+    query_origin: "inline_query" | "matched_prompt" | "missing";
+    is_system_like: boolean;
+  };
+
+  const goodExamples: ExampleRowInternal[] = [];
+  const missedExamples: ExampleRowInternal[] = [];
+  const noisyExamples: ExampleRowInternal[] = [];
+
+  for (const inv of allInvocations) {
+    const queryText = inv.inline_query || inv.prompt_text || "";
+    const sysLike = isSystemLike(queryText);
+    const queryOrigin: "inline_query" | "matched_prompt" | "missing" =
+      inv.inline_query != null && inv.inline_query !== ""
+        ? "inline_query"
+        : inv.matched_prompt_id != null
+          ? "matched_prompt"
+          : "missing";
+    const row: ExampleRowInternal = {
+      timestamp: inv.timestamp,
+      session_id: inv.session_id,
+      query_text: queryText,
+      triggered: inv.triggered === 1,
+      confidence: inv.confidence,
+      invocation_mode: inv.invocation_mode,
+      prompt_kind: inv.prompt_kind,
+      source: inv.source,
+      platform: inv.platform,
+      workspace_path: inv.workspace_path,
+      query_origin: queryOrigin,
+      is_system_like: sysLike,
+    };
+
+    if (sysLike && noisyExamples.length < 10) {
+      noisyExamples.push(row);
+    } else if (inv.triggered === 0 && missedExamples.length < 10) {
+      missedExamples.push(row);
+    } else if (inv.triggered === 1 && queryText !== "" && !sysLike && goodExamples.length < 10) {
+      goodExamples.push(row);
+    }
+  }
+
+  const examples = {
+    good: goodExamples,
+    missed: missedExamples,
+    noisy: noisyExamples,
+  };
+
+  // Trust state determination
+  type TrustStateType = "low_sample" | "observed" | "watch" | "validated" | "deployed" | "rolled_back";
+  let trustState: TrustStateType;
+  let trustSummary: string;
+
+  if (report.usage.total_checks < 5) {
+    trustState = "low_sample";
+    trustSummary = `Too few observations to assess trust — only ${report.usage.total_checks} checks recorded.`;
+  } else if (latestAuditRow?.action === "rolled_back") {
+    trustState = "rolled_back";
+    trustSummary = "Recent evolution was rolled back — review evidence before re-deploying.";
+  } else if (latestAuditRow?.action === "deployed") {
+    trustState = "deployed";
+    trustSummary = `Deployed evolution; ${evolution_state.evidence_rows} evidence rows support current state.`;
+  } else if (latestAuditRow?.action === "validated" || latestAuditRow?.action === "approved") {
+    trustState = "validated";
+    trustSummary = "Validated with evidence but not yet deployed.";
+  } else if (
+    missedTriggers > 0 ||
+    evidence_quality.system_like_rate > 0.1 ||
+    evidence_quality.prompt_link_rate < 0.3
+  ) {
+    trustState = "watch";
+    const reasons: string[] = [];
+    if (missedTriggers > 0) reasons.push(`${missedTriggers} missed triggers`);
+    if (evidence_quality.system_like_rate > 0.1)
+      reasons.push(`${(evidence_quality.system_like_rate * 100).toFixed(0)}% system-like queries`);
+    if (evidence_quality.prompt_link_rate < 0.3)
+      reasons.push(`low prompt link rate (${(evidence_quality.prompt_link_rate * 100).toFixed(0)}%)`);
+    trustSummary = `Needs attention — ${reasons.join(", ")}.`;
+  } else {
+    trustState = "observed";
+    const qualityDesc =
+      evidence_quality.prompt_link_rate > 0.7
+        ? "strong"
+        : evidence_quality.prompt_link_rate > 0.4
+          ? "moderate"
+          : "sparse";
+    trustSummary = `Observed in ${coverage.sessions} sessions across ${coverage.workspaces} workspaces; evidence is ${qualityDesc}.`;
+  }
+
+  const trust = { state: trustState, summary: trustSummary };
+
   return Response.json({
     ...report,
     evolution: evolutionWithSnapshot,
@@ -315,5 +597,12 @@ export function handleSkillReport(
     })),
     session_metadata: sessionMeta,
     description_quality: descriptionQuality,
+    trust,
+    coverage,
+    evidence_quality,
+    routing_quality,
+    evolution_state,
+    data_hygiene,
+    examples,
   });
 }

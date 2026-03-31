@@ -14,7 +14,7 @@ import { useSSE } from "@/hooks/useSSE";
 import { Overview } from "@/pages/Overview";
 import { PerformanceAnalytics } from "@/pages/PerformanceAnalytics";
 import { SkillReport } from "@/pages/SkillReport";
-import { SkillReportV2 } from "@/pages/SkillReportV2";
+
 import { SkillsLibrary } from "@/pages/SkillsLibrary";
 import { Status } from "@/pages/Status";
 import type { SkillHealthStatus } from "@/types";
@@ -57,7 +57,6 @@ function DashboardShell() {
           />
           <Route path="/analytics" element={<PerformanceAnalytics />} />
           <Route path="/skills/:name" element={<SkillReport />} />
-          <Route path="/skills-v2/:name" element={<SkillReportV2 />} />
           <Route path="/status" element={<Status />} />
         </Routes>
       </SidebarInset>

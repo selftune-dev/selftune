@@ -162,9 +162,28 @@
   background-color: #0c0e12;
 }
 
-
 .pulse-dot {
   box-shadow: 0 0 8px rgba(125, 244, 255, 0.6);
+}
+
+/* ── Themed scrollbar ────────────────────────────────────────── */
+
+.themed-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--input) transparent;
+}
+.themed-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.themed-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.themed-scroll::-webkit-scrollbar-thumb {
+  background: var(--input);
+  border-radius: 9999px;
+}
+.themed-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
 }
 
 /* ── Markdown rendering for skill content ────────────────────── */

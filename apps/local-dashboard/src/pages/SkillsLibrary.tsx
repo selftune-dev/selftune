@@ -1,17 +1,7 @@
 import { deriveStatus, formatRate, sortByPassRateAndChecks } from "@selftune/ui/lib";
-import {
-  Badge,
-  Card,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@selftune/ui/primitives";
+import { Badge, Card, Tooltip, TooltipContent, TooltipTrigger } from "@selftune/ui/primitives";
 import type { UseQueryResult } from "@tanstack/react-query";
-import {
-  ArrowUpDownIcon,
-  BrainCircuitIcon,
-  CircleDotIcon,
-} from "lucide-react";
+import { ArrowUpDownIcon, BrainCircuitIcon, CircleDotIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -60,8 +50,6 @@ const STATUS_STYLE: Record<SkillHealthStatus, { text: string; bg: string; label:
 function getPassRatePercent(passRate: number | null): number {
   return passRate !== null ? Math.round(passRate * 100) : 0;
 }
-
-
 
 /* ── Helpers ───────────────────────────────────────────────── */
 
@@ -180,9 +168,7 @@ function HeroCard({
               {skill.skill_scope ?? "global"} scope
             </span>
           </div>
-          <h2 className="font-headline text-3xl font-bold text-foreground">
-            {skill.skill_name}
-          </h2>
+          <h2 className="font-headline text-3xl font-bold text-foreground">{skill.skill_name}</h2>
         </div>
         <div className="text-right">
           <span className="text-4xl font-headline font-light text-primary">
@@ -197,18 +183,30 @@ function HeroCard({
       {/* Stats grid */}
       <div className="grid grid-cols-3 gap-8 mb-8">
         <div className="bg-muted p-4 rounded-2xl border border-border/15">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">Total Checks</p>
-          <p className="text-xl font-bold font-headline tabular-nums">{skill.total_checks.toLocaleString()}</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">
+            Total Checks
+          </p>
+          <p className="text-xl font-bold font-headline tabular-nums">
+            {skill.total_checks.toLocaleString()}
+          </p>
         </div>
         <div className="bg-muted p-4 rounded-2xl border border-border/15">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">Pass Rate</p>
-          <p className={`text-xl font-bold font-headline tabular-nums ${STATUS_STYLE[status].text}`}>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">
+            Pass Rate
+          </p>
+          <p
+            className={`text-xl font-bold font-headline tabular-nums ${STATUS_STYLE[status].text}`}
+          >
             {formatRate(skill.total_checks > 0 ? skill.pass_rate : null)}
           </p>
         </div>
         <div className="bg-muted p-4 rounded-2xl border border-border/15">
-          <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">Unique Sessions</p>
-          <p className="text-xl font-bold font-headline tabular-nums">{skill.unique_sessions.toLocaleString()}</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">
+            Unique Sessions
+          </p>
+          <p className="text-xl font-bold font-headline tabular-nums">
+            {skill.unique_sessions.toLocaleString()}
+          </p>
         </div>
       </div>
 
@@ -221,7 +219,7 @@ function HeroCard({
           Configure
         </Link>
         <Link
-          to={`/skills-v2/${encodeURIComponent(skill.skill_name)}`}
+          to={`/skills/${encodeURIComponent(skill.skill_name)}`}
           className="px-8 py-2 bg-primary text-primary-foreground font-bold rounded-xl shadow-[0_4px_20px_rgba(79,242,255,0.2)] hover:shadow-[0_4px_25px_rgba(79,242,255,0.4)] transition-all"
         >
           View Report
@@ -280,7 +278,7 @@ function PendingProposalsCard({ proposals }: { proposals: PendingProposal[] }) {
           {proposals.length}
         </Badge>
       </h3>
-      <div className="space-y-3 max-h-32 overflow-y-auto">
+      <div className="space-y-3 max-h-32 overflow-y-auto themed-scroll">
         {proposals.map((p) => (
           <div
             key={p.proposal_id}
@@ -346,7 +344,7 @@ function SkillCard({ skill }: { skill: DerivedSkill }) {
             Configure
           </Link>
           <Link
-            to={`/skills-v2/${encodeURIComponent(skill.name)}`}
+            to={`/skills/${encodeURIComponent(skill.name)}`}
             className="flex-1 py-2 text-xs font-bold text-muted-foreground bg-secondary rounded-lg text-center hover:bg-input hover:text-foreground transition-all"
           >
             View Report

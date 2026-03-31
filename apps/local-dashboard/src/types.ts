@@ -21,6 +21,7 @@ export type {
   CommitRecord,
   CommitSummary,
   DoctorResult,
+  ExampleRow,
   ExecutionMetrics,
   HealthCheck,
   HealthResponse,
@@ -40,4 +41,6 @@ export type {
   SkillSummary,
   SkillUsageRecord,
   TelemetryRecord,
+  TrustFields,
+  TrustState,
 } from "../../../cli/selftune/dashboard-contract";
