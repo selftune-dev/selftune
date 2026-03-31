@@ -254,7 +254,7 @@ export function Status() {
       </section>
 
       {/* ── Summary Glass Panel ────────────────────────────── */}
-      <div className="glass-panel rounded-xl ghost-border p-6 flex items-center justify-between overflow-hidden relative">
+      <div className="glass-panel rounded-2xl border border-border/15 p-6 flex items-center justify-between overflow-hidden relative">
         <div className="flex items-center gap-8">
           <div className="flex flex-col">
             <span className="text-[10px] text-muted-foreground uppercase tracking-[0.2em] font-headline mb-1">
@@ -319,7 +319,7 @@ export function Status() {
       </div>
 
       {/* ── Unified Checks Panel ───────────────────────────── */}
-      <div className="bg-muted rounded-xl ghost-border overflow-hidden">
+      <div className="bg-muted rounded-2xl border border-border/15 overflow-hidden">
         {groups.map((group, gi) => (
           <div key={group.title}>
             {/* Section header */}

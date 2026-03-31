@@ -101,7 +101,7 @@ function SessionGroup({
   );
 
   return (
-    <div className="rounded-lg bg-secondary ghost-border overflow-hidden transition-colors">
+    <div className="rounded-lg bg-secondary border border-border/15 overflow-hidden transition-colors">
       {/* Session header — always visible */}
       <button
         type="button"
@@ -710,7 +710,7 @@ export function SkillReport() {
                     evidence={evidence}
                   />
                 ) : (
-                  <div className="flex items-center justify-center rounded-lg bg-secondary ghost-border py-12">
+                  <div className="flex items-center justify-center rounded-lg bg-secondary border border-border/15 py-12">
                     <p className="text-sm text-muted-foreground">
                       Select a proposal from the timeline
                     </p>
@@ -790,7 +790,7 @@ export function SkillReport() {
                         key={p.proposal_id}
                         type="button"
                         onClick={() => handleSelectProposal(p.proposal_id)}
-                        className="flex gap-3 rounded-lg bg-secondary ghost-border p-3 w-full text-left hover:bg-input transition-colors"
+                        className="flex gap-3 rounded-lg bg-secondary border border-border/15 p-3 w-full text-left hover:bg-input transition-colors"
                       >
                         <div className="mt-0.5 size-2 shrink-0 rounded-full bg-primary" />
                         <div className="flex-1 min-w-0 space-y-1">

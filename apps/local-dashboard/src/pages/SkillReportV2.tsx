@@ -86,7 +86,7 @@ function KPICard({
   tooltip?: string;
 }) {
   const card = (
-    <div className="rounded-xl bg-muted p-6 hover:bg-secondary transition-all">
+    <div className="rounded-2xl bg-muted p-6 hover:bg-secondary transition-all">
       <p className="text-[10px] font-headline tracking-[0.2em] text-muted-foreground uppercase mb-2">
         {label}
       </p>
@@ -182,13 +182,13 @@ function InvocationTimeline({
           <YAxis domain={[0, 1]} hide />
           <RechartsTooltip
             content={<InvocationTimelineTooltip />}
-            cursor={{ fill: "hsl(var(--muted-foreground) / 0.08)" }}
+            cursor={{ fill: "color-mix(in srgb, var(--muted-foreground) 8%, transparent)" }}
           />
           <Bar dataKey="confidence" radius={[3, 3, 0, 0]} maxBarSize={24}>
             {chartData.map((entry) => (
               <Cell
                 key={`cell-${entry.index}`}
-                fill={entry.outcome === "pass" ? "hsl(var(--primary))" : "hsl(var(--destructive))"}
+                fill={entry.outcome === "pass" ? "var(--primary)" : "var(--destructive)"}
                 opacity={0.85}
               />
             ))}
@@ -434,7 +434,7 @@ function PendingProposalCards({
       {proposals.map((p) => (
         <div
           key={p.proposal_id}
-          className="rounded-xl bg-secondary p-6 border border-border/10"
+          className="rounded-2xl bg-secondary p-6 border border-border/10"
         >
           <div className="flex items-center gap-2 mb-3">
             <RocketIcon className="size-4 text-primary" />
@@ -579,7 +579,7 @@ export function SkillReportV2() {
             </div>
             {/* Title + Status */}
             <div className="flex items-center gap-4">
-              <h2 className="text-3xl font-bold font-headline text-foreground tracking-tighter">
+              <h2 className="font-headline text-4xl font-bold tracking-tight text-foreground">
                 {data.skill_name}
               </h2>
               <span
@@ -700,11 +700,11 @@ export function SkillReportV2() {
 
             {/* Row 2: Invocation Timeline + Evolution History */}
             <div className="grid grid-cols-12 gap-6">
-              <div className="col-span-12 xl:col-span-7 bg-muted p-8 rounded-xl">
+              <div className="col-span-12 xl:col-span-7 bg-muted p-8 rounded-2xl">
                 <InvocationTimeline invocations={invocations} />
               </div>
 
-              <div className="col-span-12 xl:col-span-5 bg-muted p-8 rounded-xl relative">
+              <div className="col-span-12 xl:col-span-5 bg-muted p-8 rounded-2xl relative">
                 <h3 className="font-headline text-sm tracking-widest uppercase text-slate-300 font-bold mb-8">
                   Evolution History
                 </h3>
@@ -714,7 +714,7 @@ export function SkillReportV2() {
 
             {/* Row 3: Recent Invocations + Execution Metrics */}
             <div className="grid grid-cols-12 gap-6">
-              <div className="col-span-12 xl:col-span-8 bg-muted rounded-xl overflow-hidden">
+              <div className="col-span-12 xl:col-span-8 bg-muted rounded-2xl overflow-hidden">
                 <div className="px-8 py-6 border-b border-border/10">
                   <h3 className="font-headline text-sm tracking-widest uppercase text-slate-300 font-bold">
                     Recent Invocations
@@ -723,7 +723,7 @@ export function SkillReportV2() {
                 <RecentInvocationsTable invocations={invocations} />
               </div>
 
-              <div className="col-span-12 xl:col-span-4 bg-muted p-8 rounded-xl">
+              <div className="col-span-12 xl:col-span-4 bg-muted p-8 rounded-2xl">
                 <h3 className="font-headline text-sm tracking-widest uppercase text-slate-300 font-bold mb-8">
                   Execution Metrics
                 </h3>
@@ -737,7 +737,7 @@ export function SkillReportV2() {
 
             {/* Row 4: Pending Proposals */}
             {pending_proposals.length > 0 && (
-              <div className="bg-muted p-8 rounded-xl">
+              <div className="bg-muted p-8 rounded-2xl">
                 <div className="flex justify-between items-center mb-8">
                   <h3 className="font-headline text-sm tracking-widest uppercase text-slate-300 font-bold">
                     Pending Proposals
@@ -757,7 +757,7 @@ export function SkillReportV2() {
 
           {/* ============ INVOCATIONS TAB ============ */}
           <TabsContent value="invocations" className="mt-0">
-            <div className="bg-muted rounded-xl overflow-hidden">
+            <div className="bg-muted rounded-2xl overflow-hidden">
               <div className="px-8 py-6 border-b border-border/10 flex items-center justify-between">
                 <h3 className="font-headline text-sm tracking-widest uppercase text-slate-300 font-bold">
                   All Invocations
@@ -772,7 +772,7 @@ export function SkillReportV2() {
 
           {/* ============ EVOLUTION TAB ============ */}
           <TabsContent value="evolution" className="mt-0">
-            <div className="bg-muted rounded-xl p-8">
+            <div className="bg-muted rounded-2xl p-8">
               <h3 className="font-headline text-sm tracking-widest uppercase text-slate-300 font-bold mb-8">
                 Full Evolution Trail
               </h3>
@@ -785,7 +785,7 @@ export function SkillReportV2() {
                   {evolution.map((entry, i) => (
                     <div
                       key={`${entry.proposal_id}-${i}`}
-                      className="rounded-xl bg-secondary p-6 border border-border/10"
+                      className="rounded-2xl bg-secondary p-6 border border-border/10"
                     >
                       <div className="flex items-center gap-2 mb-2">
                         {entry.action === "deployed" ? (
@@ -823,7 +823,7 @@ export function SkillReportV2() {
 
           {/* ============ PROPOSALS TAB ============ */}
           <TabsContent value="proposals" className="mt-0">
-            <div className="bg-muted rounded-xl p-8">
+            <div className="bg-muted rounded-2xl p-8">
               <h3 className="font-headline text-sm tracking-widest uppercase text-slate-300 font-bold mb-8">
                 Pending Proposals
                 <span className="ml-2 text-muted-foreground font-normal">

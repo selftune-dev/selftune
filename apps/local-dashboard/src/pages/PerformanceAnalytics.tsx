@@ -215,15 +215,15 @@ function ActivityHeatmap({ data }: { data: DailyActivity[] }) {
   }
 
   return (
-    <div>
-      <div className="grid grid-cols-12 gap-1.5">
+    <div className="flex flex-col h-full">
+      <div className="flex flex-wrap gap-1.5 flex-1 content-start">
         {cells.map((day) => {
           const intensity = day.checks / maxChecks;
           const opacity = Math.max(0.08, intensity);
           return (
             <div
               key={day.date}
-              className="aspect-square rounded-sm transition-colors"
+              className="size-5 rounded-sm transition-colors"
               style={{
                 backgroundColor: `color-mix(in srgb, var(--primary) ${Math.round(opacity * 100)}%, transparent)`,
               }}
@@ -232,7 +232,7 @@ function ActivityHeatmap({ data }: { data: DailyActivity[] }) {
           );
         })}
       </div>
-      <div className="flex items-center justify-end gap-2 mt-3">
+      <div className="flex items-center justify-end gap-2 mt-auto pt-3">
         <span className="text-[10px] font-headline uppercase tracking-widest text-muted-foreground">
           Quiet
         </span>
@@ -349,7 +349,7 @@ export function PerformanceAnalytics() {
               Live
             </Badge>
           </div>
-          <p className="mt-2 text-[13px] text-muted-foreground">
+          <p className="mt-2 text-sm text-muted-foreground">
             {lastGraded ? `Last graded: ${lastGraded}` : "Awaiting first grading run"}
             {summary.active_skills > 0 && ` \u00B7 ${summary.active_skills} active skills`}
           </p>
@@ -475,7 +475,7 @@ export function PerformanceAnalytics() {
             </CardDescription>
             <CardTitle className="font-headline text-lg">Check Activity Over Time</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-1 flex flex-col">
             <ActivityHeatmap data={data.daily_activity} />
           </CardContent>
         </Card>

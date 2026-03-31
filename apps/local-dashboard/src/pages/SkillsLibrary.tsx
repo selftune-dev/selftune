@@ -1,22 +1,16 @@
 import { deriveStatus, formatRate, sortByPassRateAndChecks } from "@selftune/ui/lib";
-import { Badge, Tooltip, TooltipContent, TooltipTrigger } from "@selftune/ui/primitives";
+import {
+  Badge,
+  Card,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@selftune/ui/primitives";
 import type { UseQueryResult } from "@tanstack/react-query";
 import {
-  ActivityIcon,
-  AlertTriangleIcon,
   ArrowUpDownIcon,
   BrainCircuitIcon,
-  CheckCircleIcon,
   CircleDotIcon,
-  EyeIcon,
-  FolderIcon,
-  GlobeIcon,
-  HelpCircleIcon,
-  LayersIcon,
-  ServerIcon,
-  SparklesIcon,
-  XCircleIcon,
-  ZapIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -55,35 +49,19 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
   { key: "UNGRADED", label: "Ungraded" },
 ];
 
-const STATUS_COLOR: Record<SkillHealthStatus, string> = {
-  HEALTHY: "text-emerald-400",
-  WARNING: "text-amber-400",
-  CRITICAL: "text-red-400",
-  UNGRADED: "text-slate-500",
-  UNKNOWN: "text-slate-600",
+const STATUS_STYLE: Record<SkillHealthStatus, { text: string; bg: string; label: string }> = {
+  HEALTHY: { text: "text-primary", bg: "bg-primary", label: "Deployed" },
+  WARNING: { text: "text-primary-accent", bg: "bg-primary-accent", label: "Needs Attention" },
+  CRITICAL: { text: "text-destructive", bg: "bg-destructive", label: "Critical" },
+  UNGRADED: { text: "text-muted-foreground", bg: "bg-muted-foreground", label: "Ungraded" },
+  UNKNOWN: { text: "text-muted-foreground", bg: "bg-muted-foreground", label: "Unknown" },
 };
 
-const STATUS_BG: Record<SkillHealthStatus, string> = {
-  HEALTHY: "bg-emerald-400",
-  WARNING: "bg-amber-400",
-  CRITICAL: "bg-red-400",
-  UNGRADED: "bg-slate-500",
-  UNKNOWN: "bg-slate-600",
-};
+function getPassRatePercent(passRate: number | null): number {
+  return passRate !== null ? Math.round(passRate * 100) : 0;
+}
 
-const STATUS_ICON: Record<SkillHealthStatus, React.ReactNode> = {
-  HEALTHY: <CheckCircleIcon className="size-4 text-emerald-400" />,
-  WARNING: <AlertTriangleIcon className="size-4 text-amber-400" />,
-  CRITICAL: <XCircleIcon className="size-4 text-red-400" />,
-  UNGRADED: <CircleDotIcon className="size-4 text-slate-500" />,
-  UNKNOWN: <HelpCircleIcon className="size-4 text-slate-600" />,
-};
 
-const SCOPE_ICON: Record<string, React.ReactNode> = {
-  project: <FolderIcon className="size-4 text-muted-foreground" />,
-  global: <GlobeIcon className="size-4 text-muted-foreground" />,
-  system: <ServerIcon className="size-4 text-muted-foreground" />,
-};
 
 /* ── Helpers ───────────────────────────────────────────────── */
 
@@ -179,85 +157,77 @@ function HeroCard({
   latestEvolution: EvolutionEntry | null;
 }) {
   const status = deriveStatus(skill.pass_rate, skill.total_checks);
-  const passRatePct = skill.total_checks > 0 ? Math.round(skill.pass_rate * 100) : 0;
+  const passRatePct = getPassRatePercent(skill.total_checks > 0 ? skill.pass_rate : null);
 
   return (
-    <div className="col-span-12 lg:col-span-8 bg-muted rounded-xl p-8 flex flex-col gap-6">
-      {/* Progress bar */}
-      <div className="w-full h-2 bg-input rounded-full overflow-hidden">
+    <Card className="col-span-12 lg:col-span-8 rounded-3xl border border-border/15 p-8 relative overflow-hidden flex flex-col">
+      {/* Top progress bar — absolute positioned like Stitch */}
+      <div className="absolute top-0 left-0 w-full h-1 bg-input">
         <div
-          className="h-full bg-primary rounded-full transition-all duration-700"
+          className="h-full bg-primary shadow-[0_0_15px_rgba(79,242,255,0.6)] transition-all duration-700"
           style={{ width: `${passRatePct}%` }}
         />
       </div>
 
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 space-y-1">
-          <div className="flex items-center gap-3">
-            <BrainCircuitIcon className="size-6 text-primary" />
-            <h2 className="font-headline font-bold text-2xl tracking-tight text-foreground">
-              {skill.skill_name}
-            </h2>
+      {/* Header row */}
+      <div className="flex justify-between items-start mb-6">
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary/10 text-primary uppercase tracking-widest">
+              {status === "HEALTHY" ? "Deployed" : "Evolving"}
+            </span>
+            <span className="text-muted-foreground font-mono text-xs">
+              {skill.skill_scope ?? "global"} scope
+            </span>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Most actively evolving skill
-            {latestEvolution ? ` \u2014 last evolved ${timeAgo(latestEvolution.timestamp)}` : ""}
+          <h2 className="font-headline text-3xl font-bold text-foreground">
+            {skill.skill_name}
+          </h2>
+        </div>
+        <div className="text-right">
+          <span className="text-4xl font-headline font-light text-primary">
+            {formatRate(skill.total_checks > 0 ? skill.pass_rate : null)}
+          </span>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-1">
+            {latestEvolution ? `Evolved ${timeAgo(latestEvolution.timestamp)}` : "Pass Rate"}
           </p>
         </div>
-        {latestEvolution && (
-          <Badge className="bg-primary/15 text-primary border-primary/30 font-headline text-xs">
-            <SparklesIcon className="size-3 mr-1" />
-            Recently Evolved
-          </Badge>
-        )}
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-3 gap-6">
-        <div className="bg-secondary rounded-xl p-4 text-center">
-          <p className="text-[10px] font-headline uppercase tracking-[0.2em] text-muted-foreground mb-1">
-            Total Checks
-          </p>
-          <p className="text-3xl font-bold font-headline tabular-nums text-foreground">
-            {skill.total_checks.toLocaleString()}
-          </p>
+      <div className="grid grid-cols-3 gap-8 mb-8">
+        <div className="bg-muted p-4 rounded-2xl border border-border/15">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">Total Checks</p>
+          <p className="text-xl font-bold font-headline tabular-nums">{skill.total_checks.toLocaleString()}</p>
         </div>
-        <div className="bg-secondary rounded-xl p-4 text-center">
-          <p className="text-[10px] font-headline uppercase tracking-[0.2em] text-muted-foreground mb-1">
-            Pass Rate
-          </p>
-          <p className={`text-3xl font-bold font-headline tabular-nums ${STATUS_COLOR[status]}`}>
+        <div className="bg-muted p-4 rounded-2xl border border-border/15">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">Pass Rate</p>
+          <p className={`text-xl font-bold font-headline tabular-nums ${STATUS_STYLE[status].text}`}>
             {formatRate(skill.total_checks > 0 ? skill.pass_rate : null)}
           </p>
         </div>
-        <div className="bg-secondary rounded-xl p-4 text-center">
-          <p className="text-[10px] font-headline uppercase tracking-[0.2em] text-muted-foreground mb-1">
-            Unique Sessions
-          </p>
-          <p className="text-3xl font-bold font-headline tabular-nums text-foreground">
-            {skill.unique_sessions.toLocaleString()}
-          </p>
+        <div className="bg-muted p-4 rounded-2xl border border-border/15">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-1">Unique Sessions</p>
+          <p className="text-xl font-bold font-headline tabular-nums">{skill.unique_sessions.toLocaleString()}</p>
         </div>
       </div>
 
-      {/* Action buttons */}
-      <div className="flex gap-3">
-        <Link
-          to={`/skills-v2/${encodeURIComponent(skill.skill_name)}`}
-          className="cognitive-gradient text-primary-foreground font-bold py-2.5 px-6 rounded-xl flex items-center gap-2 font-headline text-sm uppercase tracking-wider transition-transform active:scale-95"
-        >
-          <EyeIcon className="size-4" />
-          View Report
-        </Link>
+      {/* Action buttons — right-aligned like Stitch */}
+      <div className="flex justify-end gap-4">
         <Link
           to={`/skills/${encodeURIComponent(skill.skill_name)}`}
-          className="bg-secondary text-foreground font-bold py-2.5 px-6 rounded-xl flex items-center gap-2 font-headline text-sm uppercase tracking-wider hover:bg-input transition-all"
+          className="px-6 py-2 rounded-xl text-muted-foreground font-bold hover:bg-input transition-colors"
         >
-          <ActivityIcon className="size-4" />
           Configure
         </Link>
+        <Link
+          to={`/skills-v2/${encodeURIComponent(skill.skill_name)}`}
+          className="px-8 py-2 bg-primary text-primary-foreground font-bold rounded-xl shadow-[0_4px_20px_rgba(79,242,255,0.2)] hover:shadow-[0_4px_25px_rgba(79,242,255,0.4)] transition-all"
+        >
+          View Report
+        </Link>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -268,135 +238,122 @@ function LibraryHealthCard({ skills }: { skills: SkillSummary[] }) {
   const gradedCount = skills.filter((s) => s.total_checks >= 5).length;
 
   return (
-    <div className="bg-muted rounded-xl p-6 flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <LayersIcon className="size-5 text-primary" />
-        <h3 className="font-headline font-bold text-sm tracking-tight text-foreground">
-          Library Health
-        </h3>
+    <Card className="rounded-3xl border border-border/15 p-6 flex flex-col justify-center">
+      <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-4">
+        Library Health
+      </p>
+      <div className="flex items-end gap-2 mb-2">
+        <span className="text-5xl font-headline font-bold tabular-nums">
+          {aggRate !== null ? `${Math.round(aggRate * 100)}%` : "--"}
+        </span>
       </div>
-      <p className="text-5xl font-bold font-headline tabular-nums text-primary text-glow">
-        {aggRate !== null ? `${Math.round(aggRate * 100)}%` : "--"}
+      <p className="text-sm text-muted-foreground">
+        Aggregate pass rate across {gradedCount} graded skill{gradedCount !== 1 ? "s" : ""}.
       </p>
-      <p className="text-xs text-muted-foreground">
-        Aggregate pass rate across {gradedCount} graded skill{gradedCount !== 1 ? "s" : ""}
-      </p>
-    </div>
+    </Card>
   );
 }
 
 function PendingProposalsCard({ proposals }: { proposals: PendingProposal[] }) {
   if (proposals.length === 0) {
     return (
-      <div className="bg-muted rounded-xl p-6 border-l-4 border-primary/40 flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <ZapIcon className="size-5 text-primary" />
-          <h3 className="font-headline font-bold text-sm tracking-tight text-foreground">
-            Pending Proposals
-          </h3>
-        </div>
-        <p className="text-sm text-muted-foreground">No pending proposals</p>
-      </div>
+      <Card className="rounded-3xl p-6 flex flex-col gap-3 border border-border/15 border-l-4 border-l-primary/40">
+        <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-2">
+          Pending Proposals
+        </p>
+        <h3 className="font-headline font-bold text-lg">No proposals pending</h3>
+      </Card>
     );
   }
 
   return (
-    <div className="bg-muted rounded-xl p-6 border-l-4 border-primary/40 flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <ZapIcon className="size-5 text-primary" />
-        <h3 className="font-headline font-bold text-sm tracking-tight text-foreground">
-          Pending Proposals
-        </h3>
+    <Card className="rounded-3xl p-6 flex flex-col gap-3 border border-border/15 border-l-4 border-l-primary/40">
+      <p className="text-[10px] text-muted-foreground uppercase tracking-widest mb-2">
+        Pending Proposals
+      </p>
+      <h3 className="font-headline font-bold text-lg mb-4">
+        Awaiting Review
         <Badge
           variant="secondary"
-          className="ml-auto h-5 px-2 text-[10px] bg-primary/15 text-primary border-none"
+          className="ml-2 h-5 px-2 text-[10px] bg-primary/15 text-primary border-none align-middle"
         >
           {proposals.length}
         </Badge>
-      </div>
-      <div className="space-y-2 max-h-32 overflow-y-auto">
+      </h3>
+      <div className="space-y-3 max-h-32 overflow-y-auto">
         {proposals.map((p) => (
-          <div key={p.proposal_id} className="flex items-center gap-2 text-xs">
-            <SparklesIcon className="size-3 text-primary shrink-0" />
-            <span className="truncate text-foreground">{p.skill_name ?? "Unknown"}</span>
-            <span className="text-muted-foreground ml-auto shrink-0">{p.action}</span>
+          <div
+            key={p.proposal_id}
+            className="flex items-center justify-between p-3 bg-muted rounded-xl"
+          >
+            <span className="text-sm truncate">{p.skill_name ?? "Unknown"}</span>
+            <span className="text-xs text-muted-foreground shrink-0">{p.action}</span>
           </div>
         ))}
       </div>
-    </div>
+    </Card>
   );
 }
 
 /* ── Skill Card ────────────────────────────────────────────── */
 
 function SkillCard({ skill }: { skill: DerivedSkill }) {
-  const passRatePct = skill.passRate !== null ? Math.round(skill.passRate * 100) : 0;
-  const scopeIcon = SCOPE_ICON[skill.scope ?? ""] ?? (
-    <HelpCircleIcon className="size-4 text-muted-foreground" />
-  );
+  const passRatePct = getPassRatePercent(skill.passRate);
+  const style = STATUS_STYLE[skill.status];
 
   return (
-    <div className="bg-muted rounded-xl p-6 border border-border/5 hover:border-border/30 transition-all duration-300 flex flex-col gap-4">
-      {/* Top row: icon + scope badge + check count */}
-      <div className="flex items-center gap-2">
-        {scopeIcon}
-        <Badge
-          variant="secondary"
-          className="h-5 px-2 text-[10px] bg-muted text-muted-foreground border-none font-headline"
-        >
-          {skill.scope ?? "unknown"}
-        </Badge>
-        <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-          {skill.checks.toLocaleString()} checks
-        </span>
+    <Card className="border border-border/15 p-6 hover:border-border/30 transition-all duration-300 flex flex-col">
+      {/* Top row: status dot in box (left) + metric (right) */}
+      <div className="flex justify-between items-start mb-4">
+        <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center">
+          <span className={`size-3 rounded-full ${style.bg}`} />
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-widest">
+            {skill.scope ?? "unknown"}
+          </p>
+          <p className="text-sm font-bold tabular-nums">{skill.checks.toLocaleString()}</p>
+        </div>
       </div>
 
-      {/* Skill name */}
-      <h3 className="font-headline font-bold text-xl tracking-tight text-foreground truncate">
+      {/* Title + description */}
+      <h3 className="font-headline font-bold text-xl tracking-tight text-foreground truncate mb-1">
         {skill.name}
       </h3>
+      <p className="text-sm text-muted-foreground mb-6">
+        {skill.uniqueSessions} sessions · Last seen {timeAgo(skill.lastSeen)}
+      </p>
 
-      {/* Status + pass rate bar */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          {STATUS_ICON[skill.status]}
-          <span className={`text-xs font-headline font-semibold ${STATUS_COLOR[skill.status]}`}>
-            {skill.status}
-          </span>
-          <span className="ml-auto text-sm font-bold tabular-nums text-foreground">
-            {formatRate(skill.passRate)}
-          </span>
+      {/* Progress section — "Pass Rate" label + status + bar */}
+      <div className="space-y-4">
+        <div className="flex justify-between items-end text-xs uppercase tracking-tighter">
+          <span className="text-muted-foreground">Pass Rate</span>
+          <span className={`font-bold ${style.text}`}>{style.label}</span>
         </div>
-        <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+        <div className="w-full h-1 bg-input rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all duration-500 ${STATUS_BG[skill.status]}`}
+            className={`h-full rounded-full transition-all duration-500 ${style.bg}`}
             style={{ width: `${passRatePct}%` }}
           />
         </div>
-      </div>
 
-      {/* Meta row */}
-      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-        <span>{skill.uniqueSessions} sessions</span>
-        {skill.lastSeen && <span>{timeAgo(skill.lastSeen)}</span>}
+        {/* Buttons */}
+        <div className="pt-4 flex gap-3">
+          <Link
+            to={`/skills/${encodeURIComponent(skill.name)}`}
+            className="flex-1 py-2 text-xs font-bold text-muted-foreground bg-muted rounded-lg text-center hover:bg-input transition-colors"
+          >
+            Configure
+          </Link>
+          <Link
+            to={`/skills-v2/${encodeURIComponent(skill.name)}`}
+            className="flex-1 py-2 text-xs font-bold text-muted-foreground bg-secondary rounded-lg text-center hover:bg-input hover:text-foreground transition-all"
+          >
+            View Report
+          </Link>
+        </div>
       </div>
-
-      {/* Action buttons */}
-      <div className="flex gap-2 mt-auto">
-        <Link
-          to={`/skills-v2/${encodeURIComponent(skill.name)}`}
-          className="flex-1 bg-secondary text-foreground text-center font-semibold py-2 px-3 rounded-lg text-xs font-headline hover:bg-input transition-all"
-        >
-          View Report
-        </Link>
-        <Link
-          to={`/skills/${encodeURIComponent(skill.name)}`}
-          className="bg-secondary text-muted-foreground text-center font-semibold py-2 px-3 rounded-lg text-xs font-headline hover:bg-input hover:text-foreground transition-all"
-        >
-          Configure
-        </Link>
-      </div>
-    </div>
+    </Card>
   );
 }
 
@@ -436,14 +393,14 @@ export function SkillsLibrary({
   const pendingProposals = data.overview.pending_proposals;
 
   return (
-    <div className="flex flex-1 flex-col gap-8 p-6 md:p-10 animate-in fade-in duration-500">
+    <div className="@container/main flex flex-1 flex-col gap-8 py-8 px-4 lg:px-6 animate-in fade-in duration-500">
       {/* Header */}
-      <div className="space-y-2">
-        <h1 className="text-5xl font-bold font-headline tracking-tight text-glow">
+      <div>
+        <h1 className="font-headline text-4xl font-bold tracking-tight text-foreground">
           Skills Library
         </h1>
-        <p className="text-muted-foreground text-lg">
-          Monitor and manage your evolving skill definitions across all scopes
+        <p className="mt-2 text-sm text-muted-foreground max-w-2xl">
+          Monitor and manage your evolving skill definitions across all scopes.
         </p>
       </div>
 
@@ -452,14 +409,14 @@ export function SkillsLibrary({
         {heroData ? (
           <HeroCard skill={heroData.skill} latestEvolution={heroData.latestEvolution} />
         ) : (
-          <div className="col-span-12 lg:col-span-8 bg-muted rounded-xl p-8 flex items-center justify-center">
+          <Card className="col-span-12 lg:col-span-8 border border-border/15 p-8 flex items-center justify-center">
             <div className="text-center space-y-2">
               <BrainCircuitIcon className="size-10 text-muted-foreground mx-auto" />
               <p className="text-muted-foreground">
                 No evolution activity yet. Run an evolution cycle to see your most active skill.
               </p>
             </div>
-          </div>
+          </Card>
         )}
 
         <div className="col-span-12 lg:col-span-4 flex flex-col gap-6">
@@ -523,12 +480,12 @@ export function SkillsLibrary({
             ))}
           </div>
         ) : (
-          <div className="bg-muted rounded-xl p-12 text-center">
+          <Card className="border border-border/15 p-12 text-center">
             <CircleDotIcon className="size-8 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground font-headline">
               No skills match the current filter
             </p>
-          </div>
+          </Card>
         )}
       </div>
     </div>

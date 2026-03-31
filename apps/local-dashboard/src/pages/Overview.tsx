@@ -150,7 +150,7 @@ function DonutChart({
   const gap = circumference - filled;
 
   return (
-    <svg width={size} height={size} className="block">
+    <svg width={size} height={size} className="block" style={{ overflow: "visible" }}>
       {/* Track */}
       <circle
         cx={size / 2}
@@ -373,7 +373,7 @@ export function Overview({
         <h1 className="font-headline text-4xl font-bold tracking-tight text-foreground">
           Ecosystem Overview
         </h1>
-        <p className="mt-2 text-[15px] text-muted-foreground max-w-2xl leading-relaxed">
+        <p className="mt-2 text-sm text-muted-foreground max-w-2xl leading-relaxed">
           Real-time synthesis of skill routing health, evolution flow, and autonomous model
           calibration.
         </p>
@@ -384,7 +384,7 @@ export function Overview({
         <OnboardingBanner skillCount={skills.length} />
 
         {/* ── Row 1: System Health (col-span-8) ──────────── */}
-        <Card className="col-span-12 @4xl/main:col-span-8 min-h-[400px] relative overflow-hidden ghost-border p-0">
+        <Card className="col-span-12 @4xl/main:col-span-8 min-h-[400px] relative overflow-hidden border border-border/15 p-0">
           {/* Background bar chart */}
           <BarChartViz skills={skills} />
 
@@ -399,7 +399,7 @@ export function Overview({
                     System Health
                   </h2>
                   <p className="text-xs text-muted-foreground">
-                    Neural load: {totalChecks} checks &middot; {overview.counts.sessions} sessions
+                    {totalChecks.toLocaleString()} checks &middot; {overview.counts.sessions.toLocaleString()} sessions graded
                   </p>
                 </div>
               </div>
@@ -447,7 +447,7 @@ export function Overview({
         </Card>
 
         {/* ── Row 1: Global Learning Rate (col-span-4) ───── */}
-        <Card className="col-span-12 @4xl/main:col-span-4 ghost-border flex flex-col items-center justify-center p-6 min-h-[400px]">
+        <Card className="col-span-12 @4xl/main:col-span-4 border border-border/15 flex flex-col items-center justify-center p-6 min-h-[400px] overflow-visible">
           <p className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-6">
             Global Learning Rate
           </p>
@@ -472,11 +472,11 @@ export function Overview({
         </Card>
 
         {/* ── Row 2: Active Skills (col-span-4) ──────────── */}
-        <Card className="col-span-12 @4xl/main:col-span-4 ghost-border p-5 flex flex-col">
+        <Card className="col-span-12 @4xl/main:col-span-4 border border-border/15 p-5 flex flex-col">
           <CardHeader className="p-0 mb-4">
             <div className="flex items-center justify-between">
               <CardTitle className="font-headline text-sm font-semibold text-foreground">
-                Active Skills
+                Skill Health
               </CardTitle>
               <div className="flex items-center gap-1">
                 {(["ALL", "HEALTHY", "WARNING", "CRITICAL"] as const).map((s) => (
@@ -519,17 +519,17 @@ export function Overview({
 
           {filteredCards.length > 5 && (
             <Link
-              to="/status"
+              to="/skills-library"
               className="mt-4 flex items-center justify-center gap-2 text-xs font-medium text-primary hover:text-primary-accent transition-colors"
             >
-              View All
+              View All Skills
               <ArrowRightIcon className="size-3" />
             </Link>
           )}
         </Card>
 
         {/* ── Row 2: Recent Activity Feed (col-span-8) ───── */}
-        <Card className="col-span-12 @4xl/main:col-span-8 ghost-border p-5">
+        <Card className="col-span-12 @4xl/main:col-span-8 border border-border/15 p-5">
           <CardHeader className="p-0 mb-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -571,7 +571,7 @@ export function Overview({
         </Card>
 
         {/* ── Row 3: Evolution Queue (col-span-8) ────────── */}
-        <Card className="col-span-12 @4xl/main:col-span-8 ghost-border p-5">
+        <Card className="col-span-12 @4xl/main:col-span-8 border border-border/15 p-5">
           <CardHeader className="p-0 mb-4">
             <div className="flex items-center gap-2">
               <LayersIcon className="size-4 text-primary-accent" />
@@ -596,7 +596,7 @@ export function Overview({
         </Card>
 
         {/* ── Row 3: Autonomous Synthesis (col-span-4) ───── */}
-        <Card className="col-span-12 @4xl/main:col-span-4 ghost-border relative overflow-hidden min-h-[240px] p-0">
+        <Card className="col-span-12 @4xl/main:col-span-4 border border-border/15 relative overflow-hidden min-h-[240px] p-0">
           {/* Background gradient overlay */}
           <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-chart-3/5" />
 
