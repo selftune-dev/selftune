@@ -25,7 +25,6 @@ import {
   DatabaseIcon,
   GitBranchIcon,
   SearchIcon,
-  SparklesIcon,
   TargetIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -303,40 +302,40 @@ export function SkillReportTopRow({
         : "border-border/15";
 
   return (
-    <div className="grid grid-cols-1 gap-4 @4xl/main:grid-cols-12">
+    <div className="grid grid-cols-1 gap-3 @4xl/main:grid-cols-12">
       <Card
-        className={`rounded-2xl border bg-card shadow-none ${latestDecision ? "@4xl/main:col-span-8" : "@4xl/main:col-span-12"} ${nextActionBorder}`}
+        className={`rounded-xl border bg-muted/35 shadow-none ${latestDecision ? "@4xl/main:col-span-8" : "@4xl/main:col-span-12"} ${nextActionBorder}`}
       >
-        <CardContent className="flex items-center gap-4 py-5">
-          <div className="shrink-0">{nextAction.icon}</div>
+        <CardContent className="flex items-start gap-3 px-4 py-4">
+          <div className="shrink-0 pt-0.5">{nextAction.icon}</div>
           <div className="flex-1">
-            <h3 className="mb-1 font-headline text-[10px] uppercase tracking-wider text-muted-foreground">
+            <h3 className="mb-1 font-headline text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
               Next Best Action
             </h3>
-            <p className="text-sm font-medium text-foreground">{nextAction.text}</p>
+            <p className="text-[15px] font-medium leading-6 text-foreground">{nextAction.text}</p>
           </div>
-          <Badge variant={nextAction.variant} className="shrink-0">
+          <Badge variant={nextAction.variant} className="shrink-0 self-start text-[10px]">
             {nextAction.actionLabel}
           </Badge>
         </CardContent>
       </Card>
 
       {latestDecision && (
-        <Card className="rounded-2xl border border-border/15 bg-card @4xl/main:col-span-4">
-          <CardContent className="flex h-full items-center gap-4 py-5">
-            <GitBranchIcon className="size-4 shrink-0 text-primary" />
+        <Card className="rounded-xl border border-border/10 bg-muted/20 @4xl/main:col-span-4">
+          <CardContent className="flex h-full items-start gap-3 px-4 py-4">
+            <GitBranchIcon className="mt-0.5 size-4 shrink-0 text-primary/80" />
             <div className="min-w-0 flex-1">
               <h3 className="mb-1 font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                 Latest Decision
               </h3>
-              <p className="truncate text-sm font-medium">{latestDecision.action}</p>
+              <p className="truncate text-sm font-medium leading-6">{latestDecision.action}</p>
               {latestDecision.timestamp && (
                 <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
                   {timeAgo(latestDecision.timestamp)}
                 </p>
               )}
             </div>
-            <Badge variant="outline" className="shrink-0 text-[10px]">
+            <Badge variant="outline" className="shrink-0 self-start text-[9px]">
               {latestDecision.evolutionCount} evolution
               {latestDecision.evolutionCount !== 1 ? "s" : ""}
             </Badge>
@@ -372,19 +371,19 @@ export function TrustSignalsGrid({
 
   return (
     <div>
-      <h2 className="mb-3 font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+      <h2 className="mb-2 font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
         Trust Signals
       </h2>
-      <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
-        <Card className="rounded-2xl border border-border/15 bg-card transition-colors hover:border-border/30 @container/card">
-          <CardHeader>
+      <div className="grid grid-cols-1 gap-3 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
+        <Card className="rounded-xl border border-border/10 bg-muted/20 transition-colors hover:border-border/20 @container/card">
+          <CardHeader className="gap-2 px-4 py-3">
             <CardDescription className="flex items-center gap-1.5">
               <ActivityIcon className="size-3.5" />
               <span className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                 Coverage
               </span>
             </CardDescription>
-            <CardTitle className="text-2xl font-semibold tabular-nums text-foreground @[250px]/card:text-3xl">
+            <CardTitle className="text-[32px] font-semibold leading-none tabular-nums text-foreground">
               {coverage?.checks ?? fallbackChecks}
             </CardTitle>
             <CardAction>
@@ -396,8 +395,8 @@ export function TrustSignalsGrid({
           </CardHeader>
         </Card>
 
-        <Card className="rounded-2xl border border-border/15 bg-card transition-colors hover:border-border/30 @container/card">
-          <CardHeader>
+        <Card className="rounded-xl border border-border/10 bg-muted/20 transition-colors hover:border-border/20 @container/card">
+          <CardHeader className="gap-2 px-4 py-3">
             <CardDescription className="flex items-center gap-1.5">
               <SearchIcon className="size-3.5" />
               <span className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
@@ -405,7 +404,7 @@ export function TrustSignalsGrid({
               </span>
               <InfoTip text="How well prompts are linked to invocations. Higher prompt-link rate = more trustworthy data." />
             </CardDescription>
-            <CardTitle className="text-2xl font-semibold tabular-nums text-foreground @[250px]/card:text-3xl">
+            <CardTitle className="text-[32px] font-semibold leading-none tabular-nums text-foreground">
               {evidenceQuality?.prompt_link_rate != null
                 ? formatRate(evidenceQuality.prompt_link_rate)
                 : "No data"}
@@ -428,8 +427,8 @@ export function TrustSignalsGrid({
           </CardHeader>
         </Card>
 
-        <Card className="rounded-2xl border border-border/15 bg-card transition-colors hover:border-border/30 @container/card">
-          <CardHeader>
+        <Card className="rounded-xl border border-border/10 bg-muted/20 transition-colors hover:border-border/20 @container/card">
+          <CardHeader className="gap-2 px-4 py-3">
             <CardDescription className="flex items-center gap-1.5">
               <TargetIcon className="size-3.5" />
               <span className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
@@ -437,7 +436,7 @@ export function TrustSignalsGrid({
               </span>
               <InfoTip text="Routing accuracy: average confidence when triggering, and miss rate" />
             </CardDescription>
-            <CardTitle className="text-2xl font-semibold tabular-nums text-foreground @[250px]/card:text-3xl">
+            <CardTitle className="text-[32px] font-semibold leading-none tabular-nums text-foreground">
               {routingQuality?.avg_confidence != null
                 ? formatRate(routingQuality.avg_confidence)
                 : "No data"}
@@ -458,17 +457,17 @@ export function TrustSignalsGrid({
           </CardHeader>
         </Card>
 
-        <Card className="rounded-2xl border border-border/15 bg-card transition-colors hover:border-border/30 @container/card">
-          <CardHeader>
+        <Card className="rounded-xl border border-border/10 bg-muted/20 transition-colors hover:border-border/20 @container/card">
+          <CardHeader className="gap-2 px-4 py-3">
             <CardDescription className="flex items-center gap-1.5">
-              <SparklesIcon className="size-3.5" />
+              <GitBranchIcon className="size-3.5" />
               <span className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                 Evolution
               </span>
             </CardDescription>
             {hasEvolutionData ? (
               <>
-                <CardTitle className="text-sm font-medium">
+                <CardTitle className="text-sm font-medium leading-6">
                   {evolutionState?.latest_action ?? fallbackLatestAction ?? "No data"}
                 </CardTitle>
                 <CardAction>
@@ -506,8 +505,8 @@ export function PromptEvidencePanel({ examples }: { examples?: TrustFields["exam
   }
 
   return (
-    <Card className="rounded-2xl border border-border/15 bg-card">
-      <CardHeader>
+    <Card className="rounded-xl border border-border/10 bg-card/90">
+      <CardHeader className="px-4 pb-2 pt-4">
         <div className="flex items-start justify-between gap-4">
           <div>
             <CardTitle className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
@@ -524,9 +523,9 @@ export function PromptEvidencePanel({ examples }: { examples?: TrustFields["exam
           </div>
         </div>
       </CardHeader>
-      <CardContent className="pt-0">
+      <CardContent className="px-4 pb-4 pt-0">
         <Tabs defaultValue="good">
-          <TabsList variant="line">
+          <TabsList variant="line" className="min-h-0">
             <TabsTrigger value="good">
               Good Evidence
               <Badge variant="outline" className="ml-1.5 text-[10px]">
@@ -552,16 +551,16 @@ export function PromptEvidencePanel({ examples }: { examples?: TrustFields["exam
               </Badge>
             </TabsTrigger>
           </TabsList>
-          <TabsContent value="good" className="mt-3">
+          <TabsContent value="good" className="mt-2">
             <ExamplesTable rows={examples.good} emptyMessage="No good evidence samples yet." />
           </TabsContent>
-          <TabsContent value="missed" className="mt-3">
+          <TabsContent value="missed" className="mt-2">
             <ExamplesTable
               rows={examples.missed}
               emptyMessage="No missed opportunities detected."
             />
           </TabsContent>
-          <TabsContent value="noisy" className="mt-3">
+          <TabsContent value="noisy" className="mt-2">
             <ExamplesTable rows={examples.noisy} emptyMessage="No polluted samples detected." />
           </TabsContent>
         </Tabs>

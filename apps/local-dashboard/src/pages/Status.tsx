@@ -11,10 +11,11 @@ import {
   SettingsIcon,
   ShieldCheckIcon,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDoctor } from "@/hooks/useDoctor";
-import type { HealthCheck, HealthStatus } from "@/types";
+import type { HealthCheck, HealthResponse, HealthStatus } from "@/types";
 
 const STATUS_DISPLAY: Record<
   HealthStatus,
@@ -92,6 +93,97 @@ const CHECK_META: Record<string, { label: string; description: string; icon: Rea
     icon: <HardDriveIcon className="size-4" />,
   },
 };
+
+function isHealthResponse(value: unknown): value is HealthResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.workspace_root === "string" &&
+    typeof record.git_sha === "string" &&
+    typeof record.db_path === "string" &&
+    typeof record.process_mode === "string" &&
+    (record.watcher_mode === "wal" ||
+      record.watcher_mode === "jsonl" ||
+      record.watcher_mode === "none")
+  );
+}
+
+function RuntimeDetailsPanel() {
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+
+  useEffect(() => {
+    fetch("/api/health")
+      .then((res) => res.json())
+      .then((data: unknown) => {
+        if (isHealthResponse(data)) {
+          setHealth(data);
+        }
+      })
+      .catch(() => {
+        /* non-critical */
+      });
+  }, []);
+
+  if (!health) return null;
+  const legacyWatcherMode = health.watcher_mode === "jsonl";
+
+  return (
+    <section className="glass-panel rounded-2xl border border-border/15 p-6">
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-[10px] font-headline uppercase tracking-[0.2em] text-muted-foreground">
+            Runtime Environment
+          </p>
+          <h2 className="mt-1 font-headline text-xl font-semibold text-foreground">
+            Active dashboard runtime
+          </h2>
+        </div>
+        <Badge
+          variant="outline"
+          className={
+            legacyWatcherMode
+              ? "border-amber-400/25 bg-amber-400/10 text-amber-400"
+              : "border-primary/25 bg-primary/10 text-primary"
+          }
+        >
+          {legacyWatcherMode ? "Legacy watcher path active" : "Live invalidation active"}
+        </Badge>
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-xl border border-border/10 bg-background/35 p-4">
+          <p className="text-[10px] font-headline uppercase tracking-[0.18em] text-muted-foreground">
+            Process mode
+          </p>
+          <p className="mt-2 text-sm font-semibold text-foreground">{health.process_mode}</p>
+        </div>
+        <div className="rounded-xl border border-border/10 bg-background/35 p-4">
+          <p className="text-[10px] font-headline uppercase tracking-[0.18em] text-muted-foreground">
+            Watcher mode
+          </p>
+          <p className="mt-2 text-sm font-semibold text-foreground">{health.watcher_mode}</p>
+        </div>
+        <div className="rounded-xl border border-border/10 bg-background/35 p-4">
+          <p className="text-[10px] font-headline uppercase tracking-[0.18em] text-muted-foreground">
+            Git SHA
+          </p>
+          <p className="mt-2 truncate font-mono text-sm text-foreground">{health.git_sha}</p>
+        </div>
+        <div className="rounded-xl border border-border/10 bg-background/35 p-4">
+          <p className="text-[10px] font-headline uppercase tracking-[0.18em] text-muted-foreground">
+            Database path
+          </p>
+          <p className="mt-2 truncate font-mono text-sm text-foreground">{health.db_path}</p>
+        </div>
+      </div>
+      <div className="mt-3 rounded-xl border border-border/10 bg-background/35 p-4">
+        <p className="text-[10px] font-headline uppercase tracking-[0.18em] text-muted-foreground">
+          Workspace root
+        </p>
+        <p className="mt-2 break-all font-mono text-sm text-foreground">{health.workspace_root}</p>
+      </div>
+    </section>
+  );
+}
 
 function CheckRow({ check }: { check: HealthCheck }) {
   const meta = CHECK_META[check.name] ?? {
@@ -276,9 +368,7 @@ export function Status() {
             <span className="text-[10px] text-muted-foreground uppercase tracking-[0.2em] font-headline mb-1">
               Passed
             </span>
-            <span className="font-headline text-2xl font-bold text-primary">
-              {summary.pass}
-            </span>
+            <span className="font-headline text-2xl font-bold text-primary">{summary.pass}</span>
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] text-muted-foreground uppercase tracking-[0.2em] font-headline mb-1">
@@ -303,11 +393,11 @@ export function Status() {
         </div>
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <p className="text-xs font-bold text-foreground font-headline">
-              {total} Checks
-            </p>
+            <p className="text-xs font-bold text-foreground font-headline">{total} Checks</p>
             <p className="text-[10px] text-muted-foreground">
-              {summary.pass === total ? "All checks passing" : `${summary.fail + summary.warn} issue${summary.fail + summary.warn !== 1 ? "s" : ""} detected`}
+              {summary.pass === total
+                ? "All checks passing"
+                : `${summary.fail + summary.warn} issue${summary.fail + summary.warn !== 1 ? "s" : ""} detected`}
             </p>
           </div>
           <div className="size-12 rounded-full flex items-center justify-center border-4 border-primary/20 border-t-primary">
@@ -317,6 +407,8 @@ export function Status() {
         {/* Background glow */}
         <div className="absolute -right-20 -bottom-20 w-64 h-64 bg-primary/5 blur-3xl rounded-full pointer-events-none" />
       </div>
+
+      <RuntimeDetailsPanel />
 
       {/* ── Unified Checks Panel ───────────────────────────── */}
       <div className="bg-muted rounded-2xl border border-border/15 overflow-hidden">
@@ -339,9 +431,7 @@ export function Status() {
               <CheckRow key={`${check.name}-${idx}`} check={check} />
             ))}
             {/* Separator between groups (not after last) */}
-            {gi < groups.length - 1 && (
-              <div className="border-b border-border/25" />
-            )}
+            {gi < groups.length - 1 && <div className="border-b border-border/25" />}
           </div>
         ))}
       </div>

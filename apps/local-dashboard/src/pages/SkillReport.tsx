@@ -386,24 +386,26 @@ function TimelineSidebar({
   const visibleEntries = expanded ? evolution : evolution.slice(0, 10);
 
   return (
-    <aside className="w-[220px] shrink-0 bg-card/50 border-l border-border/15 pr-4 pl-3 pt-2 sticky top-28 self-start max-h-[calc(100svh-7rem)] overflow-y-auto themed-scroll text-xs">
-      <EvolutionTimeline
-        entries={visibleEntries}
-        selectedProposalId={activeProposal}
-        onSelect={onSelect}
-      />
-      {shouldCollapse && (
-        <button
-          type="button"
-          onClick={() => setExpanded(!expanded)}
-          className="mt-2 w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ChevronDownIcon
-            className={`size-3 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
-          />
-          {expanded ? "Collapse timeline" : `Show full timeline (${evolution.length} entries)`}
-        </button>
-      )}
+    <aside className="w-full border-b border-border/15 bg-muted/20 @5xl/main:h-full @5xl/main:w-[252px] @5xl/main:border-b-0 @5xl/main:border-r">
+      <div className="themed-scroll overflow-y-auto px-3 py-3 text-xs @5xl/main:sticky @5xl/main:top-16 @5xl/main:max-h-[calc(100svh-6rem)]">
+        <EvolutionTimeline
+          entries={visibleEntries}
+          selectedProposalId={activeProposal}
+          onSelect={onSelect}
+        />
+        {shouldCollapse && (
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            className="mt-2 flex w-full items-center justify-center gap-1.5 py-2 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ChevronDownIcon
+              className={`size-3 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
+            />
+            {expanded ? "Collapse timeline" : `Show full timeline (${evolution.length} entries)`}
+          </button>
+        )}
+      </div>
     </aside>
   );
 }
@@ -595,9 +597,9 @@ export function SkillReport() {
 
   return (
     <Tabs defaultValue={defaultTab}>
-      <div className="@container/main flex flex-1 flex-col gap-6 p-4 lg:px-6 lg:pb-6 lg:pt-0">
+      <div className="@container/main flex flex-1 flex-col gap-5 p-4 lg:px-6 lg:pb-6 lg:pt-0">
         {/* ─── 1. Trust Header (sticky) ───────────────── */}
-        <div className="sticky top-0 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85 py-3 border-b border-border/15 space-y-3">
+        <div className="sticky top-0 z-30 space-y-2 border-b border-border/15 bg-background/95 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/85">
           <div className="flex items-center gap-3">
             <Button variant="outline" size="sm" render={<Link to="/" />} className="shrink-0">
               <ArrowLeftIcon className="size-3.5" />
@@ -657,31 +659,33 @@ export function SkillReport() {
           )}
         </div>
 
-        <SkillReportTopRow
-          nextAction={nextAction}
-          latestDecision={
-            hasEvolutionData && evolutionState?.latest_action
-              ? {
-                  action: evolutionState.latest_action,
-                  timestamp: evolutionState.latest_timestamp,
-                  evolutionCount: evolutionState.evolution_rows ?? evolution.length,
-                }
-              : undefined
-          }
-        />
-
-        <TrustSignalsGrid
-          coverage={coverage}
-          evidenceQuality={evidenceQuality}
-          routingQuality={routingQuality}
-          evolutionState={evolutionState}
-          fallbackChecks={data.usage.total_checks}
-          fallbackSessions={data.sessions_with_skill}
-          fallbackEvidenceRows={data.evidence.length}
-          fallbackEvolutionRows={evolution.length}
-          fallbackLatestAction={evolution[0]?.action}
-        />
         <div className="space-y-4">
+          <SkillReportTopRow
+            nextAction={nextAction}
+            latestDecision={
+              hasEvolutionData && evolutionState?.latest_action
+                ? {
+                    action: evolutionState.latest_action,
+                    timestamp: evolutionState.latest_timestamp,
+                    evolutionCount: evolutionState.evolution_rows ?? evolution.length,
+                  }
+                : undefined
+            }
+          />
+
+          <TrustSignalsGrid
+            coverage={coverage}
+            evidenceQuality={evidenceQuality}
+            routingQuality={routingQuality}
+            evolutionState={evolutionState}
+            fallbackChecks={data.usage.total_checks}
+            fallbackSessions={data.sessions_with_skill}
+            fallbackEvidenceRows={data.evidence.length}
+            fallbackEvolutionRows={evolution.length}
+            fallbackLatestAction={evolution[0]?.action}
+          />
+        </div>
+        <div className="space-y-4 border-t border-border/10 pt-4">
           <TabsList variant="line">
             {hasEvolutionData && (
               <Tooltip>
@@ -734,35 +738,48 @@ export function SkillReport() {
             <TabsContent value="evidence" className="space-y-6">
               <PromptEvidencePanel examples={examples} />
 
-              <div className="flex gap-6">
-                {evolution.length > 0 && (
-                  <TimelineSidebar
-                    evolution={evolution}
-                    activeProposal={activeProposal}
-                    onSelect={handleSelectProposal}
-                  />
-                )}
-
-                <div className="min-w-0 flex-1">
-                  {activeProposal ? (
-                    <EvidenceViewer
-                      proposalId={activeProposal}
+              <div className="overflow-hidden rounded-2xl border border-border/15 bg-card @5xl/main:min-h-[34rem]">
+                <div className="border-b border-border/10 px-4 py-3 @xl/main:px-5">
+                  <div className="flex items-start gap-2.5 rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-2.5">
+                    <AlertCircleIcon className="mt-0.5 size-4 shrink-0 text-primary/60" />
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      This view shows the complete evidence trail for a skill evolution proposal
+                      &mdash; how the skill was changed, the eval test results before and after, and
+                      whether the change improved performance.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col @5xl/main:grid @5xl/main:min-h-[34rem] @5xl/main:grid-cols-[252px_minmax(0,1fr)] @5xl/main:items-stretch">
+                  {evolution.length > 0 && (
+                    <TimelineSidebar
                       evolution={evolution}
-                      evidence={data.evidence}
+                      activeProposal={activeProposal}
+                      onSelect={handleSelectProposal}
                     />
-                  ) : (
-                    <Card className="rounded-2xl">
-                      <CardContent className="py-12">
-                        <div className="flex flex-col items-center justify-center gap-3 text-center">
-                          <EyeIcon className="size-8 text-muted-foreground/40" />
-                          <p className="text-sm text-muted-foreground">
-                            This skill is being observed but has no reviewable evolution evidence
-                            yet.
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
                   )}
+
+                  <div className="min-w-0 flex-1 p-4 @xl/main:p-5">
+                    {activeProposal ? (
+                      <EvidenceViewer
+                        proposalId={activeProposal}
+                        evolution={evolution}
+                        evidence={data.evidence}
+                        showContextBanner={false}
+                      />
+                    ) : (
+                      <Card className="rounded-2xl">
+                        <CardContent className="py-12">
+                          <div className="flex flex-col items-center justify-center gap-3 text-center">
+                            <EyeIcon className="size-8 text-muted-foreground/40" />
+                            <p className="text-sm text-muted-foreground">
+                              This skill is being observed but has no reviewable evolution evidence
+                              yet.
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
                 </div>
               </div>
             </TabsContent>

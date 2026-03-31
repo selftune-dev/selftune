@@ -43,6 +43,7 @@ interface Props {
   proposalId: string;
   evolution: EvolutionEntry[];
   evidence: EvidenceEntry[];
+  showContextBanner?: boolean;
 }
 
 /** Parse YAML-ish frontmatter from text, returns { meta, body } */
@@ -609,7 +610,12 @@ function CollapsedEvidenceCard({
   );
 }
 
-export function EvidenceViewer({ proposalId, evolution, evidence }: Props) {
+export function EvidenceViewer({
+  proposalId,
+  evolution,
+  evidence,
+  showContextBanner = true,
+}: Props) {
   const steps = useMemo(
     () =>
       evolution
@@ -664,14 +670,16 @@ export function EvidenceViewer({ proposalId, evolution, evidence }: Props) {
   return (
     <div className="space-y-4">
       {/* Context banner */}
-      <div className="flex items-start gap-2.5 rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-2.5">
-        <InfoIcon className="size-4 text-primary/60 shrink-0 mt-0.5" />
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          This view shows the complete evidence trail for a skill evolution proposal &mdash; how the
-          skill was changed, the eval test results before and after, and whether the change improved
-          performance.
-        </p>
-      </div>
+      {showContextBanner && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-2.5">
+          <InfoIcon className="mt-0.5 size-4 shrink-0 text-primary/60" />
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            This view shows the complete evidence trail for a skill evolution proposal &mdash; how
+            the skill was changed, the eval test results before and after, and whether the change
+            improved performance.
+          </p>
+        </div>
+      )}
 
       {/* Proposal journey */}
       <Card>

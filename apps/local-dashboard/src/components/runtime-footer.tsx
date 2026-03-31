@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import type { HealthResponse } from "@/types";
 
@@ -34,37 +35,24 @@ export function RuntimeFooter() {
 
   if (!health) return null;
   const legacyWatcherMode = health.watcher_mode === "jsonl";
+  const statusLabel = legacyWatcherMode ? "Legacy watcher" : "Runtime healthy";
+  const statusTone = legacyWatcherMode
+    ? "text-amber-400 ring-amber-400/20 hover:bg-amber-400/8"
+    : "text-primary ring-primary/20 hover:bg-primary/8";
 
   return (
-    <footer className="pointer-events-none fixed bottom-4 right-4 z-20 max-w-[min(92vw,56rem)]">
-      <div className="glass-panel pointer-events-auto rounded-2xl border border-foreground/5 px-5 py-2.5 shadow-lg pulse-aura">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-headline text-[10px] uppercase tracking-[0.2em] text-slate-500">
-          <span className="flex items-center gap-2">
-            <span className="size-1.5 animate-pulse rounded-full bg-primary shadow-[0_0_8px_rgba(79,242,255,0.6)]" />
-            <span className="text-slate-300">{health.process_mode}</span>
-          </span>
-          <span className="text-foreground/10">|</span>
-          <span title="Git SHA">{health.git_sha}</span>
-          <span className="text-foreground/10">|</span>
-          <span title="Watcher mode">watcher:{health.watcher_mode}</span>
-          <span className="text-foreground/10">|</span>
-          <span className="truncate" title="Workspace root">
-            {health.workspace_root}
-          </span>
-          <span className="text-foreground/10">|</span>
-          <span
-            className={legacyWatcherMode ? "text-amber-400" : "text-primary"}
-            title="Watcher mode"
-          >
-            {legacyWatcherMode ? "legacy watcher path active" : "live invalidation active"}
-          </span>
-          {legacyWatcherMode && (
-            <span className="rounded border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-amber-400">
-              warning: legacy JSONL watcher invalidation
-            </span>
-          )}
-        </div>
-      </div>
+    <footer className="pointer-events-none fixed bottom-4 right-4 z-20">
+      <Link
+        to="/status"
+        className={`glass-panel pointer-events-auto flex items-center gap-2 rounded-full border border-foreground/5 px-3 py-2 font-headline text-[10px] uppercase tracking-[0.18em] text-slate-300 shadow-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${statusTone}`}
+      >
+        <span
+          className={`size-1.5 rounded-full ${legacyWatcherMode ? "bg-amber-400" : "animate-pulse bg-primary shadow-[0_0_8px_rgba(79,242,255,0.6)]"}`}
+        />
+        <span>{statusLabel}</span>
+        <span className="text-foreground/25">/</span>
+        <span className="text-slate-400">{health.process_mode}</span>
+      </Link>
     </footer>
   );
 }
