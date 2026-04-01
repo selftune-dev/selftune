@@ -30,8 +30,10 @@ import type {
   AutonomousDecision,
   AutonomyStatusLevel,
   DecisionKind,
+  EvolutionEntry,
   OverviewResponse,
   SkillHealthStatus,
+  SkillSummary,
   TrustBucket,
   TrustWatchlistEntry,
 } from "@/types";
@@ -429,7 +431,141 @@ function RailBucket({ bucket, items }: { bucket: TrustBucket; items: TrustWatchl
 }
 
 // ---------------------------------------------------------------------------
-// Surface 3: Supervision Feed (merged attention + decisions)
+// Surface 3: Comparison Grid
+// ---------------------------------------------------------------------------
+
+function ComparisonGrid({
+  skills,
+  trustWatchlist,
+  evolution,
+}: {
+  skills: SkillSummary[];
+  trustWatchlist: TrustWatchlistEntry[];
+  evolution: EvolutionEntry[];
+}) {
+  const trustBySkill = useMemo(
+    () => new Map(trustWatchlist.map((entry) => [entry.skill_name, entry])),
+    [trustWatchlist],
+  );
+  const latestEvolutionBySkill = useMemo(() => {
+    const map = new Map<string, EvolutionEntry>();
+    for (const entry of evolution) {
+      if (!entry.skill_name || map.has(entry.skill_name)) continue;
+      map.set(entry.skill_name, entry);
+    }
+    return map;
+  }, [evolution]);
+
+  const rows = useMemo(() => {
+    return [...skills]
+      .map((skill) => {
+        const trust = trustBySkill.get(skill.skill_name);
+        return {
+          skill,
+          trust,
+          lastEvolution: latestEvolutionBySkill.get(skill.skill_name) ?? null,
+        };
+      })
+      .sort((a, b) => {
+        const aRank = a.trust
+          ? ["at_risk", "improving", "uncertain", "stable"].indexOf(a.trust.bucket)
+          : 4;
+        const bRank = b.trust
+          ? ["at_risk", "improving", "uncertain", "stable"].indexOf(b.trust.bucket)
+          : 4;
+        if (aRank !== bRank) return aRank - bRank;
+        return (b.skill.last_seen ?? "").localeCompare(a.skill.last_seen ?? "");
+      });
+  }, [latestEvolutionBySkill, skills, trustBySkill]);
+
+  return (
+    <Card className="col-span-12 border-none bg-muted shadow-none py-0">
+      <CardHeader className="px-5 pt-5 pb-0">
+        <div>
+          <p className="font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+            Skill Comparison
+          </p>
+          <CardDescription className="mt-1 text-[13px]">
+            Compare skill performance before drilling into the details.
+          </CardDescription>
+        </div>
+        <CardAction>
+          <Link to="/skills-library" className="text-xs text-primary hover:underline font-medium">
+            View library
+          </Link>
+        </CardAction>
+      </CardHeader>
+
+      <CardContent className="themed-scroll overflow-x-auto px-5 py-5">
+        <div className="min-w-[780px]">
+          <div className="grid grid-cols-[minmax(180px,2.2fr)_1fr_0.9fr_0.9fr_1.3fr_1fr] gap-3 px-3 pb-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+            <span>Skill</span>
+            <span>Trigger Rate</span>
+            <span>Checks</span>
+            <span>Sessions</span>
+            <span>Last Evolution</span>
+            <span>Status</span>
+          </div>
+          <div className="space-y-1.5">
+            {rows.map(({ skill, trust, lastEvolution }) => {
+              const bucketCfg = trust ? BUCKET_CFG[trust.bucket] : BUCKET_CFG.uncertain;
+              const triggerRate = trust?.pass_rate ?? skill.pass_rate;
+              return (
+                <Link
+                  key={skill.skill_name}
+                  to={`/skills/${encodeURIComponent(skill.skill_name)}`}
+                  className="grid grid-cols-[minmax(180px,2.2fr)_1fr_0.9fr_0.9fr_1.3fr_1fr] items-center gap-3 rounded-xl bg-background/35 px-3 py-3 text-sm transition-colors hover:bg-background/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{skill.skill_name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {skill.skill_scope ?? "Unscoped"}
+                    </p>
+                  </div>
+                  <div className="font-medium">
+                    {Number.isFinite(triggerRate)
+                      ? `${Math.round((triggerRate ?? 0) * 100)}%`
+                      : "—"}
+                  </div>
+                  <div className="text-muted-foreground">{trust?.checks ?? skill.total_checks}</div>
+                  <div className="text-muted-foreground">{skill.unique_sessions}</div>
+                  <div className="min-w-0">
+                    {lastEvolution ? (
+                      <>
+                        <p className="truncate text-sm">
+                          {lastEvolution.action.replace(/_/g, " ")}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {relativeTime(lastEvolution.timestamp)}
+                        </p>
+                      </>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">No evolutions yet</span>
+                    )}
+                  </div>
+                  <div>
+                    <Badge
+                      variant="outline"
+                      className={`border-transparent ${bucketCfg.accent} bg-background/55`}
+                    >
+                      <span
+                        className={`mr-1.5 inline-block size-1.5 rounded-full ${bucketCfg.dot}`}
+                      />
+                      {bucketCfg.label}
+                    </Badge>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Surface 4: Supervision Feed (merged attention + decisions)
 // ---------------------------------------------------------------------------
 
 function SupervisionFeed({
@@ -686,7 +822,8 @@ export function Overview({
     );
   }
 
-  const { skills, autonomy_status, attention_queue, trust_watchlist, recent_decisions } = data;
+  const { skills, autonomy_status, attention_queue, trust_watchlist, recent_decisions, overview } =
+    data;
 
   // Orchestrate summary
   const orchRuns = orchestrateQuery.data?.runs ?? [];
@@ -708,7 +845,14 @@ export function Overview({
           <TrustRail entries={trust_watchlist} />
         </div>
 
-        {/* Row 2: Supervision Feed (full width) — one merged surface */}
+        {/* Row 2: Comparison grid */}
+        <ComparisonGrid
+          skills={skills}
+          trustWatchlist={trust_watchlist}
+          evolution={overview.evolution}
+        />
+
+        {/* Row 3: Supervision Feed (full width) — one merged surface */}
         <div className="col-span-12">
           <SupervisionFeed attention={attention_queue} decisions={recent_decisions} />
         </div>

@@ -14,9 +14,6 @@ import type {
   AutonomyStatus,
   AutonomyStatusLevel,
   OverviewResponse,
-  TrustBucket,
-  TrustState,
-  TrustWatchlistEntry,
 } from "../dashboard-contract.js";
 import { parseCursorParam, parseIntParam } from "../dashboard-contract.js";
 import {
@@ -26,8 +23,8 @@ import {
   getRecentDecisions,
   getSkillTrustSummaries,
   getSkillsList,
-  type SkillTrustSummary,
 } from "../localdb/queries.js";
+import { buildTrustWatchlist } from "../trust-model.js";
 
 export function handleOverview(
   db: Database,
@@ -89,61 +86,6 @@ export function handleOverview(
 }
 
 // -- Internal helpers ----------------------------------------------------------
-
-function deriveTrustState(s: SkillTrustSummary): TrustState {
-  if (s.latest_action === "rolled_back") return "rolled_back";
-  if (s.latest_action === "deployed") return "deployed";
-  if (s.latest_action === "validated") return "validated";
-  if (s.latest_action === "watch") return "watch";
-  if (s.total_checks < 5) return "low_sample";
-  return "observed";
-}
-
-function deriveBucketReason(bucket: TrustBucket, s: SkillTrustSummary): string {
-  switch (bucket) {
-    case "at_risk":
-      if (s.latest_action === "rolled_back") return "Recently rolled back";
-      return `High miss rate (${Math.round(s.miss_rate * 100)}%)`;
-    case "improving":
-      if (s.latest_action === "validated") return "Proposal validated, pending deploy";
-      return "Has pending evolution proposal";
-    case "uncertain":
-      if (s.total_checks < 10) return `Low sample size (${s.total_checks} checks)`;
-      return "Under active observation";
-    case "stable":
-      return "Routing healthy, no issues detected";
-  }
-}
-
-function buildTrustWatchlist(summaries: SkillTrustSummary[]): TrustWatchlistEntry[] {
-  return summaries.map((s) => {
-    let bucket: TrustBucket;
-
-    if (s.latest_action === "rolled_back" || s.miss_rate > 0.15) {
-      bucket = "at_risk";
-    } else if (
-      s.latest_action === "validated" ||
-      s.latest_action === "created" ||
-      s.latest_action === "proposed"
-    ) {
-      bucket = "improving";
-    } else if (s.total_checks < 10 || s.latest_action === "watch") {
-      bucket = "uncertain";
-    } else {
-      bucket = "stable";
-    }
-
-    return {
-      skill_name: s.skill_name,
-      bucket,
-      trust_state: deriveTrustState(s),
-      reason: deriveBucketReason(bucket, s),
-      pass_rate: s.pass_rate,
-      checks: s.total_checks,
-      last_seen: s.last_seen,
-    };
-  });
-}
 
 function buildAutonomyStatus(
   db: Database,

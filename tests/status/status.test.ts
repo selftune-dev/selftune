@@ -570,4 +570,53 @@ describe("formatStatusSummary", () => {
 
     expect(summary).toBe("0 skills watched | no recent data | nothing tracked yet");
   });
+
+  test("prefers shared trust summaries when provided", () => {
+    const summary = formatStatusSummary(
+      {
+        skills: [
+          {
+            name: "legacy-view",
+            passRate: 1,
+            trend: "up",
+            missedQueries: 0,
+            status: "HEALTHY",
+            snapshot: null,
+          },
+        ],
+        unmatchedQueries: 0,
+        pendingProposals: 0,
+        lastSession: "2026-02-28T12:00:00Z",
+        system: { healthy: true, pass: 1, fail: 0, warn: 0 },
+      },
+      [
+        {
+          skill_name: "skill-a",
+          total_checks: 12,
+          triggered_count: 11,
+          miss_rate: 1 / 12,
+          system_like_count: 0,
+          system_like_rate: 0,
+          prompt_link_rate: 1,
+          latest_action: "validated",
+          pass_rate: 11 / 12,
+          last_seen: "2026-02-28T12:00:00Z",
+        },
+        {
+          skill_name: "skill-b",
+          total_checks: 12,
+          triggered_count: 8,
+          miss_rate: 4 / 12,
+          system_like_count: 0,
+          system_like_rate: 0,
+          prompt_link_rate: 1,
+          latest_action: null,
+          pass_rate: 8 / 12,
+          last_seen: "2026-02-28T12:00:00Z",
+        },
+      ],
+    );
+
+    expect(summary).toBe("2 skills watched | 1 improving | 1 needing attention");
+  });
 });

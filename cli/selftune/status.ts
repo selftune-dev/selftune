@@ -20,13 +20,16 @@ import { getDb } from "./localdb/db.js";
 import {
   getLastUploadError,
   getLastUploadSuccess,
+  getSkillTrustSummaries,
   queryEvolutionAudit,
   queryQueryLog,
   querySessionTelemetry,
   querySkillUsageRecords,
+  type SkillTrustSummary,
 } from "./localdb/queries.js";
 import { computeMonitoringSnapshot, MIN_MONITORING_SKILL_CHECKS } from "./monitoring/watch.js";
 import { doctor } from "./observability.js";
+import { deriveTrustBucket } from "./trust-model.js";
 import type {
   AgentCommandGuidance,
   AlphaLinkState,
@@ -273,7 +276,7 @@ const TREND_SYMBOLS: Record<string, string> = {
   unknown: "?",
 };
 
-export function formatStatus(result: StatusResult): string {
+export function formatStatus(result: StatusResult, trustSummaries?: SkillTrustSummary[]): string {
   const noColor = !!process.env.NO_COLOR;
 
   const green = noColor ? (s: string) => s : (s: string) => colorize(s, "#788c5d");
@@ -284,7 +287,7 @@ export function formatStatus(result: StatusResult): string {
   lines.push("selftune status");
   lines.push("\u2550".repeat(15));
   lines.push("");
-  lines.push(formatStatusSummary(result));
+  lines.push(formatStatusSummary(result, trustSummaries));
   lines.push("");
 
   // Skills table
@@ -353,12 +356,18 @@ export function formatStatus(result: StatusResult): string {
   return lines.join("\n");
 }
 
-export function formatStatusSummary(result: StatusResult): string {
-  const watched = result.skills.length;
-  const improving = result.skills.filter((skill) => skill.trend === "up").length;
-  const needsAttention = result.skills.filter(
-    (skill) => skill.status === "WARNING" || skill.status === "CRITICAL",
-  ).length;
+export function formatStatusSummary(
+  result: StatusResult,
+  trustSummaries?: SkillTrustSummary[],
+): string {
+  const watched = trustSummaries?.length ?? result.skills.length;
+  const improving =
+    trustSummaries?.filter((summary) => deriveTrustBucket(summary) === "improving").length ??
+    result.skills.filter((skill) => skill.trend === "up").length;
+  const needsAttention =
+    trustSummaries?.filter((summary) => deriveTrustBucket(summary) === "at_risk").length ??
+    result.skills.filter((skill) => skill.status === "WARNING" || skill.status === "CRITICAL")
+      .length;
 
   const watchedText = `${watched} ${watched === 1 ? "skill" : "skills"} watched`;
   const improvingText =
@@ -532,7 +541,8 @@ export async function cliMain(): Promise<void> {
     const doctorResult = await doctor();
 
     const result = computeStatus(telemetry, skillRecords, queryRecords, auditEntries, doctorResult);
-    const output = formatStatus(result);
+    const trustSummaries = getSkillTrustSummaries(db);
+    const output = formatStatus(result, trustSummaries);
     console.log(output);
 
     // Alpha upload status section
