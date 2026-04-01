@@ -49,6 +49,7 @@ override.
 | `POST` | `/api/actions/watch`       | Trigger `selftune watch` for a skill                       |
 | `POST` | `/api/actions/evolve`      | Trigger `selftune evolve` for a skill                      |
 | `POST` | `/api/actions/rollback`    | Trigger `selftune evolve rollback` for a skill             |
+| `POST` | `/api/actions/watchlist`   | Persist creator watchlist preferences                      |
 
 ### Live Updates (SSE)
 

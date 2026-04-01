@@ -165,6 +165,8 @@ export const CONTRIBUTION_PREFERENCES_PATH = join(
   SELFTUNE_CONFIG_DIR,
   "contribution-preferences.json",
 );
+/** Creator overview watchlist preference. */
+export const WATCHED_SKILLS_PATH = join(SELFTUNE_CONFIG_DIR, "watched-skills.json");
 
 // ---------------------------------------------------------------------------
 // Sanitization constants (for contribute command)

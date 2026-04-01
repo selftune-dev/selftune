@@ -25,6 +25,7 @@ import {
   getSkillsList,
 } from "../localdb/queries.js";
 import { buildTrustWatchlist } from "../trust-model.js";
+import { loadWatchedSkills } from "../watchlist.js";
 
 export function handleOverview(
   db: Database,
@@ -49,6 +50,7 @@ export function handleOverview(
   );
 
   const enrichment = {
+    watched_skills: loadWatchedSkills(),
     autonomy_status: autonomyStatus,
     attention_queue: attentionQueue,
     trust_watchlist: trustWatchlist,

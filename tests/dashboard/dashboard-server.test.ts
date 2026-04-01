@@ -10,6 +10,8 @@ import type {
 
 let startDashboardServer: typeof import("../../cli/selftune/dashboard-server.js").startDashboardServer;
 let testSpaDir: string;
+const configDir = mkdtempSync(join(tmpdir(), "selftune-dashboard-config-"));
+process.env.SELFTUNE_CONFIG_DIR = configDir;
 
 const overviewFixture: OverviewResponse = {
   overview: {
@@ -60,6 +62,7 @@ const overviewFixture: OverviewResponse = {
     },
   ],
   version: "0.2.1-test",
+  watched_skills: [],
 };
 
 const skillReportFixture: SkillReportResponse = {
@@ -171,6 +174,7 @@ describe("dashboard-server", () => {
       const server = await serverPromise;
       server.stop();
     }
+    rmSync(configDir, { recursive: true, force: true });
   });
 
   describe("GET /", () => {
@@ -207,6 +211,7 @@ describe("dashboard-server", () => {
       expect(typeof data.overview.active_sessions).toBe("number");
       expect(Array.isArray(data.overview.recent_activity)).toBe(true);
       expect(Array.isArray(data.skills)).toBe(true);
+      expect(Array.isArray(data.watched_skills)).toBe(true);
       expect(data.skills[0]?.skill_name).toBe("test-skill");
     });
 
@@ -303,6 +308,22 @@ describe("dashboard-server", () => {
       expect(res.status).toBe(200);
       const data = await res.json();
       expect(data.success).toBe(false);
+    });
+
+    it("watchlist persists watched skills", async () => {
+      const server = await getServer();
+      const res = await fetch(`http://127.0.0.1:${server.port}/api/actions/watchlist`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: `http://127.0.0.1:${server.port}`,
+        },
+        body: JSON.stringify({ skills: ["pptx", "sc-search"] }),
+      });
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { success: boolean; watched_skills: string[] };
+      expect(data.success).toBe(true);
+      expect(data.watched_skills).toEqual(["pptx", "sc-search"]);
     });
 
     it("rejects cross-origin action requests", async () => {

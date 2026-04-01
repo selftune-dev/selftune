@@ -216,6 +216,7 @@ export interface OverviewResponse {
   overview: OverviewPayload;
   skills: SkillSummary[];
   version?: string;
+  watched_skills: string[];
   autonomy_status: AutonomyStatus;
   attention_queue: AttentionItem[];
   trust_watchlist: TrustWatchlistEntry[];

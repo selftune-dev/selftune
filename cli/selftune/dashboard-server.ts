@@ -13,6 +13,7 @@
  *   POST /api/actions/watch    — Trigger `selftune watch` for a skill
  *   POST /api/actions/evolve   — Trigger `selftune evolve` for a skill
  *   POST /api/actions/rollback — Trigger `selftune rollback` for a skill
+ *   POST /api/actions/watchlist — Persist creator watchlist preferences
  *   GET  /badge/:name          — Skill health badge
  *   GET  /report/:name         — Skill health report HTML
  */
@@ -392,7 +393,7 @@ export async function startDashboardServer(
         });
       }
 
-      // ---- POST /api/actions/{watch,evolve,rollback} ----
+      // ---- POST /api/actions/{watch,evolve,rollback,watchlist} ----
       if (url.pathname.startsWith("/api/actions/") && req.method === "POST") {
         const trustedActionOrigins = allowedDashboardOrigins(hostname, boundPort);
         const origin = req.headers.get("origin");

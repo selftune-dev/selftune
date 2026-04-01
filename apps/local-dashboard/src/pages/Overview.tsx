@@ -21,7 +21,7 @@ import {
   RefreshCwIcon,
   RocketIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -138,29 +138,6 @@ const BUCKET_CFG: Record<TrustBucket, { label: string; accent: string; dot: stri
 
 // Ambient bar heights for hero background
 const BARS = [35, 55, 40, 70, 45, 80, 30, 65, 50, 75, 38, 60, 42, 72];
-const WATCHLIST_STORAGE_KEY = "selftune-overview-watchlist";
-
-function loadStoredWatchlist(): string[] {
-  try {
-    const raw = localStorage.getItem(WATCHLIST_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed)
-      ? parsed.filter((value): value is string => typeof value === "string")
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveStoredWatchlist(skills: string[]): void {
-  try {
-    localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(skills));
-  } catch {
-    /* ignore */
-  }
-}
-
 function deriveDefaultWatchlist(
   skills: SkillSummary[],
   trustWatchlist: TrustWatchlistEntry[],
@@ -507,17 +484,19 @@ function ComparisonGrid({
   skills,
   trustWatchlist,
   evolution,
+  initialWatchedSkills,
 }: {
   skills: SkillSummary[];
   trustWatchlist: TrustWatchlistEntry[];
   evolution: EvolutionEntry[];
+  initialWatchedSkills: string[];
 }) {
   const trustBySkill = useMemo(
     () => new Map(trustWatchlist.map((entry) => [entry.skill_name, entry])),
     [trustWatchlist],
   );
   const [viewMode, setViewMode] = useState<"watched" | "all">("watched");
-  const [watchlist, setWatchlist] = useState<string[]>(() => loadStoredWatchlist());
+  const [watchlist, setWatchlist] = useState<string[]>(initialWatchedSkills);
   const latestEvolutionBySkill = useMemo(() => {
     const map = new Map<string, EvolutionEntry>();
     for (const entry of evolution) {
@@ -526,6 +505,9 @@ function ComparisonGrid({
     }
     return map;
   }, [evolution]);
+  useEffect(() => {
+    setWatchlist(initialWatchedSkills);
+  }, [initialWatchedSkills]);
   const effectiveWatchlist = useMemo(() => {
     const available = new Set(skills.map((skill) => skill.skill_name));
     const cleaned = watchlist.filter((skill) => available.has(skill));
@@ -560,14 +542,30 @@ function ComparisonGrid({
 
   const watchedCount = effectiveWatchlist.length;
 
-  const toggleWatched = (skillName: string) => {
-    setWatchlist((current) => {
-      const next = current.includes(skillName)
-        ? current.filter((name) => name !== skillName)
-        : [...current, skillName];
-      saveStoredWatchlist(next);
-      return next;
-    });
+  const toggleWatched = async (skillName: string) => {
+    const next = effectiveWatchlist.includes(skillName)
+      ? effectiveWatchlist.filter((name) => name !== skillName)
+      : [...effectiveWatchlist, skillName];
+    const previous = watchlist;
+    setWatchlist(next);
+
+    try {
+      const response = await fetch("/api/actions/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skills: next }),
+      });
+      if (!response.ok) {
+        setWatchlist(previous);
+        return;
+      }
+      const payload = (await response.json()) as { watched_skills?: string[] };
+      if (Array.isArray(payload.watched_skills)) {
+        setWatchlist(payload.watched_skills);
+      }
+    } catch {
+      setWatchlist(previous);
+    }
   };
 
   return (
@@ -1014,6 +1012,7 @@ export function Overview({
           skills={skills}
           trustWatchlist={trust_watchlist}
           evolution={overview.evolution}
+          initialWatchedSkills={data.watched_skills}
         />
 
         {/* Row 3: Supervision Feed (full width) — one merged surface */}
