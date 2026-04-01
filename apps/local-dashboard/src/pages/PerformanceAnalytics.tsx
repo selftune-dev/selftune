@@ -58,8 +58,12 @@ interface AnalyticsResponse {
 
 /* ── Data fetching ──────────────────────────────────────── */
 
-function fetchAnalytics(): Promise<AnalyticsResponse> {
-  return fetch("/api/v2/analytics").then((r) => r.json());
+async function fetchAnalytics(): Promise<AnalyticsResponse> {
+  const response = await fetch("/api/v2/analytics");
+  if (!response.ok) {
+    throw new Error(`Failed to load analytics (${response.status})`);
+  }
+  return (await response.json()) as AnalyticsResponse;
 }
 
 /* ── SVG Line Chart ─────────────────────────────────────── */
@@ -369,6 +373,9 @@ export function PerformanceAnalytics() {
             variant="secondary"
             size="sm"
             className="gap-1.5 font-headline text-[10px] uppercase tracking-widest"
+            disabled
+            aria-disabled="true"
+            title="Export is not available yet."
           >
             <DownloadIcon className="size-3" />
             Export
@@ -548,13 +555,22 @@ export function PerformanceAnalytics() {
                 </p>
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                <Button size="sm" className="font-headline text-[10px] uppercase tracking-widest">
+                <Button
+                  size="sm"
+                  className="font-headline text-[10px] uppercase tracking-widest"
+                  disabled
+                  aria-disabled="true"
+                  title="Dashboard-triggered evolution is not available yet."
+                >
                   Run Evolution
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   className="font-headline text-[10px] uppercase tracking-widest border-primary/20 text-primary hover:border-primary/40"
+                  disabled
+                  aria-disabled="true"
+                  title="Detailed analytics drill-down is not available yet."
                 >
                   View Details
                 </Button>

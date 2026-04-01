@@ -140,6 +140,15 @@ describe("creator-contributions", () => {
     expect(existsSync(join(skillDir, "other-skill", "selftune.contribute.json"))).toBe(false);
   });
 
+  test("enable --skill fails when creator id cannot be resolved", async () => {
+    seedSkill("sc-search");
+    console.log = mock(() => {});
+    process.argv = ["bun", "selftune", "enable", "--skill", "sc-search"];
+
+    await expect(cliMain()).rejects.toThrow("Creator ID is required.");
+    expect(existsSync(join(skillDir, "sc-search", "selftune.contribute.json"))).toBe(false);
+  });
+
   test("status lists installed skills that still lack creator config", async () => {
     seedSkill("sc-search");
     seedSkill("sc-compare");

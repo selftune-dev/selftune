@@ -75,10 +75,12 @@ function normalizeContributionConfig(
   configPath: string,
   skillPath: string,
 ): CreatorContributionConfig | null {
+  const creatorId = typeof raw.creator_id === "string" ? raw.creator_id.trim() : "";
+  const skillName = typeof raw.skill_name === "string" ? raw.skill_name.trim() : "";
   if (
     raw.version !== 1 ||
-    typeof raw.creator_id !== "string" ||
-    typeof raw.skill_name !== "string" ||
+    !creatorId ||
+    !skillName ||
     !raw.contribution ||
     typeof raw.contribution !== "object" ||
     raw.contribution.enabled !== true ||
@@ -87,15 +89,16 @@ function normalizeContributionConfig(
     return null;
   }
 
-  const signals = raw.contribution.signals.filter(
-    (signal): signal is string => typeof signal === "string" && signal.trim().length > 0,
-  );
+  const signals = raw.contribution.signals
+    .filter((signal): signal is string => typeof signal === "string")
+    .map((signal) => signal.trim())
+    .filter(Boolean);
   if (signals.length === 0) return null;
 
   return {
     version: 1,
-    creator_id: raw.creator_id,
-    skill_name: raw.skill_name,
+    creator_id: creatorId,
+    skill_name: skillName,
     config_path: configPath,
     skill_path: skillPath,
     contribution: {

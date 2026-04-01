@@ -1,7 +1,20 @@
 import { deriveStatus, formatRate, sortByPassRateAndChecks } from "@selftune/ui/lib";
-import { Badge, Card, Tooltip, TooltipContent, TooltipTrigger } from "@selftune/ui/primitives";
+import {
+  Badge,
+  Button,
+  Card,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@selftune/ui/primitives";
 import type { UseQueryResult } from "@tanstack/react-query";
-import { ArrowUpDownIcon, BrainCircuitIcon, CircleDotIcon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  ArrowUpDownIcon,
+  BrainCircuitIcon,
+  CircleDotIcon,
+  RefreshCwIcon,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -362,7 +375,7 @@ export function SkillsLibrary({
 }: {
   overviewQuery: UseQueryResult<OverviewResponse>;
 }) {
-  const { data, isLoading } = overviewQuery;
+  const { data, isLoading, isError, error, refetch } = overviewQuery;
   const [filter, setFilter] = useState<FilterTab>("ALL");
   const [sortDesc, setSortDesc] = useState(true);
 
@@ -384,7 +397,26 @@ export function SkillsLibrary({
     return findMostActiveSkill(data.skills, data.overview.evolution);
   }, [data]);
 
-  if (isLoading || !data) {
+  if (isLoading) {
+    return <SkillsLibrarySkeleton />;
+  }
+
+  if (isError) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 py-16">
+        <AlertCircleIcon className="size-10 text-destructive" />
+        <p className="text-sm font-medium text-destructive">
+          {error instanceof Error ? error.message : "Failed to load skills library."}
+        </p>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>
+          <RefreshCwIcon className="mr-2 size-3.5" />
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (!data) {
     return <SkillsLibrarySkeleton />;
   }
 

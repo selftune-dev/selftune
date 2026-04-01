@@ -97,8 +97,8 @@ selftune status
 selftune last
 selftune doctor
 selftune dashboard [--port <port>] [--no-open]
-selftune contributions [status|approve <skill>|revoke <skill>|default <ask|always|never>|reset]
-selftune creator-contributions [status|enable --skill <name>|disable --skill <name>]
+selftune contributions [status|preview <skill>|upload [--dry-run]|approve <skill>|revoke <skill>|default <ask|always|never>|reset]
+selftune creator-contributions [status|enable --skill <name>|enable --all [--prefix <value>]|disable --skill <name>]
 selftune contribute [--skill NAME] [--preview] [--sanitize LEVEL] [--submit]
 selftune cron setup [--dry-run]                         # auto-detect platform (cron/launchd/systemd)
 selftune cron setup --platform openclaw [--dry-run] [--tz <timezone>]  # OpenClaw-specific
@@ -145,8 +145,8 @@ selftune status                                                        # shows c
 | doctor, health, hooks, broken, diagnose, not working, something wrong                                                                   | Doctor            | Workflows/Doctor.md                   |
 | ingest, import, codex logs, opencode, openclaw, wrap codex                                                                              | Ingest            | Workflows/Ingest.md                   |
 | replay, backfill, claude transcripts, historical sessions                                                                               | Replay            | Workflows/Replay.md                   |
-| contributions, sharing preferences, opt in creator sharing, opt out creator sharing, approve contributions, revoke contributions        | Contributions     | Workflows/Contributions.md            |
-| creator contributions, bundle contribution config, selftune.contribute.json, enable creator contribution, disable creator contribution  | CreatorContributions | Workflows/CreatorContributions.md  |
+| contributions, sharing preferences, opt in creator sharing, opt out creator sharing, approve contributions, revoke contributions, preview contributions, upload contributions, relay queue, contribution upload, contribution preview        | Contributions     | Workflows/Contributions.md            |
+| creator contributions, bundle contribution config, selftune.contribute.json, enable creator contribution, disable creator contribution, bulk enable creator contribution, enable all creator contributions, creator prefix config, --all, --prefix  | CreatorContributions | Workflows/CreatorContributions.md  |
 | contribute, share, community, export data, anonymized, give back                                                                        | Contribute        | Workflows/Contribute.md               |
 | init, setup, set up, bootstrap, first time, install, configure selftune, alpha, enroll, alpha enrollment, cloud link, upload credential | Initialize        | Workflows/Initialize.md               |
 | cron, schedule, automate evolution, run automatically                                                                                   | Cron              | Workflows/Cron.md                     |

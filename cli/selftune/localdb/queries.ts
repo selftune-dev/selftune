@@ -640,7 +640,7 @@ function paginateSkillReportInvocations(
  * Get a summary list of all skills with aggregated stats.
  */
 export function getSkillsList(db: Database): SkillSummary[] {
-  const trustedRows = getTrustedSkillObservationRows(db);
+  const trustedRows = queryTrustedSkillObservationRows(db);
   const bySkill = new Map<
     string,
     Array<{
@@ -732,20 +732,36 @@ export function getSkillsList(db: Database): SkillSummary[] {
  * Powers the GET /api/v2/analytics endpoint.
  */
 export function getAnalyticsPayload(db: Database): AnalyticsResponse {
+  const trustedRows = queryTrustedSkillObservationRows(db);
+  const today = new Date();
+  const dateKey = (value: string | null): string | null => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+  };
+  const cutoffDate = (days: number): string => {
+    const cutoff = new Date(today);
+    cutoff.setUTCDate(cutoff.getUTCDate() - days);
+    return cutoff.toISOString().slice(0, 10);
+  };
+
   // 1. Pass rate trend — last 90 days, bucketed by day
-  const passRateTrendRows = db
-    .query(
-      `SELECT date(occurred_at) as date,
-              CASE WHEN SUM(CASE WHEN triggered = 1 THEN 1 ELSE 0 END) = 0 THEN 0.0
-                   ELSE CAST(SUM(CASE WHEN triggered = 1 THEN 1 ELSE 0 END) AS REAL) / COUNT(*)
-              END as pass_rate,
-              COUNT(*) as total_checks
-       FROM skill_invocations
-       WHERE occurred_at >= date('now', '-90 days')
-       GROUP BY date(occurred_at)
-       ORDER BY date ASC`,
-    )
-    .all() as Array<{ date: string; pass_rate: number; total_checks: number }>;
+  const passRateTrendByDate = new Map<string, { triggered: number; total: number }>();
+  for (const row of trustedRows) {
+    const occurredDate = dateKey(row.occurred_at);
+    if (!occurredDate || occurredDate < cutoffDate(90)) continue;
+    const counts = passRateTrendByDate.get(occurredDate) ?? { triggered: 0, total: 0 };
+    counts.total += 1;
+    if (row.triggered === 1) counts.triggered += 1;
+    passRateTrendByDate.set(occurredDate, counts);
+  }
+  const passRateTrendRows = [...passRateTrendByDate.entries()]
+    .map(([date, counts]) => ({
+      date,
+      pass_rate: counts.total > 0 ? counts.triggered / counts.total : 0,
+      total_checks: counts.total,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   const pass_rate_trend = passRateTrendRows.map((row) => ({
     date: row.date,
@@ -754,25 +770,26 @@ export function getAnalyticsPayload(db: Database): AnalyticsResponse {
   }));
 
   // 2. Skill rankings — all skills with at least 1 check, ordered by pass rate
-  const skillRankingRows = db
-    .query(
-      `SELECT skill_name,
-              CASE WHEN COUNT(*) = 0 THEN 0.0
-                   ELSE CAST(SUM(CASE WHEN triggered = 1 THEN 1 ELSE 0 END) AS REAL) / COUNT(*)
-              END as pass_rate,
-              COUNT(*) as total_checks,
-              SUM(CASE WHEN triggered = 1 THEN 1 ELSE 0 END) as triggered_count
-       FROM skill_invocations
-       GROUP BY skill_name
-       HAVING total_checks >= 1
-       ORDER BY pass_rate DESC`,
-    )
-    .all() as Array<{
-    skill_name: string;
-    pass_rate: number;
-    total_checks: number;
-    triggered_count: number;
-  }>;
+  const skillRankingMap = new Map<string, { triggered_count: number; total_checks: number }>();
+  for (const row of trustedRows) {
+    const counts = skillRankingMap.get(row.skill_name) ?? { triggered_count: 0, total_checks: 0 };
+    counts.total_checks += 1;
+    if (row.triggered === 1) counts.triggered_count += 1;
+    skillRankingMap.set(row.skill_name, counts);
+  }
+  const skillRankingRows = [...skillRankingMap.entries()]
+    .map(([skill_name, counts]) => ({
+      skill_name,
+      pass_rate: counts.total_checks > 0 ? counts.triggered_count / counts.total_checks : 0,
+      total_checks: counts.total_checks,
+      triggered_count: counts.triggered_count,
+    }))
+    .sort(
+      (a, b) =>
+        b.pass_rate - a.pass_rate ||
+        b.total_checks - a.total_checks ||
+        a.skill_name.localeCompare(b.skill_name),
+    );
 
   const skill_rankings = skillRankingRows.map((row) => ({
     skill_name: row.skill_name,
@@ -782,15 +799,15 @@ export function getAnalyticsPayload(db: Database): AnalyticsResponse {
   }));
 
   // 3. Daily activity — last 84 days (12 weeks) for heatmap
-  const dailyActivityRows = db
-    .query(
-      `SELECT date(occurred_at) as date, COUNT(*) as checks
-       FROM skill_invocations
-       WHERE occurred_at >= date('now', '-84 days')
-       GROUP BY date(occurred_at)
-       ORDER BY date ASC`,
-    )
-    .all() as Array<{ date: string; checks: number }>;
+  const dailyActivityByDate = new Map<string, number>();
+  for (const row of trustedRows) {
+    const occurredDate = dateKey(row.occurred_at);
+    if (!occurredDate || occurredDate < cutoffDate(84)) continue;
+    dailyActivityByDate.set(occurredDate, (dailyActivityByDate.get(occurredDate) ?? 0) + 1);
+  }
+  const dailyActivityRows = [...dailyActivityByDate.entries()]
+    .map(([date, checks]) => ({ date, checks }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   const daily_activity = dailyActivityRows.map((row) => ({
     date: row.date,
@@ -809,32 +826,26 @@ export function getAnalyticsPayload(db: Database): AnalyticsResponse {
 
   const evolution_impact: AnalyticsResponse["evolution_impact"] = [];
   for (const deploy of deployedRows) {
-    const beforeRow = db
-      .query(
-        `SELECT CASE WHEN COUNT(*) = 0 THEN 0.0
-                     ELSE CAST(SUM(CASE WHEN triggered = 1 THEN 1 ELSE 0 END) AS REAL) / COUNT(*)
-                END as pass_rate
-         FROM skill_invocations
-         WHERE skill_name = ? AND occurred_at < ?`,
-      )
-      .get(deploy.skill_name, deploy.deployed_at) as { pass_rate: number } | null;
-
-    const afterRow = db
-      .query(
-        `SELECT CASE WHEN COUNT(*) = 0 THEN 0.0
-                     ELSE CAST(SUM(CASE WHEN triggered = 1 THEN 1 ELSE 0 END) AS REAL) / COUNT(*)
-                END as pass_rate
-         FROM skill_invocations
-         WHERE skill_name = ? AND occurred_at >= ?`,
-      )
-      .get(deploy.skill_name, deploy.deployed_at) as { pass_rate: number } | null;
+    const beforeRows = trustedRows.filter(
+      (row) => row.skill_name === deploy.skill_name && (row.occurred_at ?? "") < deploy.deployed_at,
+    );
+    const afterRows = trustedRows.filter(
+      (row) =>
+        row.skill_name === deploy.skill_name && (row.occurred_at ?? "") >= deploy.deployed_at,
+    );
 
     evolution_impact.push({
       skill_name: deploy.skill_name,
       proposal_id: deploy.proposal_id,
       deployed_at: deploy.deployed_at,
-      pass_rate_before: beforeRow?.pass_rate ?? 0,
-      pass_rate_after: afterRow?.pass_rate ?? 0,
+      pass_rate_before:
+        beforeRows.length > 0
+          ? beforeRows.filter((row) => row.triggered === 1).length / beforeRows.length
+          : 0,
+      pass_rate_after:
+        afterRows.length > 0
+          ? afterRows.filter((row) => row.triggered === 1).length / afterRows.length
+          : 0,
     });
   }
 
@@ -843,19 +854,11 @@ export function getAnalyticsPayload(db: Database): AnalyticsResponse {
     .query(`SELECT COUNT(*) as c FROM evolution_audit WHERE action = 'deployed'`)
     .get() as { c: number } | null;
 
-  const checks30dRow = db
-    .query(
-      `SELECT COUNT(*) as c FROM skill_invocations WHERE occurred_at >= date('now', '-30 days')`,
-    )
-    .get() as { c: number } | null;
-
-  const activeSkillsRow = db
-    .query(
-      `SELECT COUNT(DISTINCT skill_name) as c
-       FROM skill_invocations
-       WHERE occurred_at >= date('now', '-30 days')`,
-    )
-    .get() as { c: number } | null;
+  const checks30dRows = trustedRows.filter((row) => {
+    const occurredDate = dateKey(row.occurred_at);
+    return occurredDate != null && occurredDate >= cutoffDate(30);
+  });
+  const activeSkills30d = new Set(checks30dRows.map((row) => row.skill_name));
 
   // Average improvement across all deployed evolutions
   let avgImprovement = 0;
@@ -870,8 +873,8 @@ export function getAnalyticsPayload(db: Database): AnalyticsResponse {
   const summary: AnalyticsResponse["summary"] = {
     total_evolutions: totalEvolutionsRow?.c ?? 0,
     avg_improvement: avgImprovement,
-    total_checks_30d: checks30dRow?.c ?? 0,
-    active_skills: activeSkillsRow?.c ?? 0,
+    total_checks_30d: checks30dRows.length,
+    active_skills: activeSkills30d.size,
   };
 
   return {
@@ -1868,13 +1871,14 @@ export function queryTrustedSkillObservationRows(db: Database): TrustedSkillObse
 
   for (const row of rows) {
     const queryText = row.query || row.prompt_text || "";
+    const pollutionText = row.prompt_text || row.query || "";
     const observation_kind = classifyObservationKind(
       row.skill_invocation_id,
       row.capture_mode,
       row.triggered,
       row.raw_source_ref,
     );
-    if (isPollutingPrompt(queryText, row.prompt_kind)) continue;
+    if (isPollutingPrompt(pollutionText, row.prompt_kind)) continue;
     if (observation_kind === "legacy_materialized") continue;
 
     const normalizedQuery = normalizeQueryForGrouping(queryText);
@@ -2008,8 +2012,6 @@ export function getAttentionQueue(db: Database): AttentionItem[] {
   const items: AttentionItem[] = [];
 
   for (const s of summaries) {
-    if (s.total_checks < 5) continue;
-
     if (s.latest_action === "rolled_back") {
       items.push({
         skill_name: s.skill_name,
@@ -2021,6 +2023,20 @@ export function getAttentionQueue(db: Database): AttentionItem[] {
       });
       continue;
     }
+
+    if (pendingSkills.has(s.skill_name)) {
+      items.push({
+        skill_name: s.skill_name,
+        category: "needs_review",
+        severity: "info",
+        reason: "Proposal awaiting review",
+        recommended_action: "Review and approve or reject the pending proposal",
+        timestamp: s.last_seen ?? "",
+      });
+      continue;
+    }
+
+    if (s.total_checks < 5) continue;
 
     if (s.miss_rate > 0.1) {
       items.push({
@@ -2044,17 +2060,6 @@ export function getAttentionQueue(db: Database): AttentionItem[] {
         timestamp: s.last_seen ?? "",
       });
       continue;
-    }
-
-    if (pendingSkills.has(s.skill_name)) {
-      items.push({
-        skill_name: s.skill_name,
-        category: "needs_review",
-        severity: "info",
-        reason: "Proposal awaiting review",
-        recommended_action: "Review and approve or reject the pending proposal",
-        timestamp: s.last_seen ?? "",
-      });
     }
   }
 
@@ -2081,16 +2086,19 @@ export function getRecentDecisions(db: Database, limit = 20): AutonomousDecision
 
   return rows
     .filter((row) => row.skill_name != null)
-    .map((row) => {
+    .flatMap((row) => {
       const evalSnapshot = safeParseJson(row.eval_snapshot_json) as {
         regressions?: unknown[];
       } | null;
 
-      let kind: DecisionKind;
+      let kind: DecisionKind | null;
       switch (row.action) {
         case "proposed":
         case "created":
           kind = "proposal_created";
+          break;
+        case "rejected":
+          kind = "proposal_rejected";
           break;
         case "validated":
           kind =
@@ -2105,17 +2113,20 @@ export function getRecentDecisions(db: Database, limit = 20): AutonomousDecision
           kind = "rollback_triggered";
           break;
         default:
-          kind = "proposal_created";
-          break;
+          kind = null;
       }
 
-      return {
-        timestamp: row.timestamp,
-        kind,
-        skill_name: row.skill_name!,
-        proposal_id: row.proposal_id,
-        summary: row.details ?? "",
-      };
+      if (!kind) return [];
+
+      return [
+        {
+          timestamp: row.timestamp,
+          kind,
+          skill_name: row.skill_name!,
+          proposal_id: row.proposal_id,
+          summary: row.details ?? "",
+        },
+      ];
     });
 }
 

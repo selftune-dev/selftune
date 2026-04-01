@@ -21,7 +21,7 @@ import {
   RefreshCwIcon,
   RocketIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -119,6 +119,7 @@ const SEVERITY: Record<string, { dot: string; text: string; bg: string }> = {
 
 const DECISION_MARKERS: Record<DecisionKind, string> = {
   proposal_created: "bg-primary",
+  proposal_rejected: "bg-red-400",
   validation_failed: "bg-amber-400",
   proposal_deployed: "bg-emerald-400",
   rollback_triggered: "bg-red-400",
@@ -497,6 +498,7 @@ function ComparisonGrid({
   );
   const [viewMode, setViewMode] = useState<"watched" | "all">("watched");
   const [watchlist, setWatchlist] = useState<string[]>(initialWatchedSkills);
+  const watchlistRequestSeq = useRef(0);
   const latestEvolutionBySkill = useMemo(() => {
     const map = new Map<string, EvolutionEntry>();
     for (const entry of evolution) {
@@ -546,7 +548,9 @@ function ComparisonGrid({
     const next = effectiveWatchlist.includes(skillName)
       ? effectiveWatchlist.filter((name) => name !== skillName)
       : [...effectiveWatchlist, skillName];
-    const previous = watchlist;
+    const previous = effectiveWatchlist;
+    const requestSeq = watchlistRequestSeq.current + 1;
+    watchlistRequestSeq.current = requestSeq;
     setWatchlist(next);
 
     try {
@@ -556,15 +560,19 @@ function ComparisonGrid({
         body: JSON.stringify({ skills: next }),
       });
       if (!response.ok) {
-        setWatchlist(previous);
+        if (watchlistRequestSeq.current === requestSeq) {
+          setWatchlist(previous);
+        }
         return;
       }
       const payload = (await response.json()) as { watched_skills?: string[] };
-      if (Array.isArray(payload.watched_skills)) {
+      if (watchlistRequestSeq.current === requestSeq && Array.isArray(payload.watched_skills)) {
         setWatchlist(payload.watched_skills);
       }
     } catch {
-      setWatchlist(previous);
+      if (watchlistRequestSeq.current === requestSeq) {
+        setWatchlist(previous);
+      }
     }
   };
 

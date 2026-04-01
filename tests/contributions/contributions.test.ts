@@ -3,17 +3,17 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { CONTRIBUTION_PREFERENCES_PATH } from "../../cli/selftune/constants.js";
-import { _setTestDb, openDb } from "../../cli/selftune/localdb/db.js";
-
 const configDir = mkdtempSync(join(tmpdir(), "selftune-contributions-test-"));
 const skillDir = mkdtempSync(join(tmpdir(), "selftune-contribution-skills-"));
 process.env.SELFTUNE_CONFIG_DIR = configDir;
 process.env.SELFTUNE_SKILL_DIRS = skillDir;
+const contributionPreferencesPath = join(configDir, "contribution-preferences.json");
 
+const dbMod = await import("../../cli/selftune/localdb/db.js");
 const contributionsMod = await import("../../cli/selftune/contributions.js");
 const configDiscoveryMod = await import("../../cli/selftune/contribution-config.js");
 
+const { _setTestDb, openDb } = dbMod;
 const { cliMain, loadContributionPreferences, resetContributionPreferencesState } =
   contributionsMod;
 const { discoverCreatorContributionConfigs } = configDiscoveryMod;
@@ -79,7 +79,7 @@ beforeEach(() => {
   process.argv = [...originalArgv];
   globalThis.fetch = originalFetch;
   try {
-    rmSync(CONTRIBUTION_PREFERENCES_PATH, { force: true });
+    rmSync(contributionPreferencesPath, { force: true });
   } catch {
     // ignore
   }
@@ -151,6 +151,8 @@ describe("contributions preferences", () => {
   test("status prints separation from contribute and alpha upload", async () => {
     seedContributionSkill("sc-search", "cr_search");
     seedTrustedTrigger("sc-search");
+    resetContributionPreferencesState();
+    rmSync(contributionPreferencesPath, { force: true });
     const lines: string[] = [];
     console.log = mock((...args: unknown[]) => {
       lines.push(args.join(" "));

@@ -311,6 +311,7 @@ export async function cliMain(): Promise<void> {
   try {
     ({ values } = parseArgs({
       options: {
+        help: { type: "boolean", short: "h", default: false },
         prefix: { type: "string" },
         skills: { type: "string" },
         "parent-skill": { type: "string" },
@@ -326,6 +327,22 @@ export async function cliMain(): Promise<void> {
       "INVALID_FLAG",
       "selftune eval family-overlap --help",
     );
+  }
+
+  if (values.help) {
+    console.log(`Usage:
+  selftune eval family-overlap --skills skill-a,skill-b[,skill-c]
+  selftune eval family-overlap --prefix sc-
+
+Options:
+  --skills <a,b,c>       Explicit skill names
+  --prefix <family->     Analyze installed or observed skills with this prefix
+  --parent-skill <name>  Override the inferred parent skill name
+  --min-overlap <0-1>    Minimum overlap percentage (default: 0.3)
+  --min-shared <n>       Minimum shared queries (default: 2)
+  -h, --help             Show this help
+`);
+    return;
   }
 
   const rawMinOverlap = values["min-overlap"] as string | undefined;

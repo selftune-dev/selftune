@@ -112,22 +112,24 @@ export async function flushCreatorContributionSignals(
 ): Promise<FlushCreatorContributionSignalsResult> {
   const endpoint = resolveContributionRelayEndpoint(options.endpoint);
   const limit = Math.max(1, options.limit ?? 50);
-  const requeued = requeueSendingCreatorContributionSignals(db);
-  const retriedFailed = options.retryFailed ? requeueFailedCreatorContributionSignals(db) : 0;
-  const pendingRows = getPendingCreatorContributionRows(db, limit);
 
   if (options.dryRun) {
+    const pendingRows = getPendingCreatorContributionRows(db, limit);
     return {
       endpoint,
       attempted: pendingRows.length,
       sent: 0,
       failed: 0,
-      requeued,
-      retried_failed: retriedFailed,
+      requeued: 0,
+      retried_failed: 0,
       stats: getCreatorContributionRelayStats(db),
       dry_run: true,
     };
   }
+
+  const requeued = requeueSendingCreatorContributionSignals(db);
+  const retriedFailed = options.retryFailed ? requeueFailedCreatorContributionSignals(db) : 0;
+  const pendingRows = getPendingCreatorContributionRows(db, limit);
 
   const apiKey = resolveContributionRelayApiKey(options.apiKey);
   if (!apiKey) {

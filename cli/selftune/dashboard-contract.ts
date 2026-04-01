@@ -181,6 +181,7 @@ export interface TrustWatchlistEntry {
 
 export type DecisionKind =
   | "proposal_created"
+  | "proposal_rejected"
   | "validation_failed"
   | "proposal_deployed"
   | "rollback_triggered"

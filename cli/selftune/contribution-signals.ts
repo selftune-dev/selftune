@@ -100,6 +100,14 @@ function invocationType(
   return "contextual";
 }
 
+function normalizeContributionSkillIdentifier(skillName: string): string {
+  return skillName.trim().toLowerCase();
+}
+
+function buildContributionSkillHash(skillName: string): string {
+  return `sk_sha256_${createHash("sha256").update(normalizeContributionSkillIdentifier(skillName)).digest("hex").slice(0, 12)}`;
+}
+
 export function buildCreatorDirectedContributionSignals(
   db: Database,
   configs: CreatorContributionConfig[],
@@ -155,7 +163,7 @@ export function buildCreatorDirectedContributionSignals(
           version: 1 as const,
           signal_type: "skill_session" as const,
           relay_destination: config.creator_id,
-          skill_hash: `sk_sha256_${createHash("sha256").update(config.skill_path).digest("hex").slice(0, 12)}`,
+          skill_hash: buildContributionSkillHash(config.skill_name),
           user_cohort: cohort,
           signals,
           timestamp_bucket: bucketWeek(
@@ -199,7 +207,7 @@ export function buildContributionPreview(
       version: 1,
       signal_type: "skill_session",
       relay_destination: config.creator_id,
-      skill_hash: `sk_sha256_${createHash("sha256").update(config.skill_path).digest("hex").slice(0, 12)}`,
+      skill_hash: buildContributionSkillHash(config.skill_name),
       user_cohort: buildContributionUserCohort(options.now ?? new Date(), options.cohortSeed),
       signals: {
         query_bucket: "other",

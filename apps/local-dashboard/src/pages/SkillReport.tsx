@@ -840,6 +840,11 @@ export function SkillReport() {
   const hasEvolutionData = (evolutionState?.evolution_rows ?? evolution.length) > 0;
 
   const defaultTab = hasEvolutionData ? "evidence" : "invocations";
+  const [activeTab, setActiveTab] = useState(defaultTab);
+
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
 
   const nextAction = deriveNextAction(
     trustState,
@@ -850,7 +855,7 @@ export function SkillReport() {
   );
 
   return (
-    <Tabs defaultValue={defaultTab}>
+    <Tabs value={activeTab} onValueChange={setActiveTab}>
       <SkillReportGuideSheet open={isGuideOpen} onOpenChange={setIsGuideOpen} />
       <div className="@container/main flex flex-1 flex-col gap-5 p-4 lg:px-6 lg:pb-6 lg:pt-0">
         {/* ─── 1. Trust Header (sticky) ───────────────── */}

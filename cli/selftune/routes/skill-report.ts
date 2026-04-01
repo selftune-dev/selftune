@@ -528,8 +528,7 @@ export function handleSkillReport(
     );
   }
 
-  const operationalInvocations = enrichedInvocations.filter((inv) => !inv.isPolluting);
-  const trustInvocationsRaw = operationalInvocations.filter(
+  const trustInvocationsRaw = enrichedInvocations.filter(
     (inv) => inv.observation_kind !== "legacy_materialized",
   );
 

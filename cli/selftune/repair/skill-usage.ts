@@ -535,13 +535,17 @@ function inferRepairPlatform(source: string | undefined): "claude_code" | "codex
   return source?.includes("codex") ? "codex" : "claude_code";
 }
 
+function normalizeRepairSkillName(skillName: string): string {
+  return skillName.trim().toLowerCase();
+}
+
 function pairKey(sessionId: string, skillName: string): string {
-  return `${sessionId}\u0000${skillName}`;
+  return `${sessionId}\u0000${normalizeRepairSkillName(skillName)}`;
 }
 
 function splitPairKey(key: string): { sessionId: string; skillName: string } {
   const [sessionId, skillName] = key.split("\u0000");
-  return { sessionId, skillName };
+  return { sessionId, skillName: normalizeRepairSkillName(skillName) };
 }
 
 function compareRepairRecords(a: SkillUsageRecord, b: SkillUsageRecord): number {
@@ -630,15 +634,15 @@ export function persistRepairedSkillUsageToDb(
         0
       ) AS canonical_rows
     FROM skill_invocations
-    WHERE session_id = ? AND skill_name = ?
+    WHERE session_id = ? AND LOWER(skill_name) = ?
   `);
   const deleteLegacyTriggered = db.prepare(`
     DELETE FROM skill_invocations
-    WHERE session_id = ? AND skill_name = ? AND skill_invocation_id LIKE '%:su:%' AND triggered = 1
+    WHERE session_id = ? AND LOWER(skill_name) = ? AND skill_invocation_id LIKE '%:su:%' AND triggered = 1
   `);
   const deleteRepairTriggered = db.prepare(`
     DELETE FROM skill_invocations
-    WHERE session_id = ? AND skill_name = ? AND capture_mode = 'repair' AND triggered = 1
+    WHERE session_id = ? AND LOWER(skill_name) = ? AND capture_mode = 'repair' AND triggered = 1
   `);
   const selectExistingMiss = db.prepare(`
     SELECT
@@ -656,15 +660,15 @@ export function persistRepairedSkillUsageToDb(
         0
       ) AS canonical_rows
     FROM skill_invocations
-    WHERE session_id = ? AND skill_name = ? AND query = ?
+    WHERE session_id = ? AND LOWER(skill_name) = ? AND query = ?
   `);
   const deleteLegacyMiss = db.prepare(`
     DELETE FROM skill_invocations
-    WHERE session_id = ? AND skill_name = ? AND query = ? AND skill_invocation_id LIKE '%:su:%' AND triggered = 0
+    WHERE session_id = ? AND LOWER(skill_name) = ? AND query = ? AND skill_invocation_id LIKE '%:su:%' AND triggered = 0
   `);
   const deleteRepairMiss = db.prepare(`
     DELETE FROM skill_invocations
-    WHERE session_id = ? AND skill_name = ? AND query = ? AND capture_mode = 'repair' AND triggered = 0
+    WHERE session_id = ? AND LOWER(skill_name) = ? AND query = ? AND capture_mode = 'repair' AND triggered = 0
   `);
 
   const result: RepairSQLiteResult = {
@@ -704,6 +708,7 @@ export function persistRepairedSkillUsageToDb(
       }
 
       const sortedRecords = [...pairRecords].sort(compareRepairRecords);
+      const normalizedSkillName = normalizeRepairSkillName(skillName);
       const { invocation_mode, confidence } = deriveInvocationMode({ is_repaired: true });
 
       for (let index = 0; index < sortedRecords.length; index++) {
@@ -723,9 +728,9 @@ export function persistRepairedSkillUsageToDb(
               skill_registry_dir: record.skill_registry_dir ?? null,
             },
           },
-          skill_invocation_id: `${record.session_id}:r:${record.skill_name}:${index}`,
+          skill_invocation_id: `${record.session_id}:r:${normalizedSkillName}:${index}`,
           occurred_at: record.timestamp,
-          skill_name: record.skill_name,
+          skill_name: normalizedSkillName,
           skill_path: record.skill_path,
           invocation_mode,
           triggered: true,
@@ -746,20 +751,23 @@ export function persistRepairedSkillUsageToDb(
     }
 
     for (const record of missedRecordsByKey.values()) {
-      const existing = selectExistingMiss.get(record.session_id, record.skill_name, record.query) as
-        | { legacy_rows: number; repair_rows: number; canonical_rows: number }
-        | undefined;
+      const normalizedSkillName = normalizeRepairSkillName(record.skill_name);
+      const existing = selectExistingMiss.get(
+        record.session_id,
+        normalizedSkillName,
+        record.query,
+      ) as { legacy_rows: number; repair_rows: number; canonical_rows: number } | undefined;
 
       const legacyRows = existing?.legacy_rows ?? 0;
       const repairRows = existing?.repair_rows ?? 0;
       const canonicalRows = existing?.canonical_rows ?? 0;
 
       if (repairRows > 0) {
-        deleteRepairMiss.run(record.session_id, record.skill_name, record.query);
+        deleteRepairMiss.run(record.session_id, normalizedSkillName, record.query);
         result.deleted_prior_repair_rows += repairRows;
       }
       if (legacyRows > 0) {
-        deleteLegacyMiss.run(record.session_id, record.skill_name, record.query);
+        deleteLegacyMiss.run(record.session_id, normalizedSkillName, record.query);
         result.deleted_legacy_rows += legacyRows;
       }
       if (canonicalRows > 0) {
@@ -784,9 +792,9 @@ export function persistRepairedSkillUsageToDb(
             miss_type: "contextual_read",
           },
         },
-        skill_invocation_id: `${record.session_id}:rmiss:${record.skill_name}:${stableKeyHash(record.query)}`,
+        skill_invocation_id: `${record.session_id}:rmiss:${normalizedSkillName}:${stableKeyHash(record.query)}`,
         occurred_at: record.timestamp,
-        skill_name: record.skill_name,
+        skill_name: normalizedSkillName,
         skill_path: record.skill_path,
         invocation_mode,
         triggered: false,

@@ -108,7 +108,7 @@ function isHealthResponse(value: unknown): value is HealthResponse {
   );
 }
 
-function RuntimeDetailsPanel() {
+function RuntimeDetailsPanel({ refreshKey }: { refreshKey: number }) {
   const [health, setHealth] = useState<HealthResponse | null>(null);
 
   useEffect(() => {
@@ -122,7 +122,7 @@ function RuntimeDetailsPanel() {
       .catch(() => {
         /* non-critical */
       });
-  }, []);
+  }, [refreshKey]);
 
   if (!health) return null;
   const legacyWatcherMode = health.watcher_mode === "jsonl";
@@ -254,6 +254,7 @@ function CheckRow({ check }: { check: HealthCheck }) {
 
 export function Status() {
   const { data, isPending, isError, error, refetch } = useDoctor();
+  const [runtimeRefreshKey, setRuntimeRefreshKey] = useState(0);
 
   if (isPending) {
     return (
@@ -337,7 +338,10 @@ export function Status() {
             aria-label="Refresh status"
             variant="ghost"
             size="sm"
-            onClick={() => refetch()}
+            onClick={() => {
+              setRuntimeRefreshKey((value) => value + 1);
+              refetch();
+            }}
             className="shrink-0"
           >
             <RefreshCwIcon className="size-3.5" />
@@ -408,7 +412,7 @@ export function Status() {
         <div className="absolute -right-20 -bottom-20 w-64 h-64 bg-primary/5 blur-3xl rounded-full pointer-events-none" />
       </div>
 
-      <RuntimeDetailsPanel />
+      <RuntimeDetailsPanel refreshKey={runtimeRefreshKey} />
 
       {/* ── Unified Checks Panel ───────────────────────────── */}
       <div className="bg-muted rounded-2xl border border-border/15 overflow-hidden">

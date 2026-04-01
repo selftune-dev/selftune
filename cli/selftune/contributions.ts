@@ -228,18 +228,19 @@ export function listContributionPromptCandidates(
 }
 
 function upsertSkillPreference(skill: string, status: ContributionSkillStatus): void {
-  if (!skill.trim()) {
+  const normalizedSkill = skill.trim();
+  if (!normalizedSkill) {
     throw new CLIError("Skill name is required.", "INVALID_FLAG", "selftune contributions --help");
   }
   const preferences = loadContributionPreferences();
   const timestamp = new Date().toISOString();
-  const discovered = findCreatorContributionConfig(skill.trim());
-  preferences.skills[skill] =
+  const discovered = findCreatorContributionConfig(normalizedSkill);
+  preferences.skills[normalizedSkill] =
     status === "opted_in"
       ? { status, opted_in_at: timestamp }
       : { status, opted_out_at: timestamp };
   if (status === "opted_in" && discovered) {
-    preferences.skills[skill] = {
+    preferences.skills[normalizedSkill] = {
       status,
       opted_in_at: timestamp,
       creator_id: discovered.creator_id,
@@ -251,7 +252,7 @@ function upsertSkillPreference(skill: string, status: ContributionSkillStatus): 
   }
   saveContributionPreferences(preferences);
   console.log(
-    `Creator-directed contributions for "${skill}" ${status === "opted_in" ? "approved" : "revoked"}.`,
+    `Creator-directed contributions for "${normalizedSkill}" ${status === "opted_in" ? "approved" : "revoked"}.`,
   );
   console.log("This only affects future creator-directed sharing prompts and relay uploads.");
 }
@@ -451,6 +452,9 @@ async function uploadContributions(argv: string[]): Promise<void> {
   console.log(
     `  queue now: pending=${result.stats.pending} sent=${result.stats.sent} failed=${result.stats.failed}`,
   );
+  if (result.failed > 0) {
+    process.exitCode = 1;
+  }
 }
 
 export async function cliMain(): Promise<void> {

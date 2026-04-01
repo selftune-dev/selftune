@@ -128,15 +128,21 @@ export function AppSidebar({
             <TooltipTrigger
               render={
                 <button
-                  className="w-full border border-primary/25 bg-gradient-to-r from-primary/10 to-primary/5 text-primary/80 hover:text-primary hover:border-primary/45 hover:shadow-[0_0_16px_rgba(79,242,255,0.18)] py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all duration-200 active:scale-95 font-headline text-xs uppercase tracking-wider"
+                  className="w-full cursor-not-allowed border border-primary/15 bg-gradient-to-r from-primary/10 to-primary/5 py-2.5 rounded-xl flex items-center justify-center gap-2 font-headline text-xs uppercase tracking-wider text-primary/50 opacity-70"
                   type="button"
+                  disabled
+                  aria-disabled="true"
+                  tabIndex={-1}
+                  title="Run Evolution will be available once dashboard actions are wired."
                 />
               }
             >
               <PlayIcon className="size-4" />
               <span>Run Evolution</span>
             </TooltipTrigger>
-            <TooltipContent side="right">Trigger skill evolution pipeline</TooltipContent>
+            <TooltipContent side="right">
+              Dashboard-triggered evolution is not available yet.
+            </TooltipContent>
           </Tooltip>
 
           <div className="mt-3 flex items-center gap-2 px-4 py-1.5 font-headline text-[10px] uppercase tracking-widest text-slate-600">

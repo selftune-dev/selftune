@@ -136,8 +136,12 @@ export function selectBalancedEvalEntries(
   entries: EvalEntry[],
   maxPositives: number,
   maxNegatives: number,
-  hasSiblingSkills: boolean,
+  siblingSkills: string[] | boolean,
 ): EvalEntry[] {
+  const normalizedSiblingSkills = Array.isArray(siblingSkills)
+    ? siblingSkills.map((skill) => skill.trim().toLowerCase()).filter(Boolean)
+    : [];
+  const hasSiblingSkills = normalizedSiblingSkills.length > 0;
   const targets = buildPromptFamilyTargets(maxPositives, maxNegatives, hasSiblingSkills);
   const positives = entries.filter((entry) => entry.should_trigger);
   const negatives = entries.filter((entry) => !entry.should_trigger);
@@ -166,12 +170,17 @@ export function selectBalancedEvalEntries(
   }
 
   const siblingMentions = hasSiblingSkills
-    ? negatives.filter((entry) =>
-        /(^|[\s/$-])(sc-[a-z0-9-]+|mentor cli|State Change mentor CLI|resource\s+\d+|mental model)/i.test(
-          entry.query,
-        ),
-      )
-    : [];
+    ? negatives.filter((entry) => {
+        const normalizedQuery = entry.query.toLowerCase();
+        return normalizedSiblingSkills.some((skill) => normalizedQuery.includes(skill));
+      })
+    : siblingSkills === true
+      ? negatives.filter((entry) =>
+          /(^|[\s/$-])(sc-[a-z0-9-]+|mentor cli|State Change mentor CLI|resource\s+\d+|mental model)/i.test(
+            entry.query,
+          ),
+        )
+      : [];
   const nonSiblingNegatives = negatives.filter((entry) => !siblingMentions.includes(entry));
   const selectedNegatives = [
     ...takeEntries(siblingMentions, targets.siblingNegativeCount),
@@ -487,12 +496,7 @@ export async function generateSyntheticEvals(
     );
     const refinedRaw = await callLlm(refinement.system, refinement.user, agent, options.modelFlag);
     const refined = dedupeEvalEntries(parseSyntheticResponse(refinedRaw, skillName));
-    const selected = selectBalancedEvalEntries(
-      refined,
-      maxPositives,
-      maxNegatives,
-      siblingSkills.length > 0,
-    );
+    const selected = selectBalancedEvalEntries(refined, maxPositives, maxNegatives, siblingSkills);
     if (
       selected.filter((entry) => entry.should_trigger).length >= maxPositives &&
       selected.filter((entry) => !entry.should_trigger).length >= maxNegatives
@@ -503,5 +507,5 @@ export async function generateSyntheticEvals(
     // fall through to first-pass selection
   }
 
-  return selectBalancedEvalEntries(firstPass, maxPositives, maxNegatives, siblingSkills.length > 0);
+  return selectBalancedEvalEntries(firstPass, maxPositives, maxNegatives, siblingSkills);
 }

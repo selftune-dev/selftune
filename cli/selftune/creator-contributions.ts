@@ -73,9 +73,14 @@ function printStatus(skillName?: string): void {
   }
 }
 
+interface BulkEnableSkip {
+  skill_name: string;
+  reason: "already_configured" | "skill_path_not_found";
+}
+
 interface BulkEnableResult {
   written: string[];
-  skipped: string[];
+  skipped: BulkEnableSkip[];
 }
 
 function enableCreatorContributionConfigs(options: {
@@ -121,7 +126,7 @@ function enableCreatorContributionConfigs(options: {
   const result: BulkEnableResult = { written: [], skipped: [] };
   for (const skillName of targetSkills) {
     if (findCreatorContributionConfig(skillName, searchRoots)) {
-      result.skipped.push(skillName);
+      result.skipped.push({ skill_name: skillName, reason: "already_configured" });
       continue;
     }
     const skillPath = resolveContributionSkillPath(
@@ -130,7 +135,7 @@ function enableCreatorContributionConfigs(options: {
       searchRoots,
     );
     if (!skillPath) {
-      result.skipped.push(skillName);
+      result.skipped.push({ skill_name: skillName, reason: "skill_path_not_found" });
       continue;
     }
 
@@ -245,11 +250,28 @@ Purpose:
           }
         }
         if (outcome.skipped.length > 0) {
-          console.log(`Skipped ${outcome.skipped.length} skills: ${outcome.skipped.join(", ")}`);
+          console.log(
+            `Skipped ${outcome.skipped.length} skills: ${outcome.skipped.map((entry) => entry.skill_name).join(", ")}`,
+          );
         }
         return;
       }
       const skillName = values.skill!.trim();
+      if (outcome.written.length === 0) {
+        const skip = outcome.skipped[0];
+        if (skip?.reason === "already_configured") {
+          throw new CLIError(
+            `A creator contribution config already exists for "${skillName}".`,
+            "FILE_EXISTS",
+            "Run `selftune creator-contributions status --skill <name>` to inspect it.",
+          );
+        }
+        throw new CLIError(
+          `Could not resolve SKILL.md for "${skillName}".`,
+          "FILE_NOT_FOUND",
+          "Pass --skill-path /path/to/SKILL.md",
+        );
+      }
       const config = findCreatorContributionConfig(skillName);
       console.log(`Enabled creator contribution config for "${skillName}".`);
       if (config) printConfig(config);
