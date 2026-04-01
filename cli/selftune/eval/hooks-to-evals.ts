@@ -45,6 +45,7 @@ import {
 } from "../utils/query-filter.js";
 import { seededShuffle } from "../utils/seeded-random.js";
 import {
+  escapeRegExp,
   findInstalledSkillNames,
   findInstalledSkillPath,
   findRepositoryClaudeSkillDirs,
@@ -85,14 +86,14 @@ export function classifyInvocation(query: string, skillName: string): Invocation
   // Handle hyphenated skill names: check if all parts appear
   if (skillLower.includes("-")) {
     const parts = skillLower.split("-");
-    if (parts.every((part) => qLower.includes(part))) {
+    if (parts.every((part) => new RegExp(`\\b${escapeRegExp(part)}\\b`, "i").test(query))) {
       return "explicit";
     }
   }
 
   // Convert skill-name to camelCase and check
   const camelCase = skillLower.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-  if (camelCase !== skillLower && qLower.includes(camelCase)) {
+  if (camelCase !== skillLower && qLower.includes(camelCase.toLowerCase())) {
     return "explicit";
   }
 

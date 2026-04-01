@@ -25,6 +25,8 @@ describe("buildSyntheticPrompt", () => {
     const { user } = buildSyntheticPrompt("content", "test-skill", 15, 10);
     expect(user).toContain("15 positive");
     expect(user).toContain("10 negative");
+    expect(user).toContain("Required positive mix:");
+    expect(user).toContain("Required negative mix:");
   });
 
   test("system prompt mentions all invocation types", () => {
@@ -32,6 +34,7 @@ describe("buildSyntheticPrompt", () => {
     expect(system).toContain("Explicit");
     expect(system).toContain("Implicit");
     expect(system).toContain("Contextual");
+    expect(system).toContain("hard negative controls");
   });
 
   test("includes real examples when provided", () => {
@@ -69,6 +72,19 @@ describe("buildSyntheticPrompt", () => {
     });
     expect(user).toContain("Queries that triggered this skill:");
     expect(user).not.toContain("Queries that did NOT trigger");
+  });
+
+  test("includes sibling skills as boundary-setting negatives when provided", () => {
+    const { user } = buildSyntheticPrompt("content", "sc-search", 10, 10, undefined, [
+      "sc-model",
+      "sc-resource",
+      "sc-compare",
+    ]);
+    expect(user).toContain("Nearby installed skills to use for boundary-setting hard negatives:");
+    expect(user).toContain("- sc-model");
+    expect(user).toContain("- sc-resource");
+    expect(user).toContain("- sc-compare");
+    expect(user).toContain("negative queries should clearly belong to one of these sibling skills");
   });
 });
 

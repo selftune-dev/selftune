@@ -159,15 +159,20 @@ The command:
 
 1. Reads the SKILL.md file content
 2. Loads real user queries from the database (if available) as few-shot style examples so synthetic queries match real phrasing patterns
-3. Sends skill content and real examples to an LLM with a prompt requesting realistic test queries
-4. Parses the response into eval entries with invocation type annotations
-5. Classifies each positive query using the deterministic `classifyInvocation()` heuristic
-6. Writes the eval set to the output file
+3. Detects nearby installed sibling skills to generate harder negative controls
+4. Requests a balanced prompt family mix (explicit / implicit / contextual positives plus sibling-confusion / adjacent / unrelated negatives)
+5. Parses the response into eval entries with invocation type annotations
+6. Classifies each positive query using the deterministic `classifyInvocation()` heuristic
+7. Writes the eval set to the output file
 
 **Note:** When real query data exists in the database, synthetic generation
 automatically includes high-confidence positive triggers and general queries as
 phrasing references. This produces more natural-sounding eval queries. If no
 database is available, generation proceeds without real examples (fail-open).
+
+The synthetic cold-start path is intentionally small and targeted. It is meant to bootstrap a
+creator skill into its first supervised evolution cycle, not serve as the long-term source of
+truth once real telemetry exists.
 
 Use `--model` to override the default LLM model:
 

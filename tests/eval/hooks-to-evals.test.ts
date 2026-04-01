@@ -87,6 +87,15 @@ describe("classifyInvocation", () => {
     );
   });
 
+  test("does not treat short hyphenated fragments as explicit when they only appear inside other words", () => {
+    expect(
+      classifyInvocation(
+        "search for content about managing consulting clients who scope creep",
+        "sc-search",
+      ),
+    ).not.toBe("explicit");
+  });
+
   // --- New: camelCase skill name ---
   test("returns 'explicit' for camelCase version of skill name", () => {
     expect(classifyInvocation("open msOfficeSuite", "ms-office-suite")).toBe("explicit");

@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 
 import type { EvalEntry, InvocationType } from "../types.js";
 import { callLlm, stripMarkdownFences } from "../utils/llm-call.js";
+import { findInstalledSkillNames } from "../utils/skill-discovery.js";
 import { classifyInvocation } from "./hooks-to-evals.js";
 
 // ---------------------------------------------------------------------------
@@ -28,6 +29,49 @@ interface RawSyntheticEntry {
   invocation_type?: string;
 }
 
+interface SyntheticPromptRealExamples {
+  positive: string[];
+  negative: string[];
+}
+
+function getSyntheticSkillSearchDirs(): string[] {
+  const cwd = process.cwd();
+  const homeDir = process.env.HOME ?? "";
+  const codexHome = process.env.CODEX_HOME ?? `${homeDir}/.codex`;
+  return [
+    `${cwd}/.agents/skills`,
+    `${cwd}/.claude/skills`,
+    `${homeDir}/.agents/skills`,
+    `${homeDir}/.claude/skills`,
+    `${codexHome}/skills`,
+  ];
+}
+
+function inferSiblingSkills(
+  skillName: string,
+  searchDirs: string[] = getSyntheticSkillSearchDirs(),
+): string[] {
+  const normalized = skillName.trim().toLowerCase();
+  if (!normalized) return [];
+
+  const familyPrefix = normalized.includes("-") ? normalized.split("-")[0] : "";
+  const installedNames = [...findInstalledSkillNames(searchDirs)];
+
+  const sameFamily = installedNames
+    .filter((name) => name.toLowerCase() !== normalized)
+    .filter((name) => familyPrefix && name.toLowerCase().startsWith(`${familyPrefix}-`))
+    .sort((a, b) => a.localeCompare(b));
+
+  if (sameFamily.length >= 5) return sameFamily.slice(0, 5);
+
+  const adjacent = installedNames
+    .filter((name) => name.toLowerCase() !== normalized)
+    .filter((name) => !sameFamily.includes(name))
+    .sort((a, b) => a.localeCompare(b));
+
+  return [...sameFamily, ...adjacent].slice(0, 5);
+}
+
 // ---------------------------------------------------------------------------
 // Prompt building
 // ---------------------------------------------------------------------------
@@ -37,21 +81,44 @@ export function buildSyntheticPrompt(
   skillName: string,
   maxPositives: number,
   maxNegatives: number,
-  realExamples?: { positive: string[]; negative: string[] },
+  realExamples?: SyntheticPromptRealExamples,
+  siblingSkills: string[] = [],
 ): { system: string; user: string } {
+  const explicitCount = Math.max(1, Math.round(maxPositives * 0.2));
+  const contextualCount = Math.max(1, Math.round(maxPositives * 0.4));
+  const implicitCount = Math.max(1, maxPositives - explicitCount - contextualCount);
+
+  const siblingNegativeCount =
+    siblingSkills.length > 0 ? Math.max(1, Math.round(maxNegatives * 0.4)) : 0;
+  const adjacentNegativeCount = Math.max(
+    1,
+    maxNegatives - siblingNegativeCount - Math.max(1, Math.round(maxNegatives * 0.2)),
+  );
+  const unrelatedNegativeCount = Math.max(
+    1,
+    maxNegatives - siblingNegativeCount - adjacentNegativeCount,
+  );
+
   const system = `You are generating test queries for a coding agent skill. Given the skill description below, generate realistic user queries.
 
+Your job is to create a SMALL, TARGETED benchmark for cold-start routing quality.
+
 For POSITIVE queries (should trigger this skill):
-- Generate a mix of:
+- Generate a balanced mix of:
   - Explicit: directly names the skill or uses $${skillName} syntax
   - Implicit: describes the task without naming the skill
-  - Contextual: natural language with domain context, proper nouns, dates, filenames
-- Vary phrasing, formality, and specificity
+  - Contextual: realistic natural language with domain context, proper nouns, filenames, or setup noise
+- Avoid merely paraphrasing bullet points from the skill
+- Prefer realistic user phrasing over polished product copy
+- Include at least a few prompts that test the edge of the skill's scope, not just the obvious center
 
 For NEGATIVE queries (should NOT trigger this skill):
-- Queries that are topically adjacent but wrong intent
-- Queries for different skills that share keywords
-- Generic queries unrelated to this skill
+- Include hard negative controls:
+  - sibling-skill confusion cases
+  - topically adjacent but wrong-intent cases
+  - clearly unrelated cases
+- Make the hard negatives plausible, not cartoonishly unrelated
+- If a query belongs to another installed skill, make that obvious from the task itself
 
 Output as JSON array with no surrounding text:
 [{"query": "...", "should_trigger": true, "invocation_type": "explicit|implicit|contextual|negative"}]`;
@@ -61,7 +128,19 @@ Output as JSON array with no surrounding text:
 Skill content:
 ${skillContent}
 
-Generate exactly ${maxPositives} positive queries (should_trigger: true) and ${maxNegatives} negative queries (should_trigger: false). Return ONLY the JSON array.`;
+Generate exactly ${maxPositives} positive queries (should_trigger: true) and ${maxNegatives} negative queries (should_trigger: false).
+
+Required positive mix:
+- ${explicitCount} explicit
+- ${implicitCount} implicit
+- ${contextualCount} contextual
+
+Required negative mix:
+- ${siblingNegativeCount} sibling-skill confusion cases
+- ${adjacentNegativeCount} adjacent but wrong-intent cases
+- ${unrelatedNegativeCount} clearly unrelated cases
+
+Return ONLY the JSON array.`;
 
   if (realExamples && (realExamples.positive.length > 0 || realExamples.negative.length > 0)) {
     const parts: string[] = ["\n\nReal user queries for style and phrasing reference:"];
@@ -75,6 +154,14 @@ Generate exactly ${maxPositives} positive queries (should_trigger: true) and ${m
     }
     parts.push("\nGenerate queries that match this natural phrasing style.");
     user += parts.join("\n");
+  }
+
+  if (siblingSkills.length > 0) {
+    user += `\n\nNearby installed skills to use for boundary-setting hard negatives:\n${siblingSkills
+      .map((skill) => `- ${skill}`)
+      .join(
+        "\n",
+      )}\n\nAt least ${siblingNegativeCount} negative queries should clearly belong to one of these sibling skills instead of ${skillName}.`;
   }
 
   return { system, user };
@@ -174,6 +261,7 @@ export async function generateSyntheticEvals(
   const maxNegatives = options.maxNegatives ?? 10;
 
   const skillContent = readFileSync(skillPath, "utf-8");
+  const siblingSkills = inferSiblingSkills(skillName);
 
   // Load real query examples from the database for few-shot style guidance.
   // Uses dynamic imports since SQLite may not be available in all contexts.
@@ -217,6 +305,7 @@ export async function generateSyntheticEvals(
     maxPositives,
     maxNegatives,
     realExamples,
+    siblingSkills,
   );
 
   const raw = await callLlm(system, user, agent, options.modelFlag);
