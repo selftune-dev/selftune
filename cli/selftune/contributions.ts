@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { CONTRIBUTION_PREFERENCES_PATH, SELFTUNE_CONFIG_DIR } from "./constants.js";
 import {
@@ -55,6 +56,16 @@ const DEFAULT_PREFERENCES: ContributionPreferences = {
 
 let cachedPreferences: ContributionPreferences | undefined;
 
+function getSelftuneConfigDir(): string {
+  return process.env.SELFTUNE_CONFIG_DIR || SELFTUNE_CONFIG_DIR;
+}
+
+function getContributionPreferencesPath(): string {
+  return process.env.SELFTUNE_CONFIG_DIR
+    ? join(process.env.SELFTUNE_CONFIG_DIR, "contribution-preferences.json")
+    : CONTRIBUTION_PREFERENCES_PATH;
+}
+
 function cloneDefaultPreferences(): ContributionPreferences {
   return {
     version: 1,
@@ -107,12 +118,13 @@ function normalizePreferences(raw: unknown): ContributionPreferences {
 
 export function loadContributionPreferences(): ContributionPreferences {
   if (cachedPreferences) return cachedPreferences;
+  const preferencesPath = getContributionPreferencesPath();
   try {
-    if (!existsSync(CONTRIBUTION_PREFERENCES_PATH)) {
+    if (!existsSync(preferencesPath)) {
       cachedPreferences = cloneDefaultPreferences();
       return cachedPreferences;
     }
-    const parsed = JSON.parse(readFileSync(CONTRIBUTION_PREFERENCES_PATH, "utf-8")) as unknown;
+    const parsed = JSON.parse(readFileSync(preferencesPath, "utf-8")) as unknown;
     cachedPreferences = normalizePreferences(parsed);
     return cachedPreferences;
   } catch {
@@ -122,8 +134,8 @@ export function loadContributionPreferences(): ContributionPreferences {
 }
 
 export function saveContributionPreferences(preferences: ContributionPreferences): void {
-  mkdirSync(SELFTUNE_CONFIG_DIR, { recursive: true });
-  writeFileSync(CONTRIBUTION_PREFERENCES_PATH, JSON.stringify(preferences, null, 2), "utf-8");
+  mkdirSync(getSelftuneConfigDir(), { recursive: true });
+  writeFileSync(getContributionPreferencesPath(), JSON.stringify(preferences, null, 2), "utf-8");
   cachedPreferences = preferences;
 }
 
