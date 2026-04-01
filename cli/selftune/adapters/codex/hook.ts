@@ -109,6 +109,7 @@ async function handlePreToolUse(
     session_id: payload.session_id,
     transcript_path: payload.transcript_path,
     cwd: payload.cwd,
+    permission_mode: payload.permission_mode,
     hook_event_name: "PreToolUse",
   };
 
@@ -167,6 +168,7 @@ async function handlePostToolUse(payload: CodexHookPayload): Promise<HookRespons
     session_id: payload.session_id,
     transcript_path: payload.transcript_path,
     cwd: payload.cwd,
+    permission_mode: payload.permission_mode,
     hook_event_name: "PostToolUse",
   };
 
@@ -196,6 +198,7 @@ async function handleStop(payload: CodexHookPayload): Promise<HookResponse> {
       session_id: payload.session_id,
       transcript_path: payload.transcript_path,
       cwd: payload.cwd,
+      permission_mode: payload.permission_mode,
       stop_hook_active: payload.stop_hook_active,
       last_assistant_message:
         typeof payload.last_assistant_message === "string"
@@ -214,8 +217,11 @@ async function handleStop(payload: CodexHookPayload): Promise<HookResponse> {
 // Main entry point
 // ---------------------------------------------------------------------------
 
-function writeResponse(response: HookResponse): void {
-  process.stdout.write(JSON.stringify(response));
+function writeResponseAndExit(response: HookResponse, code: number): void {
+  const data = JSON.stringify(response);
+  process.stdout.write(data, () => {
+    process.exit(code);
+  });
 }
 
 /**
@@ -230,24 +236,24 @@ export async function cliMain(): Promise<void> {
 
     // Fast-path: empty stdin -> no-op
     if (!full.trim()) {
-      writeResponse(EMPTY_RESPONSE);
-      process.exit(0);
+      writeResponseAndExit(EMPTY_RESPONSE, 0);
+      return;
     }
 
     let payload: CodexHookPayload;
     try {
       payload = JSON.parse(full) as CodexHookPayload;
     } catch {
-      writeResponse(EMPTY_RESPONSE);
-      process.exit(0);
+      writeResponseAndExit(EMPTY_RESPONSE, 0);
+      return;
     }
 
     const eventName = typeof payload.hook_event_name === "string" ? payload.hook_event_name : "";
 
     // Fast-path: use preview to skip irrelevant events without full routing
     if (!eventName) {
-      writeResponse(EMPTY_RESPONSE);
-      process.exit(0);
+      writeResponseAndExit(EMPTY_RESPONSE, 0);
+      return;
     }
 
     let response: HookResponse = EMPTY_RESPONSE;
@@ -277,13 +283,11 @@ export async function cliMain(): Promise<void> {
       }
     }
 
-    writeResponse(response);
+    writeResponseAndExit(response, exitCode);
   } catch {
     // Fail-open: never crash
-    writeResponse(EMPTY_RESPONSE);
+    writeResponseAndExit(EMPTY_RESPONSE, 0);
   }
-
-  process.exit(exitCode);
 }
 
 // --- stdin main (only when executed directly, not when imported) ---

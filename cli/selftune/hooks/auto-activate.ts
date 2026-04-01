@@ -158,9 +158,10 @@ export function evaluateRules(
  */
 export async function processAutoActivate(
   sessionId: string,
-  settingsPath: string = CLAUDE_SETTINGS_PATH,
+  settingsPath?: string,
 ): Promise<string[]> {
-  if (checkPaiCoexistence(settingsPath)) return [];
+  // Only check PAI coexistence when a settings path is provided (platform-specific)
+  if (settingsPath && checkPaiCoexistence(settingsPath)) return [];
 
   const { DEFAULT_RULES } = await import("../activation-rules.js");
 
@@ -185,7 +186,7 @@ if (import.meta.main) {
   try {
     const payload: PromptSubmitPayload = JSON.parse(await Bun.stdin.text());
     const sessionId = payload.session_id ?? "unknown";
-    const suggestions = await processAutoActivate(sessionId);
+    const suggestions = await processAutoActivate(sessionId, CLAUDE_SETTINGS_PATH);
 
     if (suggestions.length > 0) {
       const context = suggestions.map((s) => `[selftune] Suggestion: ${s}`).join("\n");
