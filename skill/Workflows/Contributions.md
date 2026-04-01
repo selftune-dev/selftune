@@ -17,6 +17,7 @@ This is **not** the same as `selftune contribute`:
 
 ```bash
 selftune contributions
+selftune contributions preview <skill>
 selftune contributions approve <skill>
 selftune contributions revoke <skill>
 selftune contributions default <ask|always|never>
@@ -36,6 +37,7 @@ selftune contributions default <ask|always|never>
 | --- | --- |
 | `selftune contributions` | Show current creator-directed contribution preferences |
 | `selftune contributions status` | Same as above |
+| `selftune contributions preview <skill>` | Show the privacy-safe relay payload shape for one skill |
 | `selftune contributions approve <skill>` | Approve creator-directed sharing for one skill |
 | `selftune contributions revoke <skill>` | Revoke creator-directed sharing for one skill |
 | `selftune contributions default <ask|always|never>` | Set the default behavior for future creator-directed prompts |
@@ -57,6 +59,10 @@ selftune contributions default <ask|always|never>
 **User wants to allow contribution signals for one skill**
 
 > Run `selftune contributions approve <skill>`.
+
+**User wants to see what would actually be shared**
+
+> Run `selftune contributions preview <skill>` and summarize the requested signals plus the “never shared” guarantees.
 
 **User wants to turn off creator-directed sharing for one skill**
 

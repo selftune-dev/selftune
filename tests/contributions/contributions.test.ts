@@ -74,6 +74,7 @@ describe("contributions preferences", () => {
   });
 
   test("approve persists opted-in state", async () => {
+    seedContributionSkill("sc-search", "cr_search", ["trigger", "grade", "miss_category"]);
     process.argv = ["bun", "selftune", "approve", "sc-search"];
     console.log = mock(() => {});
     await cliMain();
@@ -81,6 +82,8 @@ describe("contributions preferences", () => {
     const prefs = loadContributionPreferences();
     expect(prefs.skills["sc-search"]?.status).toBe("opted_in");
     expect(typeof prefs.skills["sc-search"]?.opted_in_at).toBe("string");
+    expect(prefs.skills["sc-search"]?.creator_id).toBe("cr_search");
+    expect(prefs.skills["sc-search"]?.signals).toEqual(["trigger", "grade", "miss_category"]);
   });
 
   test("revoke persists opted-out state", async () => {
@@ -128,5 +131,23 @@ describe("contributions preferences", () => {
     expect(lines.join("\n")).toContain("creator: cr_search");
     expect(lines.join("\n")).toContain("selftune contribute");
     expect(lines.join("\n")).toContain("selftune push / alpha");
+  });
+
+  test("preview prints relay payload shape and privacy guarantees", async () => {
+    seedContributionSkill("sc-search", "cr_search", ["trigger", "grade", "miss_category"]);
+    const lines: string[] = [];
+    console.log = mock((...args: unknown[]) => {
+      lines.push(args.join(" "));
+    });
+    process.argv = ["bun", "selftune", "preview", "sc-search"];
+
+    await cliMain();
+
+    const output = lines.join("\n");
+    expect(output).toContain('Contribution preview for "sc-search"');
+    expect(output).toContain("requested signals: trigger, grade, miss_category");
+    expect(output).toContain("never shared: raw prompts, code/files, your identity");
+    expect(output).toContain('"signal_type": "skill_session"');
+    expect(output).toContain('"relay_destination": "cr_search"');
   });
 });
