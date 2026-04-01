@@ -107,7 +107,7 @@ Your agent runs these — you just say what you want ("improve my skills", "show
 
 | Group      | Command                                      | What it does                                                                                |
 | ---------- | -------------------------------------------- | ------------------------------------------------------------------------------------------- |
-|            | `selftune status`                            | See which skills are undertriggering and why                                                |
+|            | `selftune status`                            | Get a one-line health summary plus compact attention / improving highlights                 |
 |            | `selftune last`                              | Quick insight from the most recent session                                                  |
 |            | `selftune orchestrate`                       | Run the full autonomous loop (sync → grade → evolve → watch)                                |
 |            | `selftune sync`                              | Replay source-truth transcripts/rollouts into SQLite and refresh repair state               |

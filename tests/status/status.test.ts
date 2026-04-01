@@ -7,7 +7,7 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 
-import { computeStatus, formatStatusSummary } from "../../cli/selftune/status.js";
+import { computeStatus, formatStatus, formatStatusSummary } from "../../cli/selftune/status.js";
 import type {
   DoctorResult,
   EvolutionAuditEntry,
@@ -524,6 +524,50 @@ describe("computeStatus", () => {
     const skillB = result.skills.find((s) => s.name === "skill-b");
     expect(skillA).toBeDefined();
     expect(skillB).toBeDefined();
+  });
+});
+
+describe("formatStatus", () => {
+  test("renders compact trust highlights before the skills table", () => {
+    const result = {
+      skills: [],
+      unmatchedQueries: 0,
+      pendingProposals: 0,
+      lastSession: null,
+      system: { healthy: true, pass: 3, fail: 0, warn: 0 },
+    };
+    const trustSummaries = [
+      {
+        skill_name: "Art",
+        total_checks: 12,
+        triggered_count: 8,
+        miss_rate: 4 / 12,
+        system_like_count: 0,
+        system_like_rate: 0,
+        prompt_link_rate: 1,
+        latest_action: null,
+        pass_rate: 8 / 12,
+        last_seen: "2026-04-01T10:00:00Z",
+      },
+      {
+        skill_name: "pptx",
+        total_checks: 20,
+        triggered_count: 17,
+        miss_rate: 0.15,
+        system_like_count: 0,
+        system_like_rate: 0,
+        prompt_link_rate: 1,
+        latest_action: "validated",
+        pass_rate: 0.85,
+        last_seen: "2026-04-01T11:00:00Z",
+      },
+    ];
+
+    const output = formatStatus(result, trustSummaries);
+    expect(output).toContain("Highlights");
+    expect(output).toContain("Attention: Art (High miss rate");
+    expect(output).toContain("Improving: pptx (Proposal validated, pending deploy)");
+    expect(output.indexOf("Highlights")).toBeLessThan(output.indexOf("Skills (0)"));
   });
 });
 

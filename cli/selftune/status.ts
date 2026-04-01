@@ -29,7 +29,7 @@ import {
 } from "./localdb/queries.js";
 import { computeMonitoringSnapshot, MIN_MONITORING_SKILL_CHECKS } from "./monitoring/watch.js";
 import { doctor } from "./observability.js";
-import { deriveTrustBucket } from "./trust-model.js";
+import { deriveTrustBucket, deriveTrustBucketReason } from "./trust-model.js";
 import type {
   AgentCommandGuidance,
   AlphaLinkState,
@@ -276,6 +276,43 @@ const TREND_SYMBOLS: Record<string, string> = {
   unknown: "?",
 };
 
+function formatTrustHighlights(trustSummaries: SkillTrustSummary[] | undefined): string[] {
+  if (!trustSummaries || trustSummaries.length === 0) return [];
+
+  const recentSort = (a: SkillTrustSummary, b: SkillTrustSummary) =>
+    (b.last_seen ?? "").localeCompare(a.last_seen ?? "");
+  const attention = [...trustSummaries]
+    .filter((summary) => deriveTrustBucket(summary) === "at_risk")
+    .sort(recentSort)
+    .slice(0, 3);
+  const improving = [...trustSummaries]
+    .filter((summary) => deriveTrustBucket(summary) === "improving")
+    .sort(recentSort)
+    .slice(0, 3);
+
+  if (attention.length === 0 && improving.length === 0) return [];
+
+  const lines = ["Highlights"];
+  if (attention.length > 0) {
+    lines.push(
+      `  Attention: ${attention
+        .map((summary) => `${summary.skill_name} (${deriveTrustBucketReason("at_risk", summary)})`)
+        .join("; ")}`,
+    );
+  }
+  if (improving.length > 0) {
+    lines.push(
+      `  Improving: ${improving
+        .map(
+          (summary) => `${summary.skill_name} (${deriveTrustBucketReason("improving", summary)})`,
+        )
+        .join("; ")}`,
+    );
+  }
+
+  return lines;
+}
+
 export function formatStatus(result: StatusResult, trustSummaries?: SkillTrustSummary[]): string {
   const noColor = !!process.env.NO_COLOR;
 
@@ -289,6 +326,12 @@ export function formatStatus(result: StatusResult, trustSummaries?: SkillTrustSu
   lines.push("");
   lines.push(formatStatusSummary(result, trustSummaries));
   lines.push("");
+
+  const highlightLines = formatTrustHighlights(trustSummaries);
+  if (highlightLines.length > 0) {
+    lines.push(...highlightLines);
+    lines.push("");
+  }
 
   // Skills table
   const skillCount = result.skills.length;

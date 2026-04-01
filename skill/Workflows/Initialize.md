@@ -275,7 +275,7 @@ Enrollment uses a device-code flow — one command, one browser approval, fully 
 
 ### Setup Sequence
 
-1. **Check local config**: Run `selftune status` — look for the "Alpha Upload" section
+1. **Check local config**: Run `selftune status` — use the first summary line and compact `Highlights` section to explain current skill health, then look for the "Alpha Upload" section
 2. **If not linked**: First use `AskUserQuestion` for the opt-in decision. Only if the user says yes, collect their email and run:
 
    ```bash
