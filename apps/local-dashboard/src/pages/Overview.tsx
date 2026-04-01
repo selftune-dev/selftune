@@ -17,6 +17,7 @@ import {
   AlertCircleIcon,
   CheckCircleIcon,
   ChevronDownIcon,
+  EyeIcon,
   RefreshCwIcon,
   RocketIcon,
 } from "lucide-react";
@@ -118,6 +119,55 @@ const BUCKET_CFG: Record<TrustBucket, { label: string; accent: string; dot: stri
 
 // Ambient bar heights for hero background
 const BARS = [35, 55, 40, 70, 45, 80, 30, 65, 50, 75, 38, 60, 42, 72];
+const WATCHLIST_STORAGE_KEY = "selftune-overview-watchlist";
+
+function loadStoredWatchlist(): string[] {
+  try {
+    const raw = localStorage.getItem(WATCHLIST_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredWatchlist(skills: string[]): void {
+  try {
+    localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(skills));
+  } catch {
+    /* ignore */
+  }
+}
+
+function deriveDefaultWatchlist(
+  skills: SkillSummary[],
+  trustWatchlist: TrustWatchlistEntry[],
+  limit = 10,
+): string[] {
+  const bucketOrder: TrustBucket[] = ["at_risk", "improving", "uncertain", "stable"];
+  const ranked = [...trustWatchlist].sort((a, b) => {
+    const aRank = bucketOrder.indexOf(a.bucket);
+    const bRank = bucketOrder.indexOf(b.bucket);
+    if (aRank !== bRank) return aRank - bRank;
+    return (b.last_seen ?? "").localeCompare(a.last_seen ?? "");
+  });
+  const picked = ranked.slice(0, limit).map((entry) => entry.skill_name);
+  if (picked.length >= limit) return picked;
+
+  const seen = new Set(picked);
+  for (const skill of [...skills].sort((a, b) =>
+    (b.last_seen ?? "").localeCompare(a.last_seen ?? ""),
+  )) {
+    if (seen.has(skill.skill_name)) continue;
+    picked.push(skill.skill_name);
+    seen.add(skill.skill_name);
+    if (picked.length >= limit) break;
+  }
+  return picked;
+}
 
 // ---------------------------------------------------------------------------
 // OnboardingBanner
@@ -447,6 +497,8 @@ function ComparisonGrid({
     () => new Map(trustWatchlist.map((entry) => [entry.skill_name, entry])),
     [trustWatchlist],
   );
+  const [viewMode, setViewMode] = useState<"watched" | "all">("watched");
+  const [watchlist, setWatchlist] = useState<string[]>(() => loadStoredWatchlist());
   const latestEvolutionBySkill = useMemo(() => {
     const map = new Map<string, EvolutionEntry>();
     for (const entry of evolution) {
@@ -455,9 +507,15 @@ function ComparisonGrid({
     }
     return map;
   }, [evolution]);
+  const effectiveWatchlist = useMemo(() => {
+    const available = new Set(skills.map((skill) => skill.skill_name));
+    const cleaned = watchlist.filter((skill) => available.has(skill));
+    if (cleaned.length > 0) return cleaned;
+    return deriveDefaultWatchlist(skills, trustWatchlist);
+  }, [skills, trustWatchlist, watchlist]);
 
   const rows = useMemo(() => {
-    return [...skills]
+    const ordered = [...skills]
       .map((skill) => {
         const trust = trustBySkill.get(skill.skill_name);
         return {
@@ -476,7 +534,22 @@ function ComparisonGrid({
         if (aRank !== bRank) return aRank - bRank;
         return (b.skill.last_seen ?? "").localeCompare(a.skill.last_seen ?? "");
       });
-  }, [latestEvolutionBySkill, skills, trustBySkill]);
+    if (viewMode === "all") return ordered;
+    const watched = new Set(effectiveWatchlist);
+    return ordered.filter((row) => watched.has(row.skill.skill_name));
+  }, [effectiveWatchlist, latestEvolutionBySkill, skills, trustBySkill, viewMode]);
+
+  const watchedCount = effectiveWatchlist.length;
+
+  const toggleWatched = (skillName: string) => {
+    setWatchlist((current) => {
+      const next = current.includes(skillName)
+        ? current.filter((name) => name !== skillName)
+        : [...current, skillName];
+      saveStoredWatchlist(next);
+      return next;
+    });
+  };
 
   return (
     <Card className="col-span-12 border-none bg-muted shadow-none py-0">
@@ -490,73 +563,131 @@ function ComparisonGrid({
           </CardDescription>
         </div>
         <CardAction>
-          <Link to="/skills-library" className="text-xs text-primary hover:underline font-medium">
-            View library
-          </Link>
+          <div className="flex items-center gap-3">
+            <Tabs
+              value={viewMode}
+              onValueChange={(value) => setViewMode(value as "watched" | "all")}
+            >
+              <TabsList variant="line" className="h-auto gap-2">
+                <TabsTrigger
+                  value="watched"
+                  className="font-headline text-[10px] uppercase tracking-[0.18em]"
+                >
+                  Watched
+                  <span className="ml-1.5 text-muted-foreground">{watchedCount}</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="all"
+                  className="font-headline text-[10px] uppercase tracking-[0.18em]"
+                >
+                  All Skills
+                  <span className="ml-1.5 text-muted-foreground">{skills.length}</span>
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <Link to="/skills-library" className="text-xs font-medium text-primary hover:underline">
+              View library
+            </Link>
+          </div>
         </CardAction>
       </CardHeader>
 
       <CardContent className="themed-scroll overflow-x-auto px-5 py-5">
         <div className="min-w-[780px]">
-          <div className="grid grid-cols-[minmax(180px,2.2fr)_1fr_0.9fr_0.9fr_1.3fr_1fr] gap-3 px-3 pb-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+          <div className="mb-3 rounded-xl bg-background/35 px-3 py-2 text-xs text-muted-foreground">
+            {viewMode === "watched"
+              ? "Your watched skills stay pinned here. Add or remove them directly from the grid."
+              : "All installed skills, sorted by current trust priority."}
+          </div>
+          <div className="grid grid-cols-[minmax(180px,2.2fr)_1fr_0.9fr_0.9fr_1.3fr_1fr_0.9fr] gap-3 px-3 pb-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
             <span>Skill</span>
             <span>Trigger Rate</span>
             <span>Checks</span>
             <span>Sessions</span>
             <span>Last Evolution</span>
             <span>Status</span>
+            <span className="text-right">Watch</span>
           </div>
           <div className="space-y-1.5">
             {rows.map(({ skill, trust, lastEvolution }) => {
               const bucketCfg = trust ? BUCKET_CFG[trust.bucket] : BUCKET_CFG.uncertain;
               const triggerRate = trust?.pass_rate ?? skill.pass_rate;
+              const isWatched = effectiveWatchlist.includes(skill.skill_name);
               return (
-                <Link
+                <div
                   key={skill.skill_name}
-                  to={`/skills/${encodeURIComponent(skill.skill_name)}`}
-                  className="grid grid-cols-[minmax(180px,2.2fr)_1fr_0.9fr_0.9fr_1.3fr_1fr] items-center gap-3 rounded-xl bg-background/35 px-3 py-3 text-sm transition-colors hover:bg-background/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  className="grid grid-cols-[minmax(180px,2.2fr)_1fr_0.9fr_0.9fr_1.3fr_1fr_0.9fr] items-center gap-3 rounded-xl bg-background/35 px-3 py-3 text-sm transition-colors hover:bg-background/50"
                 >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{skill.skill_name}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {skill.skill_scope ?? "Unscoped"}
-                    </p>
-                  </div>
-                  <div className="font-medium">
-                    {Number.isFinite(triggerRate)
-                      ? `${Math.round((triggerRate ?? 0) * 100)}%`
-                      : "—"}
-                  </div>
-                  <div className="text-muted-foreground">{trust?.checks ?? skill.total_checks}</div>
-                  <div className="text-muted-foreground">{skill.unique_sessions}</div>
-                  <div className="min-w-0">
-                    {lastEvolution ? (
-                      <>
-                        <p className="truncate text-sm">
-                          {lastEvolution.action.replace(/_/g, " ")}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {relativeTime(lastEvolution.timestamp)}
-                        </p>
-                      </>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">No evolutions yet</span>
-                    )}
-                  </div>
-                  <div>
-                    <Badge
-                      variant="outline"
-                      className={`border-transparent ${bucketCfg.accent} bg-background/55`}
+                  <Link
+                    to={`/skills/${encodeURIComponent(skill.skill_name)}`}
+                    className="contents focus-visible:outline-none"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{skill.skill_name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {skill.skill_scope ?? "Unscoped"}
+                      </p>
+                    </div>
+                    <div className="font-medium">
+                      {Number.isFinite(triggerRate)
+                        ? `${Math.round((triggerRate ?? 0) * 100)}%`
+                        : "—"}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {trust?.checks ?? skill.total_checks}
+                    </div>
+                    <div className="text-muted-foreground">{skill.unique_sessions}</div>
+                    <div className="min-w-0">
+                      {lastEvolution ? (
+                        <>
+                          <p className="truncate text-sm">
+                            {lastEvolution.action.replace(/_/g, " ")}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {relativeTime(lastEvolution.timestamp)}
+                          </p>
+                        </>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No evolutions yet</span>
+                      )}
+                    </div>
+                    <div>
+                      <Badge
+                        variant="outline"
+                        className={`border-transparent ${bucketCfg.accent} bg-background/55`}
+                      >
+                        <span
+                          className={`mr-1.5 inline-block size-1.5 rounded-full ${bucketCfg.dot}`}
+                        />
+                        {bucketCfg.label}
+                      </Badge>
+                    </div>
+                  </Link>
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      variant={isWatched ? "secondary" : "ghost"}
+                      size="sm"
+                      className="h-8 gap-1.5 px-2 text-xs"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        toggleWatched(skill.skill_name);
+                      }}
                     >
-                      <span
-                        className={`mr-1.5 inline-block size-1.5 rounded-full ${bucketCfg.dot}`}
-                      />
-                      {bucketCfg.label}
-                    </Badge>
+                      <EyeIcon className="size-3.5" />
+                      {isWatched ? "Watching" : "Watch"}
+                    </Button>
                   </div>
-                </Link>
+                </div>
               );
             })}
+            {rows.length === 0 && (
+              <div className="rounded-xl bg-background/30 px-3 py-6 text-sm text-muted-foreground">
+                No watched skills yet. Switch to{" "}
+                <span className="font-medium text-foreground">All Skills</span> and add the ones you
+                want to track closely.
+              </div>
+            )}
           </div>
         </div>
       </CardContent>
