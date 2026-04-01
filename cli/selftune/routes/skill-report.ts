@@ -165,11 +165,6 @@ export function handleSkillReport(
   const invPageRows = invHasMore
     ? invocationsWithConfidence.slice(0, invLimit)
     : invocationsWithConfidence;
-  const invLastRow = invPageRows[invPageRows.length - 1];
-  const invNextCursor =
-    invHasMore && invLastRow
-      ? { timestamp: invLastRow.timestamp, id: invLastRow.skill_invocation_id }
-      : null;
 
   // Not-found check — after all enrichment queries so evidence-only skills aren't 404'd
   const hasData =
@@ -398,6 +393,7 @@ export function handleSkillReport(
   let inlineQueryCount = 0;
   let userPromptCount = 0;
   let metaPromptCount = 0;
+  let internalPromptCount = 0;
   let noPromptCount = 0;
   let systemLikeCount = 0;
   let invModeCount = 0;
@@ -406,13 +402,14 @@ export function handleSkillReport(
   let scopeCount = 0;
 
   for (const inv of allInvocations) {
+    const queryText = inv.inline_query || inv.prompt_text || "";
     if (inv.matched_prompt_id != null) promptLinked++;
     if (inv.inline_query != null && inv.inline_query !== "") inlineQueryCount++;
     if (inv.prompt_kind === "user") userPromptCount++;
     if (inv.prompt_kind === "meta") metaPromptCount++;
+    if (isInternalSelftunePrompt(queryText, inv.prompt_kind)) internalPromptCount++;
     if (inv.matched_prompt_id == null && (inv.inline_query == null || inv.inline_query === ""))
       noPromptCount++;
-    const queryText = inv.inline_query || inv.prompt_text || "";
     if (isPollutingPrompt(queryText, inv.prompt_kind)) systemLikeCount++;
     if (inv.invocation_mode != null && inv.invocation_mode !== "") invModeCount++;
     if (inv.confidence != null) confCount++;
@@ -425,6 +422,7 @@ export function handleSkillReport(
     inline_query_rate: safeDiv(inlineQueryCount, totalInv),
     user_prompt_rate: safeDiv(userPromptCount, totalInv),
     meta_prompt_rate: safeDiv(metaPromptCount, totalInv),
+    internal_prompt_rate: safeDiv(internalPromptCount, totalInv),
     no_prompt_rate: safeDiv(noPromptCount, totalInv),
     system_like_rate: safeDiv(systemLikeCount, totalInv),
     invocation_mode_coverage: safeDiv(invModeCount, totalInv),
@@ -506,15 +504,98 @@ export function handleSkillReport(
     "canonical" | "repaired_trigger" | "repaired_contextual_miss" | "legacy_materialized",
     number
   >();
-  for (const inv of allInvocations) {
-    const kind = classifyObservationKind(
+  const enrichedInvocations = allInvocations.map((inv) => {
+    const queryText = inv.inline_query || inv.prompt_text || "";
+    const isPolluting = isPollutingPrompt(queryText, inv.prompt_kind);
+    const observation_kind = classifyObservationKind(
       inv.skill_invocation_id,
       inv.capture_mode,
       inv.triggered,
       inv.raw_source_ref,
     );
-    observationBreakdownMap.set(kind, (observationBreakdownMap.get(kind) ?? 0) + 1);
+    return {
+      ...inv,
+      queryText,
+      isPolluting,
+      observation_kind,
+    };
+  });
+
+  for (const inv of enrichedInvocations) {
+    observationBreakdownMap.set(
+      inv.observation_kind,
+      (observationBreakdownMap.get(inv.observation_kind) ?? 0) + 1,
+    );
   }
+
+  const operationalInvocations = enrichedInvocations.filter((inv) => !inv.isPolluting);
+  const trustInvocationsRaw = operationalInvocations.filter(
+    (inv) => inv.observation_kind !== "legacy_materialized",
+  );
+
+  const normalizeQueryForGrouping = (query: string) =>
+    query.replace(/\s+/g, " ").trim().toLowerCase();
+
+  const dedupeTrustInvocations = <T extends (typeof trustInvocationsRaw)[number]>(rows: T[]) => {
+    const grouped = new Map<string, T[]>();
+    for (const row of rows) {
+      const normalizedQuery = normalizeQueryForGrouping(row.queryText);
+      const key =
+        normalizedQuery.length > 0
+          ? `${row.session_id}::${normalizedQuery}`
+          : `${row.skill_invocation_id}`;
+      const arr = grouped.get(key);
+      if (arr) arr.push(row);
+      else grouped.set(key, [row]);
+    }
+
+    return [...grouped.values()]
+      .map((group) => {
+        const sorted = [...group].sort((a, b) => {
+          const aScore =
+            (a.triggered === 1 ? 100 : 0) +
+            (a.observation_kind === "canonical" ? 20 : 0) +
+            (a.observation_kind === "repaired_trigger" ? 15 : 0) +
+            (a.confidence != null ? 5 : 0);
+          const bScore =
+            (b.triggered === 1 ? 100 : 0) +
+            (b.observation_kind === "canonical" ? 20 : 0) +
+            (b.observation_kind === "repaired_trigger" ? 15 : 0) +
+            (b.confidence != null ? 5 : 0);
+          if (aScore !== bScore) return bScore - aScore;
+          return (b.timestamp ?? "").localeCompare(a.timestamp ?? "");
+        });
+        const primary = sorted[0]!;
+        return {
+          ...primary,
+          historical_context:
+            primary.triggered === 1 && group.some((row) => row.triggered === 0)
+              ? ("previously_missed" as const)
+              : null,
+        };
+      })
+      .sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
+  };
+
+  const trustInvocations = dedupeTrustInvocations(trustInvocationsRaw);
+
+  const trustTotalInv = trustInvocations.length;
+  const trustDistinctSessions = new Set(trustInvocations.map((r) => r.session_id));
+  const trustDistinctWorkspaces = new Set(
+    trustInvocations.map((r) => r.workspace_path).filter(Boolean),
+  );
+  const trustTimestamps = trustInvocations
+    .map((r) => r.timestamp)
+    .filter((t): t is string => t != null);
+
+  const legacyRows = enrichedInvocations.filter(
+    (inv) => inv.observation_kind === "legacy_materialized",
+  ).length;
+  const repairedRows = enrichedInvocations.filter(
+    (inv) =>
+      inv.observation_kind === "repaired_trigger" ||
+      inv.observation_kind === "repaired_contextual_miss",
+  ).length;
 
   const data_hygiene = {
     naming_variants: namingVariants.map((r) => r.skill_name),
@@ -524,7 +605,71 @@ export function handleSkillReport(
       kind,
       count,
     })),
+    raw_checks: totalInv,
+    operational_checks: trustTotalInv,
+    internal_prompt_rows: internalPromptCount,
+    internal_prompt_rate: safeDiv(internalPromptCount, totalInv),
+    legacy_rows: legacyRows,
+    legacy_rate: safeDiv(legacyRows, totalInv),
+    repaired_rows: repairedRows,
+    repaired_rate: safeDiv(repairedRows, totalInv),
   };
+
+  // Recompute trust-facing metrics from operational non-legacy observations.
+  const trustPromptLinked = trustInvocations.filter((inv) => inv.matched_prompt_id != null).length;
+  const trustInlineQueryCount = trustInvocations.filter(
+    (inv) => inv.inline_query != null && inv.inline_query !== "",
+  ).length;
+  const trustUserPromptCount = trustInvocations.filter((inv) => inv.prompt_kind === "user").length;
+  const trustMetaPromptCount = trustInvocations.filter((inv) => inv.prompt_kind === "meta").length;
+  const trustNoPromptCount = trustInvocations.filter(
+    (inv) => inv.matched_prompt_id == null && (inv.inline_query == null || inv.inline_query === ""),
+  ).length;
+  const trustSystemLikeCount = trustInvocations.filter((inv) => inv.isPolluting).length;
+  const trustInvModeCount = trustInvocations.filter(
+    (inv) => inv.invocation_mode != null && inv.invocation_mode !== "",
+  ).length;
+  const trustConfCount = trustInvocations.filter((inv) => inv.confidence != null).length;
+  const trustSourceCount = trustInvocations.filter(
+    (inv) => inv.source != null && inv.source !== "",
+  ).length;
+  const trustScopeCount = trustInvocations.filter(
+    (inv) => inv.skill_scope != null && inv.skill_scope !== "",
+  ).length;
+
+  coverage.checks = trustTotalInv;
+  coverage.sessions = trustDistinctSessions.size;
+  coverage.workspaces = trustDistinctWorkspaces.size;
+  coverage.first_seen =
+    trustTimestamps.length > 0 ? trustTimestamps[trustTimestamps.length - 1] : null;
+  coverage.last_seen = trustTimestamps.length > 0 ? trustTimestamps[0] : null;
+
+  evidence_quality.prompt_link_rate = safeDiv(trustPromptLinked, trustTotalInv);
+  evidence_quality.inline_query_rate = safeDiv(trustInlineQueryCount, trustTotalInv);
+  evidence_quality.user_prompt_rate = safeDiv(trustUserPromptCount, trustTotalInv);
+  evidence_quality.meta_prompt_rate = safeDiv(trustMetaPromptCount, trustTotalInv);
+  evidence_quality.no_prompt_rate = safeDiv(trustNoPromptCount, trustTotalInv);
+  evidence_quality.system_like_rate = safeDiv(trustSystemLikeCount, trustTotalInv);
+  evidence_quality.invocation_mode_coverage = safeDiv(trustInvModeCount, trustTotalInv);
+  evidence_quality.confidence_coverage = safeDiv(trustConfCount, trustTotalInv);
+  evidence_quality.source_coverage = safeDiv(trustSourceCount, trustTotalInv);
+  evidence_quality.scope_coverage = safeDiv(trustScopeCount, trustTotalInv);
+
+  const trustMissedTriggers = trustInvocations.filter((r) => r.triggered === 0).length;
+  const trustWithConfidence = trustInvocations.filter((r) => r.confidence != null);
+  const trustAvgConfidence =
+    trustWithConfidence.length > 0
+      ? trustWithConfidence.reduce((s, r) => s + (r.confidence ?? 0), 0) /
+        trustWithConfidence.length
+      : null;
+  const trustLowConfCount = trustWithConfidence.filter((r) => (r.confidence ?? 0) < 0.5).length;
+
+  routing_quality.missed_triggers = trustMissedTriggers;
+  routing_quality.miss_rate = safeDiv(trustMissedTriggers, trustTotalInv);
+  routing_quality.avg_confidence = trustAvgConfidence;
+  routing_quality.confidence_coverage = safeDiv(trustConfCount, trustTotalInv);
+  routing_quality.low_confidence_rate =
+    trustWithConfidence.length > 0 ? safeDiv(trustLowConfCount, trustWithConfidence.length) : null;
 
   // Examples (limit 10 per category)
   type ExampleRowInternal = {
@@ -545,15 +690,16 @@ export function handleSkillReport(
       | "repaired_trigger"
       | "repaired_contextual_miss"
       | "legacy_materialized";
+    historical_context: "previously_missed" | null;
   };
 
   const goodExamples: ExampleRowInternal[] = [];
   const missedExamples: ExampleRowInternal[] = [];
   const noisyExamples: ExampleRowInternal[] = [];
 
-  for (const inv of allInvocations) {
-    const queryText = inv.inline_query || inv.prompt_text || "";
-    const sysLike = isPollutingPrompt(queryText, inv.prompt_kind);
+  for (const inv of dedupeTrustInvocations(trustInvocationsRaw)) {
+    const queryText = inv.queryText;
+    const sysLike = inv.isPolluting;
     const queryOrigin: "inline_query" | "matched_prompt" | "missing" =
       inv.inline_query != null && inv.inline_query !== ""
         ? "inline_query"
@@ -573,27 +719,46 @@ export function handleSkillReport(
       workspace_path: inv.workspace_path,
       query_origin: queryOrigin,
       is_system_like: sysLike,
-      observation_kind: classifyObservationKind(
-        inv.skill_invocation_id,
-        inv.capture_mode,
-        inv.triggered,
-        inv.raw_source_ref,
-      ),
+      observation_kind: inv.observation_kind,
+      historical_context: inv.historical_context,
     };
 
-    if (sysLike && noisyExamples.length < 10) {
-      noisyExamples.push(row);
-    } else if (inv.triggered === 0 && missedExamples.length < 10) {
+    if (inv.triggered === 0 && missedExamples.length < 10) {
       missedExamples.push(row);
     } else if (
       inv.triggered === 1 &&
       queryText !== "" &&
-      !sysLike &&
       (queryOrigin === "inline_query" || inv.prompt_kind === "user" || inv.prompt_kind == null) &&
       goodExamples.length < 10
     ) {
       goodExamples.push(row);
     }
+  }
+
+  for (const inv of enrichedInvocations) {
+    if (!inv.isPolluting || noisyExamples.length >= 10) continue;
+    const queryOrigin: "inline_query" | "matched_prompt" | "missing" =
+      inv.inline_query != null && inv.inline_query !== ""
+        ? "inline_query"
+        : inv.matched_prompt_id != null
+          ? "matched_prompt"
+          : "missing";
+    noisyExamples.push({
+      timestamp: inv.timestamp,
+      session_id: inv.session_id,
+      query_text: inv.queryText,
+      triggered: inv.triggered === 1,
+      confidence: inv.confidence,
+      invocation_mode: inv.invocation_mode,
+      prompt_kind: inv.prompt_kind,
+      source: inv.source,
+      platform: inv.platform,
+      workspace_path: inv.workspace_path,
+      query_origin: queryOrigin,
+      is_system_like: true,
+      observation_kind: inv.observation_kind,
+      historical_context: null,
+    });
   }
 
   const examples = {
@@ -613,9 +778,9 @@ export function handleSkillReport(
   let trustState: TrustStateType;
   let trustSummary: string;
 
-  if (report.usage.total_checks < 5) {
+  if (coverage.checks < 5) {
     trustState = "low_sample";
-    trustSummary = `Too few observations to assess trust — only ${report.usage.total_checks} checks recorded.`;
+    trustSummary = `Too few operational observations to assess trust — only ${coverage.checks} checks recorded.`;
   } else if (latestAuditRow?.action === "rolled_back") {
     trustState = "rolled_back";
     trustSummary = "Recent evolution was rolled back — review evidence before re-deploying.";
@@ -626,13 +791,14 @@ export function handleSkillReport(
     trustState = "validated";
     trustSummary = "Validated with evidence but not yet deployed.";
   } else if (
-    missedTriggers > 0 ||
+    routing_quality.missed_triggers > 0 ||
     evidence_quality.system_like_rate > 0.1 ||
     evidence_quality.prompt_link_rate < 0.3
   ) {
     trustState = "watch";
     const reasons: string[] = [];
-    if (missedTriggers > 0) reasons.push(`${missedTriggers} missed triggers`);
+    if (routing_quality.missed_triggers > 0)
+      reasons.push(`${routing_quality.missed_triggers} missed triggers`);
     if (evidence_quality.system_like_rate > 0.1)
       reasons.push(`${(evidence_quality.system_like_rate * 100).toFixed(0)}% system-like queries`);
     if (evidence_quality.prompt_link_rate < 0.3)
@@ -661,18 +827,32 @@ export function handleSkillReport(
       total_input_tokens: executionRow?.total_input_tokens ?? 0,
       total_output_tokens: executionRow?.total_output_tokens ?? 0,
     },
-    canonical_invocations: invPageRows.map((i) => ({
-      ...i,
+    canonical_invocations: trustInvocations.slice(0, invLimit).map((i) => ({
+      timestamp: i.timestamp,
+      session_id: i.session_id,
+      skill_name: i.skill_name,
+      invocation_mode: i.invocation_mode,
       triggered: i.triggered === 1,
-      observation_kind: classifyObservationKind(
-        i.skill_invocation_id,
-        i.capture_mode,
-        i.triggered,
-        i.raw_source_ref,
-      ),
+      confidence: i.confidence,
+      tool_name: i.tool_name,
+      agent_type: i.agent_type,
+      query: i.queryText,
+      source: i.source,
+      skill_path: i.skill_path,
+      skill_scope: i.skill_scope,
+      observation_kind: i.observation_kind,
+      historical_context: i.historical_context,
     })),
     invocations_pagination:
-      invNextCursor || invCursor ? { next_cursor: invNextCursor, has_more: invHasMore } : undefined,
+      trustInvocations.length > invLimit
+        ? {
+            next_cursor: {
+              timestamp: trustInvocations[invLimit - 1]!.timestamp!,
+              id: trustInvocations[invLimit - 1]!.skill_invocation_id,
+            },
+            has_more: true,
+          }
+        : undefined,
     duration_stats: {
       avg_duration_ms: executionRow?.avg_duration_ms ?? 0,
       total_duration_ms: executionRow?.total_duration_ms ?? 0,

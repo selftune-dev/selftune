@@ -7,9 +7,6 @@ import {
   Button,
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   Table,
   TableBody,
   TableCell,
@@ -47,6 +44,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import {
   DataQualityPanel,
+  historicalContextBadge,
   observationBadge,
   PromptEvidencePanel,
   SkillReportTopRow,
@@ -258,6 +256,7 @@ function SessionGroup({
     tool_name: string | null;
     agent_type: string | null;
     observation_kind?: ObservationKind | null;
+    historical_context?: "previously_missed" | null;
   }>;
   defaultExpanded: boolean;
 }) {
@@ -444,12 +443,33 @@ function SessionGroup({
                   <TableCell className="py-2">
                     {(() => {
                       const observation = observationBadge(inv.observation_kind);
+                      const historicalContext = historicalContextBadge(inv.historical_context);
                       return observation ? (
-                        <Badge variant={observation.variant} className="text-[10px] font-normal">
-                          {observation.label}
-                        </Badge>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge variant={observation.variant} className="text-[10px] font-normal">
+                            {observation.label}
+                          </Badge>
+                          {historicalContext && (
+                            <Badge
+                              variant={historicalContext.variant}
+                              className="text-[10px] font-normal"
+                            >
+                              {historicalContext.label}
+                            </Badge>
+                          )}
+                        </div>
                       ) : (
-                        <span className="text-[11px] text-muted-foreground">canonical</span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[11px] text-muted-foreground">canonical</span>
+                          {historicalContext && (
+                            <Badge
+                              variant={historicalContext.variant}
+                              className="text-[10px] font-normal"
+                            >
+                              {historicalContext.label}
+                            </Badge>
+                          )}
+                        </div>
                       );
                     })()}
                   </TableCell>
@@ -684,6 +704,10 @@ export function SkillReport() {
   const evolutionState = data?.evolution_state;
   const dataHygiene = data?.data_hygiene;
   const examples = data?.examples;
+  const rawChecks = dataHygiene?.raw_checks ?? coverage?.checks ?? data?.usage.total_checks ?? 0;
+  const operationalChecks =
+    dataHygiene?.operational_checks ?? coverage?.checks ?? data?.usage.total_checks ?? 0;
+  const excludedChecks = Math.max(rawChecks - operationalChecks, 0);
 
   // Filtered invocations for the invocations tab
   const mergedInvocations = useMemo(() => {
@@ -698,6 +722,7 @@ export function SkillReport() {
       tool_name: ci.tool_name ?? null,
       agent_type: ci.agent_type ?? null,
       observation_kind: ci.observation_kind ?? "canonical",
+      historical_context: ci.historical_context ?? null,
     }));
     invs.sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
     return invs;
@@ -872,13 +897,22 @@ export function SkillReport() {
           </div>
           {/* Trust summary -- full-width line */}
           {trust?.summary && (
-            <div className="flex items-center gap-3 text-sm leading-relaxed text-muted-foreground">
-              <span>{trust.summary}</span>
-              {evolutionState?.latest_action && evolutionState?.latest_timestamp && (
-                <span className="text-[11px] text-muted-foreground/70 font-mono">
-                  Latest: {evolutionState.latest_action} ({timeAgo(evolutionState.latest_timestamp)}
-                  )
-                </span>
+            <div className="space-y-1.5 text-sm leading-relaxed text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-3">
+                <span>{trust.summary}</span>
+                {evolutionState?.latest_action && evolutionState?.latest_timestamp && (
+                  <span className="text-[11px] text-muted-foreground/70 font-mono">
+                    Latest: {evolutionState.latest_action} (
+                    {timeAgo(evolutionState.latest_timestamp)})
+                  </span>
+                )}
+              </div>
+              {excludedChecks > 0 && (
+                <div className="text-[12px] text-muted-foreground/80">
+                  Based on <span className="font-medium text-foreground">{operationalChecks}</span>{" "}
+                  real checks. <span className="font-medium text-foreground">{excludedChecks}</span>{" "}
+                  internal or legacy rows are excluded from trust scoring.
+                </div>
               )}
             </div>
           )}
@@ -886,25 +920,21 @@ export function SkillReport() {
 
         {showOnboarding && (
           <Card className="rounded-xl border border-primary/15 bg-primary/5">
-            <CardHeader className="gap-2 px-4 py-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <CardTitle className="text-base">New to selftune?</CardTitle>
-                  <CardDescription>
-                    This page tells a simple story: what selftune observed, what it proposed, how it
-                    tested the change, and whether anything is safe to deploy.
-                  </CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setIsGuideOpen(true)}>
-                    Open guide
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={dismissOnboarding}>
-                    Hide
-                  </Button>
-                </div>
+            <CardContent className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <div className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">New to selftune?</span> Start with the
+                summary below, then open the guide if you want the full improvement loop explained
+                step by step.
               </div>
-            </CardHeader>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setIsGuideOpen(true)}>
+                  Open guide
+                </Button>
+                <Button variant="ghost" size="sm" onClick={dismissOnboarding}>
+                  Hide
+                </Button>
+              </div>
+            </CardContent>
           </Card>
         )}
 
@@ -928,6 +958,7 @@ export function SkillReport() {
             evidenceQuality={evidenceQuality}
             routingQuality={routingQuality}
             evolutionState={evolutionState}
+            dataHygiene={dataHygiene}
             fallbackChecks={data.usage.total_checks}
             fallbackSessions={data.sessions_with_skill}
             nextActionText={nextAction.text}
@@ -980,7 +1011,10 @@ export function SkillReport() {
                   {mergedInvocations.length}
                 </Badge>
               </TooltipTrigger>
-              <TooltipContent>Recent skill triggers and their outcomes</TooltipContent>
+              <TooltipContent>
+                Real usage and repaired misses only. Internal selftune traffic and legacy residue
+                are excluded from this working set.
+              </TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger
@@ -1051,6 +1085,16 @@ export function SkillReport() {
               </Card>
             ) : (
               <div className="space-y-2">
+                {excludedChecks > 0 && (
+                  <div className="rounded-xl border border-border/10 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                    Showing{" "}
+                    <span className="font-medium text-foreground">{mergedInvocations.length}</span>{" "}
+                    operational invocations.{" "}
+                    <span className="font-medium text-foreground">{excludedChecks}</span> internal
+                    or legacy rows are tracked in Data Quality instead of being mixed into this
+                    working set.
+                  </div>
+                )}
                 {/* Filters */}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">

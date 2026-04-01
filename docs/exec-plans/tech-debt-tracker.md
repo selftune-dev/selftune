@@ -32,6 +32,7 @@ Track known technical debt with priority and ownership.
 | TD-024 | Explore generating AGENTS.md-style if/then enforcement rules from evolved skill descriptions — OpenAI uses explicit "before X, invoke $skill" policy; selftune could auto-generate these from routing tables.                                                   | Evolution | Low      | —     | Open   | 2026-03-28 | 2026-03-28 |
 | TD-025 | Document model-script boundary principle. Resolved: added as golden principle #16 "Model-Script Boundary" in `docs/golden-principles.md` with concrete selftune examples.                                                                                       | Docs      | Low      | —     | Closed | 2026-03-28 | 2026-03-28 |
 | TD-026 | Extract shared hook logic and add per-agent CLI adapters for universal hook support (Codex, OpenCode, Pi, Cline). No NPM packages needed — install commands write shell shims. See `docs/exec-plans/deferred/universal-hooks-multi-agent.md`.                   | Hooks     | Medium   | —     | Open   | 2026-03-29 | 2026-03-29 |
+| TD-027 | Cloud V2 push API still rejects some alpha upload payloads from SQLite-backed staging (`HTTP 400 Invalid V2 push payload` with null string fields). Align cloud API schema/parsers with current OSS payload shape before expecting queue health to fully recover. | Cloud     | High     | —     | Open   | 2026-04-01 | 2026-04-01 |
 
 ## Priority Definitions
 

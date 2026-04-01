@@ -71,6 +71,39 @@ export interface RepairSQLiteResult {
   repaired_pairs_inserted: number;
 }
 
+function deleteRedundantLegacyRows(db: Database): number {
+  const deleteTriggered = db.run(`
+    DELETE FROM skill_invocations
+    WHERE skill_invocation_id LIKE '%:su:%'
+      AND triggered = 1
+      AND EXISTS (
+        SELECT 1
+        FROM skill_invocations current
+        WHERE current.session_id = skill_invocations.session_id
+          AND lower(current.skill_name) = lower(skill_invocations.skill_name)
+          AND current.skill_invocation_id NOT LIKE '%:su:%'
+          AND current.triggered = 1
+      )
+  `);
+
+  const deleteMisses = db.run(`
+    DELETE FROM skill_invocations
+    WHERE skill_invocation_id LIKE '%:su:%'
+      AND triggered = 0
+      AND EXISTS (
+        SELECT 1
+        FROM skill_invocations current
+        WHERE current.session_id = skill_invocations.session_id
+          AND lower(current.skill_name) = lower(skill_invocations.skill_name)
+          AND COALESCE(current.query, '') = COALESCE(skill_invocations.query, '')
+          AND current.skill_invocation_id NOT LIKE '%:su:%'
+          AND current.triggered = 0
+      )
+  `);
+
+  return deleteTriggered.changes + deleteMisses.changes;
+}
+
 function isEphemeralLauncherProjectRoot(projectRoot: string): boolean {
   return projectRoot.startsWith("/tmp/") || projectRoot.startsWith("/private/tmp/");
 }
@@ -644,6 +677,9 @@ export function persistRepairedSkillUsageToDb(
 
   db.run("BEGIN IMMEDIATE");
   try {
+    const redundantLegacyRows = deleteRedundantLegacyRows(db);
+    result.deleted_legacy_rows += redundantLegacyRows;
+
     for (const [key, pairRecords] of recordsByPair.entries()) {
       const { sessionId, skillName } = splitPairKey(key);
       const existing = selectExisting.get(sessionId, skillName) as

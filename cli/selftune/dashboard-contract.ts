@@ -249,6 +249,7 @@ export interface CanonicalInvocation {
   skill_path?: string | null;
   skill_scope?: string | null;
   observation_kind?: ObservationKind;
+  historical_context?: HistoricalContext | null;
 }
 
 export interface PromptSample {
@@ -437,6 +438,8 @@ export type ObservationKind =
   | "repaired_contextual_miss"
   | "legacy_materialized";
 
+export type HistoricalContext = "previously_missed";
+
 export interface ExampleRow {
   timestamp: string | null;
   session_id: string;
@@ -451,6 +454,7 @@ export interface ExampleRow {
   query_origin: "inline_query" | "matched_prompt" | "missing";
   is_system_like: boolean;
   observation_kind: ObservationKind;
+  historical_context?: HistoricalContext | null;
 }
 
 export interface TrustFields {
@@ -470,6 +474,7 @@ export interface TrustFields {
     inline_query_rate: number;
     user_prompt_rate: number;
     meta_prompt_rate: number;
+    internal_prompt_rate: number;
     no_prompt_rate: number;
     system_like_rate: number;
     invocation_mode_coverage: number;
@@ -497,6 +502,14 @@ export interface TrustFields {
     source_breakdown: Array<{ source: string; count: number }>;
     prompt_kind_breakdown: Array<{ kind: string; count: number }>;
     observation_breakdown: Array<{ kind: ObservationKind; count: number }>;
+    raw_checks: number;
+    operational_checks: number;
+    internal_prompt_rows: number;
+    internal_prompt_rate: number;
+    legacy_rows: number;
+    legacy_rate: number;
+    repaired_rows: number;
+    repaired_rate: number;
   };
   examples: {
     good: ExampleRow[];

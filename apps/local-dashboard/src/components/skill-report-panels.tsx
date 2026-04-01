@@ -33,6 +33,7 @@ import type { ReactNode } from "react";
 import type { ExampleRow, TrustFields, TrustState } from "@/types";
 
 type ObservationKind = ExampleRow["observation_kind"];
+type HistoricalContext = ExampleRow["historical_context"];
 
 export function observationBadge(kind: ObservationKind | null | undefined): {
   label: string;
@@ -50,9 +51,22 @@ export function observationBadge(kind: ObservationKind | null | undefined): {
   }
 }
 
+export function historicalContextBadge(context: HistoricalContext | null | undefined): {
+  label: string;
+  variant: "default" | "secondary" | "destructive" | "outline";
+} | null {
+  switch (context) {
+    case "previously_missed":
+      return { label: "previously missed", variant: "secondary" };
+    default:
+      return null;
+  }
+}
+
 function ExampleRowItem({ row }: { row: ExampleRow }) {
   const workspace = row.workspace_path ? row.workspace_path.split("/").slice(-2).join("/") : null;
   const observation = observationBadge(row.observation_kind);
+  const historicalContext = historicalContextBadge(row.historical_context);
 
   return (
     <TableRow className={!row.triggered ? "bg-destructive/5" : ""}>
@@ -81,6 +95,11 @@ function ExampleRowItem({ row }: { row: ExampleRow }) {
           {observation && (
             <Badge variant={observation.variant} className="text-[10px] font-normal">
               {observation.label}
+            </Badge>
+          )}
+          {historicalContext && (
+            <Badge variant={historicalContext.variant} className="text-[10px] font-normal">
+              {historicalContext.label}
             </Badge>
           )}
         </div>
@@ -430,6 +449,7 @@ export function SkillTrustNarrativePanel({
   evidenceQuality,
   routingQuality,
   evolutionState,
+  dataHygiene,
   fallbackChecks,
   fallbackSessions,
   nextActionText,
@@ -440,6 +460,7 @@ export function SkillTrustNarrativePanel({
   evidenceQuality?: TrustFields["evidence_quality"];
   routingQuality?: TrustFields["routing_quality"];
   evolutionState?: TrustFields["evolution_state"];
+  dataHygiene?: TrustFields["data_hygiene"];
   fallbackChecks: number;
   fallbackSessions: number;
   nextActionText: string;
@@ -447,6 +468,12 @@ export function SkillTrustNarrativePanel({
 }) {
   const checks = coverage?.checks ?? fallbackChecks;
   const sessions = coverage?.sessions ?? fallbackSessions;
+  const rawChecks = dataHygiene?.raw_checks ?? checks;
+  const internalRows = dataHygiene?.internal_prompt_rows ?? 0;
+  const legacyRows = dataHygiene?.legacy_rows ?? 0;
+  const repairedRows = dataHygiene?.repaired_rows ?? 0;
+  const excludedRows = Math.max(rawChecks - checks, 0);
+  const showTrustNote = excludedRows > 0 || legacyRows > 0 || repairedRows > 0;
 
   return (
     <Card className="rounded-xl border border-border/10 bg-card/95">
@@ -467,6 +494,34 @@ export function SkillTrustNarrativePanel({
         </div>
       </CardHeader>
       <CardContent className="space-y-4 px-4 pb-4 pt-0">
+        {showTrustNote && (
+          <div className="rounded-xl border border-primary/10 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">Trust note:</span> This summary is based
+            on <span className="font-medium text-foreground">{checks}</span> operational checks from
+            real usage.
+            {internalRows > 0 && (
+              <>
+                {" "}
+                <span className="font-medium text-foreground">{internalRows}</span> internal
+                selftune eval or optimizer prompts are excluded from trust scoring.
+              </>
+            )}
+            {legacyRows > 0 && (
+              <>
+                {" "}
+                <span className="font-medium text-foreground">{legacyRows}</span> legacy rows stay
+                in history only.
+              </>
+            )}
+            {repairedRows > 0 && (
+              <>
+                {" "}
+                <span className="font-medium text-foreground">{repairedRows}</span> repaired misses
+                come from transcript replay rather than first-party trigger events.
+              </>
+            )}
+          </div>
+        )}
         <div className="grid grid-cols-1 gap-3 @4xl/main:grid-cols-3">
           <StoryStep
             title="What selftune saw"
@@ -672,7 +727,8 @@ export function PromptEvidencePanel({ examples }: { examples?: TrustFields["exam
               Prompt Evidence
             </CardTitle>
             <CardDescription>
-              Successful triggers, real misses, and internal or polluted prompts.
+              Representative real usage first. Internal selftune traffic is separated so it does not
+              masquerade as normal skill use.
             </CardDescription>
           </div>
           <div className="hidden items-center gap-2 text-[10px] text-muted-foreground @3xl/main:flex">
@@ -789,6 +845,42 @@ export function DataQualityPanel({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6 p-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-border/15 bg-muted/30 p-3">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Raw vs Operational
+                </div>
+                <div className="mt-2 flex items-end gap-2">
+                  <div className="text-lg font-semibold tabular-nums text-foreground">
+                    {dataHygiene.operational_checks}
+                  </div>
+                  <div className="pb-0.5 text-xs text-muted-foreground">
+                    of {dataHygiene.raw_checks} checks
+                  </div>
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Operational checks exclude internal selftune eval and optimizer traffic.
+                </p>
+              </div>
+              <div className="rounded-xl border border-border/15 bg-muted/30 p-3">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                  Historical Residue
+                </div>
+                <div className="mt-2 flex items-end gap-2">
+                  <div className="text-lg font-semibold tabular-nums text-foreground">
+                    {dataHygiene.legacy_rows}
+                  </div>
+                  <div className="pb-0.5 text-xs text-muted-foreground">
+                    legacy / {dataHygiene.repaired_rows} repaired
+                  </div>
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Legacy rows are older materialized history. Repaired rows are transcript-based
+                  reconstructions.
+                </p>
+              </div>
+            </div>
+
             {dataHygiene.naming_variants && dataHygiene.naming_variants.length > 1 && (
               <div>
                 <h4 className="mb-2 font-headline text-[10px] uppercase tracking-[0.2em] text-muted-foreground">

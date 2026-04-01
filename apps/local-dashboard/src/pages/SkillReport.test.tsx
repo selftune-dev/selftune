@@ -160,6 +160,7 @@ beforeEach(() => {
       inline_query_rate: 0.16,
       user_prompt_rate: 0.4,
       meta_prompt_rate: 0.4,
+      internal_prompt_rate: 0.08,
       no_prompt_rate: 0.2,
       system_like_rate: 0.06,
       invocation_mode_coverage: 0.9,
@@ -187,6 +188,14 @@ beforeEach(() => {
       source_breakdown: [{ source: "claude", count: 10 }],
       prompt_kind_breakdown: [{ kind: "meta", count: 10 }],
       observation_breakdown: [{ kind: "canonical", count: 10 }],
+      raw_checks: 125,
+      operational_checks: 118,
+      internal_prompt_rows: 7,
+      internal_prompt_rate: 0.06,
+      legacy_rows: 3,
+      legacy_rate: 0.02,
+      repaired_rows: 6,
+      repaired_rate: 0.05,
     },
     examples: {
       good: [
