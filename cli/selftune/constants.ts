@@ -160,6 +160,11 @@ export const OPENCLAW_INGEST_MARKER = join(SELFTUNE_CONFIG_DIR, "openclaw-ingest
 
 /** Default output directory for contribution bundles. */
 export const CONTRIBUTIONS_DIR = join(SELFTUNE_CONFIG_DIR, "contributions");
+/** Creator-directed contribution preferences (per-skill opt-in state). */
+export const CONTRIBUTION_PREFERENCES_PATH = join(
+  SELFTUNE_CONFIG_DIR,
+  "contribution-preferences.json",
+);
 
 // ---------------------------------------------------------------------------
 // Sanitization constants (for contribute command)

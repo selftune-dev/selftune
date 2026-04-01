@@ -284,6 +284,8 @@ export function formatStatus(result: StatusResult): string {
   lines.push("selftune status");
   lines.push("\u2550".repeat(15));
   lines.push("");
+  lines.push(formatStatusSummary(result));
+  lines.push("");
 
   // Skills table
   const skillCount = result.skills.length;
@@ -349,6 +351,30 @@ export function formatStatus(result: StatusResult): string {
   lines.push(`System:             ${healthLabel} (${pass} pass, ${fail} fail, ${warn} warn)`);
 
   return lines.join("\n");
+}
+
+export function formatStatusSummary(result: StatusResult): string {
+  const watched = result.skills.length;
+  const improving = result.skills.filter((skill) => skill.trend === "up").length;
+  const needsAttention = result.skills.filter(
+    (skill) => skill.status === "WARNING" || skill.status === "CRITICAL",
+  ).length;
+
+  const watchedText = `${watched} ${watched === 1 ? "skill" : "skills"} watched`;
+  const improvingText =
+    improving > 0
+      ? `${improving} improving`
+      : result.lastSession
+        ? "no recent lift"
+        : "no recent data";
+  const attentionText =
+    needsAttention > 0
+      ? `${needsAttention} needing attention`
+      : watched > 0
+        ? "nothing urgent"
+        : "nothing tracked yet";
+
+  return `${watchedText} | ${improvingText} | ${attentionText}`;
 }
 
 // ---------------------------------------------------------------------------

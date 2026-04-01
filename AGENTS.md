@@ -97,10 +97,11 @@ selftune/
 │   │   ├── build-payloads.ts # Staging table → V2 canonical push payload builders
 │   │   ├── client.ts        # HTTP upload client with Bearer auth (never throws)
 │   │   └── flush.ts         # Queue flush with exponential backoff (409=success, 401/403=non-retryable)
-│   ├── contribute/          # Opt-in anonymized data export (M7)
+│   ├── contribute/          # Community contribution/export bundle flow (M7)
 │   │   ├── bundle.ts        # Bundle assembler
 │   │   ├── sanitize.ts      # Privacy sanitization (conservative/aggressive)
 │   │   └── contribute.ts    # CLI entry point + GitHub submission
+│   ├── contributions.ts     # Creator-directed sharing preferences (separate from community export)
 │   ├── observability.ts     # Health checks, log integrity, alpha queue health
 │   ├── status.ts            # Skill health summary (M6)
 │   ├── last.ts              # Last session insight (M6)

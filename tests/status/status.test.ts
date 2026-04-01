@@ -7,7 +7,7 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 
-import { computeStatus } from "../../cli/selftune/status.js";
+import { computeStatus, formatStatusSummary } from "../../cli/selftune/status.js";
 import type {
   DoctorResult,
   EvolutionAuditEntry,
@@ -524,5 +524,50 @@ describe("computeStatus", () => {
     const skillB = result.skills.find((s) => s.name === "skill-b");
     expect(skillA).toBeDefined();
     expect(skillB).toBeDefined();
+  });
+});
+
+describe("formatStatusSummary", () => {
+  test("summarizes watched, improving, and attention counts", () => {
+    const summary = formatStatusSummary({
+      skills: [
+        {
+          name: "healthy-skill",
+          passRate: 0.9,
+          trend: "up",
+          missedQueries: 0,
+          status: "HEALTHY",
+          snapshot: null,
+        },
+        {
+          name: "warning-skill",
+          passRate: 0.55,
+          trend: "stable",
+          missedQueries: 2,
+          status: "WARNING",
+          snapshot: null,
+        },
+      ],
+      unmatchedQueries: 0,
+      pendingProposals: 0,
+      lastSession: "2026-02-28T12:00:00Z",
+      system: { healthy: true, pass: 1, fail: 0, warn: 0 },
+    });
+
+    expect(summary).toContain("2 skills watched");
+    expect(summary).toContain("1 improving");
+    expect(summary).toContain("1 needing attention");
+  });
+
+  test("uses calm zero-state copy when nothing is tracked", () => {
+    const summary = formatStatusSummary({
+      skills: [],
+      unmatchedQueries: 0,
+      pendingProposals: 0,
+      lastSession: null,
+      system: { healthy: true, pass: 0, fail: 0, warn: 0 },
+    });
+
+    expect(summary).toBe("0 skills watched | no recent data | nothing tracked yet");
   });
 });

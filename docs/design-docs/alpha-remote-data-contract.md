@@ -26,7 +26,12 @@ Alpha uploads target the existing selftune cloud API's V2 push endpoint (`POST /
 - **Single auth model.** Users authenticate with `st_live_*` API keys via Bearer header — the same mechanism used for all cloud API interactions.
 - **Low cost for alpha volume.** The existing cloud infrastructure handles the expected alpha cohort (tens of users, thousands of records per day) without additional cost.
 
-### Relationship to the existing `contribute/` system
+### Relationship to the existing contribution surfaces
+
+The current product has three distinct sharing surfaces:
+- `selftune contribute` — manual community contribution bundle export
+- `selftune contributions` — local creator-directed sharing preferences
+- `selftune alpha upload` — user -> own cloud / alpha telemetry upload
 
 The `contribute/` system and the alpha upload pipeline serve different purposes but now share the same cloud API backend:
 
@@ -40,7 +45,9 @@ The `contribute/` system and the alpha upload pipeline serve different purposes 
 | **Data granularity** | Skill-level bundles with eval entries     | Session-level, invocation-level, evolution-level V2 canonical records      |
 | **Privacy level**    | Conservative or aggressive sanitization   | Explicit alpha consent for raw prompt/query text plus structured telemetry |
 
-Both systems target the same cloud API, but alpha upload is automatic (when enrolled and an API key is configured) while contribute requires manual invocation and confirmation.
+Both systems target the same cloud API, but alpha upload is automatic (when enrolled and an API key is configured) while community contribution requires manual invocation and confirmation.
+
+`selftune contributions` is intentionally separate: it stores future creator-directed sharing preferences locally and does not yet change alpha-upload behavior by itself.
 
 ---
 

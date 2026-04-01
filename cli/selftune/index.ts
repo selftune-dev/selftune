@@ -19,6 +19,7 @@
  *   selftune cron               — Scheduling & automation (setup, list, remove)
  *   selftune badge              — Generate skill health badges for READMEs
  *   selftune contribute         — Export anonymized skill data for community
+ *   selftune contributions      — Manage creator-directed sharing preferences
  *   selftune workflows          — Discover and manage multi-skill workflows
  *   selftune quickstart         — Guided onboarding: init, ingest, status, and suggestions
  *   selftune repair-skill-usage — Rebuild trustworthy skill usage from transcripts
@@ -60,6 +61,7 @@ Commands:
   cron               Scheduling & automation (setup, list, remove)
   badge              Generate skill health badges for READMEs
   contribute         Export anonymized skill data for community
+  contributions      Manage creator-directed sharing preferences
   workflows          Discover and manage multi-skill workflows
   quickstart         Guided onboarding: init, ingest, status, and suggestions
   repair-skill-usage Rebuild trustworthy skill usage from transcripts
@@ -367,6 +369,11 @@ Run 'selftune eval <action> --help' for action-specific options.`);
   }
   case "contribute": {
     const { cliMain } = await import("./contribute/contribute.js");
+    await cliMain();
+    break;
+  }
+  case "contributions": {
+    const { cliMain } = await import("./contributions.js");
     await cliMain();
     break;
   }
