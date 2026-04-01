@@ -1,6 +1,6 @@
-import { Agentation } from "agentation";
 import { TooltipProvider } from "@selftune/ui/primitives";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Agentation } from "agentation";
 import { useState } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 
@@ -14,7 +14,6 @@ import { useSSE } from "@/hooks/useSSE";
 import { Overview } from "@/pages/Overview";
 import { PerformanceAnalytics } from "@/pages/PerformanceAnalytics";
 import { SkillReport } from "@/pages/SkillReport";
-
 import { SkillsLibrary } from "@/pages/SkillsLibrary";
 import { Status } from "@/pages/Status";
 import type { SkillHealthStatus } from "@/types";
@@ -51,10 +50,7 @@ function DashboardShell() {
               />
             }
           />
-          <Route
-            path="/skills-library"
-            element={<SkillsLibrary overviewQuery={overviewQuery} />}
-          />
+          <Route path="/skills-library" element={<SkillsLibrary overviewQuery={overviewQuery} />} />
           <Route path="/analytics" element={<PerformanceAnalytics />} />
           <Route path="/skills/:name" element={<SkillReport />} />
           <Route path="/status" element={<Status />} />
