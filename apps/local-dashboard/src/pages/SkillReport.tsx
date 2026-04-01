@@ -67,6 +67,7 @@ type ObservationKind =
   | "repaired_trigger"
   | "repaired_contextual_miss"
   | "legacy_materialized";
+type SkillReportTab = "evidence" | "invocations" | "data-quality";
 
 const SKILL_REPORT_ONBOARDING_KEY = "selftune.skill-report-onboarding-dismissed";
 
@@ -654,6 +655,7 @@ export function SkillReport() {
   const { data, isPending, isError, error, refetch } = useSkillReport(name);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(true);
+  const [activeTab, setActiveTab] = useState<SkillReportTab>("invocations");
 
   // Invocation filter state
   const [invocationFilter, setInvocationFilter] = useState<InvocationFilter>("all");
@@ -716,6 +718,12 @@ export function SkillReport() {
   const operationalChecks =
     dataHygiene?.operational_checks ?? coverage?.checks ?? data?.usage.total_checks ?? 0;
   const excludedChecks = Math.max(rawChecks - operationalChecks, 0);
+  const hasEvolutionData = (evolutionState?.evolution_rows ?? evolution.length) > 0;
+  const defaultTab: SkillReportTab = hasEvolutionData ? "evidence" : "invocations";
+
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
 
   // Filtered invocations for the invocations tab
   const mergedInvocations = useMemo(() => {
@@ -837,14 +845,6 @@ export function SkillReport() {
 
   const trustState = trust?.state ?? "low_sample";
   const trustBadge = TRUST_BADGE[trustState];
-  const hasEvolutionData = (evolutionState?.evolution_rows ?? evolution.length) > 0;
-
-  const defaultTab = hasEvolutionData ? "evidence" : "invocations";
-  const [activeTab, setActiveTab] = useState(defaultTab);
-
-  useEffect(() => {
-    setActiveTab(defaultTab);
-  }, [defaultTab]);
 
   const nextAction = deriveNextAction(
     trustState,
