@@ -8,12 +8,14 @@ import {
   type CreatorContributionConfig,
   discoverCreatorContributionConfigs,
   findCreatorContributionConfig,
+  getContributionConfigSearchRoots,
   removeCreatorContributionConfig,
   resolveContributionSkillPath,
   writeCreatorContributionConfig,
 } from "./contribution-config.js";
 import { CLIError } from "./utils/cli-error.js";
 import { handleCLIError } from "./utils/cli-error.js";
+import { findInstalledSkillNames } from "./utils/skill-discovery.js";
 
 function inferCreatorId(explicitCreatorId?: string): string | null {
   if (explicitCreatorId?.trim()) return explicitCreatorId.trim();
@@ -35,6 +37,11 @@ function printConfig(config: CreatorContributionConfig): void {
 }
 
 function printStatus(skillName?: string): void {
+  const searchRoots = getContributionConfigSearchRoots();
+  const installedSkills = [...findInstalledSkillNames(searchRoots)].sort();
+  const configuredSkillNames = new Set(
+    discoverCreatorContributionConfigs(searchRoots).map((c) => c.skill_name),
+  );
   if (skillName) {
     const config = findCreatorContributionConfig(skillName);
     if (!config) {
@@ -50,13 +57,95 @@ function printStatus(skillName?: string): void {
   if (configs.length === 0) {
     console.log("No creator contribution configs discovered.");
     console.log("Use `selftune creator-contributions enable --skill <name>` to add one.");
-    return;
+  } else {
+    console.log("Discovered creator contribution configs:");
+    for (const config of configs) {
+      printConfig(config);
+    }
   }
 
-  console.log("Discovered creator contribution configs:");
-  for (const config of configs) {
-    printConfig(config);
+  const missingInstalled = installedSkills.filter((skill) => !configuredSkillNames.has(skill));
+  if (missingInstalled.length > 0) {
+    console.log("Installed skills without creator contribution config:");
+    for (const skill of missingInstalled) {
+      console.log(`  ${skill}`);
+    }
   }
+}
+
+interface BulkEnableResult {
+  written: string[];
+  skipped: string[];
+}
+
+function enableCreatorContributionConfigs(options: {
+  skillName?: string;
+  all?: boolean;
+  prefix?: string;
+  explicitSkillPath?: string;
+  explicitCreatorId?: string;
+  signals: string[];
+  message?: string;
+  privacyUrl?: string;
+}): BulkEnableResult {
+  const creatorId = inferCreatorId(options.explicitCreatorId);
+  if (!creatorId) {
+    throw new CLIError(
+      "Creator ID is required.",
+      "MISSING_FLAG",
+      "Pass --creator-id <id> or enroll alpha so cloud_user_id is available.",
+    );
+  }
+
+  const searchRoots = getContributionConfigSearchRoots();
+  const targetSkills = options.all
+    ? [...findInstalledSkillNames(searchRoots)]
+        .filter((name) => !options.prefix || name.startsWith(options.prefix))
+        .sort()
+    : options.skillName
+      ? [options.skillName]
+      : [];
+
+  if (targetSkills.length === 0) {
+    throw new CLIError(
+      options.all
+        ? `No installed skills found${options.prefix ? ` with prefix "${options.prefix}"` : ""}.`
+        : "Skill name is required.",
+      options.all ? "FILE_NOT_FOUND" : "MISSING_FLAG",
+      options.all
+        ? "selftune creator-contributions status"
+        : "selftune creator-contributions enable --skill <name>",
+    );
+  }
+
+  const result: BulkEnableResult = { written: [], skipped: [] };
+  for (const skillName of targetSkills) {
+    if (findCreatorContributionConfig(skillName, searchRoots)) {
+      result.skipped.push(skillName);
+      continue;
+    }
+    const skillPath = resolveContributionSkillPath(
+      skillName,
+      options.all ? undefined : options.explicitSkillPath,
+      searchRoots,
+    );
+    if (!skillPath) {
+      result.skipped.push(skillName);
+      continue;
+    }
+
+    writeCreatorContributionConfig({
+      creator_id: creatorId,
+      skill_name: skillName,
+      skill_path: skillPath,
+      signals: options.signals,
+      message: options.message,
+      privacy_url: options.privacyUrl,
+    });
+    result.written.push(skillName);
+  }
+
+  return result;
 }
 
 export async function cliMain(): Promise<void> {
@@ -70,6 +159,7 @@ Usage:
   selftune creator-contributions
   selftune creator-contributions status [--skill <name>]
   selftune creator-contributions enable --skill <name> [--skill-path <path>] [--creator-id <id>] [--signals a,b,c]
+  selftune creator-contributions enable --all [--prefix <prefix>] [--creator-id <id>] [--signals a,b,c]
   selftune creator-contributions disable --skill <name> [--skill-path <path>]
 
 Purpose:
@@ -104,6 +194,8 @@ Purpose:
         args: rest,
         options: {
           skill: { type: "string" },
+          all: { type: "boolean", default: false },
+          prefix: { type: "string" },
           "skill-path": { type: "string" },
           "creator-id": { type: "string" },
           signals: { type: "string", default: "trigger,grade,miss_category" },
@@ -115,35 +207,16 @@ Purpose:
       });
       if (values.help) {
         console.log(
-          "Usage: selftune creator-contributions enable --skill <name> [--skill-path <path>] [--creator-id <id>]",
+          "Usage: selftune creator-contributions enable (--skill <name> [--skill-path <path>] | --all [--prefix <prefix>]) [--creator-id <id>]",
         );
         return;
       }
 
-      const skillName = values.skill?.trim();
-      if (!skillName) {
+      if (!values.all && !values.skill?.trim()) {
         throw new CLIError(
-          "Skill name is required.",
+          "Pass either --skill <name> or --all.",
           "MISSING_FLAG",
           "selftune creator-contributions enable --skill <name>",
-        );
-      }
-
-      const creatorId = inferCreatorId(values["creator-id"]);
-      if (!creatorId) {
-        throw new CLIError(
-          "Creator ID is required.",
-          "MISSING_FLAG",
-          "Pass --creator-id <id> or enroll alpha so cloud_user_id is available.",
-        );
-      }
-
-      const skillPath = resolveContributionSkillPath(skillName, values["skill-path"]);
-      if (!skillPath) {
-        throw new CLIError(
-          `Could not resolve SKILL.md for "${skillName}".`,
-          "FILE_NOT_FOUND",
-          "Pass --skill-path /path/to/SKILL.md",
         );
       }
 
@@ -151,16 +224,35 @@ Purpose:
         .split(",")
         .map((signal) => signal.trim())
         .filter(Boolean);
-      const config = writeCreatorContributionConfig({
-        creator_id: creatorId,
-        skill_name: skillName,
-        skill_path: skillPath,
+      const outcome = enableCreatorContributionConfigs({
+        skillName: values.skill?.trim(),
+        all: values.all,
+        prefix: values.prefix?.trim(),
+        explicitSkillPath: values["skill-path"],
+        explicitCreatorId: values["creator-id"],
         signals,
         message: values.message,
-        privacy_url: values["privacy-url"],
+        privacyUrl: values["privacy-url"],
       });
+      if (values.all) {
+        console.log(
+          `Enabled creator contribution config for ${outcome.written.length} skills${values.prefix ? ` with prefix "${values.prefix}"` : ""}.`,
+        );
+        if (outcome.written.length > 0) {
+          for (const skill of outcome.written) {
+            const config = findCreatorContributionConfig(skill);
+            if (config) printConfig(config);
+          }
+        }
+        if (outcome.skipped.length > 0) {
+          console.log(`Skipped ${outcome.skipped.length} skills: ${outcome.skipped.join(", ")}`);
+        }
+        return;
+      }
+      const skillName = values.skill!.trim();
+      const config = findCreatorContributionConfig(skillName);
       console.log(`Enabled creator contribution config for "${skillName}".`);
-      printConfig(config);
+      if (config) printConfig(config);
       return;
     }
     case "disable": {

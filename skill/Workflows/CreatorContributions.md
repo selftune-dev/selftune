@@ -18,6 +18,7 @@ This is **not** the same as:
 selftune creator-contributions
 selftune creator-contributions status --skill <name>
 selftune creator-contributions enable --skill <name> [--skill-path <path>] [--creator-id <id>]
+selftune creator-contributions enable --all [--prefix sc-] [--creator-id <id>]
 selftune creator-contributions disable --skill <name> [--skill-path <path>]
 ```
 
@@ -31,11 +32,14 @@ selftune creator-contributions disable --skill <name> [--skill-path <path>]
 | `--signals <csv>` | Comma-separated signal list for the generated config |
 | `--message <text>` | Custom opt-in note stored in the config |
 | `--privacy-url <url>` | Optional creator privacy URL stored in the config |
+| `--all` | Enable configs for every installed skill selftune can resolve |
+| `--prefix <prefix>` | Limit `--all` to installed skills whose names start with this prefix |
 
 ## What It Does Today
 
 - Discovers installed skills that already ship `selftune.contribute.json`
 - Creates or removes that config file locally for a creator-owned skill
+- Can bulk-enable configs for multiple installed skills (useful for a skill suite like `sc-*`)
 - Uses a static JSON config only — no executable creator code
 
 ## Notes
@@ -55,6 +59,11 @@ selftune creator-contributions disable --skill <name> [--skill-path <path>]
 > Run `selftune creator-contributions enable --skill <name>`.
 > If auto-discovery fails, rerun with `--skill-path /path/to/SKILL.md`.
 > If no creator identity is available locally, rerun with `--creator-id <id>`.
+
+**User wants to enable creator contributions for a whole installed skill suite**
+
+> Run `selftune creator-contributions enable --all --prefix sc-`.
+> This is the fastest path when preparing a whole family of skills like State Change skills.
 
 **User wants to stop bundling creator contribution config**
 

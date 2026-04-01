@@ -116,4 +116,57 @@ describe("creator-contributions", () => {
 
     expect(existsSync(join(skillDir, "sc-search", "selftune.contribute.json"))).toBe(false);
   });
+
+  test("enable --all --prefix scaffolds configs for matching installed skills", async () => {
+    seedSkill("sc-search");
+    seedSkill("sc-compare");
+    seedSkill("other-skill");
+    console.log = mock(() => {});
+    process.argv = [
+      "bun",
+      "selftune",
+      "enable",
+      "--all",
+      "--prefix",
+      "sc-",
+      "--creator-id",
+      "cr_search",
+    ];
+
+    await cliMain();
+
+    expect(existsSync(join(skillDir, "sc-search", "selftune.contribute.json"))).toBe(true);
+    expect(existsSync(join(skillDir, "sc-compare", "selftune.contribute.json"))).toBe(true);
+    expect(existsSync(join(skillDir, "other-skill", "selftune.contribute.json"))).toBe(false);
+  });
+
+  test("status lists installed skills that still lack creator config", async () => {
+    seedSkill("sc-search");
+    seedSkill("sc-compare");
+    writeFileSync(
+      join(skillDir, "sc-search", "selftune.contribute.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          creator_id: "cr_search",
+          skill_name: "sc-search",
+          contribution: { enabled: true, signals: ["trigger"] },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+
+    const lines: string[] = [];
+    console.log = mock((...args: unknown[]) => {
+      lines.push(args.join(" "));
+    });
+    process.argv = ["bun", "selftune", "status"];
+
+    await cliMain();
+
+    expect(lines.join("\n")).toContain("Installed skills without creator contribution config:");
+    expect(lines.join("\n")).toContain("sc-compare");
+  });
 });

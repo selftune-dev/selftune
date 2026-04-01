@@ -31,6 +31,7 @@ Completed groundwork on 2026-04-01:
 - local SQLite staging for approved creator-directed signals during `sync`
 - explicit `selftune contributions upload` relay flush for staged rows
 - eval cold-start onboarding for installed skills (`--list-skills` readiness + `--auto-synthetic` fallback)
+- bulk creator config scaffolding for installed skill suites (`selftune creator-contributions enable --all --prefix <prefix>`)
 
 Still pending:
 - creator aggregate analytics surface
