@@ -258,12 +258,23 @@ Each replay run should carry a fixture describing:
 Add a fixture type, for example:
 
 ```ts
+/**
+ * Fixture describing the controlled environment for routing replay validation.
+ * Each fixture captures the host platform, the target skill under test, and
+ * any competing/contextual skills that must be present during replay.
+ */
 interface RoutingReplayFixture {
+  /** Stable identifier for this fixture definition. */
   fixture_id: string;
+  /** Host platform whose routing behavior is being replayed. */
   platform: "claude_code" | "codex";
+  /** Canonical installed skill name that should trigger for positives. */
   target_skill_name: string;
+  /** Absolute or fixture-relative path to the target skill's SKILL.md. */
   target_skill_path: string;
+  /** Other installed SKILL.md paths loaded to make replay routing realistic. */
   competing_skill_paths: string[];
+  /** Optional workspace root used when replay requires repository context. */
   workspace_root?: string;
 }
 ```
@@ -313,6 +324,8 @@ This likely touches:
 - [cli/selftune/localdb/schema.ts](../../../cli/selftune/localdb/schema.ts)
 - [cli/selftune/localdb/direct-write.ts](../../../cli/selftune/localdb/direct-write.ts)
 - [cli/selftune/dashboard-contract.ts](../../../cli/selftune/dashboard-contract.ts)
+
+If any of these provenance fields extend the JSONL audit schema, implementation must also update [cli/selftune/localdb/materialize.ts](../../../cli/selftune/localdb/materialize.ts) before committing so SQLite rebuilds continue to parse the append-only logs correctly.
 
 ### Evolution Evidence
 
@@ -379,11 +392,13 @@ Files:
 - new `validate-structural.ts`
 - `evolve.ts`
 - audit/evidence persistence
+- `skill/Workflows/Evolve.md` (required whenever `cli/selftune/evolution/*.ts` changes)
 
 Acceptance:
 
 - obvious constitutional failures are rejected before replay/judge
 - rejection reasons are deterministic and recorded
+- any PR touching `cli/selftune/evolution/*.ts` also updates `skill/Workflows/Evolve.md` before commit
 
 ### Phase 2: Claude Code Replay Validator
 
@@ -397,12 +412,14 @@ Files:
 - sandbox harness integration
 - transcript/result extraction helpers
 - `evolve.ts`
+- `skill/Workflows/Evolve.md` (required whenever `cli/selftune/evolution/*.ts` changes)
 
 Acceptance:
 
 - before/after trigger rates come from actual Claude Code replay
 - replay results include per-entry evidence
 - replay can run on eval sets without contaminating normal operator telemetry
+- PRs that modify `cli/selftune/evolution/*.ts` include the corresponding `skill/Workflows/Evolve.md` update
 
 ### Phase 3: Provenance in UI and Data Model
 
@@ -415,11 +432,13 @@ Files:
 - `dashboard-contract.ts`
 - route handlers
 - local dashboard pages/components
+- `cli/selftune/localdb/materialize.ts` whenever JSONL audit fields change during provenance expansion
 
 Acceptance:
 
 - users can see whether validation was replay-based or judge-based
 - trust language in UI reflects that distinction
+- any new JSONL provenance fields rebuild cleanly into SQLite via `cli/selftune/localdb/materialize.ts`
 
 ### Phase 4: Codex Replay Validator
 
@@ -445,7 +464,7 @@ This is explicitly after Claude-first validation is stable.
 1. What is the cleanest controlled environment for Claude replay: sandbox harness, transcript replay shim, or a minimal live CLI harness?
 2. Should replay validate "skill invocation" only, or also "skill file read" as a weaker positive signal?
 3. How much competing-skill context is required for routing replay to be trustworthy?
-4. Should replay-generated validation rows write into normal telemetry tables, or into a dedicated validation namespace that the dashboard can exclude by default?
+4. Given the SQLite-first data model, should replay-generated validation rows land in existing SQLite telemetry tables or a dedicated validation table/namespace that dashboards exclude by default? SQLite remains the singleton source of truth, JSONL stays append-only, and `materialize.ts` remains rebuild-only, so any replay validation design must specify which SQLite tables own the data and how one-way materialization/logging preserves that boundary.
 
 ---
 

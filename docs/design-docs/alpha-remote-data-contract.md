@@ -38,7 +38,7 @@ The `contribute/` system and the alpha upload pipeline serve different purposes 
 | Dimension            | `contribute/`                             | Alpha upload                                                               |
 | -------------------- | ----------------------------------------- | -------------------------------------------------------------------------- |
 | **Purpose**          | Community sharing of anonymized eval data | Automatic telemetry for alpha cohort analysis                              |
-| **Trigger**          | Manual (`selftune contribute`)            | Automatic (each `sync` / `orchestrate` run when enrolled)                  |
+| **Trigger**          | Manual (`selftune contribute`)            | Automatic (`sync` / `orchestrate` when enrolled) + explicit (`selftune alpha upload`) |
 | **Transport**        | HTTPS to cloud API                        | HTTPS to cloud API (`POST /api/v1/push`)                                   |
 | **Storage**          | Neon Postgres (canonical tables)          | Neon Postgres (canonical tables)                                           |
 | **Consent model**    | Per-invocation confirmation               | Enrollment flag in config (`config.alpha.enrolled`) + API key              |
@@ -108,11 +108,14 @@ The API key is stored in `~/.selftune/config.json` under the `alpha` block:
   "alpha": {
     "enrolled": true,
     "user_id": "a1b2c3d4-...",
+    "cloud_user_id": "a1b2c3d4-...",
     "api_key": "st_live_abc123...",
     "email": "user@example.com"
   }
 }
 ```
+
+`cloud_user_id` is stored alongside the local `user_id` in config. The V2 push envelope still uses `user_id` as the request identity field.
 
 ---
 
@@ -192,7 +195,7 @@ The cloud API returns standard HTTP status codes:
 
 **Recommendation: periodic batch upload, not immediate.**
 
-Uploads happen at two touchpoints:
+Uploads happen through three entry points:
 
 1. **On each `selftune orchestrate` run.** After sync completes and before evolution begins, the orchestrate loop checks for pending upload queue items and flushes them. This piggybacks on the existing orchestrate cadence (typically cron-scheduled every 1-4 hours).
 

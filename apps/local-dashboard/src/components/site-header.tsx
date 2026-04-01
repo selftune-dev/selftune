@@ -12,7 +12,7 @@ import {
   UserIcon,
   WaypointsIcon,
 } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type MouseEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -75,11 +75,13 @@ export function SiteHeader() {
   const { data } = useOverview();
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const suppressBlurRef = useRef(false);
 
   const skills = data?.skills ?? [];
 
   const handleSelect = useCallback(
     (path: string) => {
+      suppressBlurRef.current = false;
       setOpen(false);
       navigate(path);
       // blur the input after navigation
@@ -87,6 +89,19 @@ export function SiteHeader() {
     },
     [navigate],
   );
+
+  const handleBlur = useCallback(() => {
+    if (suppressBlurRef.current) {
+      suppressBlurRef.current = false;
+      return;
+    }
+    setOpen(false);
+  }, []);
+
+  const handleItemMouseDown = useCallback((event: MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    suppressBlurRef.current = true;
+  }, []);
 
   return (
     <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center border-b border-border/10 bg-background/80 backdrop-blur-xl transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-auto">
@@ -114,9 +129,7 @@ export function SiteHeader() {
                   placeholder="Search skills or pages..."
                   className="h-9 w-full bg-input/50 border-none rounded-full pl-10 pr-4 text-sm focus:ring-1 focus:ring-primary/40 focus:outline-none placeholder:text-slate-500 text-foreground"
                   onFocus={() => setOpen(true)}
-                  onBlur={() => {
-                    setTimeout(() => setOpen(false), 200);
-                  }}
+                  onBlur={handleBlur}
                 />
               </div>
               {open && (
@@ -132,6 +145,7 @@ export function SiteHeader() {
                       <CommandItem
                         key={page.path}
                         value={page.name}
+                        onMouseDown={handleItemMouseDown}
                         onSelect={() => handleSelect(page.path)}
                         className="gap-3 rounded-lg cursor-pointer"
                       >
@@ -159,6 +173,7 @@ export function SiteHeader() {
                           <CommandItem
                             key={s.skill_name}
                             value={s.skill_name}
+                            onMouseDown={handleItemMouseDown}
                             onSelect={() =>
                               handleSelect(`/skills/${encodeURIComponent(s.skill_name)}`)
                             }
@@ -199,7 +214,7 @@ export function SiteHeader() {
               <br />
               <span className="text-primary">Active</span>
             </span>
-            <div className="flex size-8 items-center justify-center rounded-full bg-card border border-primary/20 text-primary transition-colors hover:bg-input">
+            <div className="flex size-8 items-center justify-center rounded-full border border-primary/20 bg-card text-primary">
               <UserIcon className="size-4" />
             </div>
           </div>

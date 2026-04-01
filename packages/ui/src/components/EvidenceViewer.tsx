@@ -684,12 +684,22 @@ export function EvidenceViewer({
 
   // Track which earlier rounds are manually expanded
   const [expandedRounds, setExpandedRounds] = useState<Set<string>>(new Set());
+  const [expandedProposalTargets, setExpandedProposalTargets] = useState<Set<string>>(new Set());
 
   const toggleRound = (key: string) => {
     setExpandedRounds((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
+      return next;
+    });
+  };
+
+  const toggleProposalHistory = (target: string) => {
+    setExpandedProposalTargets((prev) => {
+      const next = new Set(prev);
+      if (next.has(target)) next.delete(target);
+      else next.add(target);
       return next;
     });
   };
@@ -720,6 +730,14 @@ export function EvidenceViewer({
   const latestStep = steps[steps.length - 1] ?? null;
   const lifecycleLabel = steps.map((step) => step.action.replace("_", " ")).join(" -> ");
   const outcome = getOutcomePresentation(latestStep?.action);
+  const latestProposalConfidence = useMemo(() => {
+    for (let i = proposalEntries.length - 1; i >= 0; i--) {
+      if (proposalEntries[i].confidence !== null) {
+        return proposalEntries[i].confidence;
+      }
+    }
+    return null;
+  }, [proposalEntries]);
   const proposalCards = useMemo(() => {
     const grouped = new Map<string, EvidenceEntry[]>();
     for (const entry of proposalEntries) {
@@ -729,13 +747,21 @@ export function EvidenceViewer({
       grouped.set(key, group);
     }
 
-    return Array.from(grouped.values()).map((group) => {
-      const richest =
-        [...group]
-          .toReversed()
-          .find((entry) => entry.original_text || entry.proposed_text || entry.rationale) ??
-        group[group.length - 1];
-      return richest;
+    return Array.from(grouped.entries()).map(([target, group]) => {
+      let richest = group[group.length - 1];
+      for (let i = group.length - 1; i >= 0; i--) {
+        if (group[i].original_text || group[i].proposed_text || group[i].rationale) {
+          richest = group[i];
+          break;
+        }
+      }
+      const primaryIndex = group.findIndex((entry) => entry === richest);
+      return {
+        target,
+        primaryEntry: richest,
+        historyEntries: group.filter((_, index) => index !== primaryIndex),
+        entries: group,
+      };
     });
   }, [proposalEntries]);
 
@@ -798,9 +824,9 @@ export function EvidenceViewer({
             <Badge variant="outline" className="text-[10px]">
               {entries.length} evidence {entries.length === 1 ? "row" : "rows"}
             </Badge>
-            {proposalCards[0]?.confidence != null && (
+            {latestProposalConfidence != null && (
               <Badge variant="secondary" className="text-[10px]">
-                {Math.round(proposalCards[0].confidence * 100)}% confidence
+                {Math.round(latestProposalConfidence * 100)}% confidence
               </Badge>
             )}
           </div>
@@ -841,12 +867,17 @@ export function EvidenceViewer({
                   {Math.round(snapshot.before_pass_rate * 100)}% &rarr;{" "}
                   {Math.round(snapshot.after_pass_rate * 100)}%
                 </span>
-                {snapshot.improved !== undefined && (
-                  <Badge
-                    variant={snapshot.improved ? "default" : "destructive"}
-                    className="text-[10px]"
-                  >
-                    {snapshot.improved ? "Improved" : "Regressed"}
+                {snapshot.net_change > 0 ? (
+                  <Badge variant="default" className="text-[10px]">
+                    Improved
+                  </Badge>
+                ) : snapshot.net_change < 0 ? (
+                  <Badge variant="destructive" className="text-[10px]">
+                    Regressed
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px]">
+                    No change
                   </Badge>
                 )}
               </div>
@@ -865,16 +896,50 @@ export function EvidenceViewer({
               This is the actual skill text selftune proposed changing.
             </p>
           </div>
-          {proposalCards.map((entry) => (
-            <EvidenceCard
-              key={`proposal-${entry.target}-${entry.timestamp}`}
-              entry={entry}
-              roundLabel={null}
-              roundStatus="single"
-              prevPassRate={null}
-              currPassRate={null}
-            />
-          ))}
+          {proposalCards.map((group) => {
+            const hasHistory = group.historyEntries.length > 0;
+            const isExpanded = expandedProposalTargets.has(group.target);
+
+            return (
+              <div key={`proposal-${group.target}`} className="space-y-2">
+                <EvidenceCard
+                  entry={group.primaryEntry}
+                  roundLabel={hasHistory ? `Latest draft of ${group.entries.length}` : null}
+                  roundStatus={hasHistory ? "final" : "single"}
+                  prevPassRate={null}
+                  currPassRate={null}
+                />
+                {hasHistory && (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleProposalHistory(group.target)}
+                      className="flex items-center gap-1 px-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {isExpanded ? (
+                        <ChevronDownIcon className="size-3" />
+                      ) : (
+                        <ChevronRightIcon className="size-3" />
+                      )}
+                      {isExpanded ? "Hide" : "Show"} {group.historyEntries.length} earlier{" "}
+                      {group.historyEntries.length === 1 ? "draft" : "drafts"}
+                    </button>
+                    {isExpanded &&
+                      group.historyEntries.map((entry, index) => (
+                        <EvidenceCard
+                          key={`proposal-history-${group.target}-${entry.timestamp}-${index}`}
+                          entry={entry}
+                          roundLabel={`Draft ${index + 1} of ${group.historyEntries.length}`}
+                          roundStatus="intermediate"
+                          prevPassRate={null}
+                          currPassRate={null}
+                        />
+                      ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

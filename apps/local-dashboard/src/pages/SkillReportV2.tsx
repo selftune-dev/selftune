@@ -69,6 +69,14 @@ function statusBadgeClasses(status: string): string {
   }
 }
 
+function tabTriggerClasses(isActive: boolean): string {
+  return `px-4 py-2 text-xs tracking-widest uppercase font-headline transition-colors ${
+    isActive
+      ? "text-primary border-b-2 border-primary"
+      : "text-muted-foreground hover:text-foreground"
+  }`;
+}
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -120,7 +128,6 @@ function InvocationTimelineTooltip({
       timestamp: string;
     };
   }>;
-  label?: string;
 }) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
@@ -144,7 +151,10 @@ function InvocationTimelineTooltip({
 }
 
 function InvocationTimeline({ invocations }: { invocations: CanonicalInvocation[] }) {
-  const recent = invocations.slice(0, 30).toReversed();
+  const recent = invocations.slice(0, 30).reduceRight<CanonicalInvocation[]>((acc, invocation) => {
+    acc.push(invocation);
+    return acc;
+  }, []);
   if (recent.length === 0) {
     return (
       <p className="text-sm text-muted-foreground text-center py-8">No invocation data yet.</p>
@@ -589,11 +599,7 @@ export function SkillReportV2() {
                     render={
                       <TabsTrigger
                         value="overview"
-                        className={`px-4 py-2 text-xs tracking-widest uppercase font-headline transition-colors ${
-                          activeTab === "overview"
-                            ? "text-primary border-b-2 border-primary"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
+                        className={tabTriggerClasses(activeTab === "overview")}
                       />
                     }
                   >
@@ -606,11 +612,7 @@ export function SkillReportV2() {
                     render={
                       <TabsTrigger
                         value="invocations"
-                        className={`px-4 py-2 text-xs tracking-widest uppercase font-headline transition-colors ${
-                          activeTab === "invocations"
-                            ? "text-primary border-b-2 border-primary"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
+                        className={tabTriggerClasses(activeTab === "invocations")}
                       />
                     }
                   >
@@ -628,11 +630,7 @@ export function SkillReportV2() {
                     render={
                       <TabsTrigger
                         value="evolution"
-                        className={`px-4 py-2 text-xs tracking-widest uppercase font-headline transition-colors ${
-                          activeTab === "evolution"
-                            ? "text-primary border-b-2 border-primary"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
+                        className={tabTriggerClasses(activeTab === "evolution")}
                       />
                     }
                   >
@@ -650,11 +648,7 @@ export function SkillReportV2() {
                     render={
                       <TabsTrigger
                         value="proposals"
-                        className={`px-4 py-2 text-xs tracking-widest uppercase font-headline transition-colors ${
-                          activeTab === "proposals"
-                            ? "text-primary border-b-2 border-primary"
-                            : "text-muted-foreground hover:text-foreground"
-                        }`}
+                        className={tabTriggerClasses(activeTab === "proposals")}
                       />
                     }
                   >

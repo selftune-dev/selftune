@@ -4,6 +4,10 @@ import type { SkillTrustSummary } from "./localdb/queries.js";
 const AT_RISK_MISS_RATE_THRESHOLD = 0.15;
 const UNCERTAIN_MIN_CHECKS = 10;
 
+function formatPercent(value: number): string {
+  return `${(value * 100).toFixed(1).replace(/\.0$/, "")}%`;
+}
+
 export function deriveTrustState(summary: SkillTrustSummary): TrustState {
   if (summary.latest_action === "rolled_back") return "rolled_back";
   if (summary.latest_action === "deployed") return "deployed";
@@ -34,7 +38,7 @@ export function deriveTrustBucketReason(bucket: TrustBucket, summary: SkillTrust
   switch (bucket) {
     case "at_risk":
       if (summary.latest_action === "rolled_back") return "Recently rolled back";
-      return `High miss rate (${Math.round(summary.miss_rate * 100)}%)`;
+      return `High miss rate (${formatPercent(summary.miss_rate)})`;
     case "improving":
       if (summary.latest_action === "validated") return "Proposal validated, pending deploy";
       return "Has pending evolution proposal";

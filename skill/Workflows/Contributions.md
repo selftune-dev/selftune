@@ -91,3 +91,7 @@ selftune contributions upload [--dry-run] [--retry-failed] [--limit <n>]
 > Use `--dry-run` first if they want to confirm how many staged rows are pending.
 > Use `--retry-failed` if earlier relay attempts failed and need to be retried.
 > Use `--limit 25` when they want a smaller controlled batch.
+
+**User wants to clear all stored creator-directed contribution preferences**
+
+> Run `selftune contributions reset`.

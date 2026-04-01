@@ -53,6 +53,7 @@
 | inverse_on_surface | #2f3035 |
 
 ## Font Strategy
+
 - **Headlines/Display/Labels:** Space Grotesk
 - **Body/Titles:** Manrope
 - **Color Mode:** DARK
@@ -63,6 +64,7 @@
 ## 1. Overview & Creative North Star
 
 ### Creative North Star: "The Cognitive Loom"
+
 This design system is built on the metaphor of a "Cognitive Loom" — a space where raw data is woven into intelligence. Unlike standard dashboard templates that feel static and rigid, this system prioritizes **Atmospheric Technicality**. It blends the cold precision of high-density data with the fluid, ethereal nature of AI "thought."
 
 We move beyond the "grid-of-boxes" by employing intentional asymmetry, overlapping layers, and high-contrast typography scales. The goal is an interface that feels like a high-end editorial piece: authoritative, deep, and alive. We achieve this through tonal depth rather than structural lines, ensuring the UI feels like a single cohesive environment rather than a collection of disparate components.
@@ -72,12 +74,14 @@ We move beyond the "grid-of-boxes" by employing intentional asymmetry, overlappi
 The palette is a sophisticated interplay between the void of deep space and the electric spark of a neural firing.
 
 ### Surface Hierarchy & Nesting
+
 To achieve a "bespoke" feel, we prohibit traditional 1px borders for sectioning (**The No-Line Rule**). Instead, boundaries are defined by shifting between the surface tiers.
 - **Background (`#111317`):** The base canvas.
 - **Surface Container Lowest (`#0c0e12`):** Used for "recessed" areas like sidebars or secondary navigation.
 - **Surface Container High (`#282a2e`):** Used for primary workspace cards or active focal points.
 
 ### The Glass & Gradient Rule
+
 Standard flat colors are insufficient for representing "thinking" AI.
 - **Glassmorphism:** Use semi-transparent variants of `surface` with a 12px to 20px backdrop-blur for floating panels or modals. This creates a sense of physical depth.
 - **Signature Gradients:** Main CTAs and data visualizations should utilize a "Core-to-Aura" gradient, transitioning from `primary` (`#4ff2ff`) to `primary_container` (`#00d5e3`). This represents the concentration of energy/data.
@@ -102,18 +106,22 @@ We reject the "drop shadow" defaults of the early 2010s. Depth in this system is
 ## 5. Components
 
 ### Buttons
+
 * **Primary:** A vibrant `primary` (`#4ff2ff`) fill with `on_primary` text. Apply a subtle outer glow (bloom) using the primary color at 20% opacity.
 * **Secondary:** A "Ghost" style. No fill, `outline_variant` border, and `on_surface` text.
 * **Tertiary:** Text-only with an underline that appears only on hover, using the `spacing.px` scale.
 
 ### Cards & Lists
+
 * **Rule:** Forbid divider lines.
 * **Execution:** Use `spacing.4` (0.9rem) or `spacing.6` (1.3rem) to separate list items. Use a subtle background shift (`surface_container_low` to `surface_container`) on hover to indicate interactivity.
 * **Corner Radii:** Use `xl` (0.5rem) for main containers and `md` (0.25rem) for internal elements like inputs or nested chips.
 
 ### Inputs & Fields
+
 * **States:** Default state uses `surface_container_highest` with no border. On focus, the container should transition to `surface_bright` with a `primary` "Ghost Border" at 40% opacity.
 * **AI Thinking State:** Incorporate a subtle, horizontal "pulse" gradient across the bottom 2px of the input field using the `tertiary` (`#73f0f6`) token.
 
 ### Additional Signature Component: The "Pulse Chip"
+
 A variant of the selection chip that features a 4px breathing dot (using `primary_fixed`). This is used to indicate active AI processes or "learning" states within a data dashboard.

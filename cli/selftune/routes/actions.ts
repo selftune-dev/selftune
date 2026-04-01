@@ -45,9 +45,18 @@ export async function handleAction(
 ): Promise<Response> {
   if (action === "watchlist") {
     const skills = body.skills;
-    if (!Array.isArray(skills) || !skills.every((skill) => typeof skill === "string")) {
+    if (skills === undefined || skills === null) {
       return Response.json(
         { success: false, error: "Missing required field: skills[]" },
+        { status: 400 },
+      );
+    }
+    if (!Array.isArray(skills) || !skills.every((skill) => typeof skill === "string")) {
+      return Response.json(
+        {
+          success: false,
+          error: "Invalid type for skills: expected array of strings",
+        },
         { status: 400 },
       );
     }

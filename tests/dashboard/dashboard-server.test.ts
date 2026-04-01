@@ -7,9 +7,9 @@ import type {
   OverviewResponse,
   SkillReportResponse,
 } from "../../cli/selftune/dashboard-contract.js";
-import { loadWatchedSkills } from "../../cli/selftune/watchlist.js";
 
 let startDashboardServer: typeof import("../../cli/selftune/dashboard-server.js").startDashboardServer;
+let loadWatchedSkills: typeof import("../../cli/selftune/watchlist.js").loadWatchedSkills;
 let testSpaDir: string;
 let configDir: string;
 let originalSelftuneConfigDir: string | undefined;
@@ -112,7 +112,9 @@ beforeAll(async () => {
   configDir = mkdtempSync(join(tmpdir(), "selftune-dashboard-config-"));
   process.env.SELFTUNE_CONFIG_DIR = configDir;
   const mod = await import("../../cli/selftune/dashboard-server.js");
+  const watchlist = await import("../../cli/selftune/watchlist.js");
   startDashboardServer = mod.startDashboardServer;
+  loadWatchedSkills = watchlist.loadWatchedSkills;
   testSpaDir = mkdtempSync(join(tmpdir(), "selftune-dashboard-test-"));
   mkdirSync(join(testSpaDir, "assets"), { recursive: true });
   writeFileSync(

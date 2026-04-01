@@ -160,4 +160,35 @@ describe("contribution-staging", () => {
     };
     expect(count.count).toBe(0);
   });
+
+  test("returns zero counts when no configs are eligible", () => {
+    seedTrustedTrigger(
+      "sc-search",
+      "s1",
+      "Compare React vs Vue for dashboards",
+      "2026-04-01T00:00:00.000Z",
+    );
+
+    const prefs: ContributionPreferences = {
+      version: 1,
+      global_default: "never",
+      skills: {},
+    };
+
+    const result = stageCreatorContributionSignals(db, {
+      preferences: prefs,
+      configs: [configA],
+    });
+
+    expect(result).toEqual({
+      eligible_skills: 0,
+      built_signals: 0,
+      staged_signals: 0,
+    });
+
+    const count = db.query(`SELECT COUNT(*) AS count FROM creator_contribution_staging`).get() as {
+      count: number;
+    };
+    expect(count.count).toBe(0);
+  });
 });

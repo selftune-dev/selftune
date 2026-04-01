@@ -203,6 +203,7 @@ Recovery quick reference:
 | `--full` | Rebuild SQLite from the available JSONL/export sources |
 | `--force` | Skip the SQLite-only preflight guard during a full rebuild |
 | `--since <date>` | Recover only rows on or after the given date |
+| `--json` | Output JSON summary instead of human-readable text |
 
 Example:
 

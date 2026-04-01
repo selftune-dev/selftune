@@ -371,33 +371,33 @@ Immediate next steps, in order:
 ## Immediate Implementation Priorities
 
 1. **Unify command semantics before adding new pipeline UI**
-- decide the naming split for creator-directed contribution vs existing `contribute`
-- update repo docs accordingly before implementation spreads
+   - decide the naming split for creator-directed contribution vs existing `contribute`
+   - update repo docs accordingly before implementation spreads
 
 1. **Keep alpha upload as the transport foundation**
-- creator-directed contribution should build on the cloud relay / upload architecture already being established
-- do not create a second unrelated remote ingest stack
+   - creator-directed contribution should build on the cloud relay / upload architecture already being established
+   - do not create a second unrelated remote ingest stack
 
 1. **Keep creator contribution data separate from local trust**
-- local skill health remains grounded in the creator/user's own trusted operational observations
-- contributor aggregate data should augment creator decision-making, not silently alter local trust scores
+   - local skill health remains grounded in the creator/user's own trusted operational observations
+   - contributor aggregate data should augment creator decision-making, not silently alter local trust scores
 
 1. **Land the comparison-first creator overview before community analytics**
-- the creator landing page still needs to be comparison-first even before the full contribution pipeline ships
+   - the creator landing page still needs to be comparison-first even before the full contribution pipeline ships
 
 ## Acceptance Criteria
 
 1. **Consumer success**
-- a user can install selftune, ignore the dashboard, and still see value in `status`
+   - a user can install selftune, ignore the dashboard, and still see value in `status`
 
 1. **Creator success**
-- a creator can compare skills in one screen before drilling down
+   - a creator can compare skills in one screen before drilling down
 
 1. **Trust consistency**
-- overview, skill detail, and CLI status do not disagree about core health semantics
+   - overview, skill detail, and CLI status do not disagree about core health semantics
 
 1. **Business readiness**
-- the repo is structurally ready for the creator ← user eval pipeline, even if the cloud portion is not fully launched yet
+   - the repo is structurally ready for the creator ← user eval pipeline, even if the cloud portion is not fully launched yet
 
 1. **Contribution clarity**
 - the product has a clear, non-conflicting story for:

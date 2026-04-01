@@ -678,6 +678,33 @@ describe("buildEvalSet", () => {
 });
 
 describe("listEvalSkillReadiness", () => {
+  test("marks telemetry-only skills when not installed on disk", () => {
+    const skillRoot = join(tmpDir, ".agents", "skills");
+    mkdirSync(skillRoot, { recursive: true });
+    writeFileSync(join(tmpDir, ".git"), "");
+
+    const readiness = listEvalSkillReadiness(
+      [
+        {
+          timestamp: "2025-01-01T00:00:00Z",
+          session_id: "s1",
+          skill_name: "orphan-skill",
+          skill_path: "/skills/orphan-skill",
+          query: "run orphan flow",
+          triggered: true,
+          source: "codex_rollout",
+        },
+      ],
+      [skillRoot],
+    );
+
+    const row = readiness.find((entry) => entry.name === "orphan-skill");
+    expect(row?.installed).toBe(false);
+    expect(row?.readiness).toBe("telemetry_only");
+    expect(row?.raw_trigger_count).toBe(1);
+    expect(row?.raw_session_count).toBe(1);
+  });
+
   test("includes installed cold-start skills alongside log-ready skills", () => {
     const skillRoot = join(tmpDir, ".agents", "skills");
     const installedSkillDir = join(skillRoot, "sc-search");
