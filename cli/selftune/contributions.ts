@@ -1,6 +1,4 @@
 #!/usr/bin/env bun
-
-import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 import { CONTRIBUTION_PREFERENCES_PATH, SELFTUNE_CONFIG_DIR } from "./constants.js";
@@ -8,13 +6,18 @@ import {
   discoverCreatorContributionConfigs,
   findCreatorContributionConfig,
 } from "./contribution-config.js";
+import {
+  buildContributionPreview,
+  type ContributionSignal,
+  type ContributionSignalBuildOptions,
+  type CreatorContributionRelayPayload,
+} from "./contribution-signals.js";
 import { getDb } from "./localdb/db.js";
-import { queryGradingResults, getSkillTrustSummaries } from "./localdb/queries.js";
+import { getSkillTrustSummaries } from "./localdb/queries.js";
 import { CLIError } from "./utils/cli-error.js";
 
 export type ContributionGlobalDefault = "ask" | "always" | "never";
 export type ContributionSkillStatus = "opted_in" | "opted_out";
-export type ContributionSignal = "trigger" | "grade" | "miss_category";
 
 export interface ContributionSkillPreference {
   status: ContributionSkillStatus;
@@ -232,14 +235,17 @@ function upsertSkillPreference(skill: string, status: ContributionSkillStatus): 
   console.log("This only affects future creator-directed sharing prompts and relay uploads.");
 }
 
-function gradeBucket(value: number): "A" | "B" | "C" | "F" {
-  if (value >= 0.9) return "A";
-  if (value >= 0.75) return "B";
-  if (value >= 0.5) return "C";
-  return "F";
-}
-
-function buildPreviewPayload(skill: string) {
+function buildPreviewPayload(
+  skill: string,
+  options: ContributionSignalBuildOptions = {},
+): {
+  config: ReturnType<typeof findCreatorContributionConfig>;
+  observedCount: number;
+  triggerRate: number | null;
+  missRate: number | null;
+  gradedSessions: number;
+  payload: CreatorContributionRelayPayload;
+} {
   const config = findCreatorContributionConfig(skill);
   if (!config) {
     throw new CLIError(
@@ -250,49 +256,15 @@ function buildPreviewPayload(skill: string) {
   }
 
   const db = getDb();
-  const summary = getSkillTrustSummaries(db).find((row) => row.skill_name === skill);
-  const gradingRows = queryGradingResults(db).filter((row) => row.skill_name === skill);
-  const latestGradeSource =
-    gradingRows.find((row) => typeof row.mean_score === "number")?.mean_score ??
-    gradingRows.find((row) => typeof row.pass_rate === "number")?.pass_rate ??
-    null;
-  const latestGrade = latestGradeSource != null ? gradeBucket(latestGradeSource) : null;
-  const triggerRate = summary ? Math.round(summary.pass_rate * 100) : null;
-  const missRate = summary ? Math.round(summary.miss_rate * 100) : null;
-  const observedCount = summary?.total_checks ?? 0;
-  const missedCount = summary ? summary.total_checks - summary.triggered_count : 0;
-  const skillHash = createHash("sha256").update(config.skill_path).digest("hex").slice(0, 12);
-
-  const signals: Record<string, string | boolean> = {};
-  if (config.contribution.signals.includes("trigger")) {
-    signals.triggered = true;
-    signals.invocation_type = missedCount > 0 ? "implicit" : "contextual";
-    signals.miss_detected = missedCount > 0;
-  }
-  if (config.contribution.signals.includes("grade")) {
-    signals.execution_grade = latestGrade ?? "<not enough graded sessions yet>";
-  }
-  if (config.contribution.signals.includes("miss_category")) {
-    signals.query_bucket = missedCount > 0 ? "<local category bucket>" : "other";
-  }
+  const preview = buildContributionPreview(db, config, options);
 
   return {
     config,
-    observedCount,
-    triggerRate,
-    missRate,
-    missedCount,
-    gradedSessions: gradingRows.length,
-    payload: {
-      version: 1,
-      signal_type: "skill_session",
-      relay_destination: config.creator_id,
-      skill_hash: `sha256:${skillHash}`,
-      user_cohort: "sha256:<rotates-monthly-on-your-machine>",
-      signals,
-      timestamp_bucket: "2026-W14",
-      client_version: "local-preview",
-    },
+    observedCount: preview.observedCount,
+    triggerRate: preview.triggerRate,
+    missRate: preview.missRate,
+    gradedSessions: preview.gradedSessions,
+    payload: preview.samplePayload,
   };
 }
 

@@ -1673,14 +1673,18 @@ export interface SkillTrustSummary {
   last_seen: string | null;
 }
 
-function getTrustedSkillObservationRows(db: Database): Array<{
+export interface TrustedSkillObservationRow {
   skill_name: string;
   session_id: string;
   occurred_at: string | null;
   triggered: number;
   matched_prompt_id: string | null;
   confidence: number | null;
-}> {
+  invocation_mode: string | null;
+  query_text: string;
+}
+
+export function queryTrustedSkillObservationRows(db: Database): TrustedSkillObservationRow[] {
   const SYSTEM_LIKE_PREFIXES = ["<system_instruction>", "<system-instruction>", "<command-name>"];
   const INTERNAL_EVAL_MARKERS = [
     "you are an evaluation assistant",
@@ -1739,6 +1743,7 @@ function getTrustedSkillObservationRows(db: Database): Array<{
          si.triggered,
          si.matched_prompt_id,
          si.confidence,
+         si.invocation_mode,
          si.skill_invocation_id,
          si.capture_mode,
          si.raw_source_ref,
@@ -1755,6 +1760,7 @@ function getTrustedSkillObservationRows(db: Database): Array<{
     triggered: number;
     matched_prompt_id: string | null;
     confidence: number | null;
+    invocation_mode: string | null;
     skill_invocation_id: string;
     capture_mode: string | null;
     raw_source_ref: string | null;
@@ -1772,6 +1778,7 @@ function getTrustedSkillObservationRows(db: Database): Array<{
       triggered: number;
       matched_prompt_id: string | null;
       confidence: number | null;
+      invocation_mode: string | null;
       queryText: string;
       isPolluting: boolean;
       observation_kind:
@@ -1789,6 +1796,8 @@ function getTrustedSkillObservationRows(db: Database): Array<{
     triggered: number;
     matched_prompt_id: string | null;
     confidence: number | null;
+    invocation_mode: string | null;
+    query_text: string;
   }> = [];
 
   for (const row of rows) {
@@ -1815,6 +1824,7 @@ function getTrustedSkillObservationRows(db: Database): Array<{
       triggered: row.triggered,
       matched_prompt_id: row.matched_prompt_id,
       confidence: row.confidence,
+      invocation_mode: row.invocation_mode,
       queryText,
       isPolluting: false,
       observation_kind,
@@ -1856,6 +1866,8 @@ function getTrustedSkillObservationRows(db: Database): Array<{
         triggered: row.triggered,
         matched_prompt_id: row.matched_prompt_id,
         confidence: row.confidence,
+        invocation_mode: row.invocation_mode,
+        query_text: row.queryText,
       })),
     );
   }
@@ -1864,7 +1876,7 @@ function getTrustedSkillObservationRows(db: Database): Array<{
 }
 
 export function getSkillTrustSummaries(db: Database): SkillTrustSummary[] {
-  const rows = getTrustedSkillObservationRows(db);
+  const rows = queryTrustedSkillObservationRows(db);
 
   // Build latest_action map from evolution_audit
   const auditRows = db
