@@ -873,6 +873,25 @@ export interface SkillFamilyOverlapPair {
   consolidation_pressure: "low" | "medium" | "high";
 }
 
+export interface SkillFamilyColdStartPair {
+  skill_a: string;
+  skill_b: string;
+  description_similarity: number;
+  when_to_use_similarity: number;
+  shared_command_surfaces: string[];
+  shared_terms: string[];
+  suspicion_level: "low" | "medium" | "high";
+}
+
+export interface SkillFamilyColdStartSuspicion {
+  candidate: boolean;
+  analyzed_pairs: number;
+  suspicious_pair_count: number;
+  average_static_similarity: number;
+  pairs: SkillFamilyColdStartPair[];
+  rationale: string[];
+}
+
 export interface SkillFamilyRefactorWorkflow {
   workflow_name: string;
   source_skill: string;
@@ -892,6 +911,7 @@ export interface SkillFamilyOverlapReport {
   analyzed_skills: string[];
   members: SkillFamilyOverlapMember[];
   pairs: SkillFamilyOverlapPair[];
+  cold_start_suspicion?: SkillFamilyColdStartSuspicion;
   total_pairs_analyzed: number;
   overlap_count: number;
   overlap_density: number;
