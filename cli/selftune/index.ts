@@ -20,6 +20,7 @@
  *   selftune badge              — Generate skill health badges for READMEs
  *   selftune contribute         — Export anonymized skill data for community
  *   selftune contributions      — Manage creator-directed sharing preferences
+ *   selftune creator-contributions — Manage creator-side contribution configs
  *   selftune workflows          — Discover and manage multi-skill workflows
  *   selftune quickstart         — Guided onboarding: init, ingest, status, and suggestions
  *   selftune repair-skill-usage — Rebuild trustworthy skill usage from transcripts
@@ -62,6 +63,7 @@ Commands:
   badge              Generate skill health badges for READMEs
   contribute         Export anonymized skill data for community
   contributions      Manage creator-directed sharing preferences
+  creator-contributions Manage creator-side contribution configs
   workflows          Discover and manage multi-skill workflows
   quickstart         Guided onboarding: init, ingest, status, and suggestions
   repair-skill-usage Rebuild trustworthy skill usage from transcripts
@@ -374,6 +376,11 @@ Run 'selftune eval <action> --help' for action-specific options.`);
   }
   case "contributions": {
     const { cliMain } = await import("./contributions.js");
+    await cliMain();
+    break;
+  }
+  case "creator-contributions": {
+    const { cliMain } = await import("./creator-contributions.js");
     await cliMain();
     break;
   }

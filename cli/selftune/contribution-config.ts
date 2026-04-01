@@ -1,7 +1,11 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
-import { findRepositoryClaudeSkillDirs, findRepositorySkillDirs } from "./utils/skill-discovery.js";
+import {
+  findInstalledSkillPath,
+  findRepositoryClaudeSkillDirs,
+  findRepositorySkillDirs,
+} from "./utils/skill-discovery.js";
 
 export interface CreatorContributionConfig {
   version: 1;
@@ -15,6 +19,15 @@ export interface CreatorContributionConfig {
     message?: string;
     privacy_url?: string;
   };
+}
+
+export interface CreatorContributionConfigInput {
+  creator_id: string;
+  skill_name: string;
+  skill_path: string;
+  signals: string[];
+  message?: string;
+  privacy_url?: string;
 }
 
 interface ParsedContributionConfig {
@@ -106,6 +119,77 @@ function readContributionConfig(skillDir: string): CreatorContributionConfig | n
   } catch {
     return null;
   }
+}
+
+export function findCreatorContributionConfig(
+  skillName: string,
+  roots: string[] = getContributionConfigSearchRoots(),
+): CreatorContributionConfig | null {
+  return (
+    discoverCreatorContributionConfigs(roots).find((config) => config.skill_name === skillName) ??
+    null
+  );
+}
+
+export function resolveContributionSkillPath(
+  skillName: string,
+  explicitSkillPath?: string,
+  roots: string[] = getContributionConfigSearchRoots(),
+): string | null {
+  if (explicitSkillPath?.trim()) {
+    const trimmed = explicitSkillPath.trim();
+    if (trimmed.endsWith("SKILL.md")) return trimmed;
+    return join(trimmed, "SKILL.md");
+  }
+  return findInstalledSkillPath(skillName, roots) ?? null;
+}
+
+export function writeCreatorContributionConfig(
+  input: CreatorContributionConfigInput,
+): CreatorContributionConfig {
+  const normalized = normalizeContributionConfig(
+    {
+      version: 1,
+      creator_id: input.creator_id,
+      skill_name: input.skill_name,
+      contribution: {
+        enabled: true,
+        signals: input.signals,
+        message: input.message,
+        privacy_url: input.privacy_url,
+      },
+    },
+    join(dirname(input.skill_path), "selftune.contribute.json"),
+    input.skill_path,
+  );
+
+  if (!normalized) {
+    throw new Error("Invalid creator contribution config input");
+  }
+
+  writeFileSync(
+    normalized.config_path,
+    JSON.stringify(
+      {
+        version: normalized.version,
+        creator_id: normalized.creator_id,
+        skill_name: normalized.skill_name,
+        contribution: normalized.contribution,
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+
+  return normalized;
+}
+
+export function removeCreatorContributionConfig(skillPath: string): boolean {
+  const configPath = join(dirname(skillPath), "selftune.contribute.json");
+  if (!existsSync(configPath)) return false;
+  rmSync(configPath, { force: true });
+  return true;
 }
 
 function scanSkillRoot(root: string): CreatorContributionConfig[] {

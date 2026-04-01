@@ -102,6 +102,7 @@ selftune/
 │   │   ├── sanitize.ts      # Privacy sanitization (conservative/aggressive)
 │   │   └── contribute.ts    # CLI entry point + GitHub submission
 │   ├── contributions.ts     # Creator-directed sharing preferences (separate from community export)
+│   ├── creator-contributions.ts # Creator-side selftune.contribute.json management
 │   ├── observability.ts     # Health checks, log integrity, alpha queue health
 │   ├── status.ts            # Skill health summary (M6)
 │   ├── last.ts              # Last session insight (M6)
@@ -123,6 +124,7 @@ selftune/
 │   ├── assets/              # Config templates (activation rules, settings)
 │   ├── Workflows/           # Skill workflow routing docs
 │   │   ├── Contribute.md
+│   │   ├── CreatorContributions.md
 │   │   ├── Cron.md
 │   │   ├── Dashboard.md
 │   │   ├── Doctor.md

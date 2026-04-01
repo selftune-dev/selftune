@@ -5,6 +5,7 @@ Manage local preferences for future creator-directed contribution flows.
 This is **not** the same as `selftune contribute`:
 - `selftune contributions` manages per-skill opt-in choices for creator-directed sharing
 - `selftune contribute` exports a community contribution bundle
+- `selftune creator-contributions` manages the creator-side `selftune.contribute.json` file
 
 ## When to Use
 

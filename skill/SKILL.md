@@ -97,6 +97,7 @@ selftune last
 selftune doctor
 selftune dashboard [--port <port>] [--no-open]
 selftune contributions [status|approve <skill>|revoke <skill>|default <ask|always|never>|reset]
+selftune creator-contributions [status|enable --skill <name>|disable --skill <name>]
 selftune contribute [--skill NAME] [--preview] [--sanitize LEVEL] [--submit]
 selftune cron setup [--dry-run]                         # auto-detect platform (cron/launchd/systemd)
 selftune cron setup --platform openclaw [--dry-run] [--tz <timezone>]  # OpenClaw-specific
@@ -144,6 +145,7 @@ selftune status                                                        # shows c
 | ingest, import, codex logs, opencode, openclaw, wrap codex                                                                              | Ingest            | Workflows/Ingest.md                   |
 | replay, backfill, claude transcripts, historical sessions                                                                               | Replay            | Workflows/Replay.md                   |
 | contributions, sharing preferences, opt in creator sharing, opt out creator sharing, approve contributions, revoke contributions        | Contributions     | Workflows/Contributions.md            |
+| creator contributions, bundle contribution config, selftune.contribute.json, enable creator contribution, disable creator contribution  | CreatorContributions | Workflows/CreatorContributions.md  |
 | contribute, share, community, export data, anonymized, give back                                                                        | Contribute        | Workflows/Contribute.md               |
 | init, setup, set up, bootstrap, first time, install, configure selftune, alpha, enroll, alpha enrollment, cloud link, upload credential | Initialize        | Workflows/Initialize.md               |
 | cron, schedule, automate evolution, run automatically                                                                                   | Cron              | Workflows/Cron.md                     |
@@ -351,6 +353,7 @@ accomplish a task _using_ a skill, route to that skill instead.
 | `Workflows/RepairSkillUsage.md`     | Rebuild skill usage from source transcripts         | When skill usage data seems inaccurate          |
 | `Workflows/Recover.md`              | Recover SQLite from legacy/exported JSONL           | When rebuilding or backfilling SQLite           |
 | `Workflows/Contributions.md`        | Manage creator-directed sharing preferences         | When approving or revoking creator contribution |
+| `Workflows/CreatorContributions.md` | Manage bundled `selftune.contribute.json` configs   | When preparing a skill package for creator contributions |
 | `Workflows/ExportCanonical.md`      | Export canonical telemetry for downstream use       | When exporting data for external consumption    |
 | `Workflows/Hook.md`                 | Manual hook invocation for debugging                | When debugging or testing hooks manually        |
 | `references/logs.md`                | Log file formats (telemetry, usage, queries, audit) | When parsing or debugging log files             |

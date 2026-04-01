@@ -129,6 +129,7 @@ Your agent runs these — you just say what you want ("improve my skills", "show
 |            | `selftune watch --skill <name>`              | Monitor after deploy. Auto-rollback on regression.                                          |
 | **other**  | `selftune workflows`                         | Discover and manage multi-skill workflows                                                   |
 |            | `selftune contributions`                    | Manage creator-directed sharing preferences                                                  |
+|            | `selftune creator-contributions`            | Create or remove bundled `selftune.contribute.json` configs for skill creators              |
 |            | `selftune contribute`                       | Export an anonymized community contribution bundle                                           |
 |            | `selftune recover`                           | Recover SQLite from legacy/exported JSONL during migration or disaster recovery             |
 |            | `selftune badge --skill <name>`              | Generate a health badge for your skill's README                                             |
