@@ -9,7 +9,10 @@ import type {
 } from "../../cli/selftune/dashboard-contract.js";
 
 let startDashboardServer: typeof import("../../cli/selftune/dashboard-server.js").startDashboardServer;
+let loadWatchedSkills: typeof import("../../cli/selftune/watchlist.js").loadWatchedSkills;
 let testSpaDir: string;
+let configDir: string;
+let originalSelftuneConfigDir: string | undefined;
 
 const overviewFixture: OverviewResponse = {
   overview: {
@@ -60,6 +63,7 @@ const overviewFixture: OverviewResponse = {
     },
   ],
   version: "0.2.1-test",
+  watched_skills: [],
 };
 
 const skillReportFixture: SkillReportResponse = {
@@ -104,8 +108,13 @@ const skillReportFixture: SkillReportResponse = {
 };
 
 beforeAll(async () => {
+  originalSelftuneConfigDir = process.env.SELFTUNE_CONFIG_DIR;
+  configDir = mkdtempSync(join(tmpdir(), "selftune-dashboard-config-"));
+  process.env.SELFTUNE_CONFIG_DIR = configDir;
   const mod = await import("../../cli/selftune/dashboard-server.js");
+  const watchlist = await import("../../cli/selftune/watchlist.js");
   startDashboardServer = mod.startDashboardServer;
+  loadWatchedSkills = watchlist.loadWatchedSkills;
   testSpaDir = mkdtempSync(join(tmpdir(), "selftune-dashboard-test-"));
   mkdirSync(join(testSpaDir, "assets"), { recursive: true });
   writeFileSync(
@@ -113,6 +122,15 @@ beforeAll(async () => {
     `<!DOCTYPE html><html lang="en"><body><div id="root"></div><script type="module" src="/assets/app.js"></script></body></html>`,
   );
   writeFileSync(join(testSpaDir, "assets", "app.js"), "console.log('selftune test spa');\n");
+});
+
+afterAll(() => {
+  rmSync(configDir, { recursive: true, force: true });
+  if (originalSelftuneConfigDir === undefined) {
+    delete process.env.SELFTUNE_CONFIG_DIR;
+  } else {
+    process.env.SELFTUNE_CONFIG_DIR = originalSelftuneConfigDir;
+  }
 });
 
 describe("dashboard-server", () => {
@@ -125,7 +143,7 @@ describe("dashboard-server", () => {
         host: "127.0.0.1",
         spaDir: testSpaDir,
         openBrowser: false,
-        overviewLoader: () => overviewFixture,
+        overviewLoader: () => ({ ...overviewFixture, watched_skills: loadWatchedSkills() }),
         skillReportLoader: (skillName) => (skillName === "test-skill" ? skillReportFixture : null),
         statusLoader: () => ({
           skills: [
@@ -207,6 +225,7 @@ describe("dashboard-server", () => {
       expect(typeof data.overview.active_sessions).toBe("number");
       expect(Array.isArray(data.overview.recent_activity)).toBe(true);
       expect(Array.isArray(data.skills)).toBe(true);
+      expect(Array.isArray(data.watched_skills)).toBe(true);
       expect(data.skills[0]?.skill_name).toBe("test-skill");
     });
 
@@ -260,7 +279,10 @@ describe("dashboard-server", () => {
       const server = await getServer();
       const res = await fetch(`http://127.0.0.1:${server.port}/api/actions/watch`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Origin: `http://127.0.0.1:${server.port}`,
+        },
         body: JSON.stringify({ skill: "test-skill", skillPath: "/tmp/test-skill" }),
       });
       expect(res.status).toBe(200);
@@ -272,7 +294,10 @@ describe("dashboard-server", () => {
       const server = await getServer();
       const res = await fetch(`http://127.0.0.1:${server.port}/api/actions/evolve`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Origin: `http://127.0.0.1:${server.port}`,
+        },
         body: JSON.stringify({ skill: "test-skill", skillPath: "/tmp/test-skill" }),
       });
       expect(res.status).toBe(200);
@@ -284,7 +309,10 @@ describe("dashboard-server", () => {
       const server = await getServer();
       const res = await fetch(`http://127.0.0.1:${server.port}/api/actions/rollback`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Origin: `http://127.0.0.1:${server.port}`,
+        },
         body: JSON.stringify({
           skill: "test-skill",
           skillPath: "/tmp/test-skill",
@@ -294,6 +322,47 @@ describe("dashboard-server", () => {
       expect(res.status).toBe(200);
       const data = await res.json();
       expect(data.success).toBe(false);
+    });
+
+    it("watchlist persists watched skills", async () => {
+      const server = await getServer();
+      const res = await fetch(`http://127.0.0.1:${server.port}/api/actions/watchlist`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: `http://127.0.0.1:${server.port}`,
+        },
+        body: JSON.stringify({ skills: ["pptx", "sc-search"] }),
+      });
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { success: boolean; watched_skills: string[] };
+      expect(data.success).toBe(true);
+      expect(data.watched_skills).toEqual(["pptx", "sc-search"]);
+
+      server.stop();
+      serverPromise = null;
+
+      const reloadedServer = await getServer();
+      const overviewRes = await fetch(`http://127.0.0.1:${reloadedServer.port}/api/v2/overview`);
+      expect(overviewRes.status).toBe(200);
+      const overview = (await overviewRes.json()) as OverviewResponse;
+      expect(overview.watched_skills).toEqual(["pptx", "sc-search"]);
+    });
+
+    it("rejects cross-origin action requests", async () => {
+      const server = await getServer();
+      const res = await fetch(`http://127.0.0.1:${server.port}/api/actions/watch`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: "https://evil.example",
+        },
+        body: JSON.stringify({ skill: "test-skill", skillPath: "/tmp/test-skill" }),
+      });
+      expect(res.status).toBe(403);
+      const data = await res.json();
+      expect(data.success).toBe(false);
+      expect(data.error).toContain("same-origin");
     });
   });
 

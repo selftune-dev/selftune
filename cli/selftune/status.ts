@@ -20,13 +20,16 @@ import { getDb } from "./localdb/db.js";
 import {
   getLastUploadError,
   getLastUploadSuccess,
+  getSkillTrustSummaries,
   queryEvolutionAudit,
   queryQueryLog,
   querySessionTelemetry,
   querySkillUsageRecords,
+  type SkillTrustSummary,
 } from "./localdb/queries.js";
 import { computeMonitoringSnapshot, MIN_MONITORING_SKILL_CHECKS } from "./monitoring/watch.js";
 import { doctor } from "./observability.js";
+import { deriveTrustBucket, deriveTrustBucketReason } from "./trust-model.js";
 import type {
   AgentCommandGuidance,
   AlphaLinkState,
@@ -273,7 +276,44 @@ const TREND_SYMBOLS: Record<string, string> = {
   unknown: "?",
 };
 
-export function formatStatus(result: StatusResult): string {
+function formatTrustHighlights(trustSummaries: SkillTrustSummary[] | undefined): string[] {
+  if (!trustSummaries || trustSummaries.length === 0) return [];
+
+  const recentSort = (a: SkillTrustSummary, b: SkillTrustSummary) =>
+    (b.last_seen ?? "").localeCompare(a.last_seen ?? "");
+  const attention = [...trustSummaries]
+    .filter((summary) => deriveTrustBucket(summary) === "at_risk")
+    .sort(recentSort)
+    .slice(0, 3);
+  const improving = [...trustSummaries]
+    .filter((summary) => deriveTrustBucket(summary) === "improving")
+    .sort(recentSort)
+    .slice(0, 3);
+
+  if (attention.length === 0 && improving.length === 0) return [];
+
+  const lines = ["Highlights"];
+  if (attention.length > 0) {
+    lines.push(
+      `  Attention: ${attention
+        .map((summary) => `${summary.skill_name} (${deriveTrustBucketReason("at_risk", summary)})`)
+        .join("; ")}`,
+    );
+  }
+  if (improving.length > 0) {
+    lines.push(
+      `  Improving: ${improving
+        .map(
+          (summary) => `${summary.skill_name} (${deriveTrustBucketReason("improving", summary)})`,
+        )
+        .join("; ")}`,
+    );
+  }
+
+  return lines;
+}
+
+export function formatStatus(result: StatusResult, trustSummaries?: SkillTrustSummary[]): string {
   const noColor = !!process.env.NO_COLOR;
 
   const green = noColor ? (s: string) => s : (s: string) => colorize(s, "#788c5d");
@@ -284,6 +324,14 @@ export function formatStatus(result: StatusResult): string {
   lines.push("selftune status");
   lines.push("\u2550".repeat(15));
   lines.push("");
+  lines.push(formatStatusSummary(result, trustSummaries));
+  lines.push("");
+
+  const highlightLines = formatTrustHighlights(trustSummaries);
+  if (highlightLines.length > 0) {
+    lines.push(...highlightLines);
+    lines.push("");
+  }
 
   // Skills table
   const skillCount = result.skills.length;
@@ -349,6 +397,36 @@ export function formatStatus(result: StatusResult): string {
   lines.push(`System:             ${healthLabel} (${pass} pass, ${fail} fail, ${warn} warn)`);
 
   return lines.join("\n");
+}
+
+export function formatStatusSummary(
+  result: StatusResult,
+  trustSummaries?: SkillTrustSummary[],
+): string {
+  const watched = trustSummaries?.length ?? result.skills.length;
+  const improving =
+    trustSummaries?.filter((summary) => deriveTrustBucket(summary) === "improving").length ??
+    result.skills.filter((skill) => skill.trend === "up").length;
+  const needsAttention =
+    trustSummaries?.filter((summary) => deriveTrustBucket(summary) === "at_risk").length ??
+    result.skills.filter((skill) => skill.status === "WARNING" || skill.status === "CRITICAL")
+      .length;
+
+  const watchedText = `${watched} ${watched === 1 ? "skill" : "skills"} watched`;
+  const improvingText =
+    improving > 0
+      ? `${improving} improving`
+      : result.lastSession
+        ? "no recent lift"
+        : "no recent data";
+  const attentionText =
+    needsAttention > 0
+      ? `${needsAttention} needing attention`
+      : watched > 0
+        ? "nothing urgent"
+        : "nothing tracked yet";
+
+  return `${watchedText} | ${improvingText} | ${attentionText}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -506,7 +584,8 @@ export async function cliMain(): Promise<void> {
     const doctorResult = await doctor();
 
     const result = computeStatus(telemetry, skillRecords, queryRecords, auditEntries, doctorResult);
-    const output = formatStatus(result);
+    const trustSummaries = getSkillTrustSummaries(db);
+    const output = formatStatus(result, trustSummaries);
     console.log(output);
 
     // Alpha upload status section

@@ -8,8 +8,12 @@
 import type { Database } from "bun:sqlite";
 
 import type {
+  AnalyticsResponse,
+  AttentionItem,
+  AutonomousDecision,
   CommitRecord,
   CommitSummary,
+  DecisionKind,
   ExecutionMetrics,
   OrchestrateRunReport,
   OverviewPaginatedPayload,
@@ -636,34 +640,32 @@ function paginateSkillReportInvocations(
  * Get a summary list of all skills with aggregated stats.
  */
 export function getSkillsList(db: Database): SkillSummary[] {
-  const rows = db
-    .query(
-      `SELECT
-         si.skill_name,
-         COALESCE(
-           (SELECT s2.skill_scope FROM skill_invocations s2
-            WHERE s2.skill_name = si.skill_name AND s2.skill_scope IS NOT NULL
-            ORDER BY s2.occurred_at DESC LIMIT 1),
-           (SELECT su.skill_scope FROM skill_usage su
-            WHERE su.skill_name = si.skill_name AND su.skill_scope IS NOT NULL
-            ORDER BY su.timestamp DESC LIMIT 1)
-         ) as skill_scope,
-         COUNT(*) as total_checks,
-         SUM(CASE WHEN si.triggered = 1 THEN 1 ELSE 0 END) as triggered_count,
-         COUNT(DISTINCT si.session_id) as unique_sessions,
-         MAX(si.occurred_at) as last_seen
-       FROM skill_invocations si
-       GROUP BY si.skill_name
-       ORDER BY total_checks DESC`,
-    )
-    .all() as Array<{
-    skill_name: string;
-    skill_scope: string | null;
-    total_checks: number;
-    triggered_count: number;
-    unique_sessions: number;
-    last_seen: string | null;
-  }>;
+  const trustedRows = queryTrustedSkillObservationRows(db);
+  const bySkill = new Map<
+    string,
+    Array<{
+      skill_name: string;
+      session_id: string;
+      occurred_at: string | null;
+      triggered: number;
+      matched_prompt_id: string | null;
+      confidence: number | null;
+    }>
+  >();
+
+  for (const row of trustedRows) {
+    const arr = bySkill.get(row.skill_name);
+    const base = {
+      skill_name: row.skill_name,
+      session_id: row.session_id,
+      occurred_at: row.occurred_at,
+      triggered: row.triggered,
+      matched_prompt_id: row.matched_prompt_id,
+      confidence: row.confidence,
+    };
+    if (arr) arr.push(base);
+    else bySkill.set(row.skill_name, [base]);
+  }
 
   // Get set of skill names with evidence
   const evidenceSkills = new Set(
@@ -674,16 +676,214 @@ export function getSkillsList(db: Database): SkillSummary[] {
     ).map((r) => r.skill_name),
   );
 
-  return rows.map((row) => ({
+  const skillScopeRows = db
+    .query(
+      `SELECT
+         si.skill_name,
+         COALESCE(
+           (SELECT s2.skill_scope FROM skill_invocations s2
+            WHERE s2.skill_name = si.skill_name AND s2.skill_scope IS NOT NULL
+            ORDER BY s2.occurred_at DESC LIMIT 1),
+           (SELECT su.skill_scope FROM skill_usage su
+            WHERE su.skill_name = si.skill_name AND su.skill_scope IS NOT NULL
+            ORDER BY su.timestamp DESC LIMIT 1)
+         ) as skill_scope
+       FROM skill_invocations si
+       GROUP BY si.skill_name`,
+    )
+    .all() as Array<{ skill_name: string; skill_scope: string | null }>;
+  const scopeBySkill = new Map(skillScopeRows.map((row) => [row.skill_name, row.skill_scope]));
+
+  return [...bySkill.entries()]
+    .map(([skillName, rows]) => {
+      const totalChecks = rows.length;
+      const triggeredCount = rows.filter((row) => row.triggered === 1).length;
+      const uniqueSessions = new Set(rows.map((row) => row.session_id)).size;
+      const lastSeen =
+        rows
+          .map((row) => row.occurred_at)
+          .filter((value): value is string => value != null)
+          .sort((a, b) => b.localeCompare(a))[0] ?? null;
+      const withConfidence = rows.filter((row) => row.confidence != null);
+      const routingConfidence =
+        withConfidence.length > 0
+          ? withConfidence.reduce((sum, row) => sum + (row.confidence ?? 0), 0) /
+            withConfidence.length
+          : null;
+
+      return {
+        skill_name: skillName,
+        skill_scope: scopeBySkill.get(skillName) ?? null,
+        total_checks: totalChecks,
+        triggered_count: triggeredCount,
+        pass_rate: totalChecks > 0 ? triggeredCount / totalChecks : 0,
+        unique_sessions: uniqueSessions,
+        last_seen: lastSeen,
+        has_evidence: evidenceSkills.has(skillName),
+        routing_confidence: routingConfidence,
+        confidence_coverage: totalChecks > 0 ? withConfidence.length / totalChecks : 0,
+      };
+    })
+    .sort((a, b) => b.total_checks - a.total_checks);
+}
+
+/**
+ * Build the performance analytics payload from SQLite.
+ * Powers the GET /api/v2/analytics endpoint.
+ */
+export function getAnalyticsPayload(db: Database): AnalyticsResponse {
+  const trustedRows = queryTrustedSkillObservationRows(db);
+  const today = new Date();
+  const dateKey = (value: string | null): string | null => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+  };
+  const cutoffDate = (days: number): string => {
+    const cutoff = new Date(today);
+    cutoff.setUTCDate(cutoff.getUTCDate() - days);
+    return cutoff.toISOString().slice(0, 10);
+  };
+
+  // 1. Pass rate trend — last 90 days, bucketed by day
+  const passRateTrendByDate = new Map<string, { triggered: number; total: number }>();
+  for (const row of trustedRows) {
+    const occurredDate = dateKey(row.occurred_at);
+    if (!occurredDate || occurredDate < cutoffDate(90)) continue;
+    const counts = passRateTrendByDate.get(occurredDate) ?? { triggered: 0, total: 0 };
+    counts.total += 1;
+    if (row.triggered === 1) counts.triggered += 1;
+    passRateTrendByDate.set(occurredDate, counts);
+  }
+  const passRateTrendRows = [...passRateTrendByDate.entries()]
+    .map(([date, counts]) => ({
+      date,
+      pass_rate: counts.total > 0 ? counts.triggered / counts.total : 0,
+      total_checks: counts.total,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const pass_rate_trend = passRateTrendRows.map((row) => ({
+    date: row.date,
+    pass_rate: row.pass_rate,
+    total_checks: row.total_checks,
+  }));
+
+  // 2. Skill rankings — all skills with at least 1 check, ordered by pass rate
+  const skillRankingMap = new Map<string, { triggered_count: number; total_checks: number }>();
+  for (const row of trustedRows) {
+    const counts = skillRankingMap.get(row.skill_name) ?? { triggered_count: 0, total_checks: 0 };
+    counts.total_checks += 1;
+    if (row.triggered === 1) counts.triggered_count += 1;
+    skillRankingMap.set(row.skill_name, counts);
+  }
+  const skillRankingRows = [...skillRankingMap.entries()]
+    .map(([skill_name, counts]) => ({
+      skill_name,
+      pass_rate: counts.total_checks > 0 ? counts.triggered_count / counts.total_checks : 0,
+      total_checks: counts.total_checks,
+      triggered_count: counts.triggered_count,
+    }))
+    .sort(
+      (a, b) =>
+        b.pass_rate - a.pass_rate ||
+        b.total_checks - a.total_checks ||
+        a.skill_name.localeCompare(b.skill_name),
+    );
+
+  const skill_rankings = skillRankingRows.map((row) => ({
     skill_name: row.skill_name,
-    skill_scope: row.skill_scope,
+    pass_rate: row.pass_rate,
     total_checks: row.total_checks,
     triggered_count: row.triggered_count,
-    pass_rate: row.total_checks > 0 ? row.triggered_count / row.total_checks : 0,
-    unique_sessions: row.unique_sessions,
-    last_seen: row.last_seen,
-    has_evidence: evidenceSkills.has(row.skill_name),
   }));
+
+  // 3. Daily activity — last 84 days (12 weeks) for heatmap
+  const dailyActivityByDate = new Map<string, number>();
+  for (const row of trustedRows) {
+    const occurredDate = dateKey(row.occurred_at);
+    if (!occurredDate || occurredDate < cutoffDate(84)) continue;
+    dailyActivityByDate.set(occurredDate, (dailyActivityByDate.get(occurredDate) ?? 0) + 1);
+  }
+  const dailyActivityRows = [...dailyActivityByDate.entries()]
+    .map(([date, checks]) => ({ date, checks }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const daily_activity = dailyActivityRows.map((row) => ({
+    date: row.date,
+    checks: row.checks,
+  }));
+
+  // 4. Evolution impact — before/after pass rates for deployed evolutions
+  const deployedRows = db
+    .query(
+      `SELECT ea.skill_name, ea.proposal_id, ea.timestamp as deployed_at
+       FROM evolution_audit ea
+       WHERE ea.action = 'deployed' AND ea.skill_name IS NOT NULL
+       ORDER BY ea.timestamp DESC`,
+    )
+    .all() as Array<{ skill_name: string; proposal_id: string; deployed_at: string }>;
+
+  const evolution_impact: AnalyticsResponse["evolution_impact"] = [];
+  for (const deploy of deployedRows) {
+    const beforeRows = trustedRows.filter(
+      (row) => row.skill_name === deploy.skill_name && (row.occurred_at ?? "") < deploy.deployed_at,
+    );
+    const afterRows = trustedRows.filter(
+      (row) =>
+        row.skill_name === deploy.skill_name && (row.occurred_at ?? "") >= deploy.deployed_at,
+    );
+
+    evolution_impact.push({
+      skill_name: deploy.skill_name,
+      proposal_id: deploy.proposal_id,
+      deployed_at: deploy.deployed_at,
+      pass_rate_before:
+        beforeRows.length > 0
+          ? beforeRows.filter((row) => row.triggered === 1).length / beforeRows.length
+          : 0,
+      pass_rate_after:
+        afterRows.length > 0
+          ? afterRows.filter((row) => row.triggered === 1).length / afterRows.length
+          : 0,
+    });
+  }
+
+  // 5. Summary aggregates
+  const totalEvolutionsRow = db
+    .query(`SELECT COUNT(*) as c FROM evolution_audit WHERE action = 'deployed'`)
+    .get() as { c: number } | null;
+
+  const checks30dRows = trustedRows.filter((row) => {
+    const occurredDate = dateKey(row.occurred_at);
+    return occurredDate != null && occurredDate >= cutoffDate(30);
+  });
+  const activeSkills30d = new Set(checks30dRows.map((row) => row.skill_name));
+
+  // Average improvement across all deployed evolutions
+  let avgImprovement = 0;
+  if (evolution_impact.length > 0) {
+    const totalImprovement = evolution_impact.reduce(
+      (sum, e) => sum + (e.pass_rate_after - e.pass_rate_before),
+      0,
+    );
+    avgImprovement = totalImprovement / evolution_impact.length;
+  }
+
+  const summary: AnalyticsResponse["summary"] = {
+    total_evolutions: totalEvolutionsRow?.c ?? 0,
+    avg_improvement: avgImprovement,
+    total_checks_30d: checks30dRows.length,
+    active_skills: activeSkills30d.size,
+  };
+
+  return {
+    pass_rate_trend,
+    skill_rankings,
+    daily_activity,
+    evolution_impact,
+    summary,
+  };
 }
 
 /**
@@ -1087,6 +1287,72 @@ export function queryGradingResults(db: Database): Array<{
   }>;
 }
 
+export function getCreatorContributionStagingCounts(db: Database): Array<{
+  skill_name: string;
+  pending_count: number;
+}> {
+  return db
+    .query(
+      `SELECT skill_name, COUNT(*) AS pending_count
+       FROM creator_contribution_staging
+       WHERE status = 'pending'
+       GROUP BY skill_name
+       ORDER BY skill_name`,
+    )
+    .all() as Array<{
+    skill_name: string;
+    pending_count: number;
+  }>;
+}
+
+export interface CreatorContributionRelayStats {
+  pending: number;
+  sending: number;
+  sent: number;
+  failed: number;
+}
+
+export interface CreatorContributionStagingRow {
+  id: number;
+  dedupe_key: string;
+  skill_name: string;
+  creator_id: string;
+  payload_json: string;
+  status: string;
+  staged_at: string;
+  updated_at: string;
+  last_error: string | null;
+}
+
+export function getCreatorContributionRelayStats(db: Database): CreatorContributionRelayStats {
+  const row = db
+    .query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending,
+         COALESCE(SUM(CASE WHEN status = 'sending' THEN 1 ELSE 0 END), 0) AS sending,
+         COALESCE(SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END), 0) AS sent,
+         COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed
+       FROM creator_contribution_staging`,
+    )
+    .get() as CreatorContributionRelayStats | null;
+  return row ?? { pending: 0, sending: 0, sent: 0, failed: 0 };
+}
+
+export function getPendingCreatorContributionRows(
+  db: Database,
+  limit = 50,
+): CreatorContributionStagingRow[] {
+  return db
+    .query(
+      `SELECT id, dedupe_key, skill_name, creator_id, payload_json, status, staged_at, updated_at, last_error
+       FROM creator_contribution_staging
+       WHERE status = 'pending'
+       ORDER BY id ASC
+       LIMIT ?`,
+    )
+    .all(limit) as CreatorContributionStagingRow[];
+}
+
 // -- Canonical record staging query -------------------------------------------
 
 /**
@@ -1457,6 +1723,411 @@ export function getSkillCommitSummary(db: Database, skillName: string): CommitSu
       timestamp: r.timestamp,
     })),
   };
+}
+
+// -- Helpers ------------------------------------------------------------------
+
+// -- Autonomy-first dashboard queries -----------------------------------------
+
+export interface SkillTrustSummary {
+  skill_name: string;
+  total_checks: number;
+  triggered_count: number;
+  miss_rate: number;
+  system_like_count: number;
+  system_like_rate: number;
+  prompt_link_rate: number;
+  latest_action: string | null;
+  pass_rate: number;
+  last_seen: string | null;
+}
+
+export interface TrustedSkillObservationRow {
+  skill_name: string;
+  session_id: string;
+  occurred_at: string | null;
+  triggered: number;
+  matched_prompt_id: string | null;
+  confidence: number | null;
+  invocation_mode: string | null;
+  query_text: string;
+}
+
+export function queryTrustedSkillObservationRows(db: Database): TrustedSkillObservationRow[] {
+  const SYSTEM_LIKE_PREFIXES = ["<system_instruction>", "<system-instruction>", "<command-name>"];
+  const INTERNAL_EVAL_MARKERS = [
+    "you are an evaluation assistant",
+    "you are a skill description optimizer",
+    "would each query trigger this skill",
+    "propose an improved description",
+    "failure patterns:",
+    "output only valid json",
+  ];
+  const isSystemLike = (text: string | null | undefined): boolean => {
+    if (!text) return false;
+    const trimmed = text.trimStart();
+    return SYSTEM_LIKE_PREFIXES.some((p) => trimmed.startsWith(p));
+  };
+  const isInternalSelftunePrompt = (
+    text: string | null | undefined,
+    promptKind: string | null | undefined,
+  ): boolean => {
+    if (!text) return false;
+    const lowered = text.toLowerCase();
+    return (
+      promptKind === "meta" && INTERNAL_EVAL_MARKERS.some((marker) => lowered.includes(marker))
+    );
+  };
+  const isPollutingPrompt = (
+    text: string | null | undefined,
+    promptKind: string | null | undefined,
+  ): boolean => isSystemLike(text) || isInternalSelftunePrompt(text, promptKind);
+  const classifyObservationKind = (
+    skillInvocationId: string,
+    captureMode: string | null,
+    triggered: number,
+    rawSourceRefJson: string | null,
+  ): "canonical" | "repaired_trigger" | "repaired_contextual_miss" | "legacy_materialized" => {
+    if (skillInvocationId.includes(":su:")) return "legacy_materialized";
+    if (captureMode === "repair") {
+      const rawSourceRef = safeParseJson(rawSourceRefJson) as {
+        metadata?: { miss_type?: string };
+      } | null;
+      if (triggered === 0 && rawSourceRef?.metadata?.miss_type === "contextual_read") {
+        return "repaired_contextual_miss";
+      }
+      return "repaired_trigger";
+    }
+    return "canonical";
+  };
+  const normalizeQueryForGrouping = (query: string) =>
+    query.replace(/\s+/g, " ").trim().toLowerCase();
+
+  const rows = db
+    .query(
+      `SELECT
+         si.skill_name,
+         si.session_id,
+         si.occurred_at,
+         si.triggered,
+         si.matched_prompt_id,
+         si.confidence,
+         si.invocation_mode,
+         si.skill_invocation_id,
+         si.capture_mode,
+         si.raw_source_ref,
+         si.query,
+         p.prompt_text,
+         p.prompt_kind
+       FROM skill_invocations si
+       LEFT JOIN prompts p ON si.matched_prompt_id = p.prompt_id`,
+    )
+    .all() as Array<{
+    skill_name: string;
+    session_id: string;
+    occurred_at: string | null;
+    triggered: number;
+    matched_prompt_id: string | null;
+    confidence: number | null;
+    invocation_mode: string | null;
+    skill_invocation_id: string;
+    capture_mode: string | null;
+    raw_source_ref: string | null;
+    query: string | null;
+    prompt_text: string | null;
+    prompt_kind: string | null;
+  }>;
+
+  const bySkill = new Map<
+    string,
+    Array<{
+      skill_name: string;
+      session_id: string;
+      occurred_at: string | null;
+      triggered: number;
+      matched_prompt_id: string | null;
+      confidence: number | null;
+      invocation_mode: string | null;
+      queryText: string;
+      isPolluting: boolean;
+      observation_kind:
+        | "canonical"
+        | "repaired_trigger"
+        | "repaired_contextual_miss"
+        | "legacy_materialized";
+      groupKey: string;
+    }>
+  >();
+  const trustedRows: Array<{
+    skill_name: string;
+    session_id: string;
+    occurred_at: string | null;
+    triggered: number;
+    matched_prompt_id: string | null;
+    confidence: number | null;
+    invocation_mode: string | null;
+    query_text: string;
+  }> = [];
+
+  for (const row of rows) {
+    const queryText = row.query || row.prompt_text || "";
+    const pollutionText = row.prompt_text || row.query || "";
+    const observation_kind = classifyObservationKind(
+      row.skill_invocation_id,
+      row.capture_mode,
+      row.triggered,
+      row.raw_source_ref,
+    );
+    if (isPollutingPrompt(pollutionText, row.prompt_kind)) continue;
+    if (observation_kind === "legacy_materialized") continue;
+
+    const normalizedQuery = normalizeQueryForGrouping(queryText);
+    const groupKey =
+      normalizedQuery.length > 0
+        ? `${row.session_id}::${normalizedQuery}`
+        : `${row.skill_invocation_id}`;
+    const arr = bySkill.get(row.skill_name);
+    const enriched = {
+      skill_name: row.skill_name,
+      session_id: row.session_id,
+      occurred_at: row.occurred_at,
+      triggered: row.triggered,
+      matched_prompt_id: row.matched_prompt_id,
+      confidence: row.confidence,
+      invocation_mode: row.invocation_mode,
+      queryText,
+      isPolluting: false,
+      observation_kind,
+      groupKey,
+    };
+    if (arr) arr.push(enriched);
+    else bySkill.set(row.skill_name, [enriched]);
+  }
+
+  for (const [, skillRows] of bySkill.entries()) {
+    const grouped = new Map<string, typeof skillRows>();
+    for (const row of skillRows) {
+      const arr = grouped.get(row.groupKey);
+      if (arr) arr.push(row);
+      else grouped.set(row.groupKey, [row]);
+    }
+
+    const deduped = [...grouped.values()].map((group) => {
+      const sorted = [...group].sort((a, b) => {
+        const aScore =
+          (a.triggered === 1 ? 100 : 0) +
+          (a.observation_kind === "canonical" ? 20 : 0) +
+          (a.observation_kind === "repaired_trigger" ? 15 : 0);
+        const bScore =
+          (b.triggered === 1 ? 100 : 0) +
+          (b.observation_kind === "canonical" ? 20 : 0) +
+          (b.observation_kind === "repaired_trigger" ? 15 : 0);
+        if (aScore !== bScore) return bScore - aScore;
+        return (b.occurred_at ?? "").localeCompare(a.occurred_at ?? "");
+      });
+      return sorted[0]!;
+    });
+
+    trustedRows.push(
+      ...deduped.map((row) => ({
+        skill_name: row.skill_name,
+        session_id: row.session_id,
+        occurred_at: row.occurred_at,
+        triggered: row.triggered,
+        matched_prompt_id: row.matched_prompt_id,
+        confidence: row.confidence,
+        invocation_mode: row.invocation_mode,
+        query_text: row.queryText,
+      })),
+    );
+  }
+
+  return trustedRows;
+}
+
+export function getSkillTrustSummaries(db: Database): SkillTrustSummary[] {
+  const rows = queryTrustedSkillObservationRows(db);
+
+  // Build latest_action map from evolution_audit
+  const auditRows = db
+    .query(
+      `SELECT skill_name, action, timestamp
+       FROM evolution_audit
+       WHERE skill_name IS NOT NULL
+       ORDER BY timestamp DESC`,
+    )
+    .all() as Array<{
+    skill_name: string | null;
+    action: string;
+    timestamp: string;
+  }>;
+
+  const latestActions = new Map<string, string>();
+  for (const row of auditRows) {
+    if (row.skill_name && !latestActions.has(row.skill_name)) {
+      latestActions.set(row.skill_name, row.action);
+    }
+  }
+
+  const rowsBySkill = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const arr = rowsBySkill.get(row.skill_name);
+    if (arr) arr.push(row);
+    else rowsBySkill.set(row.skill_name, [row]);
+  }
+
+  const summaries: SkillTrustSummary[] = [];
+  for (const [skillName, skillRows] of rowsBySkill.entries()) {
+    const total = skillRows.length;
+    const triggered = skillRows.filter((row) => row.triggered === 1).length;
+    const promptLinked = skillRows.filter((row) => row.matched_prompt_id != null).length;
+    const lastSeen =
+      skillRows
+        .map((row) => row.occurred_at)
+        .filter((value): value is string => value != null)
+        .sort((a, b) => b.localeCompare(a))[0] ?? null;
+
+    summaries.push({
+      skill_name: skillName,
+      total_checks: total,
+      triggered_count: triggered,
+      miss_rate: total > 0 ? (total - triggered) / total : 0,
+      system_like_count: 0,
+      system_like_rate: 0,
+      prompt_link_rate: total > 0 ? promptLinked / total : 0,
+      latest_action: latestActions.get(skillName) ?? null,
+      pass_rate: total > 0 ? triggered / total : 0,
+      last_seen: lastSeen,
+    });
+  }
+
+  return summaries;
+}
+
+export function getAttentionQueue(db: Database): AttentionItem[] {
+  const summaries = getSkillTrustSummaries(db);
+  const pending = getPendingProposals(db);
+  const pendingSkills = new Set(pending.map((p) => p.skill_name).filter(Boolean));
+
+  const items: AttentionItem[] = [];
+
+  for (const s of summaries) {
+    if (s.latest_action === "rolled_back") {
+      items.push({
+        skill_name: s.skill_name,
+        category: "needs_review",
+        severity: "critical",
+        reason: "Rolled back after deployment",
+        recommended_action: "Review rollback evidence and decide whether to re-evolve",
+        timestamp: s.last_seen ?? "",
+      });
+      continue;
+    }
+
+    if (pendingSkills.has(s.skill_name)) {
+      items.push({
+        skill_name: s.skill_name,
+        category: "needs_review",
+        severity: "info",
+        reason: "Proposal awaiting review",
+        recommended_action: "Review and approve or reject the pending proposal",
+        timestamp: s.last_seen ?? "",
+      });
+      continue;
+    }
+
+    if (s.total_checks < 5) continue;
+
+    if (s.miss_rate > 0.1) {
+      items.push({
+        skill_name: s.skill_name,
+        category: "regression",
+        severity: "warning",
+        reason: `High miss rate (${Math.round(s.miss_rate * 100)}%)`,
+        recommended_action: "Review missed invocations and consider evolving the skill description",
+        timestamp: s.last_seen ?? "",
+      });
+      continue;
+    }
+
+    if (s.system_like_rate > 0.1) {
+      items.push({
+        skill_name: s.skill_name,
+        category: "polluted",
+        severity: "warning",
+        reason: `Possible telemetry pollution (${Math.round(s.system_like_rate * 100)}% system-like)`,
+        recommended_action: "Inspect prompts for system-injected noise",
+        timestamp: s.last_seen ?? "",
+      });
+      continue;
+    }
+  }
+
+  return items;
+}
+
+export function getRecentDecisions(db: Database, limit = 20): AutonomousDecision[] {
+  const rows = db
+    .query(
+      `SELECT timestamp, proposal_id, skill_name, action, details, eval_snapshot_json
+       FROM evolution_audit
+       WHERE timestamp >= datetime('now', '-7 days')
+       ORDER BY timestamp DESC
+       LIMIT ?`,
+    )
+    .all(limit) as Array<{
+    timestamp: string;
+    proposal_id: string;
+    skill_name: string | null;
+    action: string;
+    details: string;
+    eval_snapshot_json: string | null;
+  }>;
+
+  return rows
+    .filter((row) => row.skill_name != null)
+    .flatMap((row) => {
+      const evalSnapshot = safeParseJson(row.eval_snapshot_json) as {
+        regressions?: unknown[];
+      } | null;
+
+      let kind: DecisionKind | null;
+      switch (row.action) {
+        case "proposed":
+        case "created":
+          kind = "proposal_created";
+          break;
+        case "rejected":
+          kind = "proposal_rejected";
+          break;
+        case "validated":
+          kind =
+            evalSnapshot?.regressions && evalSnapshot.regressions.length > 0
+              ? "validation_failed"
+              : "proposal_created"; // validated without regressions is still a creation step
+          break;
+        case "deployed":
+          kind = "proposal_deployed";
+          break;
+        case "rolled_back":
+          kind = "rollback_triggered";
+          break;
+        default:
+          kind = null;
+      }
+
+      if (!kind) return [];
+
+      return [
+        {
+          timestamp: row.timestamp,
+          kind,
+          skill_name: row.skill_name!,
+          proposal_id: row.proposal_id,
+          summary: row.details ?? "",
+        },
+      ];
+    });
 }
 
 // -- Helpers ------------------------------------------------------------------

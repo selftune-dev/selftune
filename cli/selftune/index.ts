@@ -6,7 +6,7 @@
  *   selftune ingest <agent>     — Ingest agent sessions (claude, codex, opencode, openclaw, wrap-codex)
  *   selftune grade [mode]       — Grade skill sessions (auto, baseline)
  *   selftune evolve [target]    — Evolve skill descriptions (body, rollback)
- *   selftune eval <action>      — Evaluation tools (generate, unit-test, import, composability)
+ *   selftune eval <action>      — Evaluation tools (generate, unit-test, import, composability, family-overlap)
  *   selftune sync               — Sync source-truth telemetry across supported agents
  *   selftune orchestrate        — Run autonomous core loop (sync → status → evolve → watch)
  *   selftune init               — Initialize agent identity and config
@@ -19,11 +19,14 @@
  *   selftune cron               — Scheduling & automation (setup, list, remove)
  *   selftune badge              — Generate skill health badges for READMEs
  *   selftune contribute         — Export anonymized skill data for community
+ *   selftune contributions      — Manage creator-directed sharing preferences
+ *   selftune creator-contributions — Manage creator-side contribution configs
  *   selftune workflows          — Discover and manage multi-skill workflows
  *   selftune quickstart         — Guided onboarding: init, ingest, status, and suggestions
  *   selftune repair-skill-usage — Rebuild trustworthy skill usage from transcripts
- *   selftune export             — Export SQLite data to JSONL files
+ *   selftune export             — Export SQLite data to JSONL snapshots
  *   selftune export-canonical   — Export canonical telemetry for downstream ingestion
+ *   selftune recover            — Recover SQLite from legacy/exported JSONL
  *   selftune telemetry          — Manage anonymous usage analytics (status, enable, disable)
  *   selftune alpha <subcommand> — Alpha program management (upload)
  *   selftune hook <name>        — Run a hook by name (prompt-log, session-stop, etc.)
@@ -46,7 +49,7 @@ Commands:
   ingest <agent>     Ingest agent sessions (claude, codex, opencode, openclaw, wrap-codex)
   grade [mode]       Grade skill sessions (auto, baseline)
   evolve [target]    Evolve skill descriptions (body, rollback)
-  eval <action>      Evaluation tools (generate, unit-test, import, composability)
+  eval <action>      Evaluation tools (generate, unit-test, import, composability, family-overlap)
   sync               Sync source-truth telemetry across supported agents
   orchestrate        Run autonomous core loop (sync → status → evolve → watch)
   init               Initialize agent identity and config
@@ -59,11 +62,14 @@ Commands:
   cron               Scheduling & automation (setup, list, remove)
   badge              Generate skill health badges for READMEs
   contribute         Export anonymized skill data for community
+  contributions      Manage creator-directed sharing preferences
+  creator-contributions Manage creator-side contribution configs
   workflows          Discover and manage multi-skill workflows
   quickstart         Guided onboarding: init, ingest, status, and suggestions
   repair-skill-usage Rebuild trustworthy skill usage from transcripts
-  export             Export SQLite data to JSONL files
+  export             Export SQLite data to JSONL snapshots
   export-canonical   Export canonical telemetry for downstream ingestion
+  recover            Recover SQLite from legacy/exported JSONL
   alpha <subcommand> Alpha program management (upload)
   telemetry          Manage anonymous usage analytics (status, enable, disable)
   hook <name>        Run a hook by name (prompt-log, session-stop, etc.)
@@ -254,6 +260,7 @@ Actions:
   unit-test      Run or generate skill unit tests
   import         Import SkillsBench task corpus as eval entries
   composability  Analyze skill co-occurrence conflicts
+  family-overlap Detect sibling-skill overlap and consolidation pressure
 
 Run 'selftune eval <action> --help' for action-specific options.`);
       process.exit(0);
@@ -341,6 +348,17 @@ Run 'selftune eval <action> --help' for action-specific options.`);
         console.log(JSON.stringify(report, null, 2));
         break;
       }
+      case "family-overlap": {
+        if (process.argv[2] === "--help" || process.argv[2] === "-h") {
+          console.log(
+            "selftune eval family-overlap --prefix <family-> | --skills <a,b,c> [--parent-skill <name>] [--min-overlap 0.3] [--min-shared 2]",
+          );
+          process.exit(0);
+        }
+        const { cliMain } = await import("./eval/family-overlap.js");
+        await cliMain();
+        break;
+      }
       default:
         throw new CLIError(
           `Unknown eval action: ${sub}`,
@@ -365,6 +383,16 @@ Run 'selftune eval <action> --help' for action-specific options.`);
   }
   case "contribute": {
     const { cliMain } = await import("./contribute/contribute.js");
+    await cliMain();
+    break;
+  }
+  case "contributions": {
+    const { cliMain } = await import("./contributions.js");
+    await cliMain();
+    break;
+  }
+  case "creator-contributions": {
+    const { cliMain } = await import("./creator-contributions.js");
     await cliMain();
     break;
   }
@@ -527,10 +555,13 @@ Run 'selftune cron <subcommand> --help' for subcommand-specific options.`);
       throw new CLIError(`Invalid arguments: ${message}`, "INVALID_FLAG", "selftune export --help");
     }
     if (values.help) {
-      console.log(`selftune export — Export SQLite data to JSONL files
+      console.log(`selftune export — Export SQLite data to JSONL snapshots
 
 Usage:
   selftune export [tables...] [options]
+
+Use this for portability, debugging, contribute flows, or explicit recovery
+snapshots. Normal runtime reads and writes stay in SQLite.
 
 Tables (default: all):
   telemetry    Session telemetry records
@@ -567,6 +598,11 @@ Options:
   }
   case "export-canonical": {
     const { cliMain } = await import("./canonical-export.js");
+    cliMain();
+    break;
+  }
+  case "recover": {
+    const { cliMain } = await import("./recover.js");
     cliMain();
     break;
   }

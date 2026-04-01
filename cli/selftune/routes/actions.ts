@@ -1,10 +1,12 @@
 /**
- * Route handler: POST /api/actions/{watch,evolve,rollback}
+ * Route handler: POST /api/actions/{watch,evolve,rollback,watchlist}
  *
  * Triggers selftune CLI commands as child processes and returns the result.
  */
 
 import { join } from "node:path";
+
+import { saveWatchedSkills } from "../watchlist.js";
 
 export type ActionRunner = (
   command: string,
@@ -41,6 +43,38 @@ export async function handleAction(
   body: Record<string, unknown>,
   executeAction: ActionRunner = runAction,
 ): Promise<Response> {
+  if (action === "watchlist") {
+    const skills = body.skills;
+    if (skills === undefined || skills === null) {
+      return Response.json(
+        { success: false, error: "Missing required field: skills[]" },
+        { status: 400 },
+      );
+    }
+    if (!Array.isArray(skills) || !skills.every((skill) => typeof skill === "string")) {
+      return Response.json(
+        {
+          success: false,
+          error: "Invalid type for skills: expected array of strings",
+        },
+        { status: 400 },
+      );
+    }
+    try {
+      const saved = saveWatchedSkills(skills);
+      return Response.json({ success: true, watched_skills: saved, error: null });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return Response.json(
+        {
+          success: false,
+          error: `Failed to save watched skills. Check your selftune config directory and try again. ${message}`,
+        },
+        { status: 500 },
+      );
+    }
+  }
+
   if (action === "watch" || action === "evolve") {
     const skill = body.skill as string | undefined;
     const skillPath = body.skillPath as string | undefined;

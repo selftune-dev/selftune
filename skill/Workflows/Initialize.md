@@ -192,6 +192,25 @@ and evolution pipeline have data to work with immediately.
 The sync step is fail-open — if it encounters errors, init continues.
 Skip with `--no-sync` if you only want hooks for forward-looking data.
 
+If the user is migrating from a much older pre-SQLite install and wants to
+recover legacy selftune JSONL history itself, use `selftune recover` as a
+separate recovery step. That is not part of normal first-time setup.
+
+Recovery quick reference:
+
+| Flag | Description |
+| --- | --- |
+| `--full` | Rebuild SQLite from the available JSONL/export sources |
+| `--force` | Skip the SQLite-only preflight guard during a full rebuild |
+| `--since <date>` | Recover only rows on or after the given date |
+| `--json` | Output JSON summary instead of human-readable text |
+
+Example:
+
+```bash
+selftune recover --full --force
+```
+
 ### 9. Autonomy Scheduling
 
 Init automatically installs OS-level scheduling (launchd on macOS, cron/systemd
@@ -271,7 +290,7 @@ Enrollment uses a device-code flow — one command, one browser approval, fully 
 
 ### Setup Sequence
 
-1. **Check local config**: Run `selftune status` — look for the "Alpha Upload" section
+1. **Check local config**: Run `selftune status` — use the first summary line and compact `Highlights` section to explain current skill health, then look for the "Alpha Upload" section
 2. **If not linked**: First use `AskUserQuestion` for the opt-in decision. Only if the user says yes, collect their email and run:
 
    ```bash

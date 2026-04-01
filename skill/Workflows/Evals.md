@@ -25,7 +25,7 @@ selftune eval generate --skill <name> [options]
 | Flag                               | Description                                           | Default                           |
 | ---------------------------------- | ----------------------------------------------------- | --------------------------------- |
 | `--skill <name>`                   | Skill to generate evals for                           | Required (unless `--list-skills`) |
-| `--list-skills`                    | List all logged skills with query counts              | Off                               |
+| `--list-skills`                    | List skills with trusted-vs-raw readiness counts      | Off                               |
 | `--stats`                          | Show aggregate telemetry stats for the skill          | Off                               |
 | `--max <n>`                        | Maximum eval entries per side                         | 50                                |
 | `--seed <n>`                       | Seed for deterministic shuffling                      | 42                                |
@@ -36,6 +36,7 @@ selftune eval generate --skill <name> [options]
 | `--query-log <path>`               | Path to all_queries_log.jsonl                         | Default log path                  |
 | `--telemetry-log <path>`           | Path to session_telemetry_log.jsonl                   | Default log path                  |
 | `--synthetic`                      | Generate evals from SKILL.md via LLM (no logs needed) | Off                               |
+| `--auto-synthetic`                 | Fall back to SKILL.md-based cold-start evals when no trusted triggers exist | Off                  |
 | `--skill-path <path>`              | Path to SKILL.md (required with `--synthetic`)        | —                                 |
 | `--model <model>`                  | LLM model to use for synthetic generation             | Agent default                     |
 
@@ -65,8 +66,22 @@ and optional `invocation_type` (omitted when `--no-taxonomy` is set).
 ```json
 {
   "skills": [
-    { "name": "pptx", "query_count": 42, "session_count": 15 },
-    { "name": "selftune", "query_count": 28, "session_count": 10 }
+    {
+      "name": "pptx",
+      "trusted_trigger_count": 42,
+      "raw_trigger_count": 42,
+      "trusted_session_count": 15,
+      "raw_session_count": 15,
+      "readiness": "log-ready"
+    },
+    {
+      "name": "sc-search",
+      "trusted_trigger_count": 0,
+      "raw_trigger_count": 1,
+      "trusted_session_count": 0,
+      "raw_session_count": 1,
+      "readiness": "cold-start"
+    }
   ]
 }
 ```
@@ -115,7 +130,11 @@ Discover which skills have telemetry data and how many queries each has.
 selftune eval generate --list-skills
 ```
 
-Run this first to identify which skills have enough data for eval generation.
+Run this first to identify which skills have enough trusted data for eval generation.
+Installed skills with no trusted trigger history now appear as `cold-start`, which means the
+skill is installed locally and ready for `--auto-synthetic` / `--synthetic` eval generation.
+If raw trigger history exists but trusted positives do not, the list now shows both counts so the
+creator can see that telemetry exists without being misled into thinking the skill is fully ready.
 
 ### Generate Synthetic Evals (Cold Start)
 
@@ -126,19 +145,35 @@ queries directly from the SKILL.md content via an LLM.
 selftune eval generate --skill pptx --synthetic --skill-path /path/to/skills/pptx/SKILL.md
 ```
 
+If the skill is installed locally but has no trusted trigger history yet, use the faster creator
+onboarding path:
+
+```bash
+selftune eval generate --skill pptx --auto-synthetic --skill-path /path/to/skills/pptx/SKILL.md
+```
+
+`--auto-synthetic` keeps the normal log-based path when real trigger data exists, but falls back
+to synthetic cold-start generation when it does not.
+
 The command:
 
 1. Reads the SKILL.md file content
 2. Loads real user queries from the database (if available) as few-shot style examples so synthetic queries match real phrasing patterns
-3. Sends skill content and real examples to an LLM with a prompt requesting realistic test queries
-4. Parses the response into eval entries with invocation type annotations
-5. Classifies each positive query using the deterministic `classifyInvocation()` heuristic
-6. Writes the eval set to the output file
+3. Detects nearby installed sibling skills to generate harder negative controls
+4. Over-generates a candidate pool with a balanced prompt family mix (explicit / implicit / contextual positives plus sibling-confusion / adjacent / unrelated negatives)
+5. Runs a second critique/prune pass to remove weak paraphrases, overlaps, and blurry boundary cases
+6. Parses the response into eval entries with invocation type annotations
+7. Classifies each positive query using the deterministic `classifyInvocation()` heuristic
+8. Writes the eval set to the output file
 
 **Note:** When real query data exists in the database, synthetic generation
 automatically includes high-confidence positive triggers and general queries as
 phrasing references. This produces more natural-sounding eval queries. If no
 database is available, generation proceeds without real examples (fail-open).
+
+The synthetic cold-start path is intentionally small and targeted. It is meant to bootstrap a
+creator skill into its first supervised evolution cycle, not serve as the long-term source of
+truth once real telemetry exists.
 
 Use `--model` to override the default LLM model:
 
@@ -164,6 +199,20 @@ The command:
 4. Samples negative examples (unrelated queries)
 5. Annotates each entry with invocation type
 6. Writes the eval set to the output file
+
+After generation, the current validation path is:
+
+```bash
+selftune evolve --skill <name> --skill-path /path/to/SKILL.md --eval-set <generated-file> --dry-run
+```
+
+That dry run validates a proposal against the generated eval set without deploying.
+
+If the selected skill has no trusted positives yet but selftune can resolve a local `SKILL.md`,
+the command now prints the exact `--auto-synthetic` rerun hint instead of leaving the creator to
+guess the cold-start path.
+
+After reviewing a dry-run proposal, deploy by rerunning without `--dry-run`.
 
 ### Show Stats
 

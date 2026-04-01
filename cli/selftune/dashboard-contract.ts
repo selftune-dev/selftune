@@ -134,6 +134,65 @@ export interface SkillSummary {
   unique_sessions: number;
   last_seen: string | null;
   has_evidence: boolean;
+  routing_confidence: number | null;
+  confidence_coverage: number;
+}
+
+// -- Autonomy-first overview types -------------------------------------------
+
+export type AutonomyStatusLevel = "healthy" | "watching" | "needs_review" | "blocked";
+
+export interface AutonomyStatus {
+  level: AutonomyStatusLevel;
+  summary: string;
+  last_run: string | null;
+  skills_observed: number;
+  pending_reviews: number;
+  attention_required: number;
+}
+
+export type AttentionCategory =
+  | "needs_review"
+  | "regression"
+  | "low_trust"
+  | "polluted"
+  | "blocked";
+
+export interface AttentionItem {
+  skill_name: string;
+  category: AttentionCategory;
+  severity: "critical" | "warning" | "info";
+  reason: string;
+  recommended_action: string;
+  timestamp: string;
+}
+
+export type TrustBucket = "at_risk" | "improving" | "uncertain" | "stable";
+
+export interface TrustWatchlistEntry {
+  skill_name: string;
+  bucket: TrustBucket;
+  trust_state: TrustState;
+  reason: string;
+  pass_rate: number | null;
+  checks: number;
+  last_seen: string | null;
+}
+
+export type DecisionKind =
+  | "proposal_created"
+  | "proposal_rejected"
+  | "validation_failed"
+  | "proposal_deployed"
+  | "rollback_triggered"
+  | "regression_found";
+
+export interface AutonomousDecision {
+  timestamp: string;
+  kind: DecisionKind;
+  skill_name: string;
+  proposal_id?: string;
+  summary: string;
 }
 
 export interface OverviewPayload {
@@ -158,6 +217,11 @@ export interface OverviewResponse {
   overview: OverviewPayload;
   skills: SkillSummary[];
   version?: string;
+  watched_skills: string[];
+  autonomy_status: AutonomyStatus;
+  attention_queue: AttentionItem[];
+  trust_watchlist: TrustWatchlistEntry[];
+  recent_decisions: AutonomousDecision[];
 }
 
 export interface EvidenceEntry {
@@ -188,6 +252,8 @@ export interface CanonicalInvocation {
   source?: string | null;
   skill_path?: string | null;
   skill_scope?: string | null;
+  observation_kind?: ObservationKind;
+  historical_context?: HistoricalContext | null;
 }
 
 export interface PromptSample {
@@ -266,6 +332,48 @@ export interface OrchestrateRunsResponse {
   runs: OrchestrateRunReport[];
 }
 
+// -- Performance analytics response -------------------------------------------
+
+export interface AnalyticsResponse {
+  /** Daily pass rate trend (last 90 days, bucketed by day) */
+  pass_rate_trend: Array<{
+    date: string;
+    pass_rate: number;
+    total_checks: number;
+  }>;
+
+  /** Skills ranked by pass rate with trend direction */
+  skill_rankings: Array<{
+    skill_name: string;
+    pass_rate: number;
+    total_checks: number;
+    triggered_count: number;
+  }>;
+
+  /** Daily check counts for heatmap (last 84 days / 12 weeks) */
+  daily_activity: Array<{
+    date: string;
+    checks: number;
+  }>;
+
+  /** Evolution impact — before/after pass rates for deployed evolutions */
+  evolution_impact: Array<{
+    skill_name: string;
+    proposal_id: string;
+    deployed_at: string;
+    pass_rate_before: number;
+    pass_rate_after: number;
+  }>;
+
+  /** Aggregate summary */
+  summary: {
+    total_evolutions: number;
+    avg_improvement: number;
+    total_checks_30d: number;
+    active_skills: number;
+  };
+}
+
 // -- Health endpoint response -------------------------------------------------
 
 export interface HealthResponse {
@@ -318,7 +426,103 @@ export interface CommitSummary {
   recent_commits: Array<{ sha: string; title: string; branch: string; timestamp: string }>;
 }
 
-export interface SkillReportResponse extends SkillReportPayload {
+// -- Trust-oriented types for skill report ------------------------------------
+
+export type TrustState =
+  | "low_sample"
+  | "observed"
+  | "watch"
+  | "validated"
+  | "deployed"
+  | "rolled_back";
+
+export type ObservationKind =
+  | "canonical"
+  | "repaired_trigger"
+  | "repaired_contextual_miss"
+  | "legacy_materialized";
+
+export type HistoricalContext = "previously_missed";
+
+export interface ExampleRow {
+  timestamp: string | null;
+  session_id: string;
+  query_text: string;
+  triggered: boolean;
+  confidence: number | null;
+  invocation_mode: string | null;
+  prompt_kind: string | null;
+  source: string | null;
+  platform: string | null;
+  workspace_path: string | null;
+  query_origin: "inline_query" | "matched_prompt" | "missing";
+  is_system_like: boolean;
+  observation_kind: ObservationKind;
+  historical_context?: HistoricalContext | null;
+}
+
+export interface TrustFields {
+  trust: {
+    state: TrustState;
+    summary: string;
+  };
+  coverage: {
+    checks: number;
+    sessions: number;
+    workspaces: number;
+    first_seen: string | null;
+    last_seen: string | null;
+  };
+  evidence_quality: {
+    prompt_link_rate: number;
+    inline_query_rate: number;
+    user_prompt_rate: number;
+    meta_prompt_rate: number;
+    internal_prompt_rate: number;
+    no_prompt_rate: number;
+    system_like_rate: number;
+    invocation_mode_coverage: number;
+    confidence_coverage: number;
+    source_coverage: number;
+    scope_coverage: number;
+  };
+  routing_quality: {
+    missed_triggers: number;
+    miss_rate: number;
+    avg_confidence: number | null;
+    confidence_coverage: number;
+    low_confidence_rate: number | null;
+  };
+  evolution_state: {
+    has_evidence: boolean;
+    has_pending_proposals: boolean;
+    latest_action: string | null;
+    latest_timestamp: string | null;
+    evidence_rows: number;
+    evolution_rows: number;
+  };
+  data_hygiene: {
+    naming_variants: string[];
+    source_breakdown: Array<{ source: string; count: number }>;
+    prompt_kind_breakdown: Array<{ kind: string; count: number }>;
+    observation_breakdown: Array<{ kind: ObservationKind; count: number }>;
+    raw_checks: number;
+    operational_checks: number;
+    internal_prompt_rows: number;
+    internal_prompt_rate: number;
+    legacy_rows: number;
+    legacy_rate: number;
+    repaired_rows: number;
+    repaired_rate: number;
+  };
+  examples: {
+    good: ExampleRow[];
+    missed: ExampleRow[];
+    noisy: ExampleRow[];
+  };
+}
+
+export interface SkillReportResponse extends SkillReportPayload, TrustFields {
   evolution: EvolutionEntry[];
   pending_proposals: PendingProposal[];
   token_usage: {

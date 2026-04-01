@@ -41,11 +41,13 @@ import type {
   SessionTelemetryRecord,
   SkillUsageRecord,
 } from "../types.js";
+import { extractActionableQueryText } from "../utils/query-filter.js";
+import { getInternalPromptTargetSkill, isWrappedNonUserPart } from "../utils/skill-detection.js";
 import {
   classifySkillPath,
-  containsWholeSkillMention,
   extractExplicitSkillMentions,
   extractSkillNamesFromInstructions,
+  extractSkillNamesFromPathReferences,
   findInstalledSkillNames,
   findInstalledSkillPath,
   findRepositorySkillDirs,
@@ -112,26 +114,34 @@ export function parseJsonlStream(lines: string[], skillNames: Set<string>): Pars
   let outputTokens = 0;
   const agentMessages: string[] = [];
   const sessionSkillNames = new Set(skillNames);
+  const markSkillTriggered = (skillName: string): void => {
+    if (!skillsTriggered.includes(skillName)) {
+      skillsTriggered.push(skillName);
+    }
+  };
   const rememberSessionSkillNames = (text: unknown): void => {
     if (typeof text !== "string" || !text) return;
     for (const skillName of extractSkillNamesFromInstructions(text, sessionSkillNames)) {
       sessionSkillNames.add(skillName);
     }
   };
-  const detectTriggeredSkills = (text: unknown): void => {
+  const detectExplicitSkillReads = (text: unknown): void => {
     if (typeof text !== "string" || !text) return;
-    for (const skillName of sessionSkillNames) {
-      if (containsWholeSkillMention(text, skillName) && !skillsTriggered.includes(skillName)) {
-        skillsTriggered.push(skillName);
-      }
+    for (const skillName of extractSkillNamesFromPathReferences(text, sessionSkillNames)) {
+      markSkillTriggered(skillName);
     }
   };
   const detectExplicitPromptSkillMentions = (text: unknown): void => {
     if (typeof text !== "string" || !text) return;
-    for (const skillName of extractExplicitSkillMentions(text, sessionSkillNames)) {
-      if (!skillsTriggered.includes(skillName)) {
-        skillsTriggered.push(skillName);
-      }
+    if (isWrappedNonUserPart(text)) return;
+    const actionableText = extractActionableQueryText(text) ?? text;
+    const internalTargetSkill = getInternalPromptTargetSkill(actionableText, sessionSkillNames);
+    if (internalTargetSkill) {
+      markSkillTriggered(internalTargetSkill);
+      return;
+    }
+    for (const skillName of extractExplicitSkillMentions(actionableText, sessionSkillNames)) {
+      markSkillTriggered(skillName);
     }
   };
 
@@ -187,40 +197,38 @@ export function parseJsonlStream(lines: string[], skillNames: Set<string>): Pars
         } else if (itemType === "agent_message") {
           const text = (item.text as string) ?? "";
           if (text) agentMessages.push(text.slice(0, 500));
-          detectTriggeredSkills(text);
         } else if (itemType === "reasoning") {
           toolCalls.reasoning = (toolCalls.reasoning ?? 0) + 1;
         }
       }
 
-      // Detect skill names in text on completed events (whole-word match)
-      const textContent = ((item.text as string) ?? "") + ((item.command as string) ?? "");
-      if (etype === "item.completed") {
-        detectTriggeredSkills(textContent);
+      if (etype === "item.completed" && itemType === "command_execution") {
+        detectExplicitSkillReads(item.command);
       }
     } else if (etype === "response_item") {
       const payload = (event.payload as Record<string, unknown>) ?? {};
       const itemType = (payload.type as string) ?? "";
       if (itemType === "function_call") {
-        detectTriggeredSkills(payload.arguments);
+        detectExplicitSkillReads(payload.arguments);
       } else if (itemType === "message") {
-        const content = Array.isArray(payload.content)
+        const parts = Array.isArray(payload.content)
           ? payload.content
               .map((part) =>
                 typeof part === "object" && part
                   ? (((part as Record<string, unknown>).text as string | undefined) ?? "")
                   : "",
               )
-              .join("\n")
-          : "";
+              .filter(Boolean)
+          : [];
+        const content = parts.join("\n");
         rememberSessionSkillNames(content);
-        if ((payload.role as string) === "assistant") {
-          detectTriggeredSkills(content);
-        } else if ((payload.role as string) === "user") {
-          detectExplicitPromptSkillMentions(content);
+        if ((payload.role as string) === "user") {
+          for (const part of parts) {
+            detectExplicitPromptSkillMentions(part);
+          }
         }
       } else if (itemType === "agent_reasoning") {
-        detectTriggeredSkills(payload.text);
+        detectExplicitSkillReads(payload.text);
       }
     } else if (etype === "error") {
       errors += 1;

@@ -31,6 +31,7 @@ import {
   SKILL_LOG,
   TELEMETRY_LOG,
 } from "./constants.js";
+import { stageCreatorContributionSignals } from "./contribution-staging.js";
 import {
   findTranscriptFiles,
   parseSession,
@@ -58,6 +59,7 @@ import {
 import { getDb } from "./localdb/db.js";
 import { querySkillUsageRecords } from "./localdb/queries.js";
 import {
+  persistRepairedSkillUsageToDb,
   rebuildSkillUsageFromCodexRollouts,
   rebuildSkillUsageFromTranscripts,
 } from "./repair/skill-usage.js";
@@ -96,6 +98,12 @@ export interface SyncResult {
     repaired_records: number;
     codex_repaired_records: number;
   };
+  creator_contributions: {
+    ran: boolean;
+    eligible_skills: number;
+    built_signals: number;
+    staged_signals: number;
+  };
   timings: SyncPhaseTiming[];
   total_elapsed_ms: number;
 }
@@ -129,6 +137,14 @@ export interface SyncDeps {
     repairedSessions: number;
     repairedRecords: number;
     codexRepairedRecords: number;
+  };
+  stageCreatorContributions?: (
+    db: ReturnType<typeof getDb>,
+    options: { dryRun: boolean },
+  ) => {
+    eligible_skills: number;
+    built_signals: number;
+    staged_signals: number;
   };
 }
 
@@ -344,6 +360,7 @@ function rebuildSkillUsageOverlay(
   options: SyncOptions,
   onProgress?: SyncProgressCallback,
   cache?: FileListCache,
+  db: ReturnType<typeof getDb> = getDb(),
 ): {
   repairedSessions: number;
   repairedRecords: number;
@@ -363,7 +380,6 @@ function rebuildSkillUsageOverlay(
   let rawSkillRecords: SkillUsageRecord[];
   if (options.skillLogPath === SKILL_LOG) {
     try {
-      const db = getDb();
       rawSkillRecords = querySkillUsageRecords(db) as SkillUsageRecord[];
     } catch {
       rawSkillRecords = readJsonl<SkillUsageRecord>(options.skillLogPath);
@@ -389,6 +405,7 @@ function rebuildSkillUsageOverlay(
   repairedRecords.push(...codexRecords);
 
   if (!options.dryRun) {
+    persistRepairedSkillUsageToDb(db, repairedRecords);
     writeRepairedSkillUsageRecords(
       repairedRecords,
       repairedSessionIds,
@@ -429,6 +446,8 @@ export function syncSources(
   const runOpenCode = deps.syncOpenCode;
   const runOpenClaw = deps.syncOpenClaw;
   const runRepair = deps.rebuildSkillUsage;
+  const runCreatorContributions = deps.stageCreatorContributions;
+  const db = getDb();
 
   const disabledStep: SyncStepResult = { available: false, scanned: 0, synced: 0, skipped: 0 };
 
@@ -470,10 +489,26 @@ export function syncSources(
     ? timePhase(
         "repair",
         () =>
-          runRepair ? runRepair(options) : rebuildSkillUsageOverlay(options, onProgress, cache),
+          runRepair ? runRepair(options) : rebuildSkillUsageOverlay(options, onProgress, cache, db),
         timings,
       )
     : { repairedSessions: 0, repairedRecords: 0, codexRepairedRecords: 0 };
+
+  const creatorContributions = timePhase(
+    "creator_contributions",
+    () => {
+      const staged = runCreatorContributions
+        ? runCreatorContributions(db, { dryRun: options.dryRun })
+        : stageCreatorContributionSignals(db, { dryRun: options.dryRun });
+      return {
+        ran: true,
+        eligible_skills: staged.eligible_skills,
+        built_signals: staged.built_signals,
+        staged_signals: staged.staged_signals,
+      };
+    },
+    timings,
+  );
 
   const totalElapsed = Math.round(performance.now() - totalStart);
 
@@ -487,6 +522,7 @@ export function syncSources(
       repaired_records: repair.repairedRecords,
       codex_repaired_records: repair.codexRepairedRecords,
     },
+    creator_contributions: creatorContributions,
     timings,
     total_elapsed_ms: totalElapsed,
   };
@@ -633,6 +669,24 @@ Options:
       process.stderr.write(
         `\nRepair: ${result.repair.repaired_records} records, ` +
           `${result.repair.repaired_sessions} sessions${repairTime}\n`,
+      );
+    }
+
+    if (
+      result.creator_contributions.eligible_skills > 0 ||
+      result.creator_contributions.built_signals > 0
+    ) {
+      const contributionTiming = timingMap.get("creator_contributions");
+      const contributionTime = contributionTiming
+        ? ` (${formatMs(contributionTiming.elapsed_ms)})`
+        : "";
+      process.stderr.write(
+        `Creator contributions: ${result.creator_contributions.built_signals} signals from ` +
+          `${result.creator_contributions.eligible_skills} skills` +
+          (result.dry_run
+            ? " ready to stage"
+            : ` staged=${result.creator_contributions.staged_signals}`) +
+          `${contributionTime}\n`,
       );
     }
 

@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   buildEvalSet,
   classifyInvocation,
+  listEvalSkillReadiness,
   MAX_QUERY_LENGTH,
 } from "../../cli/selftune/eval/hooks-to-evals.js";
 import type { QueryLogRecord, SkillUsageRecord } from "../../cli/selftune/types.js";
@@ -84,6 +85,15 @@ describe("classifyInvocation", () => {
     expect(classifyInvocation("launch the ms office suite now", "ms-office-suite")).toBe(
       "explicit",
     );
+  });
+
+  test("does not treat short hyphenated fragments as explicit when they only appear inside other words", () => {
+    expect(
+      classifyInvocation(
+        "search for content about managing consulting clients who scope creep",
+        "sc-search",
+      ),
+    ).not.toBe("explicit");
   });
 
   // --- New: camelCase skill name ---
@@ -664,5 +674,95 @@ describe("buildEvalSet", () => {
     const result = buildEvalSet(otherSkillRecords, queryRecords, "pptx", 50, true, 42, true);
     const positives = result.filter((e) => e.should_trigger);
     expect(positives.length).toBe(0);
+  });
+});
+
+describe("listEvalSkillReadiness", () => {
+  test("marks telemetry-only skills when not installed on disk", () => {
+    const skillRoot = join(tmpDir, ".agents", "skills");
+    mkdirSync(skillRoot, { recursive: true });
+    writeFileSync(join(tmpDir, ".git"), "");
+
+    const readiness = listEvalSkillReadiness(
+      [
+        {
+          timestamp: "2025-01-01T00:00:00Z",
+          session_id: "s1",
+          skill_name: "orphan-skill",
+          skill_path: "/skills/orphan-skill",
+          query: "run orphan flow",
+          triggered: true,
+          source: "codex_rollout",
+        },
+      ],
+      [skillRoot],
+    );
+
+    const row = readiness.find((entry) => entry.name === "orphan-skill");
+    expect(row?.installed).toBe(false);
+    expect(row?.readiness).toBe("telemetry_only");
+    expect(row?.raw_trigger_count).toBe(1);
+    expect(row?.raw_session_count).toBe(1);
+  });
+
+  test("includes installed cold-start skills alongside log-ready skills", () => {
+    const skillRoot = join(tmpDir, ".agents", "skills");
+    const installedSkillDir = join(skillRoot, "sc-search");
+    mkdirSync(installedSkillDir, { recursive: true });
+    writeFileSync(join(tmpDir, ".git"), "");
+    writeFileSync(join(installedSkillDir, "SKILL.md"), "# sc-search\n", { flag: "w" });
+
+    const readiness = listEvalSkillReadiness(
+      [
+        {
+          timestamp: "2025-01-01T00:00:00Z",
+          session_id: "s1",
+          skill_name: "pptx",
+          skill_path: "/skills/pptx",
+          query: "use $pptx to make slides",
+          triggered: true,
+        },
+      ],
+      [skillRoot],
+    );
+
+    expect(readiness.find((row) => row.name === "pptx")?.readiness).toBe("log_ready");
+    const coldStart = readiness.find((row) => row.name === "sc-search");
+    expect(coldStart?.installed).toBe(true);
+    expect(coldStart?.readiness).toBe("cold_start_ready");
+    expect(coldStart?.skill_path).toContain(join("sc-search", "SKILL.md"));
+    expect(coldStart?.trusted_trigger_count).toBe(0);
+    expect(coldStart?.raw_trigger_count).toBe(0);
+  });
+
+  test("treats raw-only trigger history as cold-start when no trusted positives exist", () => {
+    const skillRoot = join(tmpDir, ".agents", "skills");
+    const installedSkillDir = join(skillRoot, "sc-search");
+    mkdirSync(installedSkillDir, { recursive: true });
+    writeFileSync(join(tmpDir, ".git"), "");
+    writeFileSync(join(installedSkillDir, "SKILL.md"), "# sc-search\n", { flag: "w" });
+
+    const readiness = listEvalSkillReadiness(
+      [
+        {
+          timestamp: "2025-01-01T00:00:00Z",
+          session_id: "s1",
+          skill_name: "sc-search",
+          skill_path: "/skills/sc-search",
+          query: "search state change for leverage essays",
+          triggered: true,
+          source: "codex_rollout",
+        },
+      ],
+      [skillRoot],
+    );
+
+    const coldStart = readiness.find((row) => row.name === "sc-search");
+    expect(coldStart?.installed).toBe(true);
+    expect(coldStart?.readiness).toBe("cold_start_ready");
+    expect(coldStart?.trusted_trigger_count).toBe(0);
+    expect(coldStart?.raw_trigger_count).toBe(1);
+    expect(coldStart?.trusted_session_count).toBe(0);
+    expect(coldStart?.raw_session_count).toBe(1);
   });
 });
