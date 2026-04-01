@@ -12,9 +12,16 @@
  * Usage: selftune opencode install [--dry-run] [--uninstall]
  */
 
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -42,8 +49,17 @@ cat | npx selftune opencode hook
 // Config helpers
 // ---------------------------------------------------------------------------
 
+interface OpenCodeAgentConfig {
+  description?: string;
+  mode?: string;
+  model?: string;
+  prompt?: string;
+  tools?: Record<string, boolean>;
+}
+
 interface OpenCodeConfig {
   hooks?: Record<string, { command?: string }>;
+  agent?: Record<string, OpenCodeAgentConfig>;
   [key: string]: unknown;
 }
 
@@ -89,16 +105,131 @@ function parseFlags(args: string[]): InstallOptions {
 
 const HOOK_EVENTS = ["tool.execute.before", "tool.execute.after", "session.idle"] as const;
 
+// ---------------------------------------------------------------------------
+// Agent registration
+// ---------------------------------------------------------------------------
+
+/** Map Claude Code tool names to OpenCode tool permissions. */
+function mapToolPermissions(tools?: string[], disallowed?: string[]): Record<string, boolean> {
+  const defaults: Record<string, boolean> = {
+    write: false,
+    edit: false,
+    bash: true,
+  };
+
+  if (tools) {
+    if (tools.includes("Write")) defaults.write = true;
+    if (tools.includes("Edit")) defaults.edit = true;
+    if (!tools.includes("Bash")) defaults.bash = false;
+  }
+
+  if (disallowed) {
+    if (disallowed.includes("Write")) defaults.write = false;
+    if (disallowed.includes("Edit")) defaults.edit = false;
+    if (disallowed.includes("Bash")) defaults.bash = false;
+  }
+
+  return defaults;
+}
+
+/** OpenCode model format (provider/model). */
+const OPENCODE_MODEL_MAP: Record<string, string> = {
+  haiku: "anthropic/claude-haiku-4-5-20251001",
+  sonnet: "anthropic/claude-sonnet-4-20250514",
+  opus: "anthropic/claude-opus-4-20250514",
+};
+
+interface AgentFrontmatter {
+  name: string;
+  description?: string;
+  tools?: string[];
+  disallowedTools?: string[];
+  model?: string;
+}
+
+/** Parse YAML-like frontmatter from agent markdown files. */
+function parseFrontmatter(content: string): AgentFrontmatter | null {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return null;
+
+  const fm: Record<string, string> = {};
+  for (const line of match[1].split("\n")) {
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) continue;
+    const key = line.slice(0, colonIdx).trim();
+    const value = line.slice(colonIdx + 1).trim();
+    fm[key] = value;
+  }
+
+  if (!fm.name) return null;
+
+  return {
+    name: fm.name,
+    description: fm.description,
+    tools: fm.tools ? fm.tools.split(",").map((t) => t.trim()) : undefined,
+    disallowedTools: fm.disallowedTools
+      ? fm.disallowedTools.split(",").map((t) => t.trim())
+      : undefined,
+    model: fm.model,
+  };
+}
+
+const BUNDLED_AGENT_DIR = resolve(
+  dirname(import.meta.path),
+  "..",
+  "..",
+  "..",
+  "..",
+  "skill",
+  "agents",
+);
+
+/** Discover agent definitions from skill/agents/ and build OpenCode agent config entries. */
+function buildAgentEntries(
+  agentsDir: string = BUNDLED_AGENT_DIR,
+): Record<string, OpenCodeAgentConfig> {
+  const entries: Record<string, OpenCodeAgentConfig> = {};
+
+  if (!existsSync(agentsDir)) return entries;
+
+  const files = readdirSync(agentsDir).filter((f: string) => f.endsWith(".md"));
+
+  for (const file of files) {
+    const filePath = join(agentsDir, file);
+    const content = readFileSync(filePath, "utf-8");
+    const fm = parseFrontmatter(content);
+    if (!fm) continue;
+
+    // Strip frontmatter to get the body as the prompt
+    const body = content.replace(/^---\n[\s\S]*?\n---\n*/, "").trim();
+
+    entries[fm.name] = {
+      description: fm.description,
+      mode: "subagent",
+      model: fm.model ? (OPENCODE_MODEL_MAP[fm.model] ?? fm.model) : undefined,
+      prompt: body,
+      tools: mapToolPermissions(fm.tools, fm.disallowedTools),
+    };
+  }
+
+  return entries;
+}
+
 function doInstall(options: InstallOptions): void {
   const configPath = detectConfigPath();
   const shimDir = dirname(configPath);
   const shimPath = join(shimDir, SHIM_NAME);
+
+  const agentEntries = buildAgentEntries();
 
   if (options.dryRun) {
     console.log(`[selftune] dry-run: would write shim to ${shimPath}`);
     console.log(`[selftune] dry-run: would update config at ${configPath}`);
     for (const event of HOOK_EVENTS) {
       console.log(`[selftune] dry-run: would register hook for ${event}`);
+    }
+    for (const name of Object.keys(agentEntries)) {
+      console.log(`[selftune] dry-run: would register agent '${name}'`);
     }
     return;
   }
@@ -126,6 +257,16 @@ function doInstall(options: InstallOptions): void {
     config.hooks[event] = { command: shimPath };
   }
 
+  // Register selftune agents for eval/optimizer workflows
+  if (Object.keys(agentEntries).length > 0) {
+    if (!config.agent) {
+      config.agent = {};
+    }
+    for (const [name, entry] of Object.entries(agentEntries)) {
+      config.agent[name] = entry;
+    }
+  }
+
   writeConfig(configPath, config);
 
   console.log(`[selftune] Installed OpenCode hooks:`);
@@ -133,6 +274,12 @@ function doInstall(options: InstallOptions): void {
   console.log(`  config: ${configPath}`);
   for (const event of HOOK_EVENTS) {
     console.log(`  ${event} -> ${shimPath}`);
+  }
+  if (Object.keys(agentEntries).length > 0) {
+    console.log(`[selftune] Registered agents:`);
+    for (const name of Object.keys(agentEntries)) {
+      console.log(`  ${name}`);
+    }
   }
 }
 
@@ -153,7 +300,7 @@ function doUninstall(options: InstallOptions): void {
     console.log(`[selftune] Removed shim: ${shimPath}`);
   }
 
-  // Remove hook entries from config
+  // Remove hook entries and agent entries from config
   if (existsSync(configPath)) {
     const config = readConfig(configPath);
     if (config.hooks) {
@@ -161,16 +308,27 @@ function doUninstall(options: InstallOptions): void {
         if (config.hooks[event]?.command !== shimPath) continue;
         delete config.hooks[event];
       }
-      // Clean up empty hooks object
       if (Object.keys(config.hooks).length === 0) {
         delete config.hooks;
       }
-      writeConfig(configPath, config);
-      console.log(`[selftune] Removed hook entries from: ${configPath}`);
     }
+
+    // Remove selftune-managed agents
+    if (config.agent) {
+      const agentEntries = buildAgentEntries();
+      for (const name of Object.keys(agentEntries)) {
+        delete config.agent[name];
+      }
+      if (Object.keys(config.agent).length === 0) {
+        delete config.agent;
+      }
+    }
+
+    writeConfig(configPath, config);
+    console.log(`[selftune] Removed hook and agent entries from: ${configPath}`);
   }
 
-  console.log(`[selftune] OpenCode hooks uninstalled.`);
+  console.log(`[selftune] OpenCode hooks and agents uninstalled.`);
 }
 
 // ---------------------------------------------------------------------------
