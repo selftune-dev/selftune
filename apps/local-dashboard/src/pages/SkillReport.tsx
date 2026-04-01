@@ -560,11 +560,19 @@ function deriveNextAction(
       variant: "default",
     };
   }
-  if (trustState === "observed" || trustState === "deployed") {
+  if (trustState === "deployed") {
     return {
       icon: <CheckCircleIcon className="size-5 text-green-500" />,
       text: "No action needed. Skill is healthy and being monitored.",
       actionLabel: "Healthy",
+      variant: "outline",
+    };
+  }
+  if (trustState === "observed") {
+    return {
+      icon: <EyeIcon className="size-5 text-muted-foreground" />,
+      text: "No action needed. Selftune is still observing this skill and building confidence from real usage.",
+      actionLabel: "Observed",
       variant: "outline",
     };
   }

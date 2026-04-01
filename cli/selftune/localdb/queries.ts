@@ -1637,40 +1637,85 @@ export interface SkillTrustSummary {
 }
 
 export function getSkillTrustSummaries(db: Database): SkillTrustSummary[] {
+  const SYSTEM_LIKE_PREFIXES = ["<system_instruction>", "<system-instruction>", "<command-name>"];
+  const INTERNAL_EVAL_MARKERS = [
+    "you are an evaluation assistant",
+    "you are a skill description optimizer",
+    "would each query trigger this skill",
+    "propose an improved description",
+    "failure patterns:",
+    "output only valid json",
+  ];
+  const isSystemLike = (text: string | null | undefined): boolean => {
+    if (!text) return false;
+    const trimmed = text.trimStart();
+    return SYSTEM_LIKE_PREFIXES.some((p) => trimmed.startsWith(p));
+  };
+  const isInternalSelftunePrompt = (
+    text: string | null | undefined,
+    promptKind: string | null | undefined,
+  ): boolean => {
+    if (!text) return false;
+    const lowered = text.toLowerCase();
+    return (
+      promptKind === "meta" && INTERNAL_EVAL_MARKERS.some((marker) => lowered.includes(marker))
+    );
+  };
+  const isPollutingPrompt = (
+    text: string | null | undefined,
+    promptKind: string | null | undefined,
+  ): boolean => isSystemLike(text) || isInternalSelftunePrompt(text, promptKind);
+  const classifyObservationKind = (
+    skillInvocationId: string,
+    captureMode: string | null,
+    triggered: number,
+    rawSourceRefJson: string | null,
+  ): "canonical" | "repaired_trigger" | "repaired_contextual_miss" | "legacy_materialized" => {
+    if (skillInvocationId.includes(":su:")) return "legacy_materialized";
+    if (captureMode === "repair") {
+      const rawSourceRef = safeParseJson(rawSourceRefJson) as {
+        metadata?: { miss_type?: string };
+      } | null;
+      if (triggered === 0 && rawSourceRef?.metadata?.miss_type === "contextual_read") {
+        return "repaired_contextual_miss";
+      }
+      return "repaired_trigger";
+    }
+    return "canonical";
+  };
+  const normalizeQueryForGrouping = (query: string) =>
+    query.replace(/\s+/g, " ").trim().toLowerCase();
+
   const rows = db
     .query(
       `SELECT
          si.skill_name,
-         COUNT(*) AS total_checks,
-         SUM(CASE WHEN si.triggered = 1 THEN 1 ELSE 0 END) AS triggered_count,
-         SUM(CASE WHEN si.matched_prompt_id IS NOT NULL THEN 1 ELSE 0 END) AS prompt_linked,
-         MAX(si.occurred_at) AS last_seen
+         si.session_id,
+         si.occurred_at,
+         si.triggered,
+         si.matched_prompt_id,
+         si.skill_invocation_id,
+         si.capture_mode,
+         si.raw_source_ref,
+         si.query,
+         p.prompt_text,
+         p.prompt_kind
        FROM skill_invocations si
-       GROUP BY si.skill_name`,
+       LEFT JOIN prompts p ON si.matched_prompt_id = p.prompt_id`,
     )
     .all() as Array<{
     skill_name: string;
-    total_checks: number;
-    triggered_count: number;
-    prompt_linked: number;
-    last_seen: string | null;
+    session_id: string;
+    occurred_at: string | null;
+    triggered: number;
+    matched_prompt_id: string | null;
+    skill_invocation_id: string;
+    capture_mode: string | null;
+    raw_source_ref: string | null;
+    query: string | null;
+    prompt_text: string | null;
+    prompt_kind: string | null;
   }>;
-
-  const systemLikeCounts = new Map<string, number>();
-  const systemRows = db
-    .query(
-      `SELECT si.skill_name, COUNT(*) AS cnt
-       FROM skill_invocations si
-       JOIN prompts p ON si.matched_prompt_id = p.prompt_id
-       WHERE p.prompt_text LIKE '<system_instruction>%'
-          OR p.prompt_text LIKE '<system-instruction>%'
-          OR p.prompt_text LIKE '<command-name>%'
-       GROUP BY si.skill_name`,
-    )
-    .all() as Array<{ skill_name: string; cnt: number }>;
-  for (const sr of systemRows) {
-    systemLikeCounts.set(sr.skill_name, sr.cnt);
-  }
 
   const latestActions = new Map<string, string>();
   const actionRows = db
@@ -1689,26 +1734,106 @@ export function getSkillTrustSummaries(db: Database): SkillTrustSummary[] {
     latestActions.set(ar.skill_name, ar.action);
   }
 
-  return rows.map((row) => {
-    const total = row.total_checks;
-    const triggered = row.triggered_count;
-    const missRate = total > 0 ? (total - triggered) / total : 0;
-    const passRate = total > 0 ? triggered / total : 0;
-    const systemLike = systemLikeCounts.get(row.skill_name) ?? 0;
+  const bySkill = new Map<
+    string,
+    Array<{
+      skill_name: string;
+      session_id: string;
+      occurred_at: string | null;
+      triggered: number;
+      matched_prompt_id: string | null;
+      queryText: string;
+      isPolluting: boolean;
+      observation_kind:
+        | "canonical"
+        | "repaired_trigger"
+        | "repaired_contextual_miss"
+        | "legacy_materialized";
+      groupKey: string;
+    }>
+  >();
 
-    return {
+  for (const row of rows) {
+    const queryText = row.query || row.prompt_text || "";
+    const observation_kind = classifyObservationKind(
+      row.skill_invocation_id,
+      row.capture_mode,
+      row.triggered,
+      row.raw_source_ref,
+    );
+    if (isPollutingPrompt(queryText, row.prompt_kind)) continue;
+    if (observation_kind === "legacy_materialized") continue;
+
+    const normalizedQuery = normalizeQueryForGrouping(queryText);
+    const groupKey =
+      normalizedQuery.length > 0
+        ? `${row.session_id}::${normalizedQuery}`
+        : `${row.skill_invocation_id}`;
+    const arr = bySkill.get(row.skill_name);
+    const enriched = {
       skill_name: row.skill_name,
+      session_id: row.session_id,
+      occurred_at: row.occurred_at,
+      triggered: row.triggered,
+      matched_prompt_id: row.matched_prompt_id,
+      queryText,
+      isPolluting: false,
+      observation_kind,
+      groupKey,
+    };
+    if (arr) arr.push(enriched);
+    else bySkill.set(row.skill_name, [enriched]);
+  }
+
+  const summaries: SkillTrustSummary[] = [];
+  for (const [skillName, skillRows] of bySkill.entries()) {
+    const grouped = new Map<string, typeof skillRows>();
+    for (const row of skillRows) {
+      const arr = grouped.get(row.groupKey);
+      if (arr) arr.push(row);
+      else grouped.set(row.groupKey, [row]);
+    }
+
+    const deduped = [...grouped.values()].map((group) => {
+      const sorted = [...group].sort((a, b) => {
+        const aScore =
+          (a.triggered === 1 ? 100 : 0) +
+          (a.observation_kind === "canonical" ? 20 : 0) +
+          (a.observation_kind === "repaired_trigger" ? 15 : 0);
+        const bScore =
+          (b.triggered === 1 ? 100 : 0) +
+          (b.observation_kind === "canonical" ? 20 : 0) +
+          (b.observation_kind === "repaired_trigger" ? 15 : 0);
+        if (aScore !== bScore) return bScore - aScore;
+        return (b.occurred_at ?? "").localeCompare(a.occurred_at ?? "");
+      });
+      return sorted[0]!;
+    });
+
+    const total = deduped.length;
+    const triggered = deduped.filter((row) => row.triggered === 1).length;
+    const promptLinked = deduped.filter((row) => row.matched_prompt_id != null).length;
+    const lastSeen =
+      deduped
+        .map((row) => row.occurred_at)
+        .filter((value): value is string => value != null)
+        .sort((a, b) => b.localeCompare(a))[0] ?? null;
+
+    summaries.push({
+      skill_name: skillName,
       total_checks: total,
       triggered_count: triggered,
-      miss_rate: missRate,
-      system_like_count: systemLike,
-      system_like_rate: total > 0 ? systemLike / total : 0,
-      prompt_link_rate: total > 0 ? row.prompt_linked / total : 0,
-      latest_action: latestActions.get(row.skill_name) ?? null,
-      pass_rate: passRate,
-      last_seen: row.last_seen,
-    };
-  });
+      miss_rate: total > 0 ? (total - triggered) / total : 0,
+      system_like_count: 0,
+      system_like_rate: 0,
+      prompt_link_rate: total > 0 ? promptLinked / total : 0,
+      latest_action: latestActions.get(skillName) ?? null,
+      pass_rate: total > 0 ? triggered / total : 0,
+      last_seen: lastSeen,
+    });
+  }
+
+  return summaries;
 }
 
 export function getAttentionQueue(db: Database): AttentionItem[] {
