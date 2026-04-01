@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   buildEvalSet,
   classifyInvocation,
+  listEvalSkillReadiness,
   MAX_QUERY_LENGTH,
 } from "../../cli/selftune/eval/hooks-to-evals.js";
 import type { QueryLogRecord, SkillUsageRecord } from "../../cli/selftune/types.js";
@@ -664,5 +665,35 @@ describe("buildEvalSet", () => {
     const result = buildEvalSet(otherSkillRecords, queryRecords, "pptx", 50, true, 42, true);
     const positives = result.filter((e) => e.should_trigger);
     expect(positives.length).toBe(0);
+  });
+});
+
+describe("listEvalSkillReadiness", () => {
+  test("includes installed cold-start skills alongside log-ready skills", () => {
+    const skillRoot = join(tmpDir, ".agents", "skills");
+    const installedSkillDir = join(skillRoot, "sc-search");
+    mkdirSync(installedSkillDir, { recursive: true });
+    writeFileSync(join(tmpDir, ".git"), "");
+    writeFileSync(join(installedSkillDir, "SKILL.md"), "# sc-search\n", { flag: "w" });
+
+    const readiness = listEvalSkillReadiness(
+      [
+        {
+          timestamp: "2025-01-01T00:00:00Z",
+          session_id: "s1",
+          skill_name: "pptx",
+          skill_path: "/skills/pptx",
+          query: "use $pptx to make slides",
+          triggered: true,
+        },
+      ],
+      [skillRoot],
+    );
+
+    expect(readiness.find((row) => row.name === "pptx")?.readiness).toBe("log_ready");
+    const coldStart = readiness.find((row) => row.name === "sc-search");
+    expect(coldStart?.installed).toBe(true);
+    expect(coldStart?.readiness).toBe("cold_start_ready");
+    expect(coldStart?.skill_path).toContain("sc-search/SKILL.md");
   });
 });

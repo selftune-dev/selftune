@@ -36,6 +36,7 @@ selftune eval generate --skill <name> [options]
 | `--query-log <path>`               | Path to all_queries_log.jsonl                         | Default log path                  |
 | `--telemetry-log <path>`           | Path to session_telemetry_log.jsonl                   | Default log path                  |
 | `--synthetic`                      | Generate evals from SKILL.md via LLM (no logs needed) | Off                               |
+| `--auto-synthetic`                 | Fall back to SKILL.md-based cold-start evals when no trusted triggers exist | Off                  |
 | `--skill-path <path>`              | Path to SKILL.md (required with `--synthetic`)        | —                                 |
 | `--model <model>`                  | LLM model to use for synthetic generation             | Agent default                     |
 
@@ -65,8 +66,8 @@ and optional `invocation_type` (omitted when `--no-taxonomy` is set).
 ```json
 {
   "skills": [
-    { "name": "pptx", "query_count": 42, "session_count": 15 },
-    { "name": "selftune", "query_count": 28, "session_count": 10 }
+    { "name": "pptx", "query_count": 42, "session_count": 15, "readiness": "log-ready" },
+    { "name": "sc-search", "query_count": 0, "session_count": 0, "readiness": "cold-start" }
   ]
 }
 ```
@@ -116,6 +117,8 @@ selftune eval generate --list-skills
 ```
 
 Run this first to identify which skills have enough data for eval generation.
+Installed skills with no trusted trigger history now appear as `cold-start`, which means the
+skill is installed locally and ready for `--auto-synthetic` / `--synthetic` eval generation.
 
 ### Generate Synthetic Evals (Cold Start)
 
@@ -125,6 +128,16 @@ queries directly from the SKILL.md content via an LLM.
 ```bash
 selftune eval generate --skill pptx --synthetic --skill-path /path/to/skills/pptx/SKILL.md
 ```
+
+If the skill is installed locally but has no trusted trigger history yet, use the faster creator
+onboarding path:
+
+```bash
+selftune eval generate --skill pptx --auto-synthetic --skill-path /path/to/skills/pptx/SKILL.md
+```
+
+`--auto-synthetic` keeps the normal log-based path when real trigger data exists, but falls back
+to synthetic cold-start generation when it does not.
 
 The command:
 
@@ -164,6 +177,10 @@ The command:
 4. Samples negative examples (unrelated queries)
 5. Annotates each entry with invocation type
 6. Writes the eval set to the output file
+
+If the selected skill has no trusted positives yet but selftune can resolve a local `SKILL.md`,
+the command now prints the exact `--auto-synthetic` rerun hint instead of leaving the creator to
+guess the cold-start path.
 
 ### Show Stats
 

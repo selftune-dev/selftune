@@ -30,10 +30,31 @@ Completed groundwork on 2026-04-01:
 - shared creator-directed signal builder
 - local SQLite staging for approved creator-directed signals during `sync`
 - explicit `selftune contributions upload` relay flush for staged rows
+- eval cold-start onboarding for installed skills (`--list-skills` readiness + `--auto-synthetic` fallback)
 
 Still pending:
 - creator aggregate analytics surface
 - proposal generation from contributor aggregates
+
+## Next Up
+
+Immediate next steps, in order:
+
+1. **State Change creator eval onboarding**
+   - Make `selftune eval generate` friendlier for installed skills with little or no telemetry.
+   - Show installed-skill readiness in `--list-skills`.
+   - Support an explicit cold-start fallback so a creator can generate useful evals during the Ray pairing session without manual guessing.
+
+2. **Cloud relay ingest**
+   - Implement the creator-directed relay ingest/storage path in the cloud repo to match the new `selftune contributions upload` client path.
+   - Keep it separate from alpha upload canonical push.
+
+3. **Creator community analytics**
+   - Add a distinct aggregate/community layer to the creator dashboard.
+   - Do not mix creator-community signals into local trust metrics.
+
+4. **Aggregate proposal generation**
+   - Generate creator-facing description/body suggestions from relay aggregates once the cloud relay path exists.
 
 ## Strategy Review
 
