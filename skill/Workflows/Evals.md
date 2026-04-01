@@ -160,10 +160,11 @@ The command:
 1. Reads the SKILL.md file content
 2. Loads real user queries from the database (if available) as few-shot style examples so synthetic queries match real phrasing patterns
 3. Detects nearby installed sibling skills to generate harder negative controls
-4. Requests a balanced prompt family mix (explicit / implicit / contextual positives plus sibling-confusion / adjacent / unrelated negatives)
-5. Parses the response into eval entries with invocation type annotations
-6. Classifies each positive query using the deterministic `classifyInvocation()` heuristic
-7. Writes the eval set to the output file
+4. Over-generates a candidate pool with a balanced prompt family mix (explicit / implicit / contextual positives plus sibling-confusion / adjacent / unrelated negatives)
+5. Runs a second critique/prune pass to remove weak paraphrases, overlaps, and blurry boundary cases
+6. Parses the response into eval entries with invocation type annotations
+7. Classifies each positive query using the deterministic `classifyInvocation()` heuristic
+8. Writes the eval set to the output file
 
 **Note:** When real query data exists in the database, synthetic generation
 automatically includes high-confidence positive triggers and general queries as

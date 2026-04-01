@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 
 import {
   buildSyntheticPrompt,
+  buildSyntheticRefinementPrompt,
   parseSyntheticResponse,
+  selectBalancedEvalEntries,
 } from "../../cli/selftune/eval/synthetic-evals.js";
 
 // ---------------------------------------------------------------------------
@@ -85,6 +87,29 @@ describe("buildSyntheticPrompt", () => {
     expect(user).toContain("- sc-resource");
     expect(user).toContain("- sc-compare");
     expect(user).toContain("negative queries should clearly belong to one of these sibling skills");
+  });
+});
+
+describe("buildSyntheticRefinementPrompt", () => {
+  test("includes candidate pool and boundary rubric", () => {
+    const { system, user } = buildSyntheticRefinementPrompt(
+      "content",
+      "sc-search",
+      [
+        { query: "use sc-search for pricing", should_trigger: true, invocation_type: "explicit" },
+        { query: "install mentor CLI", should_trigger: false, invocation_type: "negative" },
+      ],
+      10,
+      10,
+      ["sc-setup", "sc-model"],
+    );
+
+    expect(system).toContain("critique and prune");
+    expect(system).toContain("binary questions");
+    expect(user).toContain('"query": "use sc-search for pricing"');
+    expect(user).toContain("Sibling skills for hard-negative boundaries:");
+    expect(user).toContain("- sc-setup");
+    expect(user).toContain("Target final benchmark:");
   });
 });
 
@@ -209,5 +234,52 @@ describe("parseSyntheticResponse invocation classification", () => {
     ]);
     const result = parseSyntheticResponse(raw, "pptx");
     expect(result[0].invocation_type).toBe("contextual");
+  });
+});
+
+describe("selectBalancedEvalEntries", () => {
+  test("keeps requested family mix where available", () => {
+    const result = selectBalancedEvalEntries(
+      [
+        { query: "/sc-search pricing", should_trigger: true, invocation_type: "explicit" },
+        {
+          query: "use sc-search to find pricing",
+          should_trigger: true,
+          invocation_type: "explicit",
+        },
+        { query: "find pricing essays", should_trigger: true, invocation_type: "implicit" },
+        {
+          query: "what does State Change say about GTM?",
+          should_trigger: true,
+          invocation_type: "contextual",
+        },
+        {
+          query: "enterprise pricing tradeoffs",
+          should_trigger: true,
+          invocation_type: "contextual",
+        },
+        {
+          query: "compare auth vendors side by side",
+          should_trigger: false,
+          invocation_type: "negative",
+        },
+        { query: "list all mental models", should_trigger: false, invocation_type: "negative" },
+        { query: "install mentor CLI", should_trigger: false, invocation_type: "negative" },
+        { query: "debug nginx config", should_trigger: false, invocation_type: "negative" },
+      ],
+      4,
+      4,
+      true,
+    );
+
+    expect(result.filter((entry) => entry.should_trigger)).toHaveLength(4);
+    expect(result.filter((entry) => !entry.should_trigger)).toHaveLength(4);
+    expect(
+      result.filter((entry) => entry.should_trigger && entry.invocation_type === "explicit").length,
+    ).toBeGreaterThan(0);
+    expect(
+      result.filter((entry) => entry.should_trigger && entry.invocation_type === "contextual")
+        .length,
+    ).toBeGreaterThan(0);
   });
 });
