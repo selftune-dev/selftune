@@ -8,10 +8,12 @@
  *   GET  /api/health           — Dashboard server health probe
  *   GET  /api/v2/doctor        — System health diagnostics (config, logs, hooks, evolution)
  *   GET  /api/v2/overview      — SQLite-backed overview payload
+ *   GET  /api/v2/analytics     — Performance analytics (trends, rankings, heatmap)
  *   GET  /api/v2/skills/:name  — SQLite-backed per-skill report
  *   POST /api/actions/watch    — Trigger `selftune watch` for a skill
  *   POST /api/actions/evolve   — Trigger `selftune evolve` for a skill
  *   POST /api/actions/rollback — Trigger `selftune rollback` for a skill
+ *   POST /api/actions/watchlist — Persist creator watchlist preferences
  *   GET  /badge/:name          — Skill health badge
  *   GET  /report/:name         — Skill health report HTML
  */
@@ -29,7 +31,6 @@ import type {
 } from "./dashboard-contract.js";
 import { readEvidenceTrail } from "./evolution/evidence.js";
 import { closeSingleton, DB_PATH, getDb } from "./localdb/db.js";
-import { materializeIncremental } from "./localdb/materialize.js";
 import {
   queryEvolutionAudit,
   queryQueryLog,
@@ -40,6 +41,7 @@ import { doctor } from "./observability.js";
 import type { ActionRunner } from "./routes/index.js";
 import {
   handleAction,
+  handleAnalytics,
   handleBadge,
   handleDoctor,
   handleOrchestrateRuns,
@@ -107,6 +109,16 @@ function decodePathSegment(segment: string): string | null {
   } catch {
     return null;
   }
+}
+
+function allowedDashboardOrigins(hostname: string, port: number): Set<string> {
+  const origins = new Set<string>([`http://${hostname}:${port}`]);
+  if (hostname === "localhost") {
+    origins.add(`http://127.0.0.1:${port}`);
+  } else if (hostname === "127.0.0.1") {
+    origins.add(`http://localhost:${port}`);
+  }
+  return origins;
 }
 
 const MIME_TYPES: Record<string, string> = {
@@ -187,24 +199,21 @@ export async function startDashboardServer(
   if (needsDb) {
     try {
       db = getDb();
-      // Materializer runs once at startup to backfill any JSONL data not yet in SQLite.
-      // After startup, hooks write directly to SQLite so re-materialization is unnecessary.
-      materializeIncremental(db);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`V2 dashboard data unavailable: ${message}`);
     }
   }
 
-  // Hooks write directly to SQLite, so periodic re-materialization is not needed.
-  // These functions are retained as no-ops because they are called from multiple
-  // places in the request handler and the file-change watcher.
+  // Hooks and ingestors write directly to SQLite, so periodic materialization is
+  // not part of normal runtime. These remain no-ops because they are invoked
+  // from several shared request and watcher paths.
   function refreshV2Data(): void {
-    // No-op: materializer runs once at startup only
+    // No-op: SQLite is already authoritative at runtime
   }
 
   function refreshV2DataImmediate(): void {
-    // No-op: materializer runs once at startup only
+    // No-op: SQLite is already authoritative at runtime
   }
 
   // -- SSE (Server-Sent Events) live update layer -----------------------------
@@ -259,6 +268,7 @@ export async function startDashboardServer(
   let lastStatusCacheRefreshAt = 0;
   let statusRefreshPromise: Promise<void> | null = null;
   const STATUS_CACHE_TTL_MS = 30_000;
+  let boundPort = port;
 
   async function refreshStatusCache(force = false): Promise<void> {
     const cacheIsFresh =
@@ -383,8 +393,20 @@ export async function startDashboardServer(
         });
       }
 
-      // ---- POST /api/actions/{watch,evolve,rollback} ----
+      // ---- POST /api/actions/{watch,evolve,rollback,watchlist} ----
       if (url.pathname.startsWith("/api/actions/") && req.method === "POST") {
+        const trustedActionOrigins = allowedDashboardOrigins(hostname, boundPort);
+        const origin = req.headers.get("origin");
+        if (!origin || !trustedActionOrigins.has(origin)) {
+          return Response.json(
+            {
+              success: false,
+              error:
+                "Dashboard actions only accept same-origin requests from the local dashboard UI.",
+            },
+            { status: 403, headers: corsHeaders() },
+          );
+        }
         const action = url.pathname.slice("/api/actions/".length);
         let body: Record<string, unknown> = {};
         try {
@@ -469,6 +491,18 @@ export async function startDashboardServer(
         return withCors(handleOrchestrateRuns(db, limit));
       }
 
+      // ---- GET /api/v2/analytics ----
+      if (url.pathname === "/api/v2/analytics" && req.method === "GET") {
+        if (!db) {
+          return Response.json(
+            { error: "V2 data unavailable" },
+            { status: 503, headers: corsHeaders() },
+          );
+        }
+        refreshV2Data();
+        return withCors(handleAnalytics(db));
+      }
+
       // ---- GET /api/v2/skills/:name ----
       if (url.pathname.startsWith("/api/v2/skills/") && req.method === "GET") {
         const skillName = decodePathSegment(url.pathname.slice("/api/v2/skills/".length));
@@ -510,7 +544,7 @@ export async function startDashboardServer(
     },
   });
 
-  const boundPort = server.port;
+  boundPort = server.port;
 
   if (openBrowser) {
     const url = `http://${hostname}:${boundPort}`;

@@ -1,8 +1,11 @@
 # selftune Contribute Workflow
 
-Export anonymized skill observability data as a JSON bundle for community
-contribution. Helps improve selftune's skill routing without exposing
-private data.
+Export anonymized skill observability data as a JSON bundle for **community**
+contribution. Helps improve selftune's skill routing without exposing private data.
+
+This is **not** the same as `selftune contributions`, which manages per-skill
+creator-directed sharing preferences, or `selftune creator-contributions`,
+which manages the creator-side bundled config file.
 
 ## When to Use
 

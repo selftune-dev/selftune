@@ -160,6 +160,16 @@ export const OPENCLAW_INGEST_MARKER = join(SELFTUNE_CONFIG_DIR, "openclaw-ingest
 
 /** Default output directory for contribution bundles. */
 export const CONTRIBUTIONS_DIR = join(SELFTUNE_CONFIG_DIR, "contributions");
+/** Creator-directed contribution preferences (per-skill opt-in state). */
+export const CONTRIBUTION_PREFERENCES_PATH = join(
+  SELFTUNE_CONFIG_DIR,
+  "contribution-preferences.json",
+);
+/** Creator overview watchlist preference. */
+export const WATCHED_SKILLS_PATH = join(SELFTUNE_CONFIG_DIR, "watched-skills.json");
+/** Creator-directed relay endpoint for staged contribution signals. */
+export const CONTRIBUTION_RELAY_ENDPOINT =
+  process.env.SELFTUNE_CONTRIBUTION_RELAY_ENDPOINT ?? "https://api.selftune.dev/api/v1/signals";
 
 // ---------------------------------------------------------------------------
 // Sanitization constants (for contribute command)

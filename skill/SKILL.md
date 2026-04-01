@@ -89,6 +89,7 @@ selftune eval generate      --skill <name> [--list-skills] [--stats] [--max N] [
 selftune eval unit-test      --skill <name> --tests <path> [--run-agent] [--generate]
 selftune eval import         --dir <path> --skill <name> --output <path> [--match-strategy exact|fuzzy]
 selftune eval composability  --skill <name> [--window N] [--telemetry-log <path>]
+selftune eval family-overlap --prefix <family-> | --skills <a,b,c> [--parent-skill <name>] [--min-overlap 0.3] [--min-shared 2]
 
 # Other commands
 selftune watch    --skill <name> --skill-path <path> [--auto-rollback]
@@ -96,6 +97,8 @@ selftune status
 selftune last
 selftune doctor
 selftune dashboard [--port <port>] [--no-open]
+selftune contributions [status|preview <skill>|upload [--dry-run]|approve <skill>|revoke <skill>|default <ask|always|never>|reset]
+selftune creator-contributions [status|enable --skill <name>|enable --all [--prefix <value>]|disable --skill <name>]
 selftune contribute [--skill NAME] [--preview] [--sanitize LEVEL] [--submit]
 selftune cron setup [--dry-run]                         # auto-detect platform (cron/launchd/systemd)
 selftune cron setup --platform openclaw [--dry-run] [--tz <timezone>]  # OpenClaw-specific
@@ -115,6 +118,7 @@ selftune badge       --skill <name> [--format svg|markdown|url] [--output PATH]
 # Maintenance
 selftune quickstart
 selftune repair-skill-usage [--since DATE] [--dry-run]
+selftune recover            [--full] [--force] [--since DATE]
 selftune export-canonical   [--out FILE] [--platform NAME] [--record-kind KIND] [--pretty] [--push-payload]
 selftune uninstall          [--dry-run] [--keep-logs] [--npm-uninstall]
 
@@ -149,6 +153,8 @@ selftune status                                                        # shows c
 | doctor, health, hooks, broken, diagnose, not working, something wrong                                                                   | Doctor            | Workflows/Doctor.md                   |
 | ingest, import, codex logs, opencode, openclaw, wrap codex                                                                              | Ingest            | Workflows/Ingest.md                   |
 | replay, backfill, claude transcripts, historical sessions                                                                               | Replay            | Workflows/Replay.md                   |
+| contributions, sharing preferences, opt in creator sharing, opt out creator sharing, approve contributions, revoke contributions, preview contributions, upload contributions, relay queue, contribution upload, contribution preview        | Contributions     | Workflows/Contributions.md            |
+| creator contributions, bundle contribution config, selftune.contribute.json, enable creator contribution, disable creator contribution, bulk enable creator contribution, enable all creator contributions, creator prefix config, --all, --prefix  | CreatorContributions | Workflows/CreatorContributions.md  |
 | contribute, share, community, export data, anonymized, give back                                                                        | Contribute        | Workflows/Contribute.md               |
 | init, setup, set up, bootstrap, first time, install, configure selftune, alpha, enroll, alpha enrollment, cloud link, upload credential | Initialize        | Workflows/Initialize.md               |
 | cron, schedule, automate evolution, run automatically                                                                                   | Cron              | Workflows/Cron.md                     |
@@ -157,7 +163,7 @@ selftune status                                                        # shows c
 | evolution memory, session continuity, what happened last                                                                                | EvolutionMemory   | Workflows/EvolutionMemory.md          |
 | grade baseline, baseline lift, adds value, skill value, no-skill comparison                                                             | Baseline          | Workflows/Baseline.md                 |
 | eval unit-test, skill test, test skill, generate tests, run tests                                                                       | UnitTest          | Workflows/UnitTest.md                 |
-| eval composability, co-occurrence, skill conflicts, skills together                                                                     | Composability     | Workflows/Composability.md            |
+| eval composability, co-occurrence, skill conflicts, skills together, family overlap, sibling confusion, consolidate skill family      | Composability     | Workflows/Composability.md            |
 | eval import, skillsbench, external evals, benchmark tasks                                                                               | ImportSkillsBench | Workflows/ImportSkillsBench.md        |
 | telemetry, analytics, disable analytics, opt out, tracking, privacy                                                                     | Telemetry         | Workflows/Telemetry.md                |
 | orchestrate, autonomous, full loop, improve all skills, run selftune loop                                                               | Orchestrate       | Workflows/Orchestrate.md              |
@@ -165,6 +171,7 @@ selftune status                                                        # shows c
 | badge, readme badge, skill badge, health badge                                                                                          | Badge             | Workflows/Badge.md                    |
 | workflows, discover workflows, list workflows, multi-skill workflows                                                                    | Workflows         | Workflows/Workflows.md                |
 | alpha upload, upload data, send alpha data, manual upload, dry run upload                                                               | AlphaUpload       | Workflows/AlphaUpload.md              |
+| recover, rebuild sqlite, recover db, legacy backfill, restore from export snapshot                                                      | Recover           | Workflows/Recover.md                  |
 | quickstart, getting started, onboard, first time setup, new user                                                                        | Quickstart        | Workflows/Quickstart.md               |
 | uninstall, remove selftune, clean up, teardown                                                                                          | Uninstall         | Workflows/Uninstall.md                |
 | repair, rebuild usage, fix skill usage, trustworthy usage, repair-skill-usage                                                           | RepairSkillUsage  | Workflows/RepairSkillUsage.md         |
@@ -354,6 +361,9 @@ accomplish a task _using_ a skill, route to that skill instead.
 | `Workflows/Quickstart.md`           | Guided onboarding: init, ingest, status             | First-time setup for new users                  |
 | `Workflows/Uninstall.md`            | Clean removal of selftune data and config           | When removing selftune completely               |
 | `Workflows/RepairSkillUsage.md`     | Rebuild skill usage from source transcripts         | When skill usage data seems inaccurate          |
+| `Workflows/Recover.md`              | Recover SQLite from legacy/exported JSONL           | When rebuilding or backfilling SQLite           |
+| `Workflows/Contributions.md`        | Manage creator-directed sharing preferences         | When approving or revoking creator contribution |
+| `Workflows/CreatorContributions.md` | Manage bundled `selftune.contribute.json` configs   | When preparing a skill package for creator contributions |
 | `Workflows/ExportCanonical.md`      | Export canonical telemetry for downstream use       | When exporting data for external consumption    |
 | `Workflows/Hook.md`                 | Manual hook invocation for debugging                | When debugging or testing hooks manually        |
 | `Workflows/PlatformHooks.md`        | Non-Claude-Code platform hook install/config        | When setting up Codex, OpenCode, or Cline hooks |

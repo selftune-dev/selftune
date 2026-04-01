@@ -1,9 +1,11 @@
 # selftune Repair Skill Usage Workflow
 
 Rebuild trustworthy skill-usage records by replaying Claude Code transcripts
-and Codex rollouts. Produces a repaired overlay (`skill_usage_repaired.jsonl`)
-that corrects missing or inaccurate skill paths, scopes, and query associations
-from the raw hook-captured data.
+and Codex rollouts. Repairs the canonical SQLite `skill_invocations` table for
+historical legacy rows, and also writes a compatibility/export overlay
+(`skill_usage_repaired.jsonl`) that corrects missing or inaccurate skill paths,
+scopes, and query associations from the raw hook-captured data. The overlay is
+for compatibility/export only; SQLite is the operational source of truth.
 
 ## When to Use
 
@@ -37,7 +39,7 @@ selftune repair-skill-usage
 2. **Bootstrap path lookup** — Reads existing skill usage records from SQLite (or `--skill-log` JSONL) to build a skill-name-to-path lookup table.
 3. **Replay transcripts** — For each transcript, parses the conversation to find Skill tool invocations, associates them with the preceding user query, and resolves skill paths via installed-scope discovery or the lookup table.
 4. **Replay Codex rollouts** — Same process for Codex rollout files, using Codex-specific path resolution.
-5. **Write repaired overlay** — Writes deduplicated records to the repaired log and updates the session marker.
+5. **Repair SQLite + write overlay** — Replaces legacy triggered skill rows in SQLite when safe, inserts repaired canonical rows for legacy-only session/skill pairs, reconstructs contextual missed triggers from `Read .../SKILL.md` evidence, then writes deduplicated records to the repaired log and updates the session marker.
 
 ## Output Format
 
@@ -59,6 +61,11 @@ JSON summary printed to stdout:
 
 With `--dry-run`, the same summary is printed but no files are written.
 
+On non-dry runs, the JSON summary also includes a `sqlite` object with counts
+for deleted legacy rows, inserted repair rows, and skipped pairs that already
+had canonical data. Repaired rows can be either triggered invocations or
+contextual misses reconstructed from transcript reads of `SKILL.md`.
+
 ## Common Patterns
 
 **Preview repair scope**
@@ -72,6 +79,7 @@ With `--dry-run`, the same summary is printed but no files are written.
 **Full rebuild from scratch**
 
 > Run `selftune repair-skill-usage` without `--since` to rebuild the entire overlay from all available transcripts.
+> This also repairs SQLite-backed skill invocations for legacy-only historical rows.
 
 **Agent chaining into evolution**
 

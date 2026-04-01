@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import type { Database } from "bun:sqlite";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { parseArgs } from "node:util";
@@ -19,7 +20,9 @@ import {
   parseRolloutFile,
 } from "../ingestors/codex-rollout.js";
 import { getDb } from "../localdb/db.js";
+import { writeSkillCheckToDb } from "../localdb/direct-write.js";
 import { queryQueryLog, querySkillUsageRecords } from "../localdb/queries.js";
+import { buildCanonicalSkillInvocation, deriveInvocationMode } from "../normalization.js";
 import type { QueryLogRecord, SkillUsageRecord } from "../types.js";
 import { readJsonl } from "../utils/jsonl.js";
 import { isActionableQueryText } from "../utils/query-filter.js";
@@ -58,6 +61,47 @@ interface ExtractedCodexSkillUsage extends ExtractedSkillUsage {
 interface ResolvedSkillPath {
   skillPath: string;
   resolutionSource: NonNullable<SkillUsageRecord["skill_path_resolution_source"]>;
+}
+
+export interface RepairSQLiteResult {
+  deleted_legacy_rows: number;
+  deleted_prior_repair_rows: number;
+  inserted_repair_rows: number;
+  skipped_pairs_with_canonical: number;
+  repaired_pairs_inserted: number;
+}
+
+function deleteRedundantLegacyRows(db: Database): number {
+  const deleteTriggered = db.run(`
+    DELETE FROM skill_invocations
+    WHERE skill_invocation_id LIKE '%:su:%'
+      AND triggered = 1
+      AND EXISTS (
+        SELECT 1
+        FROM skill_invocations current
+        WHERE current.session_id = skill_invocations.session_id
+          AND lower(current.skill_name) = lower(skill_invocations.skill_name)
+          AND current.skill_invocation_id NOT LIKE '%:su:%'
+          AND current.triggered = 1
+      )
+  `);
+
+  const deleteMisses = db.run(`
+    DELETE FROM skill_invocations
+    WHERE skill_invocation_id LIKE '%:su:%'
+      AND triggered = 0
+      AND EXISTS (
+        SELECT 1
+        FROM skill_invocations current
+        WHERE current.session_id = skill_invocations.session_id
+          AND lower(current.skill_name) = lower(skill_invocations.skill_name)
+          AND COALESCE(current.query, '') = COALESCE(skill_invocations.query, '')
+          AND current.skill_invocation_id NOT LIKE '%:su:%'
+          AND current.triggered = 0
+      )
+  `);
+
+  return deleteTriggered.changes + deleteMisses.changes;
 }
 
 function isEphemeralLauncherProjectRoot(projectRoot: string): boolean {
@@ -238,6 +282,7 @@ function extractSessionSkillUsage(
   let lastUserMessage: ActionableUserMessage | null = null;
   let sessionCwd: string | undefined;
   const seen = new Set<string>();
+  const pendingContextualReads = new Map<string, SkillUsageRecord>();
   const pendingSkillCalls = new Map<string, { skillName: string; recordIndex?: number }>();
   const repaired: SkillUsageRecord[] = [];
 
@@ -336,9 +381,25 @@ function extractSessionSkillUsage(
       if (toolName === "Read") {
         const filePath = (input.file_path as string) ?? "";
         if (filePath.endsWith("SKILL.md")) {
-          const inferredSkillName = basename(dirname(filePath)).trim().toLowerCase();
+          const inferredSkillName = basename(dirname(filePath)).trim();
           if (inferredSkillName && !skillPathLookup.has(inferredSkillName)) {
-            skillPathLookup.set(inferredSkillName, filePath);
+            skillPathLookup.set(inferredSkillName.toLowerCase(), filePath);
+          }
+          if (lastUserMessage && inferredSkillName) {
+            const dedupeKey = invocationKey(sessionId, inferredSkillName, lastUserMessage.query);
+            if (!seen.has(dedupeKey) && !pendingContextualReads.has(dedupeKey)) {
+              pendingContextualReads.set(dedupeKey, {
+                timestamp: timestamp || lastUserMessage.timestamp || fallbackTimestamp,
+                session_id: sessionId,
+                skill_name: inferredSkillName,
+                skill_path: filePath,
+                ...classifySkillPath(filePath, homeDir, codexHome),
+                skill_path_resolution_source: "raw_log",
+                query: lastUserMessage.query,
+                triggered: false,
+                source: "claude_code_repair",
+              });
+            }
           }
         }
         continue;
@@ -350,9 +411,10 @@ function extractSessionSkillUsage(
       if (!skillName) continue;
       const toolUseId = optionalString(toolUse.id);
 
-      const dedupeKey = [sessionId, skillName, lastUserMessage.query].join("\u0000");
+      const dedupeKey = invocationKey(sessionId, skillName, lastUserMessage.query);
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);
+      pendingContextualReads.delete(dedupeKey);
 
       const knownSkillPath = skillPathLookup.get(skillName.toLowerCase());
       const { skillPath, resolutionSource } = knownSkillPath
@@ -376,6 +438,10 @@ function extractSessionSkillUsage(
         pendingSkillCalls.set(toolUseId, { skillName, recordIndex });
       }
     }
+  }
+
+  if (pendingContextualReads.size > 0) {
+    repaired.push(...pendingContextualReads.values());
   }
 
   return { processed: true, records: repaired };
@@ -463,6 +529,297 @@ export function rebuildSkillUsageFromTranscripts(
   }
 
   return { repairedRecords, repairedSessionIds };
+}
+
+function inferRepairPlatform(source: string | undefined): "claude_code" | "codex" {
+  return source?.includes("codex") ? "codex" : "claude_code";
+}
+
+function normalizeRepairSkillName(skillName: string): string {
+  return skillName.trim().toLowerCase();
+}
+
+function pairKey(sessionId: string, skillName: string): string {
+  return `${sessionId}\u0000${normalizeRepairSkillName(skillName)}`;
+}
+
+function splitPairKey(key: string): { sessionId: string; skillName: string } {
+  const [sessionId, skillName] = key.split("\u0000");
+  return { sessionId, skillName: normalizeRepairSkillName(skillName) };
+}
+
+function compareRepairRecords(a: SkillUsageRecord, b: SkillUsageRecord): number {
+  return (
+    a.timestamp.localeCompare(b.timestamp) ||
+    a.query.localeCompare(b.query) ||
+    a.skill_path.localeCompare(b.skill_path) ||
+    Number(a.triggered) - Number(b.triggered)
+  );
+}
+
+function invocationKey(sessionId: string, skillName: string, query: string): string {
+  return `${sessionId}\u0000${skillName.trim().toLowerCase()}\u0000${query}`;
+}
+
+function stableKeyHash(value: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16);
+}
+
+/**
+ * Persist repaired skill usage into the canonical skill_invocations table.
+ *
+ * Strategy:
+ * - delete legacy triggered :su: rows for repaired session/skill pairs
+ * - delete prior capture_mode=repair rows for those pairs (idempotent reruns)
+ * - insert repaired rows only when the pair has no canonical triggered rows
+ *
+ * This lets repair improve SQLite without overriding source-truth canonical
+ * replay/hook rows, while also removing duplicate legacy trigger rows from
+ * mixed historical sessions.
+ */
+export function persistRepairedSkillUsageToDb(
+  db: Database,
+  records: SkillUsageRecord[],
+): RepairSQLiteResult {
+  const triggeredRecords = records.filter((record) => record.triggered);
+  const missedRecords = records.filter((record) => !record.triggered);
+  const recordsByPair = new Map<string, SkillUsageRecord[]>();
+  const missedRecordsByKey = new Map<string, SkillUsageRecord>();
+
+  for (const record of triggeredRecords) {
+    const key = pairKey(record.session_id, record.skill_name);
+    const bucket = recordsByPair.get(key);
+    if (bucket) {
+      bucket.push(record);
+    } else {
+      recordsByPair.set(key, [record]);
+    }
+  }
+  for (const record of missedRecords) {
+    const key = invocationKey(record.session_id, record.skill_name, record.query);
+    const existing = missedRecordsByKey.get(key);
+    if (!existing || compareRepairRecords(record, existing) < 0) {
+      missedRecordsByKey.set(key, record);
+    }
+  }
+
+  if (recordsByPair.size === 0 && missedRecordsByKey.size === 0) {
+    return {
+      deleted_legacy_rows: 0,
+      deleted_prior_repair_rows: 0,
+      inserted_repair_rows: 0,
+      skipped_pairs_with_canonical: 0,
+      repaired_pairs_inserted: 0,
+    };
+  }
+
+  const selectExisting = db.prepare(`
+    SELECT
+      COALESCE(SUM(CASE WHEN skill_invocation_id LIKE '%:su:%' AND triggered = 1 THEN 1 ELSE 0 END), 0) AS legacy_rows,
+      COALESCE(SUM(CASE WHEN capture_mode = 'repair' AND triggered = 1 THEN 1 ELSE 0 END), 0) AS repair_rows,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN skill_invocation_id NOT LIKE '%:su:%'
+             AND COALESCE(capture_mode, '') != 'repair'
+             AND triggered = 1
+            THEN 1 ELSE 0
+          END
+        ),
+        0
+      ) AS canonical_rows
+    FROM skill_invocations
+    WHERE session_id = ? AND LOWER(skill_name) = ?
+  `);
+  const deleteLegacyTriggered = db.prepare(`
+    DELETE FROM skill_invocations
+    WHERE session_id = ? AND LOWER(skill_name) = ? AND skill_invocation_id LIKE '%:su:%' AND triggered = 1
+  `);
+  const deleteRepairTriggered = db.prepare(`
+    DELETE FROM skill_invocations
+    WHERE session_id = ? AND LOWER(skill_name) = ? AND capture_mode = 'repair' AND triggered = 1
+  `);
+  const selectExistingMiss = db.prepare(`
+    SELECT
+      COALESCE(SUM(CASE WHEN skill_invocation_id LIKE '%:su:%' AND triggered = 0 THEN 1 ELSE 0 END), 0) AS legacy_rows,
+      COALESCE(SUM(CASE WHEN capture_mode = 'repair' AND triggered = 0 THEN 1 ELSE 0 END), 0) AS repair_rows,
+      COALESCE(
+        SUM(
+          CASE
+            WHEN skill_invocation_id NOT LIKE '%:su:%'
+             AND COALESCE(capture_mode, '') != 'repair'
+             AND triggered = 0
+            THEN 1 ELSE 0
+          END
+        ),
+        0
+      ) AS canonical_rows
+    FROM skill_invocations
+    WHERE session_id = ? AND LOWER(skill_name) = ? AND query = ?
+  `);
+  const deleteLegacyMiss = db.prepare(`
+    DELETE FROM skill_invocations
+    WHERE session_id = ? AND LOWER(skill_name) = ? AND query = ? AND skill_invocation_id LIKE '%:su:%' AND triggered = 0
+  `);
+  const deleteRepairMiss = db.prepare(`
+    DELETE FROM skill_invocations
+    WHERE session_id = ? AND LOWER(skill_name) = ? AND query = ? AND capture_mode = 'repair' AND triggered = 0
+  `);
+
+  const result: RepairSQLiteResult = {
+    deleted_legacy_rows: 0,
+    deleted_prior_repair_rows: 0,
+    inserted_repair_rows: 0,
+    skipped_pairs_with_canonical: 0,
+    repaired_pairs_inserted: 0,
+  };
+
+  db.run("BEGIN IMMEDIATE");
+  try {
+    const redundantLegacyRows = deleteRedundantLegacyRows(db);
+    result.deleted_legacy_rows += redundantLegacyRows;
+
+    for (const [key, pairRecords] of recordsByPair.entries()) {
+      const { sessionId, skillName } = splitPairKey(key);
+      const existing = selectExisting.get(sessionId, skillName) as
+        | { legacy_rows: number; repair_rows: number; canonical_rows: number }
+        | undefined;
+
+      const legacyRows = existing?.legacy_rows ?? 0;
+      const repairRows = existing?.repair_rows ?? 0;
+      const canonicalRows = existing?.canonical_rows ?? 0;
+
+      if (repairRows > 0) {
+        deleteRepairTriggered.run(sessionId, skillName);
+        result.deleted_prior_repair_rows += repairRows;
+      }
+      if (legacyRows > 0) {
+        deleteLegacyTriggered.run(sessionId, skillName);
+        result.deleted_legacy_rows += legacyRows;
+      }
+      if (canonicalRows > 0) {
+        result.skipped_pairs_with_canonical += 1;
+        continue;
+      }
+
+      const sortedRecords = [...pairRecords].sort(compareRepairRecords);
+      const canonicalSkillName = sortedRecords[0]?.skill_name.trim() || skillName;
+      const { invocation_mode, confidence } = deriveInvocationMode({ is_repaired: true });
+
+      for (let index = 0; index < sortedRecords.length; index++) {
+        const record = sortedRecords[index];
+        const platform = inferRepairPlatform(record.source);
+        const canonical = buildCanonicalSkillInvocation({
+          platform,
+          capture_mode: "repair",
+          source_session_kind: "repaired",
+          session_id: record.session_id,
+          raw_source_ref: {
+            event_type: "repair-skill-usage",
+            metadata: {
+              source: record.source ?? null,
+              skill_path_resolution_source: record.skill_path_resolution_source ?? null,
+              skill_project_root: record.skill_project_root ?? null,
+              skill_registry_dir: record.skill_registry_dir ?? null,
+            },
+          },
+          skill_invocation_id: `${record.session_id}:r:${canonicalSkillName}:${index}`,
+          occurred_at: record.timestamp,
+          skill_name: canonicalSkillName,
+          skill_path: record.skill_path,
+          invocation_mode,
+          triggered: true,
+          confidence,
+        });
+
+        writeSkillCheckToDb({
+          ...canonical,
+          query: record.query,
+          skill_path: record.skill_path,
+          skill_scope: record.skill_scope,
+          source: record.source,
+        });
+        result.inserted_repair_rows += 1;
+      }
+
+      result.repaired_pairs_inserted += 1;
+    }
+
+    for (const record of missedRecordsByKey.values()) {
+      const canonicalSkillName = record.skill_name.trim();
+      const normalizedSkillName = normalizeRepairSkillName(canonicalSkillName);
+      const existing = selectExistingMiss.get(
+        record.session_id,
+        normalizedSkillName,
+        record.query,
+      ) as { legacy_rows: number; repair_rows: number; canonical_rows: number } | undefined;
+
+      const legacyRows = existing?.legacy_rows ?? 0;
+      const repairRows = existing?.repair_rows ?? 0;
+      const canonicalRows = existing?.canonical_rows ?? 0;
+
+      if (repairRows > 0) {
+        deleteRepairMiss.run(record.session_id, normalizedSkillName, record.query);
+        result.deleted_prior_repair_rows += repairRows;
+      }
+      if (legacyRows > 0) {
+        deleteLegacyMiss.run(record.session_id, normalizedSkillName, record.query);
+        result.deleted_legacy_rows += legacyRows;
+      }
+      if (canonicalRows > 0) {
+        result.skipped_pairs_with_canonical += 1;
+        continue;
+      }
+
+      const platform = inferRepairPlatform(record.source);
+      const { invocation_mode, confidence } = deriveInvocationMode({ is_repaired: true });
+      const canonical = buildCanonicalSkillInvocation({
+        platform,
+        capture_mode: "repair",
+        source_session_kind: "repaired",
+        session_id: record.session_id,
+        raw_source_ref: {
+          event_type: "repair-skill-usage",
+          metadata: {
+            source: record.source ?? null,
+            skill_path_resolution_source: record.skill_path_resolution_source ?? null,
+            skill_project_root: record.skill_project_root ?? null,
+            skill_registry_dir: record.skill_registry_dir ?? null,
+            miss_type: "contextual_read",
+          },
+        },
+        skill_invocation_id: `${record.session_id}:rmiss:${canonicalSkillName}:${stableKeyHash(record.query)}`,
+        occurred_at: record.timestamp,
+        skill_name: canonicalSkillName,
+        skill_path: record.skill_path,
+        invocation_mode,
+        triggered: false,
+        confidence,
+      });
+
+      writeSkillCheckToDb({
+        ...canonical,
+        query: record.query,
+        skill_path: record.skill_path,
+        skill_scope: record.skill_scope,
+        source: record.source,
+      });
+      result.inserted_repair_rows += 1;
+      result.repaired_pairs_inserted += 1;
+    }
+
+    db.run("COMMIT");
+  } catch (error) {
+    db.run("ROLLBACK");
+    throw error;
+  }
+
+  return result;
 }
 
 export function cliMain(): void {
@@ -571,13 +928,15 @@ Options:
       return;
     }
 
+    const sqlite = persistRepairedSkillUsageToDb(getDb(), repairedRecords);
+
     writeRepairedSkillUsageRecords(
       repairedRecords,
       repairedSessionIds,
       values.out ?? REPAIRED_SKILL_LOG,
       values["sessions-marker"] ?? REPAIRED_SKILL_SESSIONS_MARKER,
     );
-    console.log(JSON.stringify(summary, null, 2));
+    console.log(JSON.stringify({ ...summary, sqlite }, null, 2));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[ERROR] Failed to repair skill usage: ${message}`);

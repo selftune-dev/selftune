@@ -1,17 +1,12 @@
 import { EvolutionTimeline } from "@selftune/ui/components";
 import { EvidenceViewer } from "@selftune/ui/components";
 import { InfoTip } from "@selftune/ui/components";
-import { STATUS_CONFIG } from "@selftune/ui/lib";
-import { deriveStatus, formatRate, timeAgo } from "@selftune/ui/lib";
+import { timeAgo } from "@selftune/ui/lib";
 import {
   Badge,
   Button,
   Card,
-  CardAction,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   Table,
   TableBody,
   TableCell,
@@ -29,44 +24,213 @@ import {
 import {
   AlertCircleIcon,
   ArrowLeftIcon,
-  FlaskConicalIcon,
-  ActivityIcon,
   EyeIcon,
   RefreshCwIcon,
-  LayersIcon,
-  TrendingUpIcon,
-  TrendingDownIcon,
-  CoinsIcon,
   ChevronRightIcon,
-  ClockIcon,
-  AlertOctagonIcon,
-  TargetIcon,
-  GaugeIcon,
+  ShieldCheckIcon,
+  ShieldAlertIcon,
+  ShieldIcon,
+  ShieldQuestionIcon,
+  SearchIcon,
+  AlertTriangleIcon,
+  CheckCircleIcon,
+  ArrowRightIcon,
+  GitBranchIcon,
+  FilterIcon,
+  ChevronDownIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
+import {
+  DataQualityPanel,
+  historicalContextBadge,
+  observationBadge,
+  PromptEvidencePanel,
+  SkillReportTopRow,
+  SkillTrustNarrativePanel,
+  TrustSignalsGrid,
+} from "@/components/skill-report-panels";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSkillReport } from "@/hooks/useSkillReport";
+import type { EvolutionEntry, TrustState } from "@/types";
 
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  const secs = ms / 1000;
-  if (secs < 60) return `${secs.toFixed(1)}s`;
-  const mins = secs / 60;
-  if (mins < 60) return `${mins.toFixed(1)}m`;
-  return `${(mins / 60).toFixed(1)}h`;
+type ObservationKind =
+  | "canonical"
+  | "repaired_trigger"
+  | "repaired_contextual_miss"
+  | "legacy_materialized";
+type SkillReportTab = "evidence" | "invocations" | "data-quality";
+
+const SKILL_REPORT_ONBOARDING_KEY = "selftune.skill-report-onboarding-dismissed";
+
+function SkillReportGuideSheet({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="overflow-y-auto sm:max-w-lg">
+        <SheetHeader className="space-y-2 border-b border-border/10 pb-4">
+          <SheetTitle>How to read this page</SheetTitle>
+          <SheetDescription>
+            selftune earns trust by showing what it observed, what it proposed, how it tested the
+            change, and what happened next.
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="space-y-6 p-4">
+          <div className="space-y-3">
+            <h3 className="font-headline text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+              The improvement loop
+            </h3>
+            <div className="space-y-3 text-sm text-muted-foreground">
+              <p>
+                <strong className="text-foreground">1. Observe.</strong> selftune watches real
+                sessions and notes when a skill triggered, missed, or looked noisy.
+              </p>
+              <p>
+                <strong className="text-foreground">2. Propose.</strong> when the signal is strong
+                enough, it suggests a wording change to the skill.
+              </p>
+              <p>
+                <strong className="text-foreground">3. Validate.</strong> it checks whether the new
+                wording improves routing without breaking important cases.
+              </p>
+              <p>
+                <strong className="text-foreground">4. Decide.</strong> only validated winners
+                should be deployed. Rejected or pending proposals do not change the live skill.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="font-headline text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+              What each section means
+            </h3>
+            <div className="space-y-3 text-sm text-muted-foreground">
+              <p>
+                <strong className="text-foreground">Next Best Action</strong> tells you whether you
+                should review, deploy, or simply keep observing.
+              </p>
+              <p>
+                <strong className="text-foreground">How selftune is improving this skill</strong>{" "}
+                explains the current state in plain language.
+              </p>
+              <p>
+                <strong className="text-foreground">Trust Signals</strong> are the condensed metrics
+                behind that story: coverage, evidence quality, routing quality, and evolution state.
+              </p>
+              <p>
+                <strong className="text-foreground">Evidence</strong> shows what changed and why a
+                proposal was accepted, rejected, or left pending.
+              </p>
+              <p>
+                <strong className="text-foreground">Invocations</strong> shows real prompts where
+                this skill triggered or likely should have triggered.
+              </p>
+              <p>
+                <strong className="text-foreground">Data Quality</strong> tells you how trustworthy
+                the underlying telemetry is.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="font-headline text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+              FAQ
+            </h3>
+            <div className="space-y-4 text-sm text-muted-foreground">
+              <div>
+                <p className="font-medium text-foreground">What is a missed trigger?</p>
+                <p>
+                  A case where selftune believes the skill should have been used, but the agent did
+                  not invoke it.
+                </p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Why was a proposal rejected?</p>
+                <p>
+                  Usually because validation showed the new wording would regress existing behavior,
+                  or because it violated a hard rule like dropping an important anchor phrase.
+                </p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">When should I trust a recommendation?</p>
+                <p>
+                  Trust it more when the page shows broad coverage, prompt-linked evidence, and a
+                  validated result. Trust it less when the sample is tiny or the data is noisy.
+                </p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Do I need to understand every metric?</p>
+                <p>
+                  No. Start with the plain-English summary and next best action. Use the deeper tabs
+                  only when you want to inspect the evidence yourself.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
 }
 
-const ACTION_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  created: "outline",
-  validated: "secondary",
-  deployed: "default",
-  rejected: "destructive",
-  rolled_back: "destructive",
+/* ─── Trust badge config ──────────────────────────────── */
+
+const TRUST_BADGE: Record<
+  TrustState,
+  {
+    label: string;
+    variant: "default" | "secondary" | "destructive" | "outline";
+    icon: React.ReactNode;
+  }
+> = {
+  low_sample: {
+    label: "Low Sample",
+    variant: "secondary",
+    icon: <ShieldQuestionIcon className="size-3" />,
+  },
+  observed: {
+    label: "Observed",
+    variant: "outline",
+    icon: <EyeIcon className="size-3" />,
+  },
+  watch: {
+    label: "Watch",
+    variant: "secondary",
+    icon: <ShieldAlertIcon className="size-3" />,
+  },
+  validated: {
+    label: "Validated",
+    variant: "default",
+    icon: <ShieldCheckIcon className="size-3" />,
+  },
+  deployed: {
+    label: "Deployed",
+    variant: "default",
+    icon: <ShieldCheckIcon className="size-3" />,
+  },
+  rolled_back: {
+    label: "Rolled Back",
+    variant: "destructive",
+    icon: <ShieldIcon className="size-3" />,
+  },
 };
 
-/** Feed-style session group with progressive disclosure */
+/* ─── Session group (kept from V1) ────────────────────── */
+
 function SessionGroup({
   sessionId,
   meta,
@@ -75,7 +239,13 @@ function SessionGroup({
 }: {
   sessionId: string;
   meta?:
-    | { started_at?: string | null; model?: string | null; workspace_path?: string | null }
+    | {
+        started_at?: string | null;
+        model?: string | null;
+        workspace_path?: string | null;
+        platform?: string | null;
+        agent_cli?: string | null;
+      }
     | undefined;
   invocations: Array<{
     timestamp: string | null;
@@ -86,6 +256,8 @@ function SessionGroup({
     confidence: number | null;
     tool_name: string | null;
     agent_type: string | null;
+    observation_kind?: ObservationKind | null;
+    historical_context?: "previously_missed" | null;
   }>;
   defaultExpanded: boolean;
 }) {
@@ -100,9 +272,50 @@ function SessionGroup({
     {} as Record<string, number>,
   );
 
+  const formatInvoker = (inv: (typeof invocations)[number]): { label: string; hint: string } => {
+    const cli = meta?.agent_cli?.replace(/_/g, " ");
+    const platform = meta?.platform?.replace(/_/g, " ");
+
+    if (inv.agent_type && inv.agent_type !== "main") {
+      return {
+        label: inv.agent_type,
+        hint: cli ? `${cli} subagent` : "subagent invocation",
+      };
+    }
+
+    if (cli) {
+      return {
+        label: cli,
+        hint:
+          inv.agent_type === "main"
+            ? "main agent invocation"
+            : "session agent that invoked the skill",
+      };
+    }
+
+    if (platform) {
+      return {
+        label: platform,
+        hint: inv.agent_type === "main" ? "main agent invocation" : "session platform",
+      };
+    }
+
+    if (inv.agent_type) {
+      return {
+        label: inv.agent_type,
+        hint: "recorded subagent type",
+      };
+    }
+
+    return {
+      label: "No data",
+      hint: "invoker was not captured in this record",
+    };
+  };
+
   return (
     <div className="rounded-lg border border-border/60 overflow-hidden transition-colors">
-      {/* Session header — always visible */}
+      {/* Session header -- always visible */}
       <button
         type="button"
         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 active:bg-muted/60 transition-colors"
@@ -149,28 +362,33 @@ function SessionGroup({
         </span>
       </button>
 
-      {/* Invocation table — expanded */}
+      {/* Invocation table -- expanded */}
       {expanded && (
         <div className="border-t border-border/40 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent bg-muted/40">
-                <TableHead className="text-[11px] h-8">
+                <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8">
                   Prompt <InfoTip text="The user prompt that led to this skill being invoked" />
                 </TableHead>
-                <TableHead className="text-[11px] h-8 w-[90px]">
+                <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[90px]">
                   Mode{" "}
-                  <InfoTip text="explicit = user typed /skillname · implicit = user mentioned skill by name · inferred = agent chose skill autonomously" />
+                  <InfoTip text="explicit = user typed /skillname; implicit = user mentioned skill by name; inferred = agent chose skill autonomously" />
                 </TableHead>
-                <TableHead className="text-[11px] h-8 w-[70px]">
+                <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[70px]">
                   Confidence{" "}
-                  <InfoTip text="Model's confidence score (0–100%) when routing this prompt to the skill" />
+                  <InfoTip text="Model's confidence score (0-100%) when routing this prompt to the skill" />
                 </TableHead>
-                <TableHead className="text-[11px] h-8 w-[90px]">
-                  Agent{" "}
-                  <InfoTip text="Which agent invoked the skill — main agent or a subagent type (e.g. Explore, Engineer)" />
+                <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[110px]">
+                  Invoker{" "}
+                  <InfoTip text="Who invoked the skill. Prefers subagent type when present, otherwise falls back to the session agent or platform." />
                 </TableHead>
-                <TableHead className="text-[11px] h-8 w-[70px] text-right">Time</TableHead>
+                <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[120px]">
+                  Evidence
+                </TableHead>
+                <TableHead className="font-headline text-[10px] uppercase tracking-[0.15em] h-8 w-[70px] text-right">
+                  Time
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -195,20 +413,66 @@ function SessionGroup({
                         {inv.invocation_mode}
                       </Badge>
                     ) : (
-                      <span className="text-[11px] text-muted-foreground">—</span>
+                      <span className="text-[11px] text-muted-foreground">Unknown mode</span>
                     )}
                   </TableCell>
                   <TableCell className="py-2 font-mono text-xs text-muted-foreground tabular-nums">
-                    {inv.confidence !== null ? `${Math.round(inv.confidence * 100)}%` : "—"}
+                    {inv.confidence !== null
+                      ? `${Math.round(inv.confidence * 100)}%`
+                      : "Not recorded"}
                   </TableCell>
                   <TableCell className="py-2">
-                    {inv.agent_type ? (
-                      <Badge variant="outline" className="text-[10px] font-normal">
-                        {inv.agent_type}
-                      </Badge>
-                    ) : (
-                      <span className="text-[11px] text-muted-foreground">—</span>
-                    )}
+                    {(() => {
+                      const invoker = formatInvoker(inv);
+                      return invoker.label === "No data" ? (
+                        <span className="text-[11px] text-muted-foreground" title={invoker.hint}>
+                          {invoker.label}
+                        </span>
+                      ) : (
+                        <Badge
+                          variant={
+                            inv.agent_type && inv.agent_type !== "main" ? "outline" : "secondary"
+                          }
+                          className="text-[10px] font-normal capitalize"
+                          title={invoker.hint}
+                        >
+                          {invoker.label}
+                        </Badge>
+                      );
+                    })()}
+                  </TableCell>
+                  <TableCell className="py-2">
+                    {(() => {
+                      const observation = observationBadge(inv.observation_kind);
+                      const historicalContext = historicalContextBadge(inv.historical_context);
+                      return observation ? (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge variant={observation.variant} className="text-[10px] font-normal">
+                            {observation.label}
+                          </Badge>
+                          {historicalContext && (
+                            <Badge
+                              variant={historicalContext.variant}
+                              className="text-[10px] font-normal"
+                            >
+                              {historicalContext.label}
+                            </Badge>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[11px] text-muted-foreground">canonical</span>
+                          {historicalContext && (
+                            <Badge
+                              variant={historicalContext.variant}
+                              className="text-[10px] font-normal"
+                            >
+                              {historicalContext.label}
+                            </Badge>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell className="py-2 font-mono text-[11px] text-muted-foreground text-right whitespace-nowrap">
                     {inv.timestamp ? timeAgo(inv.timestamp) : ""}
@@ -223,10 +487,178 @@ function SessionGroup({
   );
 }
 
+/* ─── Invocation filter type ──────────────────────────── */
+
+type InvocationFilter = "all" | "misses" | "low_confidence" | "system_meta";
+
+/* ─── Next best action logic ──────────────────────────── */
+
+function deriveNextAction(
+  trustState: TrustState,
+  missRate: number | null | undefined,
+  systemLikeRate: number | null | undefined,
+  hasPendingProposals: boolean,
+  _hasEvolution: boolean,
+): {
+  icon: React.ReactNode;
+  text: string;
+  actionLabel: string;
+  variant: "default" | "secondary" | "destructive" | "outline";
+} {
+  if (trustState === "low_sample") {
+    return {
+      icon: <EyeIcon className="size-5" />,
+      text: "Keep observing. This skill needs more sessions before trust can be assessed.",
+      actionLabel: "Keep observing",
+      variant: "secondary",
+    };
+  }
+  if (trustState === "rolled_back") {
+    return {
+      icon: <AlertTriangleIcon className="size-5 text-destructive" />,
+      text: "Inspect rollback evidence before re-deploying.",
+      actionLabel: "Inspect rollback",
+      variant: "destructive",
+    };
+  }
+  if (trustState === "watch" && (systemLikeRate ?? 0) > 0.05) {
+    return {
+      icon: <AlertTriangleIcon className="size-5 text-amber-500" />,
+      text: "Clean source-truth data or routing data before trusting this report.",
+      actionLabel: "Clean data",
+      variant: "secondary",
+    };
+  }
+  if (trustState === "watch" && (missRate ?? 0) > 0) {
+    return {
+      icon: <SearchIcon className="size-5 text-amber-500" />,
+      text: "Generate evals to investigate missed triggers.",
+      actionLabel: "Generate evals",
+      variant: "secondary",
+    };
+  }
+  if (trustState === "watch") {
+    return {
+      icon: <EyeIcon className="size-5 text-amber-500" />,
+      text: "This skill is under active observation. Review recent invocations to verify routing accuracy.",
+      actionLabel: "Review invocations",
+      variant: "secondary",
+    };
+  }
+  if (hasPendingProposals) {
+    return {
+      icon: <GitBranchIcon className="size-5 text-primary" />,
+      text: "Review pending proposal.",
+      actionLabel: "Review proposal",
+      variant: "default",
+    };
+  }
+  if (trustState === "validated") {
+    return {
+      icon: <ArrowRightIcon className="size-5 text-primary" />,
+      text: "Deploy the validated candidate.",
+      actionLabel: "Deploy candidate",
+      variant: "default",
+    };
+  }
+  if (trustState === "deployed") {
+    return {
+      icon: <CheckCircleIcon className="size-5 text-green-500" />,
+      text: "No action needed. Skill is healthy and being monitored.",
+      actionLabel: "Healthy",
+      variant: "outline",
+    };
+  }
+  if (trustState === "observed") {
+    return {
+      icon: <EyeIcon className="size-5 text-muted-foreground" />,
+      text: "No action needed. Selftune is still observing this skill and building confidence from real usage.",
+      actionLabel: "Observed",
+      variant: "outline",
+    };
+  }
+  return {
+    icon: <EyeIcon className="size-5" />,
+    text: "Continue monitoring this skill.",
+    actionLabel: "Monitor",
+    variant: "outline",
+  };
+}
+
+/* ─── Collapsible timeline sidebar ────────────────────── */
+
+function TimelineSidebar({
+  evolution,
+  activeProposal,
+  onSelect,
+}: {
+  evolution: EvolutionEntry[];
+  activeProposal: string | null;
+  onSelect: (proposalId: string) => void;
+}) {
+  const collapsedProposalCount = 6;
+  const proposalCount = new Set(evolution.map((entry) => entry.proposal_id)).size;
+  const shouldCollapse = proposalCount > collapsedProposalCount;
+  const [expanded, setExpanded] = useState(!shouldCollapse);
+
+  const visibleEntries = useMemo(() => {
+    if (expanded) return evolution;
+
+    const allowed = new Set<string>();
+    const collapsed: typeof evolution = [];
+    for (const entry of evolution) {
+      if (!allowed.has(entry.proposal_id)) {
+        if (allowed.size >= collapsedProposalCount) continue;
+        allowed.add(entry.proposal_id);
+      }
+      collapsed.push(entry);
+    }
+    return collapsed;
+  }, [collapsedProposalCount, evolution, expanded]);
+
+  return (
+    <aside className="w-full px-4 py-4 @5xl/main:w-[252px] @5xl/main:self-start @5xl/main:pr-0">
+      <div className="@5xl/main:sticky @5xl/main:top-16">
+        <div
+          className={`rounded-xl border border-border/10 bg-muted/20 px-3 py-3 text-xs ${expanded ? "themed-scroll max-h-[26rem] overflow-y-auto @5xl/main:max-h-[calc(100svh-6rem)]" : "overflow-visible"}`}
+        >
+          <EvolutionTimeline
+            entries={visibleEntries}
+            selectedProposalId={activeProposal}
+            onSelect={onSelect}
+          />
+          {shouldCollapse && (
+            <button
+              type="button"
+              onClick={() => setExpanded(!expanded)}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 py-2 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronDownIcon
+                className={`size-3 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
+              />
+              {expanded ? "Collapse timeline" : `Show full timeline (${proposalCount} proposals)`}
+            </button>
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SkillReport — trust-first skill report page
+   ═══════════════════════════════════════════════════════════ */
+
 export function SkillReport() {
   const { name } = useParams<{ name: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data, isPending, isError, error, refetch } = useSkillReport(name);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(true);
+  const [activeTab, setActiveTab] = useState<SkillReportTab>("invocations");
+
+  // Invocation filter state
+  const [invocationFilter, setInvocationFilter] = useState<InvocationFilter>("all");
 
   // Derive proposal state from data (safe to compute even when data is null)
   const evolution = data?.evolution ?? [];
@@ -239,7 +671,7 @@ export function SkillReport() {
         ? evolution[0].proposal_id
         : null;
 
-  // All hooks must be called unconditionally — before any early returns
+  // All hooks must be called unconditionally -- before any early returns
   useEffect(() => {
     const current = searchParams.get("proposal");
     if (activeProposal && current !== activeProposal) {
@@ -255,11 +687,97 @@ export function SkillReport() {
     }
   }, [activeProposal, searchParams, setSearchParams]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const dismissed = window.localStorage.getItem(SKILL_REPORT_ONBOARDING_KEY) === "1";
+    if (dismissed) setShowOnboarding(false);
+  }, []);
+
   const handleSelectProposal = (proposalId: string) => {
     const next = new URLSearchParams(searchParams);
     next.set("proposal", proposalId);
     setSearchParams(next, { replace: true });
   };
+
+  const dismissOnboarding = () => {
+    setShowOnboarding(false);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(SKILL_REPORT_ONBOARDING_KEY, "1");
+    }
+  };
+
+  // Trust fields from extended SkillReportResponse
+  const trust = data?.trust;
+  const coverage = data?.coverage;
+  const evidenceQuality = data?.evidence_quality;
+  const routingQuality = data?.routing_quality;
+  const evolutionState = data?.evolution_state;
+  const dataHygiene = data?.data_hygiene;
+  const examples = data?.examples;
+  const rawChecks = dataHygiene?.raw_checks ?? coverage?.checks ?? data?.usage.total_checks ?? 0;
+  const operationalChecks =
+    dataHygiene?.operational_checks ?? coverage?.checks ?? data?.usage.total_checks ?? 0;
+  const excludedChecks = Math.max(rawChecks - operationalChecks, 0);
+  const hasEvolutionData = (evolutionState?.evolution_rows ?? evolution.length) > 0;
+  const defaultTab: SkillReportTab = hasEvolutionData ? "evidence" : "invocations";
+
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
+
+  // Filtered invocations for the invocations tab
+  const mergedInvocations = useMemo(() => {
+    const invs = (data?.canonical_invocations ?? []).map((ci) => ({
+      timestamp: ci.timestamp || ci.occurred_at || null,
+      session_id: ci.session_id,
+      triggered: ci.triggered,
+      query: ci.query ?? "",
+      source: ci.source ?? "",
+      invocation_mode: ci.invocation_mode ?? null,
+      confidence: ci.confidence ?? null,
+      tool_name: ci.tool_name ?? null,
+      agent_type: ci.agent_type ?? null,
+      observation_kind: ci.observation_kind ?? "canonical",
+      historical_context: ci.historical_context ?? null,
+    }));
+    invs.sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
+    return invs;
+  }, [data?.canonical_invocations]);
+
+  const filteredInvocations = useMemo(() => {
+    switch (invocationFilter) {
+      case "misses":
+        return mergedInvocations.filter((i) => !i.triggered);
+      case "low_confidence":
+        return mergedInvocations.filter((i) => i.confidence !== null && i.confidence < 0.5);
+      case "system_meta":
+        return mergedInvocations.filter(
+          (i) => i.invocation_mode === "system" || i.invocation_mode === "meta",
+        );
+      default:
+        return mergedInvocations;
+    }
+  }, [mergedInvocations, invocationFilter]);
+
+  const sessionMetaMap = useMemo(
+    () => new Map((data?.session_metadata ?? []).map((s) => [s.session_id, s])),
+    [data?.session_metadata],
+  );
+
+  const groupedSessions = useMemo(() => {
+    const sessionMap = new Map<string, typeof filteredInvocations>();
+    for (const inv of filteredInvocations) {
+      const sid = inv.session_id ?? "unknown";
+      const arr = sessionMap.get(sid);
+      if (arr) arr.push(inv);
+      else sessionMap.set(sid, [inv]);
+    }
+    return [...sessionMap.entries()].sort(([, a], [, b]) =>
+      (b[0]?.timestamp ?? "").localeCompare(a[0]?.timestamp ?? ""),
+    );
+  }, [filteredInvocations]);
+
+  /* ─── Early returns ─────────────────────────────────── */
 
   if (!name) {
     return (
@@ -274,12 +792,12 @@ export function SkillReport() {
       <div className="@container/main flex flex-1 flex-col gap-6 p-4 lg:p-6">
         <Skeleton className="h-10 w-64" />
         <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-28 rounded-2xl" />
           ))}
         </div>
-        <Skeleton className="h-20 rounded-xl" />
-        <Skeleton className="h-64 rounded-xl" />
+        <Skeleton className="h-20 rounded-2xl" />
+        <Skeleton className="h-64 rounded-2xl" />
       </div>
     );
   }
@@ -308,14 +826,10 @@ export function SkillReport() {
   }
 
   const isNotFound =
-    data.usage.total_checks === 0 &&
-    data.usage.triggered_count === 0 &&
+    (coverage?.checks ?? data.usage.total_checks) === 0 &&
     data.evidence.length === 0 &&
     data.evolution.length === 0 &&
-    data.pending_proposals.length === 0 &&
-    (data.canonical_invocations?.length ?? 0) === 0 &&
-    (data.prompt_samples?.length ?? 0) === 0 &&
-    (data.session_metadata?.length ?? 0) === 0;
+    (data.canonical_invocations?.length ?? 0) === 0;
 
   if (isNotFound) {
     return (
@@ -329,396 +843,330 @@ export function SkillReport() {
     );
   }
 
-  const {
-    usage,
-    evidence,
-    pending_proposals,
-    canonical_invocations,
-    duration_stats,
-    selftune_stats,
-    prompt_samples: _prompt_samples,
-    session_metadata,
-  } = data;
-  const status = deriveStatus(usage.pass_rate, usage.total_checks);
-  const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.UNKNOWN;
-  const passRateGood = status === "HEALTHY";
-  const hasEvolution = (selftune_stats?.run_count ?? 0) > 0;
-  const missed = duration_stats?.missed_triggers ?? 0;
+  const trustState = trust?.state ?? "low_sample";
+  const trustBadge = TRUST_BADGE[trustState];
 
-  // Unique models/platforms from session metadata
-  const _uniqueModels = [...new Set((session_metadata ?? []).map((s) => s.model).filter(Boolean))];
-  const _uniquePlatforms = [
-    ...new Set((session_metadata ?? []).map((s) => s.platform).filter(Boolean)),
-  ];
-  const _uniqueDirectories = [
-    ...new Set((session_metadata ?? []).map((s) => s.workspace_path).filter(Boolean)),
-  ];
-
-  // Unified invocations from consolidated skill_invocations table
-  const mergedInvocations = (canonical_invocations ?? []).map((ci) => ({
-    timestamp: ci.timestamp || ci.occurred_at || null,
-    session_id: ci.session_id,
-    triggered: ci.triggered,
-    query: ci.query ?? "",
-    source: ci.source ?? "",
-    invocation_mode: ci.invocation_mode ?? null,
-    confidence: ci.confidence ?? null,
-    tool_name: ci.tool_name ?? null,
-    agent_type: ci.agent_type ?? null,
-  }));
-  mergedInvocations.sort((a, b) => (b.timestamp ?? "").localeCompare(a.timestamp ?? ""));
-
-  // Group invocations by session for the grouped view
-  const sessionMap = new Map<string, typeof mergedInvocations>();
-  for (const inv of mergedInvocations) {
-    const sid = inv.session_id ?? "unknown";
-    const arr = sessionMap.get(sid);
-    if (arr) arr.push(inv);
-    else sessionMap.set(sid, [inv]);
-  }
-  const sessionMetaMap = new Map((session_metadata ?? []).map((s) => [s.session_id, s]));
-  // Sort session groups by most recent invocation
-  const groupedSessions = [...sessionMap.entries()].sort(([, a], [, b]) =>
-    (b[0]?.timestamp ?? "").localeCompare(a[0]?.timestamp ?? ""),
+  const nextAction = deriveNextAction(
+    trustState,
+    routingQuality?.miss_rate,
+    evidenceQuality?.system_like_rate,
+    evolutionState?.has_pending_proposals ?? data.pending_proposals.length > 0,
+    hasEvolutionData,
   );
 
   return (
-    <Tabs defaultValue={evolution.length > 0 ? "evidence" : "invocations"}>
-      <div className="@container/main flex flex-1 flex-col gap-4 p-4 lg:px-6 lg:pb-6 lg:pt-0">
-        {/* Skill Header + Tab Bar — sticky, Linear-style compact */}
-        <div className="flex items-center gap-3 sticky top-0 z-30 bg-background py-1.5 border-b border-border/50">
-          <h1 className="text-base font-semibold tracking-tight lg:text-lg shrink-0">
-            {data.skill_name}
-          </h1>
-          <Badge variant={config.variant} className="gap-1 shrink-0 text-[10px]">
-            {config.icon}
-            {config.label}
-          </Badge>
-          <TabsList variant="line" className="ml-auto">
-            {evolution.length > 0 && (
-              <Tooltip>
-                <TooltipTrigger render={<TabsTrigger value="evidence" />}>
-                  Evidence
-                  {activeProposal && (
-                    <span className="font-mono text-[10px] text-muted-foreground">
-                      #{activeProposal.slice(0, 8)}
-                    </span>
+    <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <SkillReportGuideSheet open={isGuideOpen} onOpenChange={setIsGuideOpen} />
+      <div className="@container/main flex flex-1 flex-col gap-5 p-4 lg:px-6 lg:pb-6 lg:pt-0">
+        {/* ─── 1. Trust Header (sticky) ───────────────── */}
+        <div className="sticky top-0 z-30 space-y-2 border-b border-border/15 bg-background/95 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/85">
+          <div className="flex items-center gap-3">
+            <Button variant="outline" size="sm" render={<Link to="/" />} className="shrink-0">
+              <ArrowLeftIcon className="size-3.5" />
+            </Button>
+            <h1 className="text-base font-semibold tracking-tight lg:text-lg font-headline shrink-0">
+              {data.skill_name}
+            </h1>
+            <Badge variant={trustBadge.variant} className="gap-1 shrink-0 text-[10px]">
+              {trustBadge.icon}
+              {trustBadge.label}
+            </Badge>
+            <div className="ml-auto flex items-center gap-4 shrink-0">
+              <Button variant="outline" size="sm" onClick={() => setIsGuideOpen(true)}>
+                How this works
+              </Button>
+              <div className="hidden @xl/main:flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="tabular-nums">
+                  <strong className="text-foreground">
+                    {coverage?.checks ?? data.usage.total_checks}
+                  </strong>{" "}
+                  checks
+                </span>
+                <span className="text-border">|</span>
+                <span className="tabular-nums">
+                  <strong className="text-foreground">
+                    {coverage?.sessions ?? data.sessions_with_skill}
+                  </strong>{" "}
+                  sessions
+                </span>
+                <span className="text-border">|</span>
+                <span className="tabular-nums">
+                  <strong className="text-foreground">{coverage?.workspaces ?? "No data"}</strong>{" "}
+                  workspaces
+                </span>
+              </div>
+              {(coverage?.first_seen || coverage?.last_seen) && (
+                <div className="hidden @3xl/main:flex items-center gap-2 text-[10px] text-muted-foreground font-mono">
+                  {coverage.first_seen && (
+                    <span title="First seen">{timeAgo(coverage.first_seen)}</span>
                   )}
+                  {coverage.first_seen && coverage.last_seen && <span>-</span>}
+                  {coverage.last_seen && (
+                    <span title="Last seen">{timeAgo(coverage.last_seen)}</span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+          {/* Trust summary -- full-width line */}
+          {trust?.summary && (
+            <div className="space-y-1.5 text-sm leading-relaxed text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-3">
+                <span>{trust.summary}</span>
+                {evolutionState?.latest_action && evolutionState?.latest_timestamp && (
+                  <span className="text-[11px] text-muted-foreground/70 font-mono">
+                    Latest: {evolutionState.latest_action} (
+                    {timeAgo(evolutionState.latest_timestamp)})
+                  </span>
+                )}
+              </div>
+              {excludedChecks > 0 && (
+                <div className="text-[12px] text-muted-foreground/80">
+                  Based on <span className="font-medium text-foreground">{operationalChecks}</span>{" "}
+                  real checks. <span className="font-medium text-foreground">{excludedChecks}</span>{" "}
+                  internal or legacy rows are excluded from trust scoring.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {showOnboarding && (
+          <Card className="rounded-xl border border-primary/15 bg-primary/5">
+            <CardContent className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <div className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">New to selftune?</span> Start with the
+                summary below, then open the guide if you want the full improvement loop explained
+                step by step.
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setIsGuideOpen(true)}>
+                  Open guide
+                </Button>
+                <Button variant="ghost" size="sm" onClick={dismissOnboarding}>
+                  Hide
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="space-y-4">
+          <SkillReportTopRow
+            nextAction={nextAction}
+            latestDecision={
+              hasEvolutionData && evolutionState?.latest_action
+                ? {
+                    action: evolutionState.latest_action,
+                    timestamp: evolutionState.latest_timestamp,
+                    evolutionCount: evolutionState.evolution_rows ?? evolution.length,
+                  }
+                : undefined
+            }
+          />
+
+          <SkillTrustNarrativePanel
+            trustState={trustState}
+            coverage={coverage}
+            evidenceQuality={evidenceQuality}
+            routingQuality={routingQuality}
+            evolutionState={evolutionState}
+            dataHygiene={dataHygiene}
+            fallbackChecks={data.usage.total_checks}
+            fallbackSessions={data.sessions_with_skill}
+            nextActionText={nextAction.text}
+            onOpenGuide={() => setIsGuideOpen(true)}
+          />
+
+          <TrustSignalsGrid
+            coverage={coverage}
+            evidenceQuality={evidenceQuality}
+            routingQuality={routingQuality}
+            evolutionState={evolutionState}
+            fallbackChecks={data.usage.total_checks}
+            fallbackSessions={data.sessions_with_skill}
+            fallbackEvidenceRows={data.evidence.length}
+            fallbackEvolutionRows={evolution.length}
+            fallbackLatestAction={evolution[0]?.action}
+          />
+        </div>
+        <div className="space-y-4 border-t border-border/10 pt-4">
+          <TabsList
+            variant="line"
+            className="rounded-xl border border-border/10 bg-muted/20 px-1.5 py-1"
+          >
+            {hasEvolutionData && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <TabsTrigger
+                      value="evidence"
+                      className="rounded-lg px-3 font-headline text-xs uppercase tracking-wider data-active:bg-background/70 data-active:text-foreground"
+                    />
+                  }
+                >
+                  Evidence
                 </TooltipTrigger>
                 <TooltipContent>Change history and validation results</TooltipContent>
               </Tooltip>
             )}
             <Tooltip>
-              <TooltipTrigger render={<TabsTrigger value="invocations" />}>
+              <TooltipTrigger
+                render={
+                  <TabsTrigger
+                    value="invocations"
+                    className="rounded-lg px-3 font-headline text-xs uppercase tracking-wider data-active:bg-background/70 data-active:text-foreground"
+                  />
+                }
+              >
                 Invocations
-                <Badge variant="secondary" className="text-[10px]">
+                <Badge variant="secondary" className="ml-1.5 text-[10px]">
                   {mergedInvocations.length}
                 </Badge>
               </TooltipTrigger>
-              <TooltipContent>Recent skill triggers and their outcomes</TooltipContent>
+              <TooltipContent>
+                Real usage and repaired misses only. Internal selftune traffic and legacy residue
+                are excluded from this working set.
+              </TooltipContent>
             </Tooltip>
-            {pending_proposals.length > 0 && (
-              <Tooltip>
-                <TooltipTrigger render={<TabsTrigger value="pending" />}>
-                  Pending
-                  <Badge variant="destructive" className="text-[10px]">
-                    {pending_proposals.length}
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent>Proposals not yet deployed</TooltipContent>
-              </Tooltip>
-            )}
-          </TabsList>
-        </div>
-
-        {/* KPIs — 2 rows of 4 */}
-        <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
-          {/* Row 1: Core metrics */}
-          <Card className="@container/card">
-            <CardHeader>
-              <CardDescription className="flex items-center gap-1.5">
-                <FlaskConicalIcon className="size-3.5" />
-                Trigger Rate
-                <InfoTip text="Percentage of skill checks that resulted in this skill being triggered" />
-              </CardDescription>
-              <CardTitle
-                className={`text-2xl font-semibold tabular-nums @[250px]/card:text-3xl ${usage.total_checks > 0 && !passRateGood ? "text-red-600" : ""}`}
-              >
-                {usage.total_checks > 0 ? formatRate(usage.pass_rate) : "--"}
-              </CardTitle>
-              <CardAction>
-                {usage.total_checks > 0 ? (
-                  <Badge variant={passRateGood ? "outline" : "destructive"}>
-                    {passRateGood ? (
-                      <TrendingUpIcon className="size-3" />
-                    ) : (
-                      <TrendingDownIcon className="size-3" />
-                    )}
-                    {formatRate(usage.pass_rate)}
-                  </Badge>
-                ) : (
-                  <Badge variant="secondary" className="text-[10px]">
-                    no checks yet
-                  </Badge>
-                )}
-              </CardAction>
-            </CardHeader>
-          </Card>
-
-          <Card className="@container/card">
-            <CardHeader>
-              <CardDescription className="flex items-center gap-1.5">
-                <LayersIcon className="size-3.5" />
-                Total Checks
-                <InfoTip text="Total evaluation checks run across all sessions for this skill" />
-              </CardDescription>
-              <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-                {usage.total_checks}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card className="@container/card">
-            <CardHeader>
-              <CardDescription className="flex items-center gap-1.5">
-                <ActivityIcon className="size-3.5" />
-                Triggered
-                <InfoTip text="Number of times this skill was invoked by the agent during sessions" />
-              </CardDescription>
-              <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-                {usage.triggered_count}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card className="@container/card">
-            <CardHeader>
-              <CardDescription className="flex items-center gap-1.5">
-                <EyeIcon className="size-3.5" />
-                Sessions
-                <InfoTip text="Number of unique agent sessions where this skill was present" />
-              </CardDescription>
-              <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-                {data.sessions_with_skill}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-
-          {/* Row 2: Selftune resource metrics */}
-          <Card className="@container/card">
-            <CardHeader>
-              <CardDescription className="flex items-center gap-1.5">
-                <CoinsIcon className="size-3.5" />
-                LLM Calls
-                <InfoTip text="Total LLM calls made by selftune when evolving this skill" />
-              </CardDescription>
-              <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-                {hasEvolution ? (selftune_stats?.total_llm_calls ?? 0) : "--"}
-              </CardTitle>
-              <CardAction>
-                {hasEvolution ? (
-                  <span className="text-[10px] text-muted-foreground font-mono">
-                    {selftune_stats?.run_count ?? 0} evolution runs
-                  </span>
-                ) : (
-                  <Badge variant="secondary" className="text-[10px]">
-                    no evolution runs yet
-                  </Badge>
-                )}
-              </CardAction>
-            </CardHeader>
-          </Card>
-
-          <Card className="@container/card">
-            <CardHeader>
-              <CardDescription className="flex items-center gap-1.5">
-                <ClockIcon className="size-3.5" />
-                Avg Duration
-                <InfoTip text="Average time selftune spent evolving this skill per run" />
-              </CardDescription>
-              <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-                {hasEvolution ? formatDuration(selftune_stats?.avg_elapsed_ms ?? 0) : "--"}
-              </CardTitle>
-              <CardAction>
-                {hasEvolution ? (
-                  <span className="text-[10px] text-muted-foreground font-mono">
-                    {formatDuration(selftune_stats?.total_elapsed_ms ?? 0)} total
-                  </span>
-                ) : (
-                  <Badge variant="secondary" className="text-[10px]">
-                    no evolution runs yet
-                  </Badge>
-                )}
-              </CardAction>
-            </CardHeader>
-          </Card>
-
-          <Card className="@container/card">
-            <CardHeader>
-              <CardDescription className="flex items-center gap-1.5">
-                <AlertOctagonIcon className="size-3.5" />
-                Missed Triggers
-                <InfoTip text="Number of times this skill was evaluated but did not trigger. High counts may indicate the skill description needs evolution." />
-              </CardDescription>
-              <CardTitle
-                className={`text-2xl font-semibold tabular-nums @[250px]/card:text-3xl ${missed > 0 ? "text-amber-600" : ""}`}
-              >
-                {missed}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-
-          <Card className="@container/card">
-            <CardHeader>
-              <CardDescription className="flex items-center gap-1.5">
-                <TargetIcon className="size-3.5" />
-                Avg Confidence
-                <InfoTip text="Average model confidence score when routing user prompts to this skill" />
-              </CardDescription>
-              <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-                {(() => {
-                  const withConfidence = mergedInvocations.filter((i) => i.confidence !== null);
-                  return withConfidence.length > 0
-                    ? formatRate(
-                        withConfidence.reduce((sum, i) => sum + (i.confidence ?? 0), 0) /
-                          withConfidence.length,
-                      )
-                    : "--";
-                })()}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-
-          {data.description_quality && (
-            <Card className="@container/card">
-              <CardHeader>
-                <CardDescription className="flex items-center gap-1.5">
-                  <GaugeIcon className="size-3.5" />
-                  Description Quality
-                  <InfoTip text="Heuristic score assessing description routing precision: trigger context, specificity, conciseness, and vagueness. Higher = better agent routing." />
-                </CardDescription>
-                <CardTitle
-                  className={`text-2xl font-semibold tabular-nums @[250px]/card:text-3xl ${data.description_quality.composite < 0.5 ? "text-amber-600" : ""}`}
-                >
-                  {`${Math.round(data.description_quality.composite * 100)}%`}
-                </CardTitle>
-                <CardAction>
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <Badge
-                        variant={
-                          data.description_quality.composite >= 0.7 ? "outline" : "secondary"
-                        }
-                        className="text-[10px] font-normal cursor-help"
-                      >
-                        {data.description_quality.composite >= 0.7
-                          ? "good"
-                          : data.description_quality.composite >= 0.5
-                            ? "fair"
-                            : "needs work"}
-                      </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="font-mono text-[10px] space-y-0.5">
-                      <div>
-                        trigger context:{" "}
-                        {Math.round(data.description_quality.criteria.trigger_context * 100)}%
-                      </div>
-                      <div>
-                        specificity:{" "}
-                        {Math.round(data.description_quality.criteria.specificity * 100)}%
-                      </div>
-                      <div>
-                        vagueness: {Math.round(data.description_quality.criteria.vagueness * 100)}%
-                      </div>
-                      <div>
-                        length: {Math.round(data.description_quality.criteria.length * 100)}%
-                      </div>
-                      <div>
-                        not just name:{" "}
-                        {Math.round(data.description_quality.criteria.not_just_name * 100)}%
-                      </div>
-                    </TooltipContent>
-                  </Tooltip>
-                </CardAction>
-              </CardHeader>
-            </Card>
-          )}
-        </div>
-
-        {/* Main content: sidebar timeline + tabbed detail */}
-        <div className="flex gap-6">
-          {/* Left sidebar: Evolution Timeline — sticky so it stays visible while scrolling */}
-          {evolution.length > 0 && (
-            <aside className="w-[220px] shrink-0 border-r pr-4 sticky top-12 self-start max-h-[calc(100svh-3rem)] overflow-y-auto">
-              <EvolutionTimeline
-                entries={evolution}
-                selectedProposalId={activeProposal}
-                onSelect={handleSelectProposal}
-              />
-            </aside>
-          )}
-
-          {/* Right content area */}
-          <div className="flex-1 min-w-0">
-            {/* Evidence tab */}
-            {evolution.length > 0 && (
-              <TabsContent value="evidence">
-                {activeProposal ? (
-                  <EvidenceViewer
-                    proposalId={activeProposal}
-                    evolution={evolution}
-                    evidence={evidence}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <TabsTrigger
+                    value="data-quality"
+                    className="rounded-lg px-3 font-headline text-xs uppercase tracking-wider data-active:bg-background/70 data-active:text-foreground"
                   />
-                ) : (
-                  <div className="flex items-center justify-center rounded-lg border border-dashed py-12">
-                    <p className="text-sm text-muted-foreground">
-                      Select a proposal from the timeline
-                    </p>
+                }
+              >
+                Data Quality
+              </TooltipTrigger>
+              <TooltipContent>Evidence quality metrics and data hygiene</TooltipContent>
+            </Tooltip>
+          </TabsList>
+
+          {/* ─── Evidence Tab ─────────────────────────── */}
+          {hasEvolutionData && (
+            <TabsContent value="evidence" className="space-y-6">
+              <PromptEvidencePanel examples={examples} />
+
+              <div className="overflow-hidden rounded-2xl border border-border/15 bg-card">
+                <div className="flex flex-col @5xl/main:grid @5xl/main:grid-cols-[252px_minmax(0,1fr)] @5xl/main:items-start">
+                  {evolution.length > 0 && (
+                    <TimelineSidebar
+                      evolution={evolution}
+                      activeProposal={activeProposal}
+                      onSelect={handleSelectProposal}
+                    />
+                  )}
+
+                  <div className="min-w-0 p-4 @xl/main:p-5">
+                    {activeProposal ? (
+                      <EvidenceViewer
+                        proposalId={activeProposal}
+                        evolution={evolution}
+                        evidence={data.evidence}
+                        showContextBanner={false}
+                      />
+                    ) : (
+                      <Card className="rounded-2xl">
+                        <CardContent className="py-12">
+                          <div className="flex flex-col items-center justify-center gap-3 text-center">
+                            <EyeIcon className="size-8 text-muted-foreground/40" />
+                            <p className="text-sm text-muted-foreground">
+                              This skill is being observed but has no reviewable evolution evidence
+                              yet.
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+          )}
+
+          {/* ─── Invocations Tab ─────────────────────── */}
+          <TabsContent value="invocations">
+            {mergedInvocations.length === 0 ? (
+              <Card className="rounded-2xl">
+                <CardContent className="py-12">
+                  <p className="text-sm text-muted-foreground text-center">
+                    No invocation records yet.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-2">
+                {excludedChecks > 0 && (
+                  <div className="rounded-xl border border-border/10 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                    Showing{" "}
+                    <span className="font-medium text-foreground">{mergedInvocations.length}</span>{" "}
+                    operational invocations.{" "}
+                    <span className="font-medium text-foreground">{excludedChecks}</span> internal
+                    or legacy rows are tracked in Data Quality instead of being mixed into this
+                    working set.
                   </div>
                 )}
-              </TabsContent>
-            )}
-
-            {/* Invocations tab — unified from skill_invocations table */}
-            <TabsContent value="invocations">
-              {mergedInvocations.length === 0 ? (
-                <Card>
-                  <CardContent className="py-12">
-                    <p className="text-sm text-muted-foreground text-center">
-                      No invocation records yet.
-                    </p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-3">
-                  {/* Legend */}
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>
-                      {mergedInvocations.length} invocations across {groupedSessions.length}{" "}
-                      sessions
-                    </span>
-                    <div className="flex items-center gap-3">
-                      <span className="flex items-center gap-1">
-                        <Badge variant="secondary" className="text-[9px] font-normal">
-                          explicit
-                        </Badge>{" "}
-                        user typed /skill
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Badge variant="secondary" className="text-[9px] font-normal">
-                          implicit
-                        </Badge>{" "}
-                        mentioned by name
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Badge variant="secondary" className="text-[9px] font-normal">
-                          inferred
-                        </Badge>{" "}
-                        agent chose autonomously
-                      </span>
-                    </div>
+                {/* Filters */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <FilterIcon className="size-3.5 text-muted-foreground" />
+                    {(
+                      [
+                        ["all", "All"],
+                        ["misses", "Misses"],
+                        ["low_confidence", "Low confidence"],
+                        ["system_meta", "System/meta"],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setInvocationFilter(key)}
+                        className="inline-block"
+                      >
+                        <Badge
+                          variant={invocationFilter === key ? "default" : "outline"}
+                          className="text-[10px] cursor-pointer"
+                        >
+                          {label}
+                        </Badge>
+                      </button>
+                    ))}
                   </div>
-                  {groupedSessions.map(([sessionId, invocations], idx) => {
+                  <span className="text-xs text-muted-foreground">
+                    {filteredInvocations.length} invocations across {groupedSessions.length}{" "}
+                    sessions
+                  </span>
+                </div>
+
+                {/* Legend */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="size-1.5 rounded-full bg-muted-foreground/70" />
+                    explicit = user typed /skill
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="size-1.5 rounded-full bg-muted-foreground/70" />
+                    implicit = mentioned by name
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="size-1.5 rounded-full bg-muted-foreground/70" />
+                    inferred = agent chose autonomously
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="size-1.5 rounded-full bg-destructive/70" />
+                    repaired miss = transcript showed skill read without invocation
+                  </span>
+                </div>
+
+                {groupedSessions.length === 0 ? (
+                  <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+                    No invocations match this filter.
+                  </div>
+                ) : (
+                  groupedSessions.map(([sessionId, invocations], idx) => {
                     const meta = sessionMetaMap.get(sessionId);
                     return (
                       <SessionGroup
@@ -729,52 +1177,16 @@ export function SkillReport() {
                         defaultExpanded={idx < 3}
                       />
                     );
-                  })}
-                </div>
-              )}
-            </TabsContent>
-
-            {/* Pending tab */}
-            {pending_proposals.length > 0 && (
-              <TabsContent value="pending">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">Undeployed Proposals</CardTitle>
-                    <CardDescription>{pending_proposals.length} not yet deployed</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {pending_proposals.map((p) => (
-                      <button
-                        key={p.proposal_id}
-                        type="button"
-                        onClick={() => handleSelectProposal(p.proposal_id)}
-                        className="flex gap-3 rounded-lg border p-3 w-full text-left hover:bg-accent/50 transition-colors"
-                      >
-                        <div className="mt-0.5 size-2 shrink-0 rounded-full bg-amber-400" />
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <div className="flex items-center gap-2">
-                            <Badge
-                              variant={ACTION_VARIANT[p.action] ?? "secondary"}
-                              className="text-[10px]"
-                            >
-                              {p.action}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground font-mono">
-                              {timeAgo(p.timestamp)}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground/60 font-mono ml-auto">
-                              #{p.proposal_id.slice(0, 8)}
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground">{p.details}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                  })
+                )}
+              </div>
             )}
-          </div>
+          </TabsContent>
+
+          {/* ─── Data Quality Tab ────────────────────── */}
+          <TabsContent value="data-quality">
+            <DataQualityPanel evidenceQuality={evidenceQuality} dataHygiene={dataHygiene} />
+          </TabsContent>
         </div>
       </div>
     </Tabs>

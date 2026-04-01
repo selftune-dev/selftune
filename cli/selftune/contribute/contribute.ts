@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * selftune contribute — opt-in export of anonymized skill observability data.
+ * selftune contribute — community export of anonymized skill observability data.
  *
  * Usage:
  *   bun run cli/selftune/contribute/contribute.ts --skill selftune [--preview] [--output file.json]
@@ -31,9 +31,37 @@ export async function cliMain(): Promise<void> {
       submit: { type: "boolean", default: false },
       endpoint: { type: "string", default: "https://selftune-api.fly.dev" },
       github: { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
     },
     strict: true,
   });
+
+  if (values.help) {
+    console.log(`selftune contribute — Export an anonymized community bundle
+
+Usage:
+  selftune contribute --skill <name> [--preview] [--sanitize conservative|aggressive]
+  selftune contribute --skill <name> [--output <file>] [--submit]
+
+Purpose:
+  Build a sanitized community contribution bundle from local SQLite data.
+  This is separate from:
+    selftune contributions  Creator-directed sharing preferences
+    selftune alpha upload   Personal cloud upload cycle
+
+Options:
+  --skill <name>                    Skill to export
+  --preview                         Print the sanitized bundle instead of writing it
+  --sanitize conservative|aggressive
+                                    Choose the sanitization level
+  --output <file>                   Write the bundle to an explicit file path
+  --since <timestamp>               Only include records on or after this time
+  --submit                          Submit the bundle after writing it
+  --endpoint <url>                  Override the default service endpoint
+  --github                          Submit via GitHub flow instead of the service
+  -h, --help                        Show this help`);
+    return;
+  }
 
   const skillName = values.skill ?? "selftune";
   const sanitizationLevel = values.sanitize === "aggressive" ? "aggressive" : "conservative";
@@ -81,7 +109,7 @@ export async function cliMain(): Promise<void> {
   writeFileSync(outputPath, json, "utf-8");
 
   // 6. Summary
-  console.log(`Contribution bundle written to: ${outputPath}`);
+  console.log(`Community contribution bundle written to: ${outputPath}`);
   console.log(`  Queries:       ${bundle.positive_queries.length}`);
   console.log(`  Eval entries:  ${bundle.eval_entries.length}`);
   console.log(`  Sessions:      ${bundle.session_metrics.total_sessions}`);
