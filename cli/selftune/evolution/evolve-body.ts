@@ -470,7 +470,7 @@ export async function evolveBody(
           platform: studentAgent === "codex" ? "codex" : "claude_code",
         });
         const replayRunner =
-          replayFixture.platform === "claude_code"
+          replayFixture.platform === "claude_code" && studentAgent === "claude"
             ? async ({
                 routing,
                 evalSet,

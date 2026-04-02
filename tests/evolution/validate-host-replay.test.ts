@@ -360,4 +360,38 @@ describe("runHostReplayFixture", () => {
       rmSync(rootDir, { recursive: true, force: true });
     }
   });
+
+  test("treats multiple invoked skills as an ambiguous failure", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
+    try {
+      const targetPath = writeSkill(
+        rootDir,
+        "deck-skill",
+        "Create decks and slide presentations.",
+        ["Presentation building requests"],
+      );
+      const comparePath = writeSkill(rootDir, "compare-skill", "Compare options side by side.", [
+        "Comparison and trade-off requests",
+      ]);
+      const fixture = makeFixture(targetPath, [comparePath]);
+
+      const [result] = await runClaudeRuntimeReplayFixture({
+        routing: "| Trigger | Workflow |\n| --- | --- |\n| create deck, board deck | present |",
+        evalSet: [{ query: "create a board deck", should_trigger: true }],
+        fixture,
+        runtimeInvoker: async () => ({
+          invokedSkillNames: ["deck-skill", "compare-skill"],
+          readSkillPaths: [],
+          rawOutput: "",
+          sessionId: "runtime-session-ambiguous",
+        }),
+      });
+
+      expect(result?.triggered).toBe(false);
+      expect(result?.passed).toBe(false);
+      expect(result?.evidence).toContain("invoked multiple skills: deck-skill, compare-skill");
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
 });

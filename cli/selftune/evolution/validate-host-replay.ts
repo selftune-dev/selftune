@@ -147,24 +147,29 @@ function buildRuntimeReplayWorkspace(
   routing: string,
 ): ReplayWorkspace {
   const rootDir = mkdtempSync(join(tmpdir(), "selftune-runtime-replay-"));
-  const registryDir = join(rootDir, ".claude", "skills");
-  mkdirSync(join(rootDir, ".git"), { recursive: true });
-  mkdirSync(registryDir, { recursive: true });
+  try {
+    const registryDir = join(rootDir, ".claude", "skills");
+    mkdirSync(join(rootDir, ".git"), { recursive: true });
+    mkdirSync(registryDir, { recursive: true });
 
-  const targetSkillPath = stageReplaySkill(
-    registryDir,
-    fixture.target_skill_path,
-    buildRuntimeReplayTargetContent(fixture.target_skill_path, routing),
-  );
-  const competingSkillPaths = fixture.competing_skill_paths.map((skillPath) =>
-    stageReplaySkill(registryDir, skillPath),
-  );
+    const targetSkillPath = stageReplaySkill(
+      registryDir,
+      fixture.target_skill_path,
+      buildRuntimeReplayTargetContent(fixture.target_skill_path, routing),
+    );
+    const competingSkillPaths = fixture.competing_skill_paths.map((skillPath) =>
+      stageReplaySkill(registryDir, skillPath),
+    );
 
-  return {
-    rootDir,
-    targetSkillPath,
-    competingSkillPaths,
-  };
+    return {
+      rootDir,
+      targetSkillPath,
+      competingSkillPaths,
+    };
+  } catch (error) {
+    rmSync(rootDir, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 function cleanupRuntimeReplayWorkspace(workspace: ReplayWorkspace): void {
@@ -326,6 +331,15 @@ function evaluateRuntimeReplayObservation(
   const sessionPrefix = observation.sessionId
     ? `runtime replay session ${observation.sessionId}`
     : "runtime replay";
+  if (observation.invokedSkillNames.length > 1) {
+    return {
+      query: entry.query,
+      should_trigger: entry.should_trigger,
+      triggered: false,
+      passed: false,
+      evidence: `${sessionPrefix} invoked multiple skills: ${observation.invokedSkillNames.join(", ")}`,
+    };
+  }
 
   if (targetInvoked) {
     return {
