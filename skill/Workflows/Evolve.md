@@ -89,15 +89,31 @@ skills in the same registry, so replay-backed validation is preferred whenever
 that local fixture can be constructed because it captures host-style routing
 behavior instead of model judgment.
 
-The current replay path is fixture-backed: it evaluates the target routing table
-against the installed target/competing skill surfaces in a controlled replay
-fixture and records per-entry evidence. That is still a stronger signal than a
-free-form judge prompt, but you should describe it as replay-backed validation,
-not as live operator telemetry.
+For Claude Code, the replay path now stages a temporary project-local
+`.claude/skills` registry, swaps in the candidate routing table, and runs a
+one-turn Claude print-mode session with project/local settings only. Validation
+records whether Claude actually invoked the target skill, invoked a competing
+skill, invoked an unrelated skill, or made no routing decision at all.
+Unrelated skill use is treated as a replay failure even on negative evals,
+because it still indicates the runtime routed somewhere unexpected. If that
+runtime path is unavailable or fails to reach a runtime decision, selftune
+falls back to the existing fixture-backed surface simulation and notes the
+fallback in the replay evidence instead of pretending it was a runtime result.
+
+For non-Claude platforms today, replay remains fixture-backed: it evaluates the
+target routing table against the installed target/competing skill surfaces in a
+controlled replay fixture and records per-entry evidence. That is still a
+stronger signal than a free-form judge prompt, but you should describe it as
+replay-backed validation, not as live operator telemetry.
 
 Replay parsing is intentionally conservative: unreadable skill files degrade to
 empty surfaces instead of throwing, and malformed routing rows with empty
-trigger cells are ignored rather than treated as valid triggers.
+trigger cells are ignored rather than treated as valid triggers. Claude replay
+also normalizes observed `Read` paths against the staged workspace, so relative
+skill reads still count as read-only evidence for the target or competing
+skill. Reads outside the staged skill set are treated as replay failures rather
+than benign negatives, because they indicate the runtime left the controlled
+evaluation surface.
 
 ## Parsing Instructions
 
