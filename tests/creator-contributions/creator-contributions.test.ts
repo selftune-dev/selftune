@@ -5,6 +5,8 @@ import { join } from "node:path";
 
 const configDir = mkdtempSync(join(tmpdir(), "selftune-creator-contrib-config-"));
 const skillDir = mkdtempSync(join(tmpdir(), "selftune-creator-contrib-skills-"));
+const originalConfigDir = process.env.SELFTUNE_CONFIG_DIR;
+const originalSkillDirs = process.env.SELFTUNE_SKILL_DIRS;
 process.env.SELFTUNE_CONFIG_DIR = configDir;
 process.env.SELFTUNE_SKILL_DIRS = skillDir;
 
@@ -13,8 +15,6 @@ const { cliMain } = mod;
 
 const originalArgv = [...process.argv];
 const originalLog = console.log;
-const originalConfigDir = process.env.SELFTUNE_CONFIG_DIR;
-const originalSkillDirs = process.env.SELFTUNE_SKILL_DIRS;
 
 function seedSkill(skillName: string): string {
   const root = join(skillDir, skillName);

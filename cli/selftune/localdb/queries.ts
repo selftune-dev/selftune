@@ -1147,16 +1147,18 @@ export function queryEvolutionAudit(
   return rows.map((r) => ({
     timestamp: r.timestamp as string,
     proposal_id: r.proposal_id as string,
-    skill_name: r.skill_name as string | undefined,
+    skill_name: typeof r.skill_name === "string" ? r.skill_name : undefined,
     action: r.action as string,
     details: r.details as string,
     eval_snapshot: r.eval_snapshot_json
       ? (safeParseJson(r.eval_snapshot_json as string) as Record<string, unknown>)
       : undefined,
-    validation_mode: r.validation_mode as string | undefined,
-    validation_agent: r.validation_agent as string | undefined,
-    validation_fixture_id: r.validation_fixture_id as string | undefined,
-    validation_evidence_ref: r.validation_evidence_ref as string | undefined,
+    validation_mode: typeof r.validation_mode === "string" ? r.validation_mode : undefined,
+    validation_agent: typeof r.validation_agent === "string" ? r.validation_agent : undefined,
+    validation_fixture_id:
+      typeof r.validation_fixture_id === "string" ? r.validation_fixture_id : undefined,
+    validation_evidence_ref:
+      typeof r.validation_evidence_ref === "string" ? r.validation_evidence_ref : undefined,
   }));
 }
 

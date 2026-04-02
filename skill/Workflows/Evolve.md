@@ -81,6 +81,7 @@ Routing/body validation may also carry provenance fields such as:
 - `validation_mode` — `llm_judge`, `host_replay`, or `structural_guard`
 - `validation_agent` — which host/agent performed the validation
 - `validation_fixture_id` — fixture identifier when replay-backed validation is used
+- `before_pass_rate` / `after_pass_rate` — only present when trigger validation actually ran; structural-guard exits do not emit synthetic pass rates
 
 Most evolve runs today still validate through `llm_judge`. Routing evolution now
 auto-builds a replay fixture from the target skill plus installed sibling

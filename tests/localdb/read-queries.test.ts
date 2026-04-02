@@ -416,6 +416,18 @@ describe("queryEvolutionAudit", () => {
     expect(results).toHaveLength(2);
   });
 
+  it("normalizes nullable validation columns to undefined", () => {
+    seedEvolutionAudit(db, { proposal_id: "p-nullable" });
+
+    const results = queryEvolutionAudit(db);
+    const row = results.find((entry) => entry.proposal_id === "p-nullable");
+
+    expect(row?.validation_mode).toBeUndefined();
+    expect(row?.validation_agent).toBeUndefined();
+    expect(row?.validation_fixture_id).toBeUndefined();
+    expect(row?.validation_evidence_ref).toBeUndefined();
+  });
+
   it("filters by skillName", () => {
     seedEvolutionAudit(db, {
       proposal_id: "p1",

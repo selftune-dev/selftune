@@ -23,6 +23,12 @@ import {
   findRepositoryClaudeSkillDirs,
   findRepositorySkillDirs,
 } from "../utils/skill-discovery.js";
+import {
+  buildStopwordSet,
+  extractWhenToUseLines,
+  jaccardSimilarity,
+  tokenizeText,
+} from "../utils/text-similarity.js";
 import { buildEvalSet } from "./hooks-to-evals.js";
 
 const DEFAULT_MIN_OVERLAP = 0.3;
@@ -33,14 +39,7 @@ const WHEN_TO_USE_SIMILARITY_THRESHOLD = 0.18;
 const SHARED_TERM_LIMIT = 6;
 const STATIC_PAIR_LIMIT = 10;
 
-const STOPWORDS = new Set([
-  "a",
-  "an",
-  "and",
-  "are",
-  "as",
-  "at",
-  "be",
+const STOPWORDS = buildStopwordSet([
   "between",
   "by",
   "can",
@@ -49,34 +48,16 @@ const STOPWORDS = new Set([
   "decision",
   "decisions",
   "do",
-  "for",
-  "from",
   "get",
   "help",
-  "how",
   "i",
   "if",
-  "in",
-  "into",
-  "is",
-  "it",
   "my",
-  "of",
-  "on",
-  "or",
   "state",
-  "that",
-  "the",
   "their",
-  "this",
-  "to",
-  "use",
-  "user",
   "users",
   "want",
   "wants",
-  "when",
-  "with",
   "you",
   "your",
 ]);
@@ -184,26 +165,6 @@ function scoreConsolidationPressure(overlapPct: number): "low" | "medium" | "hig
   return "low";
 }
 
-function tokenizeText(text: string): Set<string> {
-  return new Set(
-    text
-      .toLowerCase()
-      .split(/[^a-z0-9]+/i)
-      .map((token) => token.trim())
-      .filter((token) => token.length >= 3 && !STOPWORDS.has(token)),
-  );
-}
-
-function jaccardSimilarity(left: Set<string>, right: Set<string>): number {
-  if (left.size === 0 || right.size === 0) return 0;
-  let shared = 0;
-  for (const token of left) {
-    if (right.has(token)) shared += 1;
-  }
-  const union = left.size + right.size - shared;
-  return union > 0 ? shared / union : 0;
-}
-
 function sharedTerms(
   leftDescription: Set<string>,
   leftWhenToUse: Set<string>,
@@ -232,7 +193,7 @@ function buildSyntheticSiblingConfusionQueries(
   const maybeAdd = (line: string, sourceTokens: Set<string>, compareTokens: Set<string>) => {
     const trimmed = line.trim();
     if (!trimmed) return;
-    const lineTokens = tokenizeText(trimmed);
+    const lineTokens = tokenizeText(trimmed, STOPWORDS);
     const overlap = jaccardSimilarity(lineTokens, compareTokens);
     if (overlap >= 0.12 || jaccardSimilarity(sourceTokens, compareTokens) >= 0.18) {
       candidates.add(trimmed);
@@ -250,25 +211,6 @@ function buildSyntheticSiblingConfusionQueries(
   }
 
   return [...candidates].slice(0, 4);
-}
-
-function extractWhenToUseLines(body: string): string[] {
-  const lines = body.split("\n");
-  const start = lines.findIndex((line) => /^##+\s+when to use\s*$/i.test(line.trim()));
-  if (start === -1) return [];
-
-  const extracted: string[] = [];
-  for (let i = start + 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    if (/^##+\s+/.test(line)) break;
-    if (/^[-*]\s+/.test(line)) {
-      extracted.push(line.replace(/^[-*]\s+/, "").trim());
-      continue;
-    }
-    extracted.push(line);
-  }
-  return extracted;
 }
 
 function extractCommandSurfaces(body: string): string[] {
@@ -306,8 +248,8 @@ function loadInstalledSkillSurface(skillName: string, searchDirs: string[]): Ins
     return {
       skillName,
       skillPath,
-      descriptionTokens: tokenizeText(parsed.description),
-      whenToUseTokens: tokenizeText(whenToUseLines.join(" ")),
+      descriptionTokens: tokenizeText(parsed.description, STOPWORDS),
+      whenToUseTokens: tokenizeText(whenToUseLines.join(" "), STOPWORDS),
       whenToUseLines,
       commandSurfaces: extractCommandSurfaces(parsed.body),
     };
@@ -366,6 +308,7 @@ function analyzeColdStartSuspicion(
       analyzedPairs += 1;
       const left = availableSurfaces[i];
       const right = availableSurfaces[j];
+      if (!left || !right) continue;
       const descriptionSimilarity = jaccardSimilarity(
         left.descriptionTokens,
         right.descriptionTokens,

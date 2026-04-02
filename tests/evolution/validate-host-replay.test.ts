@@ -49,7 +49,7 @@ describe("runHostReplayFixture", () => {
   test("builds an auto fixture from the target skill registry", () => {
     const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
     try {
-      writeFileSync(join(rootDir, ".git"), "");
+      mkdirSync(join(rootDir, ".git"), { recursive: true });
       const targetPath = writeSkill(
         rootDir,
         "deck-skill",

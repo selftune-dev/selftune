@@ -31,7 +31,7 @@ import { callViaSubagent } from "../utils/llm-call.js";
 import { appendAuditEntry } from "./audit.js";
 import { checkConstitutionSizeOnly } from "./constitutional.js";
 import { parseSkillSections, replaceBody, replaceSection } from "./deploy-proposal.js";
-import { appendEvidenceEntry } from "./evidence.js";
+import { appendEvidenceEntry, buildValidationEvidenceRef } from "./evidence.js";
 import { extractFailurePatterns } from "./extract-patterns.js";
 import { type ExecutionContext, generateBodyProposal } from "./propose-body.js";
 import { generateRoutingProposal } from "./propose-routing.js";
@@ -127,10 +127,6 @@ function createAuditEntry(
       ? { validation_evidence_ref: provenance.validation_evidence_ref }
       : {}),
   };
-}
-
-function buildValidationEvidenceRef(proposalId: string, stage: string): string {
-  return `evolution_evidence:${proposalId}:${stage}`;
 }
 
 // ---------------------------------------------------------------------------
