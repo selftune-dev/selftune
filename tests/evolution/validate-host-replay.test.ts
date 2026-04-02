@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import {
   buildRoutingReplayFixture,
@@ -365,6 +365,37 @@ describe("runHostReplayFixture", () => {
       expect(result?.triggered).toBe(false);
       expect(result?.passed).toBe(true);
       expect(result?.evidence).toContain("did not invoke any local project skill");
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test("treats reads outside the staged skill set as a failed negative", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
+    try {
+      const targetPath = writeSkill(
+        rootDir,
+        "deck-skill",
+        "Create decks and slide presentations.",
+        ["Presentation building requests"],
+      );
+      const fixture = makeFixture(targetPath);
+
+      const [result] = await runClaudeRuntimeReplayFixture({
+        routing: "| Trigger | Workflow |\n| --- | --- |\n| create deck, board deck | present |",
+        evalSet: [{ query: "what's the weather in amman", should_trigger: false }],
+        fixture,
+        runtimeInvoker: async (input) => ({
+          invokedSkillNames: [],
+          readSkillPaths: [join(dirname(input.targetSkillPath), "..", "..", "README.md")],
+          rawOutput: "",
+          sessionId: "runtime-session-unrelated-read",
+        }),
+      });
+
+      expect(result?.triggered).toBe(false);
+      expect(result?.passed).toBe(false);
+      expect(result?.evidence).toContain("read files outside staged skill set");
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
     }

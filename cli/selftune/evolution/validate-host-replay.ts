@@ -320,6 +320,10 @@ function evaluateRuntimeReplayObservation(
   const normalizedReadPaths = new Set(
     observation.readSkillPaths.map((path) => resolveObservedReplayPath(path, workspace.rootDir)),
   );
+  const allowedReadPaths = new Set([
+    resolveReplayPath(workspace.targetSkillPath),
+    ...workspace.competingSkillPaths.map(resolveReplayPath),
+  ]);
   const targetSkillName = fixture.target_skill_name.trim();
   const targetInvoked = observation.invokedSkillNames.includes(targetSkillName);
   const competingInvoked = observation.invokedSkillNames.find((skillName) =>
@@ -330,6 +334,7 @@ function evaluateRuntimeReplayObservation(
   const unrelatedInvoked = observation.invokedSkillNames.find(
     (skillName) => skillName.trim() !== targetSkillName && skillName.trim() !== competingInvoked,
   );
+  const unrelatedReadPaths = [...normalizedReadPaths].filter((path) => !allowedReadPaths.has(path));
   const targetRead = normalizedReadPaths.has(resolveReplayPath(workspace.targetSkillPath));
   const competingRead = workspace.competingSkillPaths.find((skillPath) =>
     normalizedReadPaths.has(resolveReplayPath(skillPath)),
@@ -374,6 +379,16 @@ function evaluateRuntimeReplayObservation(
       triggered: false,
       passed: false,
       evidence: `${sessionPrefix} invoked unrelated skill: ${unrelatedInvoked}`,
+    };
+  }
+
+  if (unrelatedReadPaths.length > 0) {
+    return {
+      query: entry.query,
+      should_trigger: entry.should_trigger,
+      triggered: false,
+      passed: false,
+      evidence: `${sessionPrefix} read files outside staged skill set: ${unrelatedReadPaths.join(", ")}`,
     };
   }
 
