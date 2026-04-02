@@ -61,6 +61,7 @@ export type ClaudeRuntimeReplayInvoker = (
  * for short routing phrases and sparse skill surfaces.
  */
 const HOST_REPLAY_MATCH_THRESHOLD = 0.18;
+const CLAUDE_RUNTIME_REPLAY_TIMEOUT_MS = 30_000;
 const CLAUDE_RUNTIME_ROUTING_PROMPT =
   "You are being evaluated only on skill routing. Do not solve the user's task. If a local project skill is relevant, invoke exactly one skill immediately. If no local project skill fits, respond with NO_SKILL and do not browse unrelated files.";
 
@@ -249,6 +250,7 @@ async function invokeClaudeRuntimeReplay(
     "--output-format",
     "stream-json",
     "--dangerously-skip-permissions",
+    "--no-session-persistence",
     "--setting-sources",
     "project,local",
     "--tools",
@@ -266,12 +268,14 @@ async function invokeClaudeRuntimeReplay(
     stderr: "pipe",
     env: { ...process.env, CLAUDECODE: "" },
   });
+  const timeout = setTimeout(() => proc.kill(), CLAUDE_RUNTIME_REPLAY_TIMEOUT_MS);
 
   const [stdoutText, stderrText, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
+  clearTimeout(timeout);
 
   const observation = parseClaudeRuntimeReplayOutput(stdoutText);
   const combinedError = [observation.runtimeError, stderrText.trim()].filter(Boolean).join(" | ");
@@ -304,6 +308,7 @@ function evaluateRuntimeReplayObservation(
   observation: ClaudeRuntimeReplayObservation,
   workspace: ReplayWorkspace,
 ): RoutingReplayEntryResult {
+  const normalizedReadPaths = new Set(observation.readSkillPaths.map(resolveReplayPath));
   const targetSkillName = fixture.target_skill_name.trim();
   const targetInvoked = observation.invokedSkillNames.includes(targetSkillName);
   const competingInvoked = observation.invokedSkillNames.find((skillName) =>
@@ -314,11 +319,9 @@ function evaluateRuntimeReplayObservation(
   const unrelatedInvoked = observation.invokedSkillNames.find(
     (skillName) => skillName.trim() !== targetSkillName && skillName.trim() !== competingInvoked,
   );
-  const targetRead = observation.readSkillPaths.includes(
-    resolveReplayPath(workspace.targetSkillPath),
-  );
+  const targetRead = normalizedReadPaths.has(resolveReplayPath(workspace.targetSkillPath));
   const competingRead = workspace.competingSkillPaths.find((skillPath) =>
-    observation.readSkillPaths.includes(resolveReplayPath(skillPath)),
+    normalizedReadPaths.has(resolveReplayPath(skillPath)),
   );
   const sessionPrefix = observation.sessionId
     ? `runtime replay session ${observation.sessionId}`

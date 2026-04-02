@@ -267,4 +267,97 @@ describe("runHostReplayFixture", () => {
       rmSync(rootDir, { recursive: true, force: true });
     }
   });
+
+  test("treats target read without invocation as a failed positive", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
+    try {
+      const targetPath = writeSkill(
+        rootDir,
+        "deck-skill",
+        "Create decks and slide presentations.",
+        ["Presentation building requests"],
+      );
+      const fixture = makeFixture(targetPath);
+
+      const [result] = await runClaudeRuntimeReplayFixture({
+        routing: "| Trigger | Workflow |\n| --- | --- |\n| create deck, board deck | present |",
+        evalSet: [{ query: "create a board deck", should_trigger: true }],
+        fixture,
+        runtimeInvoker: async (input) => ({
+          invokedSkillNames: [],
+          readSkillPaths: [input.targetSkillPath],
+          rawOutput: "",
+          sessionId: "runtime-session-read-only",
+        }),
+      });
+
+      expect(result?.triggered).toBe(false);
+      expect(result?.passed).toBe(false);
+      expect(result?.evidence).toContain("only read the target skill without invoking it");
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test("treats no routing decision as a successful negative", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
+    try {
+      const targetPath = writeSkill(
+        rootDir,
+        "deck-skill",
+        "Create decks and slide presentations.",
+        ["Presentation building requests"],
+      );
+      const fixture = makeFixture(targetPath);
+
+      const [result] = await runClaudeRuntimeReplayFixture({
+        routing: "| Trigger | Workflow |\n| --- | --- |\n| create deck, board deck | present |",
+        evalSet: [{ query: "what's the weather in amman", should_trigger: false }],
+        fixture,
+        runtimeInvoker: async () => ({
+          invokedSkillNames: [],
+          readSkillPaths: [],
+          rawOutput: "",
+          sessionId: "runtime-session-none",
+        }),
+      });
+
+      expect(result?.triggered).toBe(false);
+      expect(result?.passed).toBe(true);
+      expect(result?.evidence).toContain("did not invoke any local project skill");
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test("treats unrelated skill invocation as a failed positive", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
+    try {
+      const targetPath = writeSkill(
+        rootDir,
+        "deck-skill",
+        "Create decks and slide presentations.",
+        ["Presentation building requests"],
+      );
+      const fixture = makeFixture(targetPath);
+
+      const [result] = await runClaudeRuntimeReplayFixture({
+        routing: "| Trigger | Workflow |\n| --- | --- |\n| create deck, board deck | present |",
+        evalSet: [{ query: "create a board deck", should_trigger: true }],
+        fixture,
+        runtimeInvoker: async () => ({
+          invokedSkillNames: ["browser"],
+          readSkillPaths: [],
+          rawOutput: "",
+          sessionId: "runtime-session-unrelated",
+        }),
+      });
+
+      expect(result?.triggered).toBe(false);
+      expect(result?.passed).toBe(false);
+      expect(result?.evidence).toContain("invoked unrelated skill: browser");
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
 });
