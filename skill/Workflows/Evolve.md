@@ -95,6 +95,10 @@ fixture and records per-entry evidence. That is still a stronger signal than a
 free-form judge prompt, but you should describe it as replay-backed validation,
 not as live operator telemetry.
 
+Replay parsing is intentionally conservative: unreadable skill files degrade to
+empty surfaces instead of throwing, and malformed routing rows with empty
+trigger cells are ignored rather than treated as valid triggers.
+
 ## Parsing Instructions
 
 ### Track Evolution Progress

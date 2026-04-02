@@ -214,7 +214,7 @@ function buildSyntheticSiblingConfusionQueries(
 }
 
 function extractCommandSurfaces(body: string): string[] {
-  const matches = body.matchAll(/```[\w-]*\n([\s\S]*?)```/g);
+  const matches = body.matchAll(/```[\w-]*\r?\n([\s\S]*?)```/g);
   const commands = new Set<string>();
   for (const match of matches) {
     const block = match[1] ?? "";

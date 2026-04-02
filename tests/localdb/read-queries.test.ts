@@ -421,6 +421,7 @@ describe("queryEvolutionAudit", () => {
 
     const results = queryEvolutionAudit(db);
     const row = results.find((entry) => entry.proposal_id === "p-nullable");
+    expect(row).toBeDefined();
 
     expect(row?.validation_mode).toBeUndefined();
     expect(row?.validation_agent).toBeUndefined();

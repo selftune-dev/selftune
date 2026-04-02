@@ -105,11 +105,8 @@ function extractRoutingTriggerPhrases(routing: string): string[] {
   const phrases: string[] = [];
   for (const row of lines.slice(2)) {
     if (!row.startsWith("|") || !row.endsWith("|")) continue;
-    const cells = row
-      .split("|")
-      .map((cell) => cell.trim())
-      .filter(Boolean);
-    const triggerCell = cells[0];
+    const cells = row.split("|").map((cell) => cell.trim());
+    const triggerCell = cells[1];
     if (!triggerCell) continue;
     for (const part of triggerCell.split(/,|\/| or /i)) {
       const phrase = part.trim().replace(/^["'`]|["'`]$/g, "");

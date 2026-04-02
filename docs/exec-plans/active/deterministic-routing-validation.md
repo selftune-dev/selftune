@@ -56,6 +56,7 @@ Still pending for the full target state:
 - extracting a separate `validate-llm-judge.ts` / `validation-engine.ts` split
 - deciding whether replay-generated validation telemetry should land in existing SQLite tables or a dedicated validation namespace
 - expanding replay beyond the current routing-first path where it meaningfully improves body/description validation
+- documenting new `cli/selftune/evolution/*.ts` modules in `ARCHITECTURE.md` (domain map + module definitions table) whenever module splits or additions land, e.g. `validate-host-replay.ts`
 
 ---
 

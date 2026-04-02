@@ -141,4 +141,49 @@ describe("runHostReplayFixture", () => {
       rmSync(rootDir, { recursive: true, force: true });
     }
   });
+
+  test("ignores malformed rows with empty trigger cells", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
+    try {
+      const targetPath = writeSkill(
+        rootDir,
+        "deck-skill",
+        "Prepare quarterly briefings for leadership reviews.",
+        ["Leadership review briefings and quarterly update packets"],
+      );
+      const fixture = makeFixture(targetPath);
+
+      const [result] = await runHostReplayFixture({
+        routing: "| Trigger | Workflow |\n| --- | --- |\n| | present |",
+        evalSet: [{ query: "present", should_trigger: false }],
+        fixture,
+      });
+
+      expect(result?.triggered).toBe(false);
+      expect(result?.passed).toBe(true);
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test("falls back to empty/default surfaces when the target skill file is missing", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
+    try {
+      const missingTargetPath = join(rootDir, "missing-skill", "SKILL.md");
+      const fixture = makeFixture(missingTargetPath);
+
+      const [result] = await runHostReplayFixture({
+        routing: "| Trigger | Workflow |\n| --- | --- |\n| quarterly briefing | present |",
+        evalSet: [{ query: "create deck for the board meeting", should_trigger: true }],
+        fixture,
+      });
+
+      expect(result).toBeDefined();
+      expect(result?.triggered).toBe(false);
+      expect(result?.passed).toBe(false);
+      expect(result?.evidence).toContain("did not clear replay threshold");
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
 });
