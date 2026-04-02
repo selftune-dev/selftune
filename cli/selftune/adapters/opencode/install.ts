@@ -17,6 +17,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -29,9 +30,27 @@ import { dirname, join, resolve } from "node:path";
 
 const SHIM_NAME = "selftune-opencode-hook.sh";
 const SELFTUNE_TAG = "selftune-managed";
+const INSTALL_STATE_FILENAME = "selftune-install-target.json";
 
-const PROJECT_CONFIG = join(process.cwd(), "opencode.json");
-const USER_CONFIG = join(homedir(), ".config", "opencode", "config.json");
+function getHomeDirectory(): string {
+  return process.env.HOME ?? homedir();
+}
+
+function getProjectConfigPath(): string {
+  return join(process.cwd(), "opencode.json");
+}
+
+function getUserConfigPath(): string {
+  return join(getHomeDirectory(), ".config", "opencode", "config.json");
+}
+
+function getInstallStatePath(): string {
+  return join(getHomeDirectory(), ".config", "opencode", INSTALL_STATE_FILENAME);
+}
+
+function getShimPath(configPath: string): string {
+  return join(dirname(configPath), SHIM_NAME);
+}
 
 // ---------------------------------------------------------------------------
 // Shim content
@@ -67,20 +86,48 @@ interface OpenCodeConfig {
   [key: string]: unknown;
 }
 
+interface OpenCodeInstallState {
+  configPath: string;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function detectConfigPath(): string {
-  if (existsSync(PROJECT_CONFIG)) return PROJECT_CONFIG;
-  return USER_CONFIG;
+  const projectConfig = getProjectConfigPath();
+  if (existsSync(projectConfig)) return projectConfig;
+  return getUserConfigPath();
 }
 
 function readConfig(configPath: string): OpenCodeConfig {
   if (!existsSync(configPath)) return {};
+  let parsed: unknown;
   try {
-    return JSON.parse(readFileSync(configPath, "utf-8")) as OpenCodeConfig;
+    parsed = JSON.parse(readFileSync(configPath, "utf-8"));
   } catch {
     throw new Error(
       `OpenCode config at ${configPath} is not valid JSON; refusing to overwrite it.`,
     );
   }
+
+  if (!isPlainRecord(parsed)) {
+    throw new Error(
+      `OpenCode config at ${configPath} must be a JSON object; refusing to overwrite it.`,
+    );
+  }
+  if (parsed.hooks !== undefined && !isPlainRecord(parsed.hooks)) {
+    throw new Error(
+      `OpenCode config at ${configPath} has a non-object "hooks" field; refusing to overwrite it.`,
+    );
+  }
+  if (parsed.agent !== undefined && !isPlainRecord(parsed.agent)) {
+    throw new Error(
+      `OpenCode config at ${configPath} has a non-object "agent" field; refusing to overwrite it.`,
+    );
+  }
+
+  return parsed as OpenCodeConfig;
 }
 
 function writeConfig(configPath: string, config: OpenCodeConfig): void {
@@ -91,6 +138,35 @@ function writeConfig(configPath: string, config: OpenCodeConfig): void {
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
 }
 
+function readInstallState(): OpenCodeInstallState | null {
+  const installStatePath = getInstallStatePath();
+  if (!existsSync(installStatePath)) return null;
+
+  try {
+    const parsed = JSON.parse(readFileSync(installStatePath, "utf-8")) as unknown;
+    if (
+      !isPlainRecord(parsed) ||
+      typeof parsed.configPath !== "string" ||
+      parsed.configPath.length === 0
+    ) {
+      return null;
+    }
+    return { configPath: parsed.configPath };
+  } catch {
+    return null;
+  }
+}
+
+function writeInstallState(state: OpenCodeInstallState): void {
+  const installStatePath = getInstallStatePath();
+  mkdirSync(dirname(installStatePath), { recursive: true });
+  writeFileSync(installStatePath, JSON.stringify(state, null, 2) + "\n", "utf-8");
+}
+
+function clearInstallState(): void {
+  rmSync(getInstallStatePath(), { force: true });
+}
+
 // ---------------------------------------------------------------------------
 // Install logic
 // ---------------------------------------------------------------------------
@@ -98,6 +174,44 @@ function writeConfig(configPath: string, config: OpenCodeConfig): void {
 interface InstallOptions {
   dryRun: boolean;
   uninstall: boolean;
+}
+
+interface HookSkip {
+  event: (typeof HOOK_EVENTS)[number];
+  command: string;
+}
+
+interface AgentSkip {
+  name: string;
+}
+
+export interface OpenCodeInstallResult {
+  configPath: string;
+  shimPath: string;
+  dryRun: boolean;
+  shimChanged: boolean;
+  configChanged: boolean;
+  installedHooks: (typeof HOOK_EVENTS)[number][];
+  unchangedHooks: (typeof HOOK_EVENTS)[number][];
+  skippedHooks: HookSkip[];
+  installedAgents: string[];
+  unchangedAgents: string[];
+  skippedAgents: AgentSkip[];
+}
+
+export interface OpenCodeUninstallTargetResult {
+  configPath: string;
+  shimPath: string;
+  viaInstallState: boolean;
+  removedHooks: (typeof HOOK_EVENTS)[number][];
+  removedAgents: string[];
+  shimRemoved: boolean;
+}
+
+export interface OpenCodeUninstallResult {
+  dryRun: boolean;
+  targets: OpenCodeUninstallTargetResult[];
+  installStateCleared: boolean;
 }
 
 const KNOWN_FLAGS = new Set(["--dry-run", "--uninstall", "--help", "-h"]);
@@ -208,7 +322,7 @@ const BUNDLED_AGENT_DIR = resolve(
 );
 
 /** Discover agent definitions from skill/agents/ and build OpenCode agent config entries. */
-function buildAgentEntries(
+export function buildAgentEntries(
   agentsDir: string = BUNDLED_AGENT_DIR,
 ): Record<string, OpenCodeAgentConfig> {
   const entries: Record<string, OpenCodeAgentConfig> = {};
@@ -239,96 +353,140 @@ function buildAgentEntries(
   return entries;
 }
 
-function doInstall(options: InstallOptions): void {
-  const configPath = detectConfigPath();
-  const shimDir = dirname(configPath);
-  const shimPath = join(shimDir, SHIM_NAME);
+function getCandidateUninstallConfigPaths(): string[] {
+  const recordedConfig = readInstallState()?.configPath;
+  const candidates = [recordedConfig, getProjectConfigPath(), getUserConfigPath()].filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
 
-  const agentEntries = buildAgentEntries();
-
-  if (options.dryRun) {
-    console.log(`[selftune] dry-run: would write shim to ${shimPath}`);
-    console.log(`[selftune] dry-run: would update config at ${configPath}`);
-    for (const event of HOOK_EVENTS) {
-      console.log(`[selftune] dry-run: would register hook for ${event}`);
-    }
-    for (const name of Object.keys(agentEntries)) {
-      console.log(`[selftune] dry-run: would register agent '${name}'`);
-    }
-    return;
-  }
-
-  // Validate config before touching filesystem (readConfig throws on invalid JSON)
-  const config = readConfig(configPath);
-
-  // Write shim script
-  if (!existsSync(shimDir)) {
-    mkdirSync(shimDir, { recursive: true });
-  }
-  writeFileSync(shimPath, buildShimContent(), { mode: 0o755 });
-  if (!config.hooks) {
-    config.hooks = {};
-  }
-
-  for (const event of HOOK_EVENTS) {
-    const existing = config.hooks[event];
-    if (existing?.command && existing.command !== shimPath) {
-      console.log(
-        `[selftune] Warning: hook '${event}' already configured (${existing.command}); skipping.`,
-      );
-      continue;
-    }
-    config.hooks[event] = { command: shimPath };
-  }
-
-  // Register selftune agents for eval/optimizer workflows
-  if (Object.keys(agentEntries).length > 0) {
-    if (!config.agent) {
-      config.agent = {};
-    }
-    for (const [name, entry] of Object.entries(agentEntries)) {
-      const existing = config.agent[name];
-      if (existing && !existing._selftune) {
-        console.log(`[selftune] Warning: agent '${name}' already configured by user; skipping.`);
-        continue;
-      }
-      config.agent[name] = entry;
-    }
-  }
-
-  writeConfig(configPath, config);
-
-  console.log(`[selftune] Installed OpenCode hooks:`);
-  console.log(`  shim: ${shimPath}`);
-  console.log(`  config: ${configPath}`);
-  for (const event of HOOK_EVENTS) {
-    console.log(`  ${event} -> ${shimPath}`);
-  }
-  if (Object.keys(agentEntries).length > 0) {
-    console.log(`[selftune] Registered agents:`);
-    for (const name of Object.keys(agentEntries)) {
-      console.log(`  ${name}`);
-    }
-  }
+  return [...new Set(candidates)];
 }
 
-function doUninstall(options: InstallOptions): void {
+export function installHooks(options: { dryRun?: boolean } = {}): OpenCodeInstallResult {
+  const dryRun = options.dryRun ?? false;
   const configPath = detectConfigPath();
   const shimDir = dirname(configPath);
-  const shimPath = join(shimDir, SHIM_NAME);
+  const shimPath = getShimPath(configPath);
+  const agentEntries = buildAgentEntries();
+  const config = readConfig(configPath);
+  const installedHooks: (typeof HOOK_EVENTS)[number][] = [];
+  const unchangedHooks: (typeof HOOK_EVENTS)[number][] = [];
+  const skippedHooks: HookSkip[] = [];
+  const installedAgents: string[] = [];
+  const unchangedAgents: string[] = [];
+  const skippedAgents: AgentSkip[] = [];
+  let configChanged = false;
 
-  if (options.dryRun) {
-    console.log(`[selftune] dry-run: would remove shim at ${shimPath}`);
-    console.log(`[selftune] dry-run: would remove hook entries from ${configPath}`);
-    return;
+  const shimContent = buildShimContent();
+  const shimChanged = !existsSync(shimPath) || readFileSync(shimPath, "utf-8") !== shimContent;
+
+  let nextHooks = config.hooks;
+  for (const event of HOOK_EVENTS) {
+    const existing = nextHooks?.[event];
+    if (existing?.command && existing.command !== shimPath) {
+      skippedHooks.push({ event, command: existing.command });
+      continue;
+    }
+
+    if (existing?.command === shimPath) {
+      unchangedHooks.push(event);
+      continue;
+    }
+
+    if (!nextHooks) {
+      nextHooks = {};
+      config.hooks = nextHooks;
+      configChanged = true;
+    }
+    nextHooks[event] = { command: shimPath };
+    installedHooks.push(event);
+    configChanged = true;
   }
 
-  // Validate and update config before removing shim (avoids half-uninstalled state)
-  if (existsSync(configPath)) {
-    const config = readConfig(configPath);
-    if (config.hooks) {
-      for (const event of HOOK_EVENTS) {
-        if (config.hooks[event]?.command !== shimPath) continue;
+  let nextAgents = config.agent;
+  for (const [name, entry] of Object.entries(agentEntries)) {
+    const existing = nextAgents?.[name];
+    if (existing && !existing._selftune) {
+      skippedAgents.push({ name });
+      continue;
+    }
+
+    if (existing && JSON.stringify(existing) === JSON.stringify(entry)) {
+      unchangedAgents.push(name);
+      continue;
+    }
+
+    if (!nextAgents) {
+      nextAgents = {};
+      config.agent = nextAgents;
+      configChanged = true;
+    }
+    nextAgents[name] = entry;
+    installedAgents.push(name);
+    configChanged = true;
+  }
+
+  if (!dryRun) {
+    if (shimChanged) {
+      if (!existsSync(shimDir)) {
+        mkdirSync(shimDir, { recursive: true });
+      }
+      writeFileSync(shimPath, shimContent, { mode: 0o755 });
+    }
+    if (configChanged) {
+      writeConfig(configPath, config);
+    }
+    if (
+      installedHooks.length > 0 ||
+      unchangedHooks.length > 0 ||
+      installedAgents.length > 0 ||
+      unchangedAgents.length > 0
+    ) {
+      writeInstallState({ configPath });
+    }
+  }
+
+  return {
+    configPath,
+    shimPath,
+    dryRun,
+    shimChanged,
+    configChanged,
+    installedHooks,
+    unchangedHooks,
+    skippedHooks,
+    installedAgents,
+    unchangedAgents,
+    skippedAgents,
+  };
+}
+
+export function uninstallHooks(options: { dryRun?: boolean } = {}): OpenCodeUninstallResult {
+  const dryRun = options.dryRun ?? false;
+  const installState = readInstallState();
+  const targets: OpenCodeUninstallTargetResult[] = [];
+
+  for (const configPath of getCandidateUninstallConfigPaths()) {
+    const viaInstallState = installState?.configPath === configPath;
+    const shimPath = getShimPath(configPath);
+    const configExists = existsSync(configPath);
+    const shimExists = existsSync(shimPath);
+    const removedHooks: (typeof HOOK_EVENTS)[number][] = [];
+    const removedAgents: string[] = [];
+    let config = configExists ? readConfig(configPath) : null;
+
+    for (const event of HOOK_EVENTS) {
+      if (config?.hooks?.[event]?.command === shimPath) {
+        removedHooks.push(event);
+      }
+    }
+
+    if (!viaInstallState && removedHooks.length === 0) {
+      continue;
+    }
+
+    if (config?.hooks) {
+      for (const event of removedHooks) {
         delete config.hooks[event];
       }
       if (Object.keys(config.hooks).length === 0) {
@@ -336,10 +494,10 @@ function doUninstall(options: InstallOptions): void {
       }
     }
 
-    // Remove selftune-managed agents (only those with the _selftune marker)
-    if (config.agent) {
-      for (const name of Object.keys(config.agent)) {
-        if (!config.agent[name]?._selftune) continue;
+    if (config?.agent) {
+      for (const [name, entry] of Object.entries(config.agent)) {
+        if (!entry?._selftune) continue;
+        removedAgents.push(name);
         delete config.agent[name];
       }
       if (Object.keys(config.agent).length === 0) {
@@ -347,17 +505,118 @@ function doUninstall(options: InstallOptions): void {
       }
     }
 
-    writeConfig(configPath, config);
-    console.log(`[selftune] Removed hook and agent entries from: ${configPath}`);
+    if (!dryRun && config && (removedHooks.length > 0 || removedAgents.length > 0)) {
+      writeConfig(configPath, config);
+    }
+    if (!dryRun && shimExists) {
+      unlinkSync(shimPath);
+    }
+
+    targets.push({
+      configPath,
+      shimPath,
+      viaInstallState,
+      removedHooks,
+      removedAgents,
+      shimRemoved: shimExists,
+    });
   }
 
-  // Remove shim only after config is successfully updated
-  if (existsSync(shimPath)) {
-    unlinkSync(shimPath);
-    console.log(`[selftune] Removed shim: ${shimPath}`);
+  if (!dryRun && (targets.length > 0 || installState !== null)) {
+    clearInstallState();
   }
 
-  console.log(`[selftune] OpenCode hooks and agents uninstalled.`);
+  return {
+    dryRun,
+    targets,
+    installStateCleared: !dryRun && (targets.length > 0 || installState !== null),
+  };
+}
+
+function doInstall(options: InstallOptions): void {
+  const result = installHooks({ dryRun: options.dryRun });
+
+  console.log(`[selftune] OpenCode install target: ${result.configPath}`);
+  console.log(
+    `[selftune] Shim ${options.dryRun ? (result.shimChanged ? "would be written" : "already current") : result.shimChanged ? "written" : "already current"}: ${result.shimPath}`,
+  );
+
+  if (result.installedHooks.length > 0) {
+    console.log(`[selftune] Hooks ${options.dryRun ? "to install/update" : "installed/updated"}:`);
+    for (const event of result.installedHooks) {
+      console.log(`  ${event} -> ${result.shimPath}`);
+    }
+  }
+  if (result.unchangedHooks.length > 0) {
+    console.log(`[selftune] Hooks already configured:`);
+    for (const event of result.unchangedHooks) {
+      console.log(`  ${event} -> ${result.shimPath}`);
+    }
+  }
+  if (result.skippedHooks.length > 0) {
+    console.log(`[selftune] Hooks skipped due to conflicting commands:`);
+    for (const hook of result.skippedHooks) {
+      console.log(`  ${hook.event} -> ${hook.command}`);
+    }
+  }
+
+  if (result.installedAgents.length > 0) {
+    console.log(
+      `[selftune] Agents ${options.dryRun ? "to register/update" : "registered/updated"}:`,
+    );
+    for (const name of result.installedAgents) {
+      console.log(`  ${name}`);
+    }
+  }
+  if (result.unchangedAgents.length > 0) {
+    console.log(`[selftune] Agents already configured:`);
+    for (const name of result.unchangedAgents) {
+      console.log(`  ${name}`);
+    }
+  }
+  if (result.skippedAgents.length > 0) {
+    console.log(`[selftune] Agents skipped because a user-defined entry already exists:`);
+    for (const agent of result.skippedAgents) {
+      console.log(`  ${agent.name}`);
+    }
+  }
+
+  if (options.dryRun) {
+    console.log(`[selftune] No changes written (--dry-run).`);
+  }
+}
+
+function doUninstall(options: InstallOptions): void {
+  const result = uninstallHooks({ dryRun: options.dryRun });
+
+  if (result.targets.length === 0) {
+    console.log(`[selftune] No matching OpenCode hook installation found.`);
+  }
+
+  for (const target of result.targets) {
+    console.log(
+      `[selftune] ${options.dryRun ? "Would clean" : "Cleaned"} ${target.configPath}${target.viaInstallState ? " (recorded install target)" : ""}`,
+    );
+    if (target.removedHooks.length > 0) {
+      console.log(`[selftune] Hooks ${options.dryRun ? "to remove" : "removed"}:`);
+      for (const event of target.removedHooks) {
+        console.log(`  ${event} -> ${target.shimPath}`);
+      }
+    }
+    if (target.removedAgents.length > 0) {
+      console.log(`[selftune] Agents ${options.dryRun ? "to remove" : "removed"}:`);
+      for (const name of target.removedAgents) {
+        console.log(`  ${name}`);
+      }
+    }
+    console.log(
+      `[selftune] Shim ${options.dryRun ? (target.shimRemoved ? "would be removed" : "not present") : target.shimRemoved ? "removed" : "not present"}: ${target.shimPath}`,
+    );
+  }
+
+  if (options.dryRun) {
+    console.log(`[selftune] No changes written (--dry-run).`);
+  }
 }
 
 // ---------------------------------------------------------------------------
