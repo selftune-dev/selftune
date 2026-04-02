@@ -108,7 +108,9 @@ replay-backed validation, not as live operator telemetry.
 
 Replay parsing is intentionally conservative: unreadable skill files degrade to
 empty surfaces instead of throwing, and malformed routing rows with empty
-trigger cells are ignored rather than treated as valid triggers.
+trigger cells are ignored rather than treated as valid triggers. Claude replay
+also normalizes observed `Read` paths against the staged workspace, so relative
+skill reads still count as read-only evidence for the target or competing skill.
 
 ## Parsing Instructions
 

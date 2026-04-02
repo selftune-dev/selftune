@@ -312,22 +312,28 @@ describe("runHostReplayFixture", () => {
         ["Presentation building requests"],
       );
       const fixture = makeFixture(targetPath);
+      for (const [sessionId, useRelativeReadPath] of [
+        ["runtime-session-read-only", false],
+        ["runtime-session-read-only-relative", true],
+      ]) {
+        const [result] = await runClaudeRuntimeReplayFixture({
+          routing: "| Trigger | Workflow |\n| --- | --- |\n| create deck, board deck | present |",
+          evalSet: [{ query: "create a board deck", should_trigger: true }],
+          fixture,
+          runtimeInvoker: async (input) => ({
+            invokedSkillNames: [],
+            readSkillPaths: [
+              useRelativeReadPath ? ".claude/skills/deck-skill/SKILL.md" : input.targetSkillPath,
+            ],
+            rawOutput: "",
+            sessionId,
+          }),
+        });
 
-      const [result] = await runClaudeRuntimeReplayFixture({
-        routing: "| Trigger | Workflow |\n| --- | --- |\n| create deck, board deck | present |",
-        evalSet: [{ query: "create a board deck", should_trigger: true }],
-        fixture,
-        runtimeInvoker: async (input) => ({
-          invokedSkillNames: [],
-          readSkillPaths: [input.targetSkillPath],
-          rawOutput: "",
-          sessionId: "runtime-session-read-only",
-        }),
-      });
-
-      expect(result?.triggered).toBe(false);
-      expect(result?.passed).toBe(false);
-      expect(result?.evidence).toContain("only read the target skill without invoking it");
+        expect(result?.triggered).toBe(false);
+        expect(result?.passed).toBe(false);
+        expect(result?.evidence).toContain("only read the target skill without invoking it");
+      }
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
     }

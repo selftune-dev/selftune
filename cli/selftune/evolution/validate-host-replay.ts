@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 
 import type { EvalEntry, RoutingReplayEntryResult, RoutingReplayFixture } from "../types.js";
 import { parseFrontmatter } from "../utils/frontmatter.js";
@@ -71,6 +71,10 @@ function resolveReplayPath(path: string): string {
   } catch {
     return path;
   }
+}
+
+function resolveObservedReplayPath(path: string, workspaceRoot: string): string {
+  return resolveReplayPath(isAbsolute(path) ? path : join(workspaceRoot, path));
 }
 
 function listCompetingSkillPaths(targetSkillPath: string): string[] {
@@ -313,7 +317,9 @@ function evaluateRuntimeReplayObservation(
   observation: ClaudeRuntimeReplayObservation,
   workspace: ReplayWorkspace,
 ): RoutingReplayEntryResult {
-  const normalizedReadPaths = new Set(observation.readSkillPaths.map(resolveReplayPath));
+  const normalizedReadPaths = new Set(
+    observation.readSkillPaths.map((path) => resolveObservedReplayPath(path, workspace.rootDir)),
+  );
   const targetSkillName = fixture.target_skill_name.trim();
   const targetInvoked = observation.invokedSkillNames.includes(targetSkillName);
   const competingInvoked = observation.invokedSkillNames.find((skillName) =>
