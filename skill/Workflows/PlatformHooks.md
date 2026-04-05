@@ -43,9 +43,10 @@ This is called automatically by the agent's hook system. Users don't run this di
 
 ### OpenCode
 
-- Config: `~/.config/opencode/config.json`
-- Events: tool.execute.before, tool.execute.after, session.idle
-- Install writes a shell shim script
+- Config: `./opencode.json` or `~/.config/opencode/config.json`
+- Events: tool.execute.before, tool.execute.after, session.idle (via event handler)
+- Install writes a TypeScript plugin file (`selftune-opencode-plugin.ts`) and registers it in the `plugin` array
+- Agents are registered in the `agent` config key (identified by `[selftune]` description prefix)
 
 ### Cline
 
