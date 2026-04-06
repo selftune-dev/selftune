@@ -4,14 +4,17 @@
  *
  * OpenCode uses a plugin system for hooks and a strict config schema.
  * This installer:
- *   1. Writes a plugin file (selftune-opencode-plugin.ts) that hooks into
- *      tool.execute.before, tool.execute.after, and session.idle events
- *   2. Registers the plugin in the OpenCode config's `plugin` array
- *   3. Registers selftune agents in the `agent` config key
+ *   1. Writes a plugin file (selftune-opencode-plugin.ts) into the
+ *      plugins directory (auto-discovered by OpenCode at startup)
+ *   2. Registers selftune agents in the `agent` config key
+ *
+ * Plugin locations (OpenCode auto-discovers these):
+ *   - ~/.config/opencode/plugins/   (global)
+ *   - ./.opencode/plugins/          (project-level)
  *
  * Config locations (checked in order):
- *   1. ./opencode.json           (project-level)
- *   2. ~/.config/opencode/config.json  (user-level)
+ *   1. ./opencode.json                       (project-level)
+ *   2. ~/.config/opencode/opencode.json      (user-level)
  *
  * Usage: selftune opencode install [--dry-run] [--uninstall]
  */
@@ -39,7 +42,17 @@ function getProjectConfigPath(): string {
 }
 
 function getUserConfigPath(): string {
-  return join(process.env.HOME ?? homedir(), ".config", "opencode", "config.json");
+  return join(process.env.HOME ?? homedir(), ".config", "opencode", "opencode.json");
+}
+
+/** Global plugins directory — OpenCode auto-discovers plugins here. */
+function getGlobalPluginsDir(): string {
+  return join(process.env.HOME ?? homedir(), ".config", "opencode", "plugins");
+}
+
+/** Project-level plugins directory — OpenCode auto-discovers plugins here. */
+function getProjectPluginsDir(): string {
+  return join(process.cwd(), ".opencode", "plugins");
 }
 
 // ---------------------------------------------------------------------------
@@ -49,7 +62,7 @@ function getUserConfigPath(): string {
 function buildPluginContent(): string {
   return `// selftune-managed — Written by selftune. Do not edit.
 // OpenCode plugin that pipes hook events to selftune for processing.
-// Registered via "plugin" array in opencode.json or ~/.config/opencode/config.json.
+// Auto-discovered from plugins/ directory by OpenCode at startup.
 
 export const SelftunePlugin = async ({ $ }) => {
   /** Resolve the selftune CLI as an argv array for Bun.spawn. */
@@ -126,7 +139,6 @@ interface OpenCodeAgentConfig {
 }
 
 interface OpenCodeConfig {
-  plugin?: string[];
   agent?: Record<string, OpenCodeAgentConfig>;
   [key: string]: unknown;
 }
@@ -322,16 +334,27 @@ export function buildAgentEntries(
 }
 
 // ---------------------------------------------------------------------------
-// Plugin helpers
+// Plugin path helpers
 // ---------------------------------------------------------------------------
 
-/** Check if a plugin entry points to the selftune plugin. */
-function isSelftunePlugin(entry: string): boolean {
-  return entry.includes(PLUGIN_FILENAME);
+/**
+ * Determine where to write the plugin file.
+ * Uses the global plugins dir (~/.config/opencode/plugins/) since it
+ * works regardless of which project the user is in.
+ */
+function getPluginInstallPath(): string {
+  return join(getGlobalPluginsDir(), PLUGIN_FILENAME);
 }
 
-function getPluginPath(configPath: string): string {
-  return join(dirname(configPath), PLUGIN_FILENAME);
+/** All candidate plugin locations to check during uninstall. */
+function getPluginCandidatePaths(): string[] {
+  return [
+    join(getGlobalPluginsDir(), PLUGIN_FILENAME),
+    join(getProjectPluginsDir(), PLUGIN_FILENAME),
+    // Legacy locations from previous installer versions
+    join(dirname(getUserConfigPath()), PLUGIN_FILENAME),
+    join(process.cwd(), PLUGIN_FILENAME),
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -340,8 +363,7 @@ function getPluginPath(configPath: string): string {
 
 function doInstall(options: InstallOptions): void {
   const configPath = detectConfigPath();
-  const pluginPath = getPluginPath(configPath);
-  const pluginRelative = `./${PLUGIN_FILENAME}`;
+  const pluginPath = getPluginInstallPath();
   const agentEntries = buildAgentEntries();
 
   // Validate config before touching filesystem
@@ -350,29 +372,21 @@ function doInstall(options: InstallOptions): void {
   if (options.dryRun) {
     console.log(`[selftune] dry-run: would write plugin to ${pluginPath}`);
     console.log(`[selftune] dry-run: would update config at ${configPath}`);
-    console.log(`[selftune] dry-run: would register plugin '${pluginRelative}'`);
     for (const name of Object.keys(agentEntries)) {
       console.log(`[selftune] dry-run: would register agent '${name}'`);
     }
     return;
   }
 
-  // Write plugin file
+  // Write plugin file to plugins directory (auto-discovered by OpenCode)
   const pluginDir = dirname(pluginPath);
   if (!existsSync(pluginDir)) {
     mkdirSync(pluginDir, { recursive: true });
   }
   writeFileSync(pluginPath, buildPluginContent(), { mode: 0o644 });
 
-  // Register plugin in config
-  if (!config.plugin) {
-    config.plugin = [];
-  }
-  if (!config.plugin.some(isSelftunePlugin)) {
-    config.plugin.push(pluginRelative);
-  }
-
-  // Register agents
+  // Register agents in config (no plugin array entry needed — plugins dir is auto-discovered)
+  let configChanged = false;
   if (Object.keys(agentEntries).length > 0) {
     if (!config.agent) {
       config.agent = {};
@@ -384,10 +398,25 @@ function doInstall(options: InstallOptions): void {
         continue;
       }
       config.agent[name] = entry;
+      configChanged = true;
     }
   }
 
-  writeConfig(configPath, config);
+  // Clean up any legacy plugin array entries from previous installer versions
+  if (Array.isArray(config.plugin)) {
+    const before = config.plugin.length;
+    config.plugin = (config.plugin as string[]).filter((p: string) => !p.includes(PLUGIN_FILENAME));
+    if (config.plugin.length === 0) {
+      delete config.plugin;
+    }
+    if (config.plugin?.length !== before) {
+      configChanged = true;
+    }
+  }
+
+  if (configChanged) {
+    writeConfig(configPath, config);
+  }
 
   console.log(`[selftune] Installed OpenCode plugin:`);
   console.log(`  plugin: ${pluginPath}`);
@@ -402,23 +431,29 @@ function doInstall(options: InstallOptions): void {
 
 function doUninstall(options: InstallOptions): void {
   const configPath = detectConfigPath();
-  const pluginPath = getPluginPath(configPath);
 
   if (options.dryRun) {
-    console.log(`[selftune] dry-run: would remove plugin at ${pluginPath}`);
-    console.log(`[selftune] dry-run: would remove plugin and agent entries from ${configPath}`);
+    console.log(`[selftune] dry-run: would remove plugin from plugins directories`);
+    console.log(`[selftune] dry-run: would remove agent entries from ${configPath}`);
     return;
   }
 
-  // Update config first (before removing plugin file)
+  // Update config first — remove agents and any legacy plugin array entries
   if (existsSync(configPath)) {
     const config = readConfig(configPath);
+    let changed = false;
 
-    // Remove selftune plugin entry
-    if (config.plugin) {
-      config.plugin = config.plugin.filter((p) => !isSelftunePlugin(p));
+    // Remove legacy plugin array entries
+    if (Array.isArray(config.plugin)) {
+      const before = config.plugin.length;
+      config.plugin = (config.plugin as string[]).filter(
+        (p: string) => !p.includes(PLUGIN_FILENAME),
+      );
       if (config.plugin.length === 0) {
         delete config.plugin;
+      }
+      if (config.plugin?.length !== before) {
+        changed = true;
       }
     }
 
@@ -427,27 +462,50 @@ function doUninstall(options: InstallOptions): void {
       for (const [name, entry] of Object.entries(config.agent)) {
         if (!isSelftuneAgent(entry)) continue;
         delete config.agent[name];
+        changed = true;
       }
       if (Object.keys(config.agent).length === 0) {
         delete config.agent;
       }
     }
 
-    writeConfig(configPath, config);
-    console.log(`[selftune] Removed plugin and agent entries from: ${configPath}`);
+    if (changed) {
+      writeConfig(configPath, config);
+      console.log(`[selftune] Removed agent entries from: ${configPath}`);
+    }
   }
 
-  // Remove plugin file only after config is updated
-  if (existsSync(pluginPath)) {
-    unlinkSync(pluginPath);
-    console.log(`[selftune] Removed plugin: ${pluginPath}`);
+  // Remove plugin files from all candidate locations
+  for (const pluginPath of getPluginCandidatePaths()) {
+    if (existsSync(pluginPath)) {
+      unlinkSync(pluginPath);
+      console.log(`[selftune] Removed plugin: ${pluginPath}`);
+    }
   }
 
   // Clean up legacy shim if present
-  const legacyShim = join(dirname(configPath), "selftune-opencode-hook.sh");
-  if (existsSync(legacyShim)) {
-    unlinkSync(legacyShim);
-    console.log(`[selftune] Removed legacy shim: ${legacyShim}`);
+  for (const dir of [dirname(getUserConfigPath()), process.cwd()]) {
+    const legacyShim = join(dir, "selftune-opencode-hook.sh");
+    if (existsSync(legacyShim)) {
+      unlinkSync(legacyShim);
+      console.log(`[selftune] Removed legacy shim: ${legacyShim}`);
+    }
+  }
+
+  // Clean up legacy config.json if it exists (old installer wrote to wrong filename)
+  const legacyConfig = join(dirname(getUserConfigPath()), "config.json");
+  if (existsSync(legacyConfig)) {
+    try {
+      const content = JSON.parse(readFileSync(legacyConfig, "utf-8"));
+      // Only remove if it looks like our leftover (tiny file with just autoupdate/schema)
+      const keys = Object.keys(content).filter((k) => k !== "$schema");
+      if (keys.length <= 1 && (keys[0] === "autoupdate" || keys.length === 0)) {
+        unlinkSync(legacyConfig);
+        console.log(`[selftune] Removed legacy config: ${legacyConfig}`);
+      }
+    } catch {
+      // Not valid JSON or can't read — leave it alone
+    }
   }
 
   console.log(`[selftune] OpenCode plugin and agents uninstalled.`);

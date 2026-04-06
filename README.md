@@ -172,7 +172,7 @@ selftune is complementary to these tools, not competitive. They trace what happe
 | --- | --- | --- | --- | --- | --- |
 | **Claude Code** | Full | Automatic via `selftune init` | `claude --agent` (native) | `selftune ingest claude` | `~/.claude/settings.json` |
 | **Codex** | Experimental | `selftune codex install` | `codex exec` (inlined) | `selftune ingest codex` | `~/.codex/hooks.json` |
-| **OpenCode** | Experimental | `selftune opencode install` | `opencode run --agent` (native) | `selftune ingest opencode` | `./opencode.json` or `~/.config/opencode/config.json` |
+| **OpenCode** | Experimental | `selftune opencode install` | `opencode run --agent` (native) | `selftune ingest opencode` | `./opencode.json` or `~/.config/opencode/opencode.json` |
 | **Cline** | Experimental | `selftune cline install` | — | — | `~/Documents/Cline/Hooks/` |
 | **OpenClaw** | Experimental | — | — | `selftune ingest openclaw` | — |
 

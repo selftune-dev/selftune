@@ -24,6 +24,7 @@ Supported platforms: `codex`, `opencode`, `cline`
 | ------------- | ---------------------------------------------- |
 | `--dry-run`   | Preview what would be installed without writing |
 | `--uninstall` | Remove selftune hooks from the platform         |
+| `--help, -h`  | Show usage help                                 |
 
 ### Hook handler (called by the agent, not the user)
 
@@ -43,9 +44,10 @@ This is called automatically by the agent's hook system. Users don't run this di
 
 ### OpenCode
 
-- Config: `./opencode.json` or `~/.config/opencode/config.json`
+- Config: `./opencode.json` or `~/.config/opencode/opencode.json`
+- Plugin dir: `~/.config/opencode/plugins/` (global) or `./.opencode/plugins/` (project)
 - Events: tool.execute.before, tool.execute.after, session.idle (via event handler)
-- Install writes a TypeScript plugin file (`selftune-opencode-plugin.ts`) and registers it in the `plugin` array
+- Install writes a TypeScript plugin file (`selftune-opencode-plugin.ts`) into the plugins directory (auto-discovered by OpenCode at startup)
 - Agents are registered in the `agent` config key (identified by `[selftune]` description prefix)
 
 ### Cline
@@ -85,7 +87,7 @@ selftune cline install --uninstall  # Remove selftune hook scripts
 The hook subcommand is called automatically by the agent. Users do not run it directly:
 
 ```bash
-echo '$PAYLOAD' | selftune codex hook
-echo '$PAYLOAD' | selftune opencode hook
-echo '$PAYLOAD' | selftune cline hook
+printf '%s\n' "$PAYLOAD" | selftune codex hook
+printf '%s\n' "$PAYLOAD" | selftune opencode hook
+printf '%s\n' "$PAYLOAD" | selftune cline hook
 ```
