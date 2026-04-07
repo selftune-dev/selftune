@@ -7,6 +7,7 @@
  * - Codex rollout logs
  * - OpenCode session history
  * - OpenClaw session history
+ * - Pi session history
  *
  * After syncing raw session/query/telemetry records, it rebuilds the repaired
  * skill-usage overlay from Claude transcripts and Codex rollouts so monitoring,
@@ -25,6 +26,8 @@ import {
   OPENCLAW_AGENTS_DIR,
   OPENCLAW_INGEST_MARKER,
   OPENCODE_INGEST_MARKER,
+  PI_INGEST_MARKER,
+  PI_SESSIONS_DIR,
   QUERY_LOG,
   REPAIRED_SKILL_LOG,
   REPAIRED_SKILL_SESSIONS_MARKER,
@@ -56,6 +59,12 @@ import {
   readSessionsFromSqlite,
   writeSession as writeOpenCodeSession,
 } from "./ingestors/opencode-ingest.js";
+import {
+  findPiSessions,
+  findPiSkillNames,
+  parsePiSession,
+  writeSession as writePiSession,
+} from "./ingestors/pi-ingest.js";
 import { getDb } from "./localdb/db.js";
 import { writeCronRunToDb } from "./localdb/direct-write.js";
 import { querySkillUsageRecords } from "./localdb/queries.js";
@@ -92,6 +101,7 @@ export interface SyncResult {
     codex: SyncStepResult;
     opencode: SyncStepResult;
     openclaw: SyncStepResult;
+    pi: SyncStepResult;
   };
   repair: {
     ran: boolean;
@@ -124,6 +134,7 @@ export interface SyncOptions {
   syncCodex: boolean;
   syncOpenCode: boolean;
   syncOpenClaw: boolean;
+  syncPi: boolean;
   rebuildSkillUsage: boolean;
 }
 
@@ -134,6 +145,7 @@ export interface SyncDeps {
   syncCodex?: (options: SyncOptions) => SyncStepResult;
   syncOpenCode?: (options: SyncOptions) => SyncStepResult;
   syncOpenClaw?: (options: SyncOptions) => SyncStepResult;
+  syncPi?: (options: SyncOptions) => SyncStepResult;
   rebuildSkillUsage?: (options: SyncOptions) => {
     repairedSessions: number;
     repairedRecords: number;
@@ -164,6 +176,7 @@ export function createDefaultSyncOptions(overrides: Partial<SyncOptions> = {}): 
     syncCodex: true,
     syncOpenCode: true,
     syncOpenClaw: true,
+    syncPi: true,
     rebuildSkillUsage: true,
     ...overrides,
   };
@@ -357,6 +370,45 @@ function syncOpenClawSource(
   };
 }
 
+function syncPiSource(options: SyncOptions, onProgress?: SyncProgressCallback): SyncStepResult {
+  if (!existsSync(PI_SESSIONS_DIR)) {
+    return { available: false, scanned: 0, synced: 0, skipped: 0 };
+  }
+
+  onProgress?.("scanning Pi sessions...");
+  const sinceTs = options.since ? options.since.getTime() : null;
+  const allSessions = findPiSessions(PI_SESSIONS_DIR, sinceTs);
+  const skillNames = findPiSkillNames();
+  const alreadyIngested = options.force ? new Set<string>() : loadMarker(PI_INGEST_MARKER);
+  const pending = allSessions.filter((session) => !alreadyIngested.has(session.sessionId));
+  onProgress?.(`found ${allSessions.length} sessions, ${pending.length} pending`);
+  const newIngested = new Set<string>();
+  let synced = 0;
+  let skipped = 0;
+
+  for (const sessionFile of pending) {
+    const session = parsePiSession(sessionFile.filePath, skillNames);
+    if (!session.session_id || !session.timestamp) {
+      skipped += 1;
+      continue;
+    }
+    writePiSession(session, options.dryRun);
+    newIngested.add(sessionFile.sessionId);
+    synced += 1;
+  }
+
+  if (!options.dryRun && newIngested.size > 0) {
+    saveMarker(PI_INGEST_MARKER, new Set([...alreadyIngested, ...newIngested]));
+  }
+
+  return {
+    available: true,
+    scanned: allSessions.length,
+    synced,
+    skipped,
+  };
+}
+
 function rebuildSkillUsageOverlay(
   options: SyncOptions,
   onProgress?: SyncProgressCallback,
@@ -446,6 +498,7 @@ export function syncSources(
   const runCodex = deps.syncCodex;
   const runOpenCode = deps.syncOpenCode;
   const runOpenClaw = deps.syncOpenClaw;
+  const runPi = deps.syncPi;
   const runRepair = deps.rebuildSkillUsage;
   const runCreatorContributions = deps.stageCreatorContributions;
   const db = getDb();
@@ -486,6 +539,10 @@ export function syncSources(
       )
     : disabledStep;
 
+  const pi = options.syncPi
+    ? timePhase("pi", () => (runPi ? runPi(options) : syncPiSource(options, onProgress)), timings)
+    : disabledStep;
+
   const repair = options.rebuildSkillUsage
     ? timePhase(
         "repair",
@@ -516,7 +573,7 @@ export function syncSources(
   const syncResult: SyncResult = {
     since: options.since ? options.since.toISOString() : null,
     dry_run: options.dryRun,
-    sources: { claude, codex, opencode, openclaw },
+    sources: { claude, codex, opencode, openclaw, pi },
     repair: {
       ran: options.rebuildSkillUsage,
       repaired_sessions: repair.repairedSessions,
@@ -562,6 +619,7 @@ export async function cliMain(): Promise<void> {
       "no-codex": { type: "boolean", default: false },
       "no-opencode": { type: "boolean", default: false },
       "no-openclaw": { type: "boolean", default: false },
+      "no-pi": { type: "boolean", default: false },
       "no-repair": { type: "boolean", default: false },
       json: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
@@ -590,6 +648,7 @@ Options:
   --no-codex                       Skip Codex rollout ingest
   --no-opencode                    Skip OpenCode ingest
   --no-openclaw                    Skip OpenClaw ingest
+  --no-pi                          Skip Pi ingest
   --no-repair                      Skip rebuilt skill-usage overlay
   --json                           Output raw JSON instead of human-readable summary
   -h, --help                       Show this help`);
@@ -645,6 +704,7 @@ Options:
         syncCodex: !(values["no-codex"] ?? false),
         syncOpenCode: !(values["no-opencode"] ?? false),
         syncOpenClaw: !(values["no-openclaw"] ?? false),
+        syncPi: !(values["no-pi"] ?? false),
         rebuildSkillUsage: !(values["no-repair"] ?? false),
       }),
       {},
@@ -672,11 +732,12 @@ Options:
     elapsedMs: syncElapsed,
     status: "success",
     metrics: {
-      total_synced: s.claude.synced + s.codex.synced + s.opencode.synced + s.openclaw.synced,
+      total_synced: s.claude.synced + s.codex.synced + s.opencode.synced + s.openclaw.synced + s.pi.synced,
       claude_synced: s.claude.synced,
       codex_synced: s.codex.synced,
       opencode_synced: s.opencode.synced,
       openclaw_synced: s.openclaw.synced,
+      pi_synced: s.pi.synced,
     },
   });
 
@@ -698,6 +759,7 @@ Options:
     process.stderr.write(
       `${formatStepLine("OpenClaw", result.sources.openclaw, timingMap.get("openclaw"))}\n`,
     );
+    process.stderr.write(`${formatStepLine("Pi", result.sources.pi, timingMap.get("pi"))}\n`);
 
     if (result.repair.ran) {
       const repairTiming = timingMap.get("repair");

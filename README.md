@@ -25,7 +25,7 @@ Your agent skills learn how you work. Detect what's broken. Fix it automatically
 
 Your skills don't understand how you talk. You say "make me a slide deck" and nothing happens — no error, no log, no signal. selftune watches your real sessions, learns how you actually speak, and rewrites skill descriptions to match. Automatically.
 
-Works with **Claude Code** (primary). Codex, OpenCode, and OpenClaw adapters are experimental. Zero runtime dependencies.
+Works with **Claude Code** (primary). Codex, OpenCode, OpenClaw, and Pi adapters are experimental. Zero runtime dependencies.
 
 ## Install
 
@@ -129,6 +129,7 @@ Your agent runs these — you just say what you want ("improve my skills", "show
 | **hooks**  | `selftune codex install`                     | Install selftune hooks into Codex (`--dry-run`, `--uninstall`)                              |
 |            | `selftune opencode install`                  | Install selftune hooks into OpenCode                                                        |
 |            | `selftune cline install`                     | Install selftune hooks into Cline                                                           |
+|            | `selftune pi install`                        | Install selftune hooks into Pi                                                              |
 | **auto**   | `selftune cron setup`                        | Install OS-level scheduling (cron/launchd/systemd)                                          |
 |            | `selftune watch --skill <name>`              | Monitor after deploy. Auto-rollback on regression.                                          |
 | **other**  | `selftune workflows`                         | Discover and manage multi-skill workflows                                                   |
@@ -175,6 +176,7 @@ selftune is complementary to these tools, not competitive. They trace what happe
 | **OpenCode** | Experimental | `selftune opencode install` | `opencode run --agent` (native) | `selftune ingest opencode` | `./opencode.json` or `~/.config/opencode/opencode.json` |
 | **Cline** | Experimental | `selftune cline install` | — | — | `~/Documents/Cline/Hooks/` |
 | **OpenClaw** | Experimental | — | — | `selftune ingest openclaw` | — |
+| **Pi** | Experimental | `selftune pi install` | — | `selftune ingest pi` | `~/.pi/extensions/selftune/` |
 
 OpenCode and Codex now support eval/optimizer agent workflows (evolution-reviewer, diagnosis-analyst, pattern-analyst, integration-guide). OpenCode agents are registered in the config during `selftune opencode install`; Codex inlines agent instructions into the prompt since it lacks a native `--agent` flag. OpenCode lacks a prompt-submission hook event, so prompt logging and auto-activate are unavailable. Cline only exposes PostToolUse and task lifecycle events, limiting coverage to commit tracking and session telemetry. All platforms write to the same shared log schema.
 
@@ -186,6 +188,6 @@ Requires [Bun](https://bun.sh) or Node.js 18+. No extra API keys.
 
 [Architecture](ARCHITECTURE.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Integration Guide](docs/integration-guide.md) · [Sponsor](https://github.com/sponsors/WellDunDun)
 
-MIT licensed. Free forever. Hooks for Claude Code, Codex, OpenCode, and Cline; batch ingest for OpenClaw.
+MIT licensed. Free forever. Hooks for Claude Code, Codex, OpenCode, Cline, and Pi; batch ingest for OpenClaw.
 
 </div>

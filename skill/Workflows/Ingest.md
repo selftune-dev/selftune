@@ -3,8 +3,8 @@
 > **Note:** Claude Code is the fully supported platform. Codex, OpenCode, and OpenClaw adapters are experimental and may have gaps.
 
 Import sessions from agent platforms into the shared selftune log format.
-Covers five sub-commands: `ingest claude`, `ingest codex`, `ingest opencode`,
-`ingest openclaw`, and `ingest wrap-codex`.
+Covers six sub-commands: `ingest claude`, `ingest codex`, `ingest opencode`,
+`ingest openclaw`, `ingest pi`, and `ingest wrap-codex`.
 
 ## When to Use Each
 
@@ -14,6 +14,7 @@ Covers five sub-commands: `ingest claude`, `ingest codex`, `ingest opencode`,
 | `ingest codex`      | Codex       | Batch     | Import existing Codex rollout logs                  |
 | `ingest opencode`   | OpenCode    | Batch     | Import existing OpenCode sessions                   |
 | `ingest openclaw`   | OpenClaw    | Batch     | Import existing OpenClaw agent sessions             |
+| `ingest pi`         | Pi          | Batch     | Import existing Pi agent sessions                   |
 | `ingest wrap-codex` | Codex       | Real-time | Wrap `codex exec` to capture telemetry live         |
 
 ---
@@ -200,6 +201,55 @@ Writes to:
 
 ---
 
+## ingest pi
+
+Batch ingest Pi agent session histories into the shared JSONL schema.
+
+### Default Command
+
+```bash
+selftune ingest pi
+```
+
+### Options
+
+| Flag                    | Description                                                        |
+| ----------------------- | ------------------------------------------------------------------ |
+| `--sessions-dir <path>` | Override default `~/.pi/agent/sessions/` directory                |
+| `--since <date>`        | Only ingest sessions modified after this date (e.g., `2026-01-01`) |
+| `--dry-run`             | Show what would be ingested without writing to logs                |
+| `--force`               | Re-ingest all sessions, ignoring the marker file                   |
+| `--verbose` / `-v`      | Show per-session progress during ingestion                         |
+
+### Source
+
+Reads from `~/.pi/agent/sessions/`. Each session file contains Pi agent
+conversation history in JSONL format.
+
+### Output
+
+Writes to:
+
+- `~/.claude/all_queries_log.jsonl` -- extracted user queries
+- `~/.claude/session_telemetry_log.jsonl` -- per-session metrics with `source: "pi"`
+- `~/.claude/skill_usage_log.jsonl` -- skill triggers with `source: "pi"`
+
+### Steps
+
+1. Run `selftune ingest pi --dry-run` to preview what would be ingested
+2. Run `selftune ingest pi` to ingest all sessions
+3. Run `selftune doctor` to confirm logs are healthy
+4. Run `selftune eval generate --list-skills` to see if the ingested sessions appear
+
+### Notes
+
+- Idempotent: uses a marker file to track which sessions have already been ingested.
+  Safe to run repeatedly. Use `--force` to re-ingest everything.
+- Skill detection heuristic: identifies skills by checking for `SKILL.md` file reads in
+  tool calls and by matching known skill names in assistant text content.
+
+---
+
 ## ingest wrap-codex
 
 Wrap `codex exec` with real-time telemetry capture. Drop-in replacement
@@ -268,6 +318,14 @@ through hooks.
 **"Import only recent OpenClaw sessions"**
 
 > Run `selftune ingest openclaw --since 2026-02-01` with an appropriate date.
+
+**"Ingest Pi sessions"**
+
+> Run `selftune ingest pi`. Reads from `~/.pi/agent/sessions/` automatically.
+
+**"Import only recent Pi sessions"**
+
+> Run `selftune ingest pi --since 2026-02-01` with an appropriate date.
 
 **"Run codex through selftune"**
 

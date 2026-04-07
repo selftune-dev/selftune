@@ -6,7 +6,7 @@ Bootstrap selftune for first-time use or after changing environments.
 
 - The user asks to set up selftune, configure selftune, or initialize selftune
 - The agent detects `~/.selftune/config.json` does not exist
-- The user has switched agent platforms (Claude Code, Codex, OpenCode)
+- The user has switched agent platforms (Claude Code, Codex, OpenCode, Pi)
 - The user wants to add hooks for additional platforms (multi-agent setup)
 
 ## Default Command
@@ -21,7 +21,7 @@ selftune init --no-alpha [--force]
 
 | Flag                      | Description                                                               | Default       |
 | ------------------------- | ------------------------------------------------------------------------- | ------------- |
-| `--agent <type>`          | Agent platform: `claude_code`, `codex`, `opencode`, `openclaw`            | Auto-detected |
+| `--agent <type>`          | Agent platform: `claude_code`, `codex`, `opencode`, `openclaw`, `pi`      | Auto-detected |
 | `--cli-path <path>`       | Override auto-detected CLI entry-point path                               | Auto-detected |
 | `--force`                 | Reinitialize even if config already exists                                | Off           |
 | `--no-sync`               | Skip historical transcript backfill during init                           | Sync on       |
@@ -146,6 +146,7 @@ CLIs available. Run these checks:
 which codex 2>/dev/null && echo "codex available"
 which opencode 2>/dev/null && echo "opencode available"
 ls ~/Documents/Cline/Hooks/ 2>/dev/null && echo "cline available"
+ls ~/.pi/agent/ 2>/dev/null && echo "pi available"
 ```
 
 If **any** additional platforms are detected, use `AskUserQuestion` listing only
@@ -168,6 +169,7 @@ For each platform the user selects, run the install command:
 selftune codex install      # writes hooks.json entries
 selftune opencode install   # writes shell shim + config entries
 selftune cline install      # creates hook scripts
+selftune pi install         # creates extension hook scripts
 ```
 
 Use `--dry-run` first if the user wants to preview. See `Workflows/PlatformHooks.md`
@@ -179,6 +181,7 @@ for platform-specific details.
 selftune ingest codex       # import Codex rollout sessions
 selftune ingest opencode    # import OpenCode sessions from SQLite
 selftune ingest openclaw    # import OpenClaw sessions
+selftune ingest pi          # import Pi sessions
 ```
 
 ### 5. Initialize Memory Directory
@@ -221,7 +224,7 @@ reported issues before proceeding.
 
 Init automatically runs `selftune sync` to backfill existing session
 transcripts into the SQLite database. This replays Claude Code transcripts,
-Codex rollouts, OpenCode sessions, and OpenClaw sessions so the eval set
+Codex rollouts, OpenCode sessions, OpenClaw sessions, and Pi sessions so the eval set
 and evolution pipeline have data to work with immediately.
 
 The sync step is fail-open — if it encounters errors, init continues.
@@ -426,8 +429,8 @@ retrying with `selftune init --alpha --alpha-email <email> --force`.
 
 > Run `selftune init` for the primary agent, then offer to install hooks for
 > additional detected platforms. Run `selftune codex install`, `selftune opencode install`,
-> or `selftune cline install` as needed. All platforms write to the same shared
-> log schema — no extra config required.
+> `selftune cline install`, or `selftune pi install` as needed. All platforms
+> write to the same shared log schema — no extra config required.
 
 **Hooks not capturing data**
 
