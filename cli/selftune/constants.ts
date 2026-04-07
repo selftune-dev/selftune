@@ -13,6 +13,8 @@ const claudeHomeDir =
 const openclawHomeDir =
   process.env.SELFTUNE_OPENCLAW_DIR ??
   (resolvedHome ? join(defaultHome, ".openclaw") : join(homedir(), ".openclaw"));
+const piHomeDir =
+  process.env.SELFTUNE_PI_DIR ?? (resolvedHome ? join(defaultHome, ".pi") : join(homedir(), ".pi"));
 
 export const SELFTUNE_CONFIG_DIR =
   (process.env.SELFTUNE_CONFIG_DIR || undefined) ??
@@ -100,7 +102,7 @@ export const REQUIRED_FIELDS: Record<string, Set<string>> = {
 };
 
 /** Agent CLI candidates in detection order. */
-export const AGENT_CANDIDATES = ["claude", "codex", "opencode", "openclaw"] as const;
+export const AGENT_CANDIDATES = ["claude", "codex", "opencode", "openclaw", "pi"] as const;
 
 /** Required Claude Code hook keys in settings.json. */
 export const CLAUDE_CODE_HOOK_KEYS = [
@@ -157,6 +159,13 @@ export const OPENCLAW_AGENTS_DIR =
 
 /** Marker file tracking which OpenClaw sessions have been ingested. */
 export const OPENCLAW_INGEST_MARKER = join(SELFTUNE_CONFIG_DIR, "openclaw-ingest-marker.json");
+
+/** Pi sessions directory. */
+export const PI_SESSIONS_DIR =
+  process.env.SELFTUNE_PI_SESSIONS_DIR ?? join(piHomeDir, "agent", "sessions");
+
+/** Marker file tracking which Pi sessions have been ingested. */
+export const PI_INGEST_MARKER = join(SELFTUNE_CONFIG_DIR, "pi-ingest-marker.json");
 
 /** Default output directory for contribution bundles. */
 export const CONTRIBUTIONS_DIR = join(SELFTUNE_CONFIG_DIR, "contributions");

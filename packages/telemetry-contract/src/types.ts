@@ -1,7 +1,7 @@
 export const CANONICAL_SCHEMA_VERSION = "2.0" as const;
 export type CanonicalSchemaVersion = typeof CANONICAL_SCHEMA_VERSION;
 
-export const CANONICAL_PLATFORMS = ["claude_code", "codex", "opencode", "openclaw"] as const;
+export const CANONICAL_PLATFORMS = ["claude_code", "codex", "opencode", "openclaw", "pi"] as const;
 export type CanonicalPlatform = (typeof CANONICAL_PLATFORMS)[number];
 
 export const CANONICAL_CAPTURE_MODES = [

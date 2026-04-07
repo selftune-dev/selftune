@@ -2,7 +2,7 @@
 
 ## Repository Overview
 
-selftune — Self-improving skills for AI agents. Watches real sessions, learns how users actually work, and evolves skill descriptions to match. Supports Claude Code, Codex, OpenCode, and OpenClaw.
+selftune — Self-improving skills for AI agents. Watches real sessions, learns how users actually work, and evolves skill descriptions to match. Supports Claude Code, Codex, OpenCode, OpenClaw, and Pi.
 
 **Stack:** TypeScript on Bun for the CLI, a SQLite-first local data model with legacy/export JSONL recovery paths, a local React/Vite dashboard SPA, and zero runtime dependencies in the core CLI.
 
@@ -68,13 +68,15 @@ selftune/
 │   ├── adapters/            # Per-platform real-time hook adapters
 │   │   ├── codex/           # Codex hook handler + install (hooks.json)
 │   │   ├── opencode/        # OpenCode hook handler + install (shell shim)
-│   │   └── cline/           # Cline hook handler + install (hook scripts)
-│   ├── ingestors/           # Batch platform adapters (Codex, OpenCode, Claude replay, OpenClaw)
+│   │   ├── cline/           # Cline hook handler + install (hook scripts)
+│   │   └── pi/              # Pi hook handler + install
+│   ├── ingestors/           # Batch platform adapters (Codex, OpenCode, Claude replay, OpenClaw, Pi)
 │   │   ├── claude-replay.ts # Claude Code transcript replay ingestor
 │   │   ├── codex-wrapper.ts # Real-time Codex wrapper (experimental)
 │   │   ├── codex-rollout.ts # Batch Codex ingestor (experimental)
 │   │   ├── opencode-ingest.ts # OpenCode SQLite/JSON adapter (experimental)
-│   │   └── openclaw-ingest.ts # OpenClaw session importer (experimental)
+│   │   ├── openclaw-ingest.ts # OpenClaw session importer (experimental)
+│   │   └── pi-ingest.ts     # Pi session importer (experimental)
 │   ├── routes/              # HTTP route handlers (extracted from dashboard-server)
 │   ├── repair/              # Rebuild repaired skill-usage overlays
 │   ├── localdb/             # SQLite schema, direct-write, queries, materialization, canonical_upload_staging
@@ -256,7 +258,7 @@ These rules are non-negotiable. Before performing the action in the "If" column,
 ## Key Constraints
 
 - **selftune is agent-first:** users interact through their coding agent, not the CLI directly. SKILL.md and workflow docs are the product surface; the CLI is the agent's API.
-- Claude Code is the primary supported platform; Codex, OpenCode, and OpenClaw adapters are experimental (they exist but are not actively tested). All four write to the same shared log schema
+- Claude Code is the primary supported platform; Codex, OpenCode, OpenClaw, and Pi adapters are experimental (they exist but are not actively tested). All five write to the same shared log schema
 - Source-truth transcripts/rollouts are authoritative; hooks are low-latency hints, not the canonical record
 - Grading uses the user's existing agent subscription — no separate API key
 - Hooks should be zero-config after installation where the host agent supports them

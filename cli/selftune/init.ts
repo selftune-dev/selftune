@@ -75,13 +75,16 @@ class InitCliError extends Error {
  *   1. Claude Code — ~/.claude/ directory exists AND (`which claude` OR env signals)
  *   2. Codex — $CODEX_HOME set OR `which codex`
  *   3. OpenCode — ~/.local/share/opencode/opencode.db exists OR `which opencode`
- *   4. "unknown" fallback
+ *   4. OpenClaw — ~/.openclaw/agents/ exists OR `which openclaw`
+ *   5. Pi — ~/.pi/agent/ exists OR `which pi`
+ *   6. "unknown" fallback
  */
 const VALID_AGENT_TYPES: SelftuneConfig["agent_type"][] = [
   "claude_code",
   "codex",
   "opencode",
   "openclaw",
+  "pi",
   "unknown",
 ];
 
@@ -90,6 +93,7 @@ const AGENT_TYPE_CLI_MAP: Record<string, string> = {
   codex: "codex",
   opencode: "opencode",
   openclaw: "openclaw",
+  pi: "pi",
 };
 
 function agentTypeToCli(agentType: string): string | null {
@@ -132,6 +136,12 @@ export function detectAgentType(
   const openclawDir = join(home, ".openclaw", "agents");
   if (existsSync(openclawDir) || Bun.which("openclaw")) {
     return "openclaw";
+  }
+
+  // Pi: .pi directory or binary
+  const piDir = join(home, ".pi", "agent");
+  if (existsSync(piDir) || Bun.which("pi")) {
+    return "pi";
   }
 
   return "unknown";

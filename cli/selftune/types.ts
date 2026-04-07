@@ -34,7 +34,7 @@ export type AlphaLinkState =
   | "ready";
 
 export interface SelftuneConfig {
-  agent_type: "claude_code" | "codex" | "opencode" | "openclaw" | "unknown";
+  agent_type: "claude_code" | "codex" | "opencode" | "openclaw" | "pi" | "unknown";
   cli_path: string;
   llm_mode: "agent";
   agent_cli: string | null;

@@ -2,11 +2,11 @@
 
 ## Purpose
 
-Install and configure selftune hooks for non-Claude-Code platforms (Codex, OpenCode, Cline).
+Install and configure selftune hooks for non-Claude-Code platforms (Codex, OpenCode, Cline, Pi).
 
 ## When to Use
 
-- User wants selftune on Codex, OpenCode, or Cline
+- User wants selftune on Codex, OpenCode, Cline, or Pi
 - User asks about multi-platform support
 - User wants real-time skill tracking on a non-Claude-Code agent
 
@@ -18,7 +18,7 @@ Install and configure selftune hooks for non-Claude-Code platforms (Codex, OpenC
 selftune <platform> install [--dry-run] [--uninstall]
 ```
 
-Supported platforms: `codex`, `opencode`, `cline`
+Supported platforms: `codex`, `opencode`, `cline`, `pi`
 
 | Flag          | Description                                    |
 | ------------- | ---------------------------------------------- |
@@ -56,6 +56,13 @@ This is called automatically by the agent's hook system. Users don't run this di
 - Events: PostToolUse, TaskComplete, TaskCancel
 - Install creates executable shell scripts in the hooks directory
 
+### Pi
+
+- Config: `~/.pi/extensions/selftune/`
+- Sessions: `~/.pi/agent/sessions/`
+- Events: tool_call, tool_result, message, session_shutdown
+- Install creates executable hook scripts in the extensions directory
+
 ## Examples
 
 ### Codex
@@ -82,6 +89,14 @@ selftune cline install --dry-run    # Preview what would be created
 selftune cline install --uninstall  # Remove selftune hook scripts
 ```
 
+### Pi
+
+```bash
+selftune pi install              # Install hooks into ~/.pi/extensions/selftune/
+selftune pi install --dry-run    # Preview changes without writing
+selftune pi install --uninstall  # Remove selftune hooks
+```
+
 ### Hook handler (agent-only, not user-facing)
 
 The hook subcommand is called automatically by the agent. Users do not run it directly:
@@ -90,4 +105,5 @@ The hook subcommand is called automatically by the agent. Users do not run it di
 printf '%s\n' "$PAYLOAD" | selftune codex hook
 printf '%s\n' "$PAYLOAD" | selftune opencode hook
 printf '%s\n' "$PAYLOAD" | selftune cline hook
+printf '%s\n' "$PAYLOAD" | selftune pi hook
 ```

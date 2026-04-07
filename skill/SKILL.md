@@ -73,6 +73,7 @@ selftune ingest claude   [--since DATE] [--dry-run] [--force] [--verbose]
 selftune ingest codex                                                          # (experimental)
 selftune ingest opencode                                                       # (experimental)
 selftune ingest openclaw [--agents-dir PATH] [--since DATE] [--dry-run] [--force] [--verbose]  # (experimental)
+selftune ingest pi       [--sessions-dir PATH] [--since DATE] [--dry-run] [--force] [--verbose]  # (experimental)
 selftune ingest wrap-codex -- <codex args>                                     # (experimental)
 
 # Grade group
@@ -109,7 +110,7 @@ selftune export    [TABLE...] [--output/-o DIR] [--since DATE]
 
 # Autonomous loop
 selftune orchestrate [--dry-run] [--review-required] [--auto-approve] [--skill NAME] [--max-skills N] [--recent-window HOURS] [--sync-force] [--max-auto-grade N] [--loop] [--loop-interval SECS]
-selftune sync        [--since DATE] [--dry-run] [--force] [--no-claude] [--no-codex] [--no-opencode] [--no-openclaw] [--no-repair] [--json]
+selftune sync        [--since DATE] [--dry-run] [--force] [--no-claude] [--no-codex] [--no-opencode] [--no-openclaw] [--no-pi] [--no-repair] [--json]
 
 # Discovery + badges
 selftune workflows   [--skill NAME] [--skill-path PATH] [--min-occurrences N] [--window N] [--json] [save --skill NAME --skill-path PATH]
@@ -132,6 +133,8 @@ selftune opencode hook
 selftune opencode install [--dry-run] [--uninstall]
 selftune cline hook
 selftune cline install    [--dry-run] [--uninstall]
+selftune pi hook
+selftune pi install       [--dry-run] [--uninstall]
 
 # Registry (team skill distribution)
 selftune registry push [name]      [--version=<semver>] [--summary=<text>]
@@ -160,7 +163,7 @@ selftune status                                                        # shows c
 | evolve rollback, undo, restore, revert evolution, go back, undo last change                                                             | Rollback          | Workflows/Rollback.md                 |
 | watch, monitor, regression, post-deploy, keep an eye on                                                                                 | Watch             | Workflows/Watch.md                    |
 | doctor, health, hooks, broken, diagnose, not working, something wrong                                                                   | Doctor            | Workflows/Doctor.md                   |
-| ingest, import, codex logs, opencode, openclaw, wrap codex                                                                              | Ingest            | Workflows/Ingest.md                   |
+| ingest, import, codex logs, opencode, openclaw, pi, wrap codex                                                                          | Ingest            | Workflows/Ingest.md                   |
 | replay, backfill, claude transcripts, historical sessions                                                                               | Replay            | Workflows/Replay.md                   |
 | contributions, sharing preferences, opt in creator sharing, opt out creator sharing, approve contributions, revoke contributions, preview contributions, upload contributions, relay queue, contribution upload, contribution preview        | Contributions     | Workflows/Contributions.md            |
 | creator contributions, bundle contribution config, selftune.contribute.json, enable creator contribution, disable creator contribution, bulk enable creator contribution, enable all creator contributions, creator prefix config, --all, --prefix  | CreatorContributions | Workflows/CreatorContributions.md  |
@@ -186,7 +189,7 @@ selftune status                                                        # shows c
 | repair, rebuild usage, fix skill usage, trustworthy usage, repair-skill-usage                                                           | RepairSkillUsage  | Workflows/RepairSkillUsage.md         |
 | export canonical, canonical export, canonical telemetry, push payload                                                                   | ExportCanonical   | Workflows/ExportCanonical.md          |
 | hook, run hook, invoke hook, manual hook, debug hook                                                                                    | Hook              | Workflows/Hook.md                     |
-| codex hooks, codex install, codex setup, opencode hooks, opencode install, opencode setup, cline hooks, cline install, cline setup, multi-platform, platform hooks, non-claude hooks, multiple agents, multi-agent | PlatformHooks     | Workflows/PlatformHooks.md            |
+| codex hooks, codex install, codex setup, opencode hooks, opencode install, opencode setup, cline hooks, cline install, cline setup, pi hooks, pi install, pi setup, multi-platform, platform hooks, non-claude hooks, multiple agents, multi-agent | PlatformHooks     | Workflows/PlatformHooks.md            |
 | registry, distribute, push skill, install skill, sync skills, team skills, version control skills, rollback skill                       | Registry          | Workflows/Registry.md                 |
 | export, dump, jsonl, export sqlite, debug export                                                                                        | Export            | _(direct command — no workflow file)_ |
 | status, health summary, skill health, how are skills, skills doing, run selftune                                                        | Status            | _(direct command — no workflow file)_ |
@@ -376,7 +379,7 @@ accomplish a task _using_ a skill, route to that skill instead.
 | `Workflows/CreatorContributions.md` | Manage bundled `selftune.contribute.json` configs   | When preparing a skill package for creator contributions |
 | `Workflows/ExportCanonical.md`      | Export canonical telemetry for downstream use       | When exporting data for external consumption    |
 | `Workflows/Hook.md`                 | Manual hook invocation for debugging                | When debugging or testing hooks manually        |
-| `Workflows/PlatformHooks.md`        | Non-Claude-Code platform hook install/config        | When setting up Codex, OpenCode, or Cline hooks |
+| `Workflows/PlatformHooks.md`        | Non-Claude-Code platform hook install/config        | When setting up Codex, OpenCode, Cline, or Pi hooks |
 | `references/logs.md`                | Log file formats (telemetry, usage, queries, audit) | When parsing or debugging log files             |
 | `references/grading-methodology.md` | 3-tier grading model, evidence standards            | When grading sessions or interpreting grades    |
 | `references/invocation-taxonomy.md` | 4 invocation types, coverage analysis               | When analyzing trigger coverage                 |

@@ -3,7 +3,7 @@
  * selftune CLI entry point.
  *
  * Usage:
- *   selftune ingest <agent>     — Ingest agent sessions (claude, codex, opencode, openclaw, wrap-codex)
+ *   selftune ingest <agent>     — Ingest agent sessions (claude, codex, opencode, openclaw, pi, wrap-codex)
  *   selftune grade [mode]       — Grade skill sessions (auto, baseline)
  *   selftune evolve [target]    — Evolve skill descriptions (body, rollback)
  *   selftune eval <action>      — Evaluation tools (generate, unit-test, import, composability, family-overlap)
@@ -34,6 +34,7 @@
  *   selftune codex <subcommand> — Codex platform hooks (hook, install)
  *   selftune opencode <sub>     — OpenCode platform hooks (hook, install)
  *   selftune cline <subcommand> — Cline platform hooks (hook, install)
+ *   selftune pi <subcommand>    — Pi platform hooks (hook, install)
  */
 
 import { CLIError, handleCLIError } from "./utils/cli-error.js";
@@ -50,7 +51,7 @@ Usage:
   selftune <command> [options]
 
 Commands:
-  ingest <agent>     Ingest agent sessions (claude, codex, opencode, openclaw, wrap-codex)
+  ingest <agent>     Ingest agent sessions (claude, codex, opencode, openclaw, pi, wrap-codex)
   grade [mode]       Grade skill sessions (auto, baseline)
   evolve [target]    Evolve skill descriptions (body, rollback)
   eval <action>      Evaluation tools (generate, unit-test, import, composability, family-overlap)
@@ -81,13 +82,14 @@ Commands:
   codex <sub>        Codex platform hooks (hook, install)
   opencode <sub>     OpenCode platform hooks (hook, install)
   cline <sub>        Cline platform hooks (hook, install)
+  pi <sub>           Pi platform hooks (hook, install)
 
 Run 'selftune <command> --help' for command-specific options.`);
   process.exit(0);
 }
 
 // Fast-path commands (real-time hooks) — skip analytics and auto-update to minimize latency
-const FAST_COMMANDS: ReadonlySet<string> = new Set(["hook", "codex", "opencode", "cline"]);
+const FAST_COMMANDS: ReadonlySet<string> = new Set(["hook", "codex", "opencode", "cline", "pi"]);
 
 // Track command usage (lazy import — skip for hooks and --help to avoid loading crypto/os)
 if (command && !FAST_COMMANDS.has(command) && command !== "--help" && command !== "-h") {
@@ -131,6 +133,7 @@ Agents:
   codex        Ingest Codex rollout logs (experimental)
   opencode     Ingest OpenCode sessions (experimental)
   openclaw     Ingest OpenClaw sessions (experimental)
+  pi           Ingest Pi sessions (experimental)
   wrap-codex   Wrap codex exec with real-time telemetry (experimental)
 
 Run 'selftune ingest <agent> --help' for agent-specific options.`);
@@ -156,6 +159,11 @@ Run 'selftune ingest <agent> --help' for agent-specific options.`);
       }
       case "openclaw": {
         const { cliMain } = await import("./ingestors/openclaw-ingest.js");
+        cliMain();
+        break;
+      }
+      case "pi": {
+        const { cliMain } = await import("./ingestors/pi-ingest.js");
         cliMain();
         break;
       }
@@ -835,9 +843,12 @@ Output:
 
   case "codex":
   case "opencode":
-  case "cline": {
+  case "cline":
+  case "pi": {
     const platform = command;
-    const displayName = { codex: "Codex", opencode: "OpenCode", cline: "Cline" }[platform];
+    const displayName = { codex: "Codex", opencode: "OpenCode", cline: "Cline", pi: "Pi" }[
+      platform
+    ];
     const sub = process.argv[2];
     if (!sub || sub === "--help" || sub === "-h") {
       console.log(`selftune ${platform} — ${displayName} platform hooks
