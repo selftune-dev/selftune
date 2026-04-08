@@ -124,6 +124,7 @@ export interface SyncOptions {
   codexHome: string;
   opencodeDataDir: string;
   openclawAgentsDir: string;
+  piSessionsDir: string;
   skillLogPath: string;
   repairedSkillLogPath: string;
   repairedSessionsPath: string;
@@ -167,6 +168,7 @@ export function createDefaultSyncOptions(overrides: Partial<SyncOptions> = {}): 
     codexHome: DEFAULT_CODEX_HOME,
     opencodeDataDir: DEFAULT_OPENCODE_DATA_DIR,
     openclawAgentsDir: OPENCLAW_AGENTS_DIR,
+    piSessionsDir: PI_SESSIONS_DIR,
     skillLogPath: SKILL_LOG,
     repairedSkillLogPath: REPAIRED_SKILL_LOG,
     repairedSessionsPath: REPAIRED_SKILL_SESSIONS_MARKER,
@@ -371,13 +373,13 @@ function syncOpenClawSource(
 }
 
 function syncPiSource(options: SyncOptions, onProgress?: SyncProgressCallback): SyncStepResult {
-  if (!existsSync(PI_SESSIONS_DIR)) {
+  if (!existsSync(options.piSessionsDir)) {
     return { available: false, scanned: 0, synced: 0, skipped: 0 };
   }
 
   onProgress?.("scanning Pi sessions...");
   const sinceTs = options.since ? options.since.getTime() : null;
-  const allSessions = findPiSessions(PI_SESSIONS_DIR, sinceTs);
+  const allSessions = findPiSessions(options.piSessionsDir, sinceTs);
   const skillNames = findPiSkillNames();
   const alreadyIngested = options.force ? new Set<string>() : loadMarker(PI_INGEST_MARKER);
   const pending = allSessions.filter((session) => !alreadyIngested.has(session.sessionId));
@@ -609,6 +611,7 @@ export async function cliMain(): Promise<void> {
       "codex-home": { type: "string", default: DEFAULT_CODEX_HOME },
       "opencode-data-dir": { type: "string", default: DEFAULT_OPENCODE_DATA_DIR },
       "openclaw-agents-dir": { type: "string", default: OPENCLAW_AGENTS_DIR },
+      "pi-sessions-dir": { type: "string", default: PI_SESSIONS_DIR },
       "skill-log": { type: "string", default: SKILL_LOG },
       "repaired-skill-log": { type: "string", default: REPAIRED_SKILL_LOG },
       "repaired-sessions-marker": { type: "string", default: REPAIRED_SKILL_SESSIONS_MARKER },
@@ -638,6 +641,7 @@ Options:
   --codex-home <dir>               Codex home directory (default: ~/.codex)
   --opencode-data-dir <dir>        OpenCode data directory
   --openclaw-agents-dir <dir>      OpenClaw agents directory
+  --pi-sessions-dir <dir>          Pi sessions directory
   --skill-log <path>               Raw skill usage log path
   --repaired-skill-log <path>      Repaired overlay log path
   --repaired-sessions-marker <p>   Repaired session marker path
@@ -694,6 +698,7 @@ Options:
         codexHome: values["codex-home"] ?? DEFAULT_CODEX_HOME,
         opencodeDataDir: values["opencode-data-dir"] ?? DEFAULT_OPENCODE_DATA_DIR,
         openclawAgentsDir: values["openclaw-agents-dir"] ?? OPENCLAW_AGENTS_DIR,
+        piSessionsDir: values["pi-sessions-dir"] ?? PI_SESSIONS_DIR,
         skillLogPath: values["skill-log"] ?? SKILL_LOG,
         repairedSkillLogPath: values["repaired-skill-log"] ?? REPAIRED_SKILL_LOG,
         repairedSessionsPath: values["repaired-sessions-marker"] ?? REPAIRED_SKILL_SESSIONS_MARKER,
@@ -732,7 +737,8 @@ Options:
     elapsedMs: syncElapsed,
     status: "success",
     metrics: {
-      total_synced: s.claude.synced + s.codex.synced + s.opencode.synced + s.openclaw.synced + s.pi.synced,
+      total_synced:
+        s.claude.synced + s.codex.synced + s.opencode.synced + s.openclaw.synced + s.pi.synced,
       claude_synced: s.claude.synced,
       codex_synced: s.codex.synced,
       opencode_synced: s.opencode.synced,

@@ -10,7 +10,7 @@ also writes the compatibility repaired overlay JSONL.
 ## When to Use
 
 - Before running `status`, `dashboard`, `watch`, or `evolve` when data may be stale
-- The user has run many Claude Code, Codex, OpenCode, or OpenClaw sessions since last sync
+- The user has run many Claude Code, Codex, OpenCode, OpenClaw, or Pi sessions since last sync
 - The agent detects host logs may be polluted and needs the repaired/source-first view
 - Before inspecting alpha-upload readiness or pushing fresh cloud data
 
@@ -31,6 +31,8 @@ selftune sync
 | `--no-codex`     | Skip Codex rollout ingest                       |
 | `--no-opencode`  | Skip OpenCode ingest                            |
 | `--no-openclaw`  | Skip OpenClaw ingest                            |
+| `--no-pi`        | Skip Pi ingest                                  |
+| `--pi-sessions-dir <dir>` | Pi sessions directory (default: `~/.pi/agent/sessions`) |
 | `--no-repair`    | Skip rebuilding repaired skill-usage data       |
 | `--json`         | Output results as JSON                          |
 

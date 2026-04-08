@@ -10,7 +10,7 @@
  * Events hooked:
  *   - tool_call        (pre-tool — skill guards, inline)
  *   - tool_result      (post-tool — skill eval + commit tracking, inline)
- *   - message          (prompt submit — prompt logging, background)
+ *   - message          (prompt submit — prompt logging + auto-activate, inline)
  *   - session_shutdown (session end — session telemetry, background)
  *
  * Usage: selftune pi install [--dry-run] [--uninstall]
@@ -39,8 +39,8 @@ function hookScript(eventType: string, inline: boolean): string {
     return `#!/usr/bin/env bash
 ${MARKER}
 input=$(cat)
-result=$(echo "$input" | (${HOOK_CMD}) 2>/dev/null) || true
-rc=\${PIPESTATUS[0]:-$?}
+result=$(echo "$input" | (${HOOK_CMD}) 2>/dev/null)
+rc=$?
 [ -z "$result" ] && result='{}'
 echo "$result"
 exit $rc
@@ -63,7 +63,7 @@ echo '{}'
 const HOOKS: Array<{ name: string; description: string; inline: boolean }> = [
   { name: "tool_call", description: "Pre-tool guards (evolution, skill change)", inline: true },
   { name: "tool_result", description: "Post-tool eval + commit tracking", inline: true },
-  { name: "message", description: "Prompt logging + auto-activate", inline: false },
+  { name: "message", description: "Prompt logging + auto-activate", inline: true },
   { name: "session_shutdown", description: "Session telemetry recording", inline: false },
 ];
 

@@ -26,7 +26,14 @@ import type {
 } from "./types.js";
 import { missingClaudeCodeHookKeys } from "./utils/hooks.js";
 
-const VALID_AGENT_TYPES = new Set(["claude_code", "codex", "opencode", "openclaw", "unknown"]);
+const VALID_AGENT_TYPES = new Set([
+  "claude_code",
+  "codex",
+  "opencode",
+  "openclaw",
+  "pi",
+  "unknown",
+]);
 const VALID_LLM_MODES = new Set(["agent"]);
 
 const LOG_FILES: Record<string, string> = {

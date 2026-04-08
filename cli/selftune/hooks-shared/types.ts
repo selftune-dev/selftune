@@ -83,6 +83,7 @@ export const PLATFORM_EVENT_MAP: Record<HookPlatform, Partial<Record<HookEventTy
     session_end: "TaskComplete",
   },
   pi: {
+    prompt_submit: "message",
     pre_tool_use: "tool_call",
     post_tool_use: "tool_result",
     session_end: "session_shutdown",
