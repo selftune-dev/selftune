@@ -4,8 +4,9 @@ description: >
   Self-improving skills toolkit that watches real agent sessions, detects missed
   triggers, grades execution quality, and evolves skill descriptions to match how
   users actually talk. Use when grading sessions, generating evals, evolving skill
-  descriptions or routing tables, checking skill health, viewing the dashboard,
-  ingesting sessions from other platforms, or running autonomous improvement loops.
+  descriptions or routing tables, discovering reusable workflows, scaffolding new
+  workflow skills, checking skill health, viewing the dashboard, ingesting sessions
+  from other platforms, or running autonomous improvement loops.
   Make sure to use this skill whenever the user mentions skill improvement, skill
   performance, skill triggers, skill evolution, skill health, undertriggering,
   overtriggering, session grading, or wants to know how their skills are doing —
@@ -19,7 +20,8 @@ metadata:
 # selftune
 
 Observe real agent sessions, detect missed triggers, grade execution quality,
-and evolve skill descriptions toward the language real users actually use.
+evolve skill descriptions toward the language real users actually use, and
+scaffold workflow skills from repeated telemetry patterns.
 
 **You are the operator.** The user installed this skill so YOU can manage their
 skill health autonomously. They will say things like "set up selftune",
@@ -113,7 +115,7 @@ selftune orchestrate [--dry-run] [--review-required] [--auto-approve] [--skill N
 selftune sync        [--since DATE] [--dry-run] [--force] [--no-claude] [--no-codex] [--no-opencode] [--no-openclaw] [--no-pi] [--no-repair] [--json]
 
 # Discovery + badges
-selftune workflows   [--skill NAME] [--skill-path PATH] [--min-occurrences N] [--window N] [--json] [save --skill NAME --skill-path PATH]
+selftune workflows   [--skill NAME] [--skill-path PATH] [--min-occurrences N] [--window N] [--json] [save <name-or-index> --skill-path PATH] [scaffold <name-or-index> --output-dir PATH --skill-name NAME --description TEXT --write --force]
 selftune badge       --skill <name> [--format svg|markdown|url] [--output PATH]
 
 # Maintenance
@@ -154,46 +156,46 @@ selftune status                                                        # shows c
 
 ## Workflow Routing
 
-| Trigger keywords                                                                                                                        | Workflow          | File                                  |
-| --------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------- |
-| grade, score, evaluate, assess session, auto-grade                                                                                      | Grade             | Workflows/Grade.md                    |
-| evals, eval set, undertriggering, skill stats, eval generate                                                                            | Evals             | Workflows/Evals.md                    |
-| evolve, improve, optimize skills, make skills better, triggers, catch more queries                                                      | Evolve            | Workflows/Evolve.md                   |
-| evolve body, evolve routing, full body evolution, rewrite skill, teacher student                                                        | EvolveBody        | Workflows/EvolveBody.md               |
-| evolve rollback, undo, restore, revert evolution, go back, undo last change                                                             | Rollback          | Workflows/Rollback.md                 |
-| watch, monitor, regression, post-deploy, keep an eye on                                                                                 | Watch             | Workflows/Watch.md                    |
-| doctor, health, hooks, broken, diagnose, not working, something wrong                                                                   | Doctor            | Workflows/Doctor.md                   |
-| ingest, import, codex logs, opencode, openclaw, pi, wrap codex                                                                          | Ingest            | Workflows/Ingest.md                   |
-| replay, backfill, claude transcripts, historical sessions                                                                               | Replay            | Workflows/Replay.md                   |
-| contributions, sharing preferences, opt in creator sharing, opt out creator sharing, approve contributions, revoke contributions, preview contributions, upload contributions, relay queue, contribution upload, contribution preview        | Contributions     | Workflows/Contributions.md            |
-| creator contributions, bundle contribution config, selftune.contribute.json, enable creator contribution, disable creator contribution, bulk enable creator contribution, enable all creator contributions, creator prefix config, --all, --prefix  | CreatorContributions | Workflows/CreatorContributions.md  |
-| contribute, share, community, export data, anonymized, give back                                                                        | Contribute        | Workflows/Contribute.md               |
-| init, setup, set up, bootstrap, first time, install, configure selftune, alpha, enroll, alpha enrollment, cloud link, upload credential | Initialize        | Workflows/Initialize.md               |
-| cron, schedule, automate evolution, run automatically                                                                                   | Cron              | Workflows/Cron.md                     |
-| auto-activate, suggestions, activation rules, nag, why suggest                                                                          | AutoActivation    | Workflows/AutoActivation.md           |
-| dashboard, visual, open dashboard, show dashboard, serve dashboard, live dashboard                                                      | Dashboard         | Workflows/Dashboard.md                |
-| evolution memory, session continuity, what happened last                                                                                | EvolutionMemory   | Workflows/EvolutionMemory.md          |
-| grade baseline, baseline lift, adds value, skill value, no-skill comparison                                                             | Baseline          | Workflows/Baseline.md                 |
-| eval unit-test, skill test, test skill, generate tests, run tests                                                                       | UnitTest          | Workflows/UnitTest.md                 |
-| eval composability, co-occurrence, skill conflicts, skills together, family overlap, sibling confusion, consolidate skill family      | Composability     | Workflows/Composability.md            |
-| eval import, skillsbench, external evals, benchmark tasks                                                                               | ImportSkillsBench | Workflows/ImportSkillsBench.md        |
-| telemetry, analytics, disable analytics, opt out, tracking, privacy                                                                     | Telemetry         | Workflows/Telemetry.md                |
-| orchestrate, autonomous, full loop, improve all skills, run selftune loop                                                               | Orchestrate       | Workflows/Orchestrate.md              |
-| sync, refresh, source truth, rescan sessions                                                                                            | Sync              | Workflows/Sync.md                     |
-| badge, readme badge, skill badge, health badge                                                                                          | Badge             | Workflows/Badge.md                    |
-| workflows, discover workflows, list workflows, multi-skill workflows                                                                    | Workflows         | Workflows/Workflows.md                |
-| alpha upload, upload data, send alpha data, manual upload, dry run upload                                                               | AlphaUpload       | Workflows/AlphaUpload.md              |
-| recover, rebuild sqlite, recover db, legacy backfill, restore from export snapshot                                                      | Recover           | Workflows/Recover.md                  |
-| quickstart, getting started, onboard, first time setup, new user                                                                        | Quickstart        | Workflows/Quickstart.md               |
-| uninstall, remove selftune, clean up, teardown                                                                                          | Uninstall         | Workflows/Uninstall.md                |
-| repair, rebuild usage, fix skill usage, trustworthy usage, repair-skill-usage                                                           | RepairSkillUsage  | Workflows/RepairSkillUsage.md         |
-| export canonical, canonical export, canonical telemetry, push payload                                                                   | ExportCanonical   | Workflows/ExportCanonical.md          |
-| hook, run hook, invoke hook, manual hook, debug hook                                                                                    | Hook              | Workflows/Hook.md                     |
-| codex hooks, codex install, codex setup, opencode hooks, opencode install, opencode setup, cline hooks, cline install, cline setup, pi hooks, pi install, pi setup, multi-platform, platform hooks, non-claude hooks, multiple agents, multi-agent | PlatformHooks     | Workflows/PlatformHooks.md            |
-| registry, distribute, push skill, install skill, sync skills, team skills, version control skills, rollback skill                       | Registry          | Workflows/Registry.md                 |
-| export, dump, jsonl, export sqlite, debug export                                                                                        | Export            | _(direct command — no workflow file)_ |
-| status, health summary, skill health, how are skills, skills doing, run selftune                                                        | Status            | _(direct command — no workflow file)_ |
-| last, last session, recent session, what happened, what changed                                                                         | Last              | _(direct command — no workflow file)_ |
+| Trigger keywords                                                                                                                                                                                                                                   | Workflow             | File                                  |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ------------------------------------- |
+| grade, score, evaluate, assess session, auto-grade                                                                                                                                                                                                 | Grade                | Workflows/Grade.md                    |
+| evals, eval set, undertriggering, skill stats, eval generate                                                                                                                                                                                       | Evals                | Workflows/Evals.md                    |
+| evolve, improve, optimize skills, make skills better, triggers, catch more queries                                                                                                                                                                 | Evolve               | Workflows/Evolve.md                   |
+| evolve body, evolve routing, full body evolution, rewrite skill, teacher student                                                                                                                                                                   | EvolveBody           | Workflows/EvolveBody.md               |
+| evolve rollback, undo, restore, revert evolution, go back, undo last change                                                                                                                                                                        | Rollback             | Workflows/Rollback.md                 |
+| watch, monitor, regression, post-deploy, keep an eye on                                                                                                                                                                                            | Watch                | Workflows/Watch.md                    |
+| doctor, health, hooks, broken, diagnose, not working, something wrong                                                                                                                                                                              | Doctor               | Workflows/Doctor.md                   |
+| ingest, import, codex logs, opencode, openclaw, pi, wrap codex                                                                                                                                                                                     | Ingest               | Workflows/Ingest.md                   |
+| replay, backfill, claude transcripts, historical sessions                                                                                                                                                                                          | Replay               | Workflows/Replay.md                   |
+| contributions, sharing preferences, opt in creator sharing, opt out creator sharing, approve contributions, revoke contributions, preview contributions, upload contributions, relay queue, contribution upload, contribution preview              | Contributions        | Workflows/Contributions.md            |
+| creator contributions, bundle contribution config, selftune.contribute.json, enable creator contribution, disable creator contribution, bulk enable creator contribution, enable all creator contributions, creator prefix config, --all, --prefix | CreatorContributions | Workflows/CreatorContributions.md     |
+| contribute, share, community, export data, anonymized, give back                                                                                                                                                                                   | Contribute           | Workflows/Contribute.md               |
+| init, setup, set up, bootstrap, first time, install, configure selftune, alpha, enroll, alpha enrollment, cloud link, upload credential                                                                                                            | Initialize           | Workflows/Initialize.md               |
+| cron, schedule, automate evolution, run automatically                                                                                                                                                                                              | Cron                 | Workflows/Cron.md                     |
+| auto-activate, suggestions, activation rules, nag, why suggest                                                                                                                                                                                     | AutoActivation       | Workflows/AutoActivation.md           |
+| dashboard, visual, open dashboard, show dashboard, serve dashboard, live dashboard                                                                                                                                                                 | Dashboard            | Workflows/Dashboard.md                |
+| evolution memory, session continuity, what happened last                                                                                                                                                                                           | EvolutionMemory      | Workflows/EvolutionMemory.md          |
+| grade baseline, baseline lift, adds value, skill value, no-skill comparison                                                                                                                                                                        | Baseline             | Workflows/Baseline.md                 |
+| eval unit-test, skill test, test skill, generate tests, run tests                                                                                                                                                                                  | UnitTest             | Workflows/UnitTest.md                 |
+| eval composability, co-occurrence, skill conflicts, skills together, family overlap, sibling confusion, consolidate skill family                                                                                                                   | Composability        | Workflows/Composability.md            |
+| eval import, skillsbench, external evals, benchmark tasks                                                                                                                                                                                          | ImportSkillsBench    | Workflows/ImportSkillsBench.md        |
+| telemetry, analytics, disable analytics, opt out, tracking, privacy                                                                                                                                                                                | Telemetry            | Workflows/Telemetry.md                |
+| orchestrate, autonomous, full loop, improve all skills, run selftune loop                                                                                                                                                                          | Orchestrate          | Workflows/Orchestrate.md              |
+| sync, refresh, source truth, rescan sessions                                                                                                                                                                                                       | Sync                 | Workflows/Sync.md                     |
+| badge, readme badge, skill badge, health badge                                                                                                                                                                                                     | Badge                | Workflows/Badge.md                    |
+| workflows, discover workflows, list workflows, multi-skill workflows, scaffold workflow skill, create workflow skill, build skill from logs                                                                                                        | Workflows            | Workflows/Workflows.md                |
+| alpha upload, upload data, send alpha data, manual upload, dry run upload                                                                                                                                                                          | AlphaUpload          | Workflows/AlphaUpload.md              |
+| recover, rebuild sqlite, recover db, legacy backfill, restore from export snapshot                                                                                                                                                                 | Recover              | Workflows/Recover.md                  |
+| quickstart, getting started, onboard, first time setup, new user                                                                                                                                                                                   | Quickstart           | Workflows/Quickstart.md               |
+| uninstall, remove selftune, clean up, teardown                                                                                                                                                                                                     | Uninstall            | Workflows/Uninstall.md                |
+| repair, rebuild usage, fix skill usage, trustworthy usage, repair-skill-usage                                                                                                                                                                      | RepairSkillUsage     | Workflows/RepairSkillUsage.md         |
+| export canonical, canonical export, canonical telemetry, push payload                                                                                                                                                                              | ExportCanonical      | Workflows/ExportCanonical.md          |
+| hook, run hook, invoke hook, manual hook, debug hook                                                                                                                                                                                               | Hook                 | Workflows/Hook.md                     |
+| codex hooks, codex install, codex setup, opencode hooks, opencode install, opencode setup, cline hooks, cline install, cline setup, pi hooks, pi install, pi setup, multi-platform, platform hooks, non-claude hooks, multiple agents, multi-agent | PlatformHooks        | Workflows/PlatformHooks.md            |
+| registry, distribute, push skill, install skill, sync skills, team skills, version control skills, rollback skill                                                                                                                                  | Registry             | Workflows/Registry.md                 |
+| export, dump, jsonl, export sqlite, debug export                                                                                                                                                                                                   | Export               | _(direct command — no workflow file)_ |
+| status, health summary, skill health, how are skills, skills doing, run selftune                                                                                                                                                                   | Status               | _(direct command — no workflow file)_ |
+| last, last session, recent session, what happened, what changed                                                                                                                                                                                    | Last                 | _(direct command — no workflow file)_ |
 
 Workflows Grade, Evolve, Watch, and Ingest also run autonomously via `selftune orchestrate`.
 
@@ -363,28 +365,28 @@ accomplish a task _using_ a skill, route to that skill instead.
 
 ## Resource Index
 
-| Resource                            | Purpose                                             | When to read                                    |
-| ----------------------------------- | --------------------------------------------------- | ----------------------------------------------- |
-| `SKILL.md`                          | This file — routing, triggers, quick reference      | Always loaded                                   |
-| `Workflows/*.md`                    | Step-by-step instructions for each workflow         | When routing to a workflow                      |
-| `agents/diagnosis-analyst.md`       | Deep-dive skill failure analysis                    | Spawn when doctor/grades show persistent issues |
-| `agents/pattern-analyst.md`         | Cross-skill conflict detection                      | Spawn when composability flags conflicts        |
-| `agents/evolution-reviewer.md`      | Safety gate for evolution proposals                 | Spawn before deploying high-stakes evolutions   |
-| `agents/integration-guide.md`       | Guided setup for complex projects                   | Spawn for monorepos, multi-skill setups         |
-| `Workflows/Quickstart.md`           | Guided onboarding: init, ingest, status             | First-time setup for new users                  |
-| `Workflows/Uninstall.md`            | Clean removal of selftune data and config           | When removing selftune completely               |
-| `Workflows/RepairSkillUsage.md`     | Rebuild skill usage from source transcripts         | When skill usage data seems inaccurate          |
-| `Workflows/Recover.md`              | Recover SQLite from legacy/exported JSONL           | When rebuilding or backfilling SQLite           |
-| `Workflows/Contributions.md`        | Manage creator-directed sharing preferences         | When approving or revoking creator contribution |
+| Resource                            | Purpose                                             | When to read                                             |
+| ----------------------------------- | --------------------------------------------------- | -------------------------------------------------------- |
+| `SKILL.md`                          | This file — routing, triggers, quick reference      | Always loaded                                            |
+| `Workflows/*.md`                    | Step-by-step instructions for each workflow         | When routing to a workflow                               |
+| `agents/diagnosis-analyst.md`       | Deep-dive skill failure analysis                    | Spawn when doctor/grades show persistent issues          |
+| `agents/pattern-analyst.md`         | Cross-skill conflict detection                      | Spawn when composability flags conflicts                 |
+| `agents/evolution-reviewer.md`      | Safety gate for evolution proposals                 | Spawn before deploying high-stakes evolutions            |
+| `agents/integration-guide.md`       | Guided setup for complex projects                   | Spawn for monorepos, multi-skill setups                  |
+| `Workflows/Quickstart.md`           | Guided onboarding: init, ingest, status             | First-time setup for new users                           |
+| `Workflows/Uninstall.md`            | Clean removal of selftune data and config           | When removing selftune completely                        |
+| `Workflows/RepairSkillUsage.md`     | Rebuild skill usage from source transcripts         | When skill usage data seems inaccurate                   |
+| `Workflows/Recover.md`              | Recover SQLite from legacy/exported JSONL           | When rebuilding or backfilling SQLite                    |
+| `Workflows/Contributions.md`        | Manage creator-directed sharing preferences         | When approving or revoking creator contribution          |
 | `Workflows/CreatorContributions.md` | Manage bundled `selftune.contribute.json` configs   | When preparing a skill package for creator contributions |
-| `Workflows/ExportCanonical.md`      | Export canonical telemetry for downstream use       | When exporting data for external consumption    |
-| `Workflows/Hook.md`                 | Manual hook invocation for debugging                | When debugging or testing hooks manually        |
-| `Workflows/PlatformHooks.md`        | Non-Claude-Code platform hook install/config        | When setting up Codex, OpenCode, Cline, or Pi hooks |
-| `references/logs.md`                | Log file formats (telemetry, usage, queries, audit) | When parsing or debugging log files             |
-| `references/grading-methodology.md` | 3-tier grading model, evidence standards            | When grading sessions or interpreting grades    |
-| `references/invocation-taxonomy.md` | 4 invocation types, coverage analysis               | When analyzing trigger coverage                 |
-| `references/interactive-config.md`  | Pre-flight config pattern, model tiers              | Before running mutating workflows               |
-| `references/setup-patterns.md`      | Platform-specific setup patterns                    | During complex setup scenarios                  |
-| `Workflows/Registry.md`            | Registry — team skill distribution commands         | When routing to registry workflow               |
-| `settings_snippet.json`             | Claude Code hook configuration template             | During initialization                           |
-| `assets/*.json`                     | Config templates (activation rules, settings)       | During initialization                           |
+| `Workflows/ExportCanonical.md`      | Export canonical telemetry for downstream use       | When exporting data for external consumption             |
+| `Workflows/Hook.md`                 | Manual hook invocation for debugging                | When debugging or testing hooks manually                 |
+| `Workflows/PlatformHooks.md`        | Non-Claude-Code platform hook install/config        | When setting up Codex, OpenCode, Cline, or Pi hooks      |
+| `references/logs.md`                | Log file formats (telemetry, usage, queries, audit) | When parsing or debugging log files                      |
+| `references/grading-methodology.md` | 3-tier grading model, evidence standards            | When grading sessions or interpreting grades             |
+| `references/invocation-taxonomy.md` | 4 invocation types, coverage analysis               | When analyzing trigger coverage                          |
+| `references/interactive-config.md`  | Pre-flight config pattern, model tiers              | Before running mutating workflows                        |
+| `references/setup-patterns.md`      | Platform-specific setup patterns                    | During complex setup scenarios                           |
+| `Workflows/Registry.md`             | Registry — team skill distribution commands         | When routing to registry workflow                        |
+| `settings_snippet.json`             | Claude Code hook configuration template             | During initialization                                    |
+| `assets/*.json`                     | Config templates (activation rules, settings)       | During initialization                                    |
