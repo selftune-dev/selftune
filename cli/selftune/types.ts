@@ -247,6 +247,40 @@ export interface EvalEntry {
   query: string;
   should_trigger: boolean;
   invocation_type?: InvocationType;
+  /** Provenance: where this eval entry originated */
+  source?: "synthetic" | "log" | "blended";
+  /** ISO timestamp when this eval entry was created */
+  created_at?: string;
+}
+
+/** Experimental execution eval entry — extends trigger evals with assertion-based validation. */
+export interface ExecutionEvalEntry extends EvalEntry {
+  /** Assertions to verify against the execution result */
+  assertions: ExecutionAssertion[];
+  /** Whether this entry requires a staged workspace */
+  requires_workspace?: boolean;
+  /** Experimental flag — must be explicitly opted into */
+  experimental: true;
+}
+
+export interface ExecutionAssertion {
+  /** What to check: file existence, content match, command output, etc. */
+  type: "file_exists" | "file_contains" | "command_output" | "skill_triggered" | "custom";
+  /** Target path, command, or skill name depending on type */
+  target: string;
+  /** Expected value or pattern (regex for content/output checks) */
+  expected?: string;
+  /** Whether the assertion is negated (must NOT match) */
+  negated?: boolean;
+}
+
+export interface EvalSourceStats {
+  total: number;
+  synthetic: number;
+  log: number;
+  blended: number;
+  oldest?: string;
+  newest?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -705,7 +739,7 @@ export interface BodyEvolutionProposal {
 /** Closed union of gate names used in the validation pipeline. */
 export type ValidationGate = "structural" | "trigger_accuracy" | "quality";
 
-export type ValidationMode = "structural_guard" | "host_replay" | "llm_judge";
+export type ValidationMode = "structural_guard" | "host_replay" | "fixture_replay" | "llm_judge";
 
 export interface RoutingReplayFixture {
   fixture_id: string;

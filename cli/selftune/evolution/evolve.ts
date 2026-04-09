@@ -9,6 +9,7 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
+import { PUBLIC_COMMAND_SURFACES, renderCommandHelp } from "../command-surface.js";
 import { QUERY_LOG, SKILL_LOG } from "../constants.js";
 import type { BaselineMeasurement } from "../eval/baseline.js";
 import { measureBaseline } from "../eval/baseline.js";
@@ -43,6 +44,11 @@ import { createEvolveTUI } from "../utils/tui.js";
 import { appendAuditEntry } from "./audit.js";
 import { checkConstitution } from "./constitutional.js";
 import { scoreDescription } from "./description-quality.js";
+import {
+  DEFAULT_VALIDATION_STRATEGY,
+  runValidationContract,
+  type ValidationStrategy,
+} from "./validation-contract.js";
 import { appendEvidenceEntry, buildValidationEvidenceRef } from "./evidence.js";
 import { extractFailurePatterns } from "./extract-patterns.js";
 import {
@@ -54,6 +60,11 @@ import {
 import { generateMultipleProposals, generateProposal } from "./propose-description.js";
 import { evaluateStoppingCriteria } from "./stopping-criteria.js";
 import { buildUnblockSuggestions } from "./unblock-suggestions.js";
+import type { ReplayValidationOptions, ReplayValidationResult } from "./engines/replay-engine.js";
+import {
+  buildRoutingReplayFixture,
+  runClaudeRuntimeReplayFixture,
+} from "./validate-host-replay.js";
 import type { ValidationResult } from "./validate-proposal.js";
 import {
   TRIGGER_CHECK_BATCH_SIZE,
@@ -87,6 +98,10 @@ export interface EvolveOptions {
   adaptiveGate?: boolean;
   syncFirst?: boolean;
   syncForce?: boolean;
+  /** Validation mode for description evolution: auto (default), replay, or judge. */
+  validationMode?: ValidationStrategy;
+  /** Replay engine options (fixture, runner) — passed through to replay validation. */
+  replayOptions?: ReplayValidationOptions;
 }
 
 export interface EvolveResult {
@@ -258,6 +273,90 @@ function resolveGateDecision(
 }
 
 // ---------------------------------------------------------------------------
+// Validation mode router
+// ---------------------------------------------------------------------------
+
+/**
+ * Route description validation to the correct engine based on the
+ * --validation-mode flag.
+ *
+ *   - "judge"  → LLM judge only (legacy path via validateProposal)
+ *   - "replay" → Replay engine only; throws if no fixture/runner available
+ *   - "auto"   → Try replay first, fall back to judge if unavailable
+ *
+ * Returns a ValidationResult and the actual mode used.
+ */
+export async function validateWithMode(
+  mode: ValidationStrategy,
+  proposal: EvolutionProposal,
+  evalSet: EvalEntry[],
+  agent: string,
+  replayOptions: ReplayValidationOptions | undefined,
+  validateFn: typeof validateProposal,
+  modelFlag?: string,
+): Promise<{
+  result: ValidationResult;
+  modeUsed: ValidationResult["validation_mode"] extends infer T ? Exclude<T, undefined> : never;
+}> {
+  return runValidationContract({
+    mode,
+    originalContent: proposal.original_description,
+    proposedContent: proposal.proposed_description,
+    evalSet,
+    agent,
+    replayOptions,
+    runJudge: async () => {
+      const result = await validateFn(proposal, evalSet, agent, modelFlag);
+      return { result, modeUsed: result.validation_mode ?? "llm_judge" };
+    },
+    adaptReplayResult: (replayResult) =>
+      adaptReplayResultToValidationResult(proposal, replayResult),
+    onReplayFallback: () => {
+      console.error("[evolve] Replay not available, falling back to LLM judge validation.");
+    },
+  });
+}
+
+function adaptReplayResultToValidationResult(
+  proposal: EvolutionProposal,
+  replayResult: ReplayValidationResult,
+): ValidationResult {
+  // Build a lookup from before-run results keyed by query
+  const beforeByQuery = new Map<string, boolean>();
+  for (const r of replayResult.before_entry_results ?? []) {
+    beforeByQuery.set(r.query, r.passed);
+  }
+
+  // Merge before + after into unified per_entry_results with both fields populated
+  const regressions: EvalEntry[] = [];
+  const newPasses: EvalEntry[] = [];
+  const perEntryResults = replayResult.per_entry_results?.map((result) => {
+    const beforePass = beforeByQuery.get(result.query) ?? false;
+    const afterPass = result.passed;
+    const entry: EvalEntry = { query: result.query, should_trigger: result.should_trigger };
+
+    if (beforePass && !afterPass) regressions.push(entry);
+    if (!beforePass && afterPass) newPasses.push(entry);
+
+    return { entry, before_pass: beforePass, after_pass: afterPass };
+  });
+
+  return {
+    proposal_id: proposal.proposal_id,
+    before_pass_rate: replayResult.before_pass_rate,
+    after_pass_rate: replayResult.after_pass_rate,
+    improved: replayResult.improved,
+    regressions,
+    new_passes: newPasses,
+    net_change: replayResult.after_pass_rate - replayResult.before_pass_rate,
+    validation_mode: replayResult.validation_mode,
+    validation_agent: replayResult.validation_agent,
+    validation_fixture_id: replayResult.validation_fixture_id,
+    per_entry_results: perEntryResults,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main orchestrator
 // ---------------------------------------------------------------------------
 
@@ -267,6 +366,7 @@ export async function evolve(
 ): Promise<EvolveResult> {
   const { skillName, skillPath, evalSetPath, agent, dryRun, confidenceThreshold, maxIterations } =
     options;
+  const effectiveValidationMode = options.validationMode ?? DEFAULT_VALIDATION_STRATEGY;
 
   // Apply cheap-loop defaults: cheap models for proposal/validation, expensive for gate
   if (options.cheapLoop) {
@@ -647,23 +747,29 @@ export async function evolve(
           continue;
         }
 
-        const validation = await _validateProposal(
+        const { result: validation, modeUsed: paretoModeUsed } = await validateWithMode(
+          effectiveValidationMode,
           proposal,
           evalSet,
           agent,
+          options.replayOptions,
+          _validateProposal,
           options.validationModel,
         );
-        llmCallCount += countValidationLlmCalls(evalSet.length);
+        if (paretoModeUsed === "llm_judge") {
+          llmCallCount += countValidationLlmCalls(evalSet.length);
+        }
         const evidenceRef = buildValidationEvidenceRef(proposal.proposal_id, "validated");
         recordAudit(
           proposal.proposal_id,
           "validated",
-          `Pareto validation: improved=${validation.improved}`,
+          `Pareto validation (${paretoModeUsed}): improved=${validation.improved}`,
           undefined,
           undefined,
           {
-            validation_mode: validation.validation_mode,
+            validation_mode: paretoModeUsed,
             validation_agent: validation.validation_agent,
+            validation_fixture_id: validation.validation_fixture_id,
             validation_evidence_ref: evidenceRef,
           },
         );
@@ -873,16 +979,21 @@ export async function evolve(
         // Step 10: Validate against eval set
         const batchCount = Math.ceil(evalSet.length / TRIGGER_CHECK_BATCH_SIZE);
         tui.step(
-          `Validating ${evalSet.length} entries (${batchCount} batches, ${VALIDATION_RUNS}x majority-vote)...`,
+          `Validating ${evalSet.length} entries (mode=${effectiveValidationMode}, ${batchCount} batches, ${VALIDATION_RUNS}x majority-vote)...`,
         );
-        const validation = await _validateProposal(
+        const { result: validation, modeUsed: retryModeUsed } = await validateWithMode(
+          effectiveValidationMode,
           proposal,
           evalSet,
           agent,
+          options.replayOptions,
+          _validateProposal,
           options.validationModel,
         );
         lastValidation = validation;
-        llmCallCount += countValidationLlmCalls(evalSet.length);
+        if (retryModeUsed === "llm_judge") {
+          llmCallCount += countValidationLlmCalls(evalSet.length);
+        }
         tui.done(
           `Validation: ${(validation.before_pass_rate * 100).toFixed(1)}% \u2192 ${(validation.after_pass_rate * 100).toFixed(1)}% (improved: ${validation.improved})`,
         );
@@ -898,12 +1009,13 @@ export async function evolve(
         recordAudit(
           proposal.proposal_id,
           "validated",
-          `Validation complete: improved=${validation.improved}`,
+          `Validation complete (${retryModeUsed}): improved=${validation.improved}`,
           evalSnapshot,
           undefined,
           {
-            validation_mode: validation.validation_mode,
+            validation_mode: retryModeUsed,
             validation_agent: validation.validation_agent,
+            validation_fixture_id: validation.validation_fixture_id,
             validation_evidence_ref: validatedEvidenceRef,
           },
         );
@@ -916,7 +1028,7 @@ export async function evolve(
           stage: "validated",
           rationale: proposal.rationale,
           confidence: proposal.confidence,
-          details: `Validation complete: improved=${validation.improved}`,
+          details: `Validation complete (${retryModeUsed}): improved=${validation.improved}`,
           validation: {
             improved: validation.improved,
             before_pass_rate: validation.before_pass_rate,
@@ -925,7 +1037,7 @@ export async function evolve(
             regressions: validation.regressions,
             new_passes: validation.new_passes,
             per_entry_results: validation.per_entry_results,
-            validation_mode: validation.validation_mode,
+            validation_mode: retryModeUsed,
             validation_agent: validation.validation_agent,
             validation_evidence_ref: validatedEvidenceRef,
           },
@@ -948,12 +1060,13 @@ export async function evolve(
           recordAudit(
             proposal.proposal_id,
             "rejected",
-            `Validation failed: net_change=${validation.net_change.toFixed(3)} (stopping: ${stopping.reason})`,
+            `Validation failed (${retryModeUsed}): net_change=${validation.net_change.toFixed(3)} (stopping: ${stopping.reason})`,
             undefined,
             undefined,
             {
-              validation_mode: validation.validation_mode,
+              validation_mode: retryModeUsed,
               validation_agent: validation.validation_agent,
+              validation_fixture_id: validation.validation_fixture_id,
               validation_evidence_ref: rejectedEvidenceRef,
             },
           );
@@ -966,7 +1079,7 @@ export async function evolve(
             stage: "rejected",
             rationale: proposal.rationale,
             confidence: proposal.confidence,
-            details: `Validation failed: net_change=${validation.net_change.toFixed(3)} (stopping: ${stopping.reason})`,
+            details: `Validation failed (${retryModeUsed}): net_change=${validation.net_change.toFixed(3)} (stopping: ${stopping.reason})`,
             validation: {
               improved: validation.improved,
               before_pass_rate: validation.before_pass_rate,
@@ -975,7 +1088,7 @@ export async function evolve(
               regressions: validation.regressions,
               new_passes: validation.new_passes,
               per_entry_results: validation.per_entry_results,
-              validation_mode: validation.validation_mode,
+              validation_mode: retryModeUsed,
               validation_agent: validation.validation_agent,
               validation_evidence_ref: rejectedEvidenceRef,
             },
@@ -998,7 +1111,18 @@ export async function evolve(
 
         // Validation passed — check if converged or continue
         if (stopping.shouldStop && stopping.reason.includes("Converged")) {
-          recordAudit(proposal.proposal_id, "validated", `Stopping early: ${stopping.reason}`);
+          recordAudit(
+            proposal.proposal_id,
+            "validated",
+            `Stopping early: ${stopping.reason}`,
+            undefined,
+            undefined,
+            {
+              validation_mode: retryModeUsed,
+              validation_agent: validation.validation_agent,
+              validation_fixture_id: validation.validation_fixture_id,
+            },
+          );
         }
 
         // Validation passed - break out of retry loop
@@ -1287,6 +1411,7 @@ export async function cliMain(): Promise<void> {
       "gate-effort": { type: "string" },
       "proposal-model": { type: "string" },
       "adaptive-gate": { type: "boolean", default: false },
+      "validation-mode": { type: "string", default: "auto" },
       "sync-first": { type: "boolean", default: false },
       "sync-force": { type: "boolean", default: false },
       verbose: { type: "boolean", default: false },
@@ -1296,34 +1421,7 @@ export async function cliMain(): Promise<void> {
   });
 
   if (values.help) {
-    console.log(`selftune evolve — Evolve a skill description via failure patterns
-
-Usage:
-  selftune evolve --skill <name> --skill-path <path> [options]
-
-Options:
-  --skill             Skill name (required)
-  --skill-path        Path to SKILL.md (required)
-  --eval-set          Path to eval set JSON (optional, builds from logs if omitted)
-  --agent             Agent CLI to use (claude, codex, opencode)
-  --dry-run           Validate proposal without deploying
-  --confidence        Confidence threshold 0.0-1.0 (default: 0.6)
-  --max-iterations    Max retry iterations (default: 3)
-  --pareto            Enable Pareto multi-candidate selection
-  --candidates        Number of candidates to generate (default: 3, max: 5)
-  --token-efficiency  Enable 5D Pareto with token efficiency scoring
-  --with-baseline     Gate deployment on baseline lift > 0.05
-  --validation-model  Model for trigger-check validation calls (default: haiku)
-  --cheap-loop        Use cheap models for loop, expensive for gate (default: on)
-  --full-model        Use same model for all stages (disables cheap-loop)
-  --gate-model        Model for final gate validation (default: sonnet)
-  --gate-effort       Thinking effort for final gate (low|medium|high|max)
-  --adaptive-gate     Escalate risky gate checks to opus + high effort
-  --proposal-model    Model for proposal generation LLM calls
-  --sync-first        Refresh source-truth telemetry before building evals/failure patterns
-  --sync-force        Force a full rescan during --sync-first
-  --verbose           Output full EvolveResult JSON (default: compact summary)
-  --help              Show this help message`);
+    console.log(renderCommandHelp(PUBLIC_COMMAND_SURFACES.evolve));
     process.exit(0);
   }
 
@@ -1332,6 +1430,16 @@ Options:
       "--skill and --skill-path are required",
       "MISSING_FLAG",
       "selftune evolve --skill <name> --skill-path <path>",
+    );
+  }
+  if (
+    values["validation-mode"] &&
+    !["auto", "replay", "judge"].includes(values["validation-mode"])
+  ) {
+    throw new CLIError(
+      `Invalid --validation-mode value: ${values["validation-mode"]}`,
+      "INVALID_FLAG",
+      "Use one of: auto, replay, judge",
     );
   }
   if ((values["sync-force"] ?? false) && !(values["sync-first"] ?? false)) {
@@ -1443,6 +1551,38 @@ Options:
     console.error(`[verbose] Gate effort: ${values["gate-effort"] ?? "(default)"}`);
   }
 
+  // Build replay options automatically (matching evolve-body.ts pattern)
+  let replayOptions: ReplayValidationOptions | undefined;
+  if (values["validation-mode"] !== "judge") {
+    try {
+      const replayFixture = buildRoutingReplayFixture({
+        skillName: values.skill,
+        skillPath: values["skill-path"],
+        platform: agent === "codex" ? "codex" : "claude_code",
+      });
+      const replayRunner =
+        replayFixture.platform === "claude_code" && agent === "claude"
+          ? async ({
+              routing,
+              evalSet,
+              fixture,
+            }: {
+              routing: string;
+              evalSet: EvalEntry[];
+              fixture: import("../types.js").RoutingReplayFixture;
+            }) =>
+              await runClaudeRuntimeReplayFixture({
+                routing,
+                evalSet,
+                fixture,
+              })
+          : undefined;
+      replayOptions = { replayFixture, ...(replayRunner ? { replayRunner } : {}) };
+    } catch {
+      // Replay fixture construction failed — will fall back to judge in auto mode
+    }
+  }
+
   const result = await evolve({
     skillName: values.skill,
     skillPath: values["skill-path"],
@@ -1465,6 +1605,9 @@ Options:
     gradingResults,
     syncFirst: values["sync-first"] ?? false,
     syncForce: values["sync-force"] ?? false,
+    validationMode:
+      (values["validation-mode"] as ValidationStrategy) ?? DEFAULT_VALIDATION_STRATEGY,
+    replayOptions,
   });
 
   if (values.verbose) {

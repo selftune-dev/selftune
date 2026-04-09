@@ -6,17 +6,14 @@
  * to determine whether the proposal is an improvement.
  */
 
-import type { EvalEntry, EvolutionProposal, InvocationTypeScores } from "../types.js";
+import type {
+  EvalEntry,
+  EvolutionProposal,
+  InvocationTypeScores,
+  ValidationMode,
+} from "../types.js";
 import { callLlm, type EffortLevel } from "../utils/llm-call.js";
-import {
-  buildBatchTriggerCheckPrompt,
-  buildTriggerCheckPrompt,
-  parseBatchTriggerResponse,
-  parseTriggerResponse,
-} from "../utils/trigger-check.js";
-
-// Re-export so existing consumers don't break
-export { buildTriggerCheckPrompt, parseTriggerResponse };
+import { buildBatchTriggerCheckPrompt, parseBatchTriggerResponse } from "../utils/trigger-check.js";
 
 /** Number of eval queries to batch into a single LLM call.
  * Higher = fewer claude -p spawns = much faster (each spawn has ~30-60s overhead).
@@ -40,147 +37,10 @@ export interface ValidationResult {
   net_change: number; // after - before pass rate
   by_invocation_type?: InvocationTypeScores;
   per_entry_results?: Array<{ entry: EvalEntry; before_pass: boolean; after_pass: boolean }>;
-  validation_mode?: "llm_judge";
+  validation_mode?: ValidationMode;
   validation_agent?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Proposal validation
-// ---------------------------------------------------------------------------
-
-/** Validate a proposal sequentially (one LLM call per query). Kept for backward compat. */
-export async function validateProposalSequential(
-  proposal: EvolutionProposal,
-  evalSet: EvalEntry[],
-  agent: string,
-  modelFlag?: string,
-  effort?: EffortLevel,
-): Promise<ValidationResult> {
-  if (evalSet.length === 0) {
-    return {
-      proposal_id: proposal.proposal_id,
-      before_pass_rate: 0,
-      after_pass_rate: 0,
-      improved: false,
-      regressions: [],
-      new_passes: [],
-      net_change: 0,
-      validation_mode: "llm_judge",
-      validation_agent: agent,
-    };
-  }
-
-  const systemPrompt = "You are an evaluation assistant. Answer only YES or NO.";
-  const regressions: EvalEntry[] = [];
-  const newPasses: EvalEntry[] = [];
-  const perEntryResults: Array<{ entry: EvalEntry; before_pass: boolean; after_pass: boolean }> =
-    [];
-  let beforePassed = 0;
-  let afterPassed = 0;
-
-  for (const entry of evalSet) {
-    // Check with original description
-    const beforePrompt = buildTriggerCheckPrompt(proposal.original_description, entry.query);
-    const beforeRaw = await callLlm(systemPrompt, beforePrompt, agent, modelFlag, effort);
-    const beforeTriggered = parseTriggerResponse(beforeRaw);
-    const beforePass =
-      (entry.should_trigger && beforeTriggered) || (!entry.should_trigger && !beforeTriggered);
-
-    // Check with proposed description
-    const afterPrompt = buildTriggerCheckPrompt(proposal.proposed_description, entry.query);
-    const afterRaw = await callLlm(systemPrompt, afterPrompt, agent, modelFlag, effort);
-    const afterTriggered = parseTriggerResponse(afterRaw);
-    const afterPass =
-      (entry.should_trigger && afterTriggered) || (!entry.should_trigger && !afterTriggered);
-
-    if (beforePass) beforePassed++;
-    if (afterPass) afterPassed++;
-
-    // Regression: passed before, fails after
-    if (beforePass && !afterPass) {
-      regressions.push(entry);
-    }
-
-    // New pass: failed before, passes after
-    if (!beforePass && afterPass) {
-      newPasses.push(entry);
-    }
-
-    perEntryResults.push({ entry, before_pass: beforePass, after_pass: afterPass });
-  }
-
-  const total = evalSet.length;
-  const beforePassRate = beforePassed / total;
-  const afterPassRate = afterPassed / total;
-  const netChange = afterPassRate - beforePassRate;
-
-  // A proposal is improved when ALL of:
-  //   - after_pass_rate > before_pass_rate
-  //   - regressions count < 5% of total eval entries
-  //   - Either net improvement >= 0.10 OR new_passes.length >= 2
-  const improved =
-    afterPassRate > beforePassRate &&
-    regressions.length < total * 0.05 &&
-    (netChange >= 0.1 || newPasses.length >= 2);
-
-  // Compute per-invocation-type scores (initialize all required keys)
-  const byInvocationType: Record<string, { passed: number; total: number }> = {
-    explicit: { passed: 0, total: 0 },
-    implicit: { passed: 0, total: 0 },
-    contextual: { passed: 0, total: 0 },
-    negative: { passed: 0, total: 0 },
-  };
-  for (const r of perEntryResults) {
-    const type = r.entry.invocation_type ?? "implicit";
-    if (!byInvocationType[type]) byInvocationType[type] = { passed: 0, total: 0 };
-    byInvocationType[type].total++;
-    if (r.after_pass) byInvocationType[type].passed++;
-  }
-
-  const invocationScores: InvocationTypeScores = {
-    explicit: {
-      ...byInvocationType.explicit,
-      pass_rate:
-        byInvocationType.explicit.total > 0
-          ? byInvocationType.explicit.passed / byInvocationType.explicit.total
-          : 0,
-    },
-    implicit: {
-      ...byInvocationType.implicit,
-      pass_rate:
-        byInvocationType.implicit.total > 0
-          ? byInvocationType.implicit.passed / byInvocationType.implicit.total
-          : 0,
-    },
-    contextual: {
-      ...byInvocationType.contextual,
-      pass_rate:
-        byInvocationType.contextual.total > 0
-          ? byInvocationType.contextual.passed / byInvocationType.contextual.total
-          : 0,
-    },
-    negative: {
-      ...byInvocationType.negative,
-      pass_rate:
-        byInvocationType.negative.total > 0
-          ? byInvocationType.negative.passed / byInvocationType.negative.total
-          : 0,
-    },
-  };
-
-  return {
-    proposal_id: proposal.proposal_id,
-    before_pass_rate: beforePassRate,
-    after_pass_rate: afterPassRate,
-    improved,
-    regressions,
-    new_passes: newPasses,
-    net_change: netChange,
-    by_invocation_type: invocationScores,
-    per_entry_results: perEntryResults,
-    validation_mode: "llm_judge",
-    validation_agent: agent,
-  };
+  validation_fixture_id?: string;
+  before_entry_results?: Array<{ entry: EvalEntry; before_pass: boolean; after_pass: boolean }>;
 }
 
 // ---------------------------------------------------------------------------

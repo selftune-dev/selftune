@@ -414,6 +414,8 @@ export function parseSyntheticResponse(raw: string, skillName: string): EvalEntr
       query,
       should_trigger: entry.should_trigger,
       invocation_type: invocationType,
+      source: "synthetic",
+      created_at: new Date().toISOString(),
     });
   }
 

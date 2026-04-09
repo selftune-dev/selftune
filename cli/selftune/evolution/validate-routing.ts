@@ -16,17 +16,8 @@ import type {
   ValidationMode,
 } from "../types.js";
 import { runJudgeValidation } from "./engines/judge-engine.js";
-import {
-  runReplayValidation,
-  type ReplayRunner,
-  type ReplayRunnerInput,
-  type ReplayValidationOptions,
-} from "./engines/replay-engine.js";
-
-// Re-export engine types for backward compatibility
-export type { ReplayRunnerInput as RoutingReplayRunnerInput };
-export type { ReplayRunner as RoutingReplayRunner };
-export type { ReplayValidationOptions as RoutingValidationOptions };
+import { type ReplayValidationOptions } from "./engines/replay-engine.js";
+import { runValidationContract } from "./validation-contract.js";
 
 export interface RoutingTriggerAccuracyResult {
   before_pass_rate: number;
@@ -122,35 +113,37 @@ export async function validateRoutingTriggerAccuracy(
     };
   }
 
-  // Try replay-backed validation first
-  const replayResult = await runReplayValidation(
-    originalRouting,
-    proposedRouting,
+  const { result } = await runValidationContract<RoutingTriggerAccuracyResult>({
+    mode: "auto",
+    originalContent: originalRouting,
+    proposedContent: proposedRouting,
     evalSet,
     agent,
-    options,
-  );
+    replayOptions: options,
+    runJudge: async () => {
+      const judgeResult = await runJudgeValidation(
+        originalRouting,
+        proposedRouting,
+        evalSet,
+        agent,
+        modelFlag,
+      );
 
-  if (replayResult) {
-    return replayResult;
-  }
+      return {
+        result: {
+          before_pass_rate: judgeResult.before_pass_rate,
+          after_pass_rate: judgeResult.after_pass_rate,
+          improved: judgeResult.improved,
+          validation_mode: judgeResult.validation_mode,
+          validation_agent: judgeResult.validation_agent,
+        },
+        modeUsed: judgeResult.validation_mode,
+      };
+    },
+    adaptReplayResult: (replayResult) => replayResult,
+  });
 
-  // Fall back to LLM judge
-  const judgeResult = await runJudgeValidation(
-    originalRouting,
-    proposedRouting,
-    evalSet,
-    agent,
-    modelFlag,
-  );
-
-  return {
-    before_pass_rate: judgeResult.before_pass_rate,
-    after_pass_rate: judgeResult.after_pass_rate,
-    improved: judgeResult.improved,
-    validation_mode: judgeResult.validation_mode,
-    validation_agent: judgeResult.validation_agent,
-  };
+  return result;
 }
 
 // ---------------------------------------------------------------------------

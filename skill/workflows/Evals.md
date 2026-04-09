@@ -39,6 +39,8 @@ selftune eval generate --skill <name> [options]
 | `--auto-synthetic`                 | Fall back to SKILL.md-based cold-start evals when no trusted triggers exist | Off                  |
 | `--skill-path <path>`              | Path to SKILL.md (required with `--synthetic`)        | —                                 |
 | `--model <model>`                  | LLM model to use for synthetic generation             | Agent default                     |
+| `--blend`                          | Blend log-based and synthetic evals into one set      | Off                               |
+| `--help`                           | Show command help                                     | Off                               |
 
 ## Output Format
 
@@ -49,17 +51,38 @@ selftune eval generate --skill <name> [options]
   {
     "query": "Make me a slide deck for the Q3 board meeting",
     "should_trigger": true,
-    "invocation_type": "contextual"
+    "invocation_type": "contextual",
+    "source": "log",
+    "created_at": "2026-04-01T12:00:00Z"
   },
   {
     "query": "What format should I use for a presentation?",
-    "should_trigger": false
+    "should_trigger": false,
+    "source": "synthetic"
   }
 ]
 ```
 
 Each entry has `query` (string, max 500 chars), `should_trigger` (boolean),
 and optional `invocation_type` (omitted when `--no-taxonomy` is set).
+
+Entries also carry optional provenance fields:
+
+- `source` — `"log"` (from real usage logs), `"synthetic"` (LLM-generated from SKILL.md), or `"blended"` (synthetic entry that survived dedup in a blended set)
+- `created_at` — ISO timestamp of when the entry was created
+
+Use `computeEvalSourceStats(entries)` to get aggregate provenance statistics:
+
+```json
+{
+  "total": 80,
+  "synthetic": 10,
+  "log": 50,
+  "blended": 20,
+  "oldest": "2026-03-01T00:00:00Z",
+  "newest": "2026-04-01T12:00:00Z"
+}
+```
 
 ### List Skills
 
@@ -180,6 +203,30 @@ Use `--model` to override the default LLM model:
 ```bash
 selftune eval generate --skill pptx --synthetic --skill-path ./skills/pptx/SKILL.md --model claude-sonnet-4-5-20250514
 ```
+
+### Generate Blended Evals
+
+When a skill has real log data but you want to fill coverage gaps with synthetic
+entries, use `--blend` to combine both sources into one eval set.
+
+```bash
+selftune eval generate --skill pptx --blend --skill-path /path/to/skills/pptx/SKILL.md
+```
+
+The blending policy:
+
+1. Keep ALL log-based entries (marked `source: "log"`)
+2. Generate synthetic entries from SKILL.md
+3. Deduplicate: drop any synthetic entry whose normalized Levenshtein distance to any log entry is < 0.3
+4. Mark surviving synthetic entries as `source: "blended"`
+5. Cap total entries at 2x the log-based count
+
+This preserves real-world boundary cases from logs while filling underrepresented
+invocation types with synthetic entries. The 2x cap prevents synthetic entries from
+overwhelming log signal.
+
+`--blend` requires a resolvable SKILL.md path. Use `--skill-path` or install the
+skill locally so selftune can find it.
 
 ### Generate Evals (Log-Based)
 

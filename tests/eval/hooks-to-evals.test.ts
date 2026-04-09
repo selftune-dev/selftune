@@ -4,12 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  blendEvalSets,
   buildEvalSet,
   classifyInvocation,
+  computeEvalSourceStats,
   listEvalSkillReadiness,
   MAX_QUERY_LENGTH,
 } from "../../cli/selftune/eval/hooks-to-evals.js";
-import type { QueryLogRecord, SkillUsageRecord } from "../../cli/selftune/types.js";
+import type { EvalEntry, QueryLogRecord, SkillUsageRecord } from "../../cli/selftune/types.js";
 
 let tmpDir: string;
 
@@ -205,6 +207,17 @@ describe("buildEvalSet", () => {
     const negatives = result.filter((e) => !e.should_trigger);
     expect(positives.length).toBe(2);
     expect(negatives.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("sets source='log' and valid created_at on all generated entries", () => {
+    const result = buildEvalSet(skillRecords, queryRecords, "pptx", 50, true, 42, true);
+    for (const entry of result) {
+      expect(entry.source).toBe("log");
+      expect(entry.created_at).toBeDefined();
+      // Verify created_at is a valid ISO string
+      const parsed = new Date(entry.created_at!);
+      expect(parsed.toISOString()).toBe(entry.created_at);
+    }
   });
 
   test("deduplicates positive queries", () => {
@@ -411,7 +424,10 @@ describe("buildEvalSet", () => {
   test("same seed produces same output (deterministic)", () => {
     const r1 = buildEvalSet(skillRecords, queryRecords, "pptx", 50, true, 42, true);
     const r2 = buildEvalSet(skillRecords, queryRecords, "pptx", 50, true, 42, true);
-    expect(r1).toEqual(r2);
+    // Strip created_at timestamps (vary by millisecond) before comparing determinism
+    const strip = (entries: typeof r1) =>
+      entries.map(({ created_at: _created_at, ...rest }) => rest);
+    expect(strip(r1)).toEqual(strip(r2));
   });
 
   test("different seeds produce different order", () => {
@@ -764,5 +780,181 @@ describe("listEvalSkillReadiness", () => {
     expect(coldStart?.raw_trigger_count).toBe(1);
     expect(coldStart?.trusted_session_count).toBe(0);
     expect(coldStart?.raw_session_count).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeEvalSourceStats
+// ---------------------------------------------------------------------------
+describe("computeEvalSourceStats", () => {
+  test("counts entries by source type", () => {
+    const entries: EvalEntry[] = [
+      { query: "a", should_trigger: true, source: "log", created_at: "2025-01-01T00:00:00.000Z" },
+      { query: "b", should_trigger: true, source: "log", created_at: "2025-01-02T00:00:00.000Z" },
+      {
+        query: "c",
+        should_trigger: false,
+        source: "synthetic",
+        created_at: "2025-01-03T00:00:00.000Z",
+      },
+      {
+        query: "d",
+        should_trigger: true,
+        source: "blended",
+        created_at: "2025-01-04T00:00:00.000Z",
+      },
+    ];
+    const stats = computeEvalSourceStats(entries);
+    expect(stats.total).toBe(4);
+    expect(stats.log).toBe(2);
+    expect(stats.synthetic).toBe(1);
+    expect(stats.blended).toBe(1);
+    expect(stats.oldest).toBe("2025-01-01T00:00:00.000Z");
+    expect(stats.newest).toBe("2025-01-04T00:00:00.000Z");
+  });
+
+  test("handles entries with no source or created_at", () => {
+    const entries: EvalEntry[] = [
+      { query: "a", should_trigger: true },
+      { query: "b", should_trigger: false, source: "log" },
+    ];
+    const stats = computeEvalSourceStats(entries);
+    expect(stats.total).toBe(2);
+    expect(stats.log).toBe(1);
+    expect(stats.synthetic).toBe(0);
+    expect(stats.blended).toBe(0);
+    expect(stats.oldest).toBeUndefined();
+    expect(stats.newest).toBeUndefined();
+  });
+
+  test("returns zeroes for empty array", () => {
+    const stats = computeEvalSourceStats([]);
+    expect(stats.total).toBe(0);
+    expect(stats.log).toBe(0);
+    expect(stats.synthetic).toBe(0);
+    expect(stats.blended).toBe(0);
+    expect(stats.oldest).toBeUndefined();
+    expect(stats.newest).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// blendEvalSets
+// ---------------------------------------------------------------------------
+describe("blendEvalSets", () => {
+  const logEntries: EvalEntry[] = [
+    { query: "use $pptx to make slides", should_trigger: true, source: "log" },
+    { query: "make a slide deck", should_trigger: true, source: "log" },
+    { query: "what is the weather?", should_trigger: false, source: "log" },
+  ];
+
+  const syntheticEntries: EvalEntry[] = [
+    { query: "create a presentation about cats", should_trigger: true, source: "synthetic" },
+    { query: "build slides for quarterly review", should_trigger: true, source: "synthetic" },
+    { query: "help me debug my code", should_trigger: false, source: "synthetic" },
+    { query: "generate a boundary edge case deck", should_trigger: true, source: "synthetic" },
+  ];
+
+  test("always preserves all log entries", () => {
+    const result = blendEvalSets(logEntries, syntheticEntries);
+    const logResults = result.filter((e) => e.source === "log");
+    expect(logResults.length).toBe(logEntries.length);
+    for (const logEntry of logEntries) {
+      expect(logResults.some((e) => e.query === logEntry.query)).toBe(true);
+    }
+  });
+
+  test("drops duplicate synthetic entries that are too similar to log entries", () => {
+    const nearDuplicateSynthetic: EvalEntry[] = [
+      // Identical to a log entry
+      { query: "use $pptx to make slides", should_trigger: true, source: "synthetic" },
+      // Very similar (minor edit)
+      { query: "make a slide deck!", should_trigger: true, source: "synthetic" },
+      // Genuinely different
+      {
+        query: "create a presentation about quantum physics",
+        should_trigger: true,
+        source: "synthetic",
+      },
+    ];
+    const result = blendEvalSets(logEntries, nearDuplicateSynthetic);
+    // The identical one and very similar one should be dropped
+    const blendedQueries = result.filter((e) => e.source === "blended").map((e) => e.query);
+    expect(blendedQueries).not.toContain("use $pptx to make slides");
+    // The genuinely different one should survive
+    expect(blendedQueries).toContain("create a presentation about quantum physics");
+  });
+
+  test("marks surviving synthetic entries as source: 'blended'", () => {
+    const result = blendEvalSets(logEntries, syntheticEntries);
+    const blendedEntries = result.filter((e) => e.source === "blended");
+    // All non-log entries that survived should be marked blended
+    const nonLogEntries = result.filter((e) => e.source !== "log");
+    expect(nonLogEntries.length).toBe(blendedEntries.length);
+    for (const entry of blendedEntries) {
+      expect(entry.source).toBe("blended");
+    }
+  });
+
+  test("caps total at 2x the log-based count", () => {
+    // 3 log entries, so max total = 6
+    const manySynthetic: EvalEntry[] = [];
+    for (let i = 0; i < 20; i++) {
+      manySynthetic.push({
+        query: `unique synthetic query number ${i} about completely different topics`,
+        should_trigger: true,
+        source: "synthetic",
+      });
+    }
+    const result = blendEvalSets(logEntries, manySynthetic);
+    expect(result.length).toBeLessThanOrEqual(logEntries.length * 2);
+    // All log entries should still be present
+    const logResults = result.filter((e) => e.source === "log");
+    expect(logResults.length).toBe(logEntries.length);
+  });
+
+  test("synthetic boundary entries survive when no similar log entry exists", () => {
+    const boundaryEntries: EvalEntry[] = [
+      { query: "x", should_trigger: true, source: "synthetic" },
+      { query: "a".repeat(450), should_trigger: true, source: "synthetic" },
+      { query: "!@#$%^&*() special chars boundary", should_trigger: false, source: "synthetic" },
+    ];
+    const result = blendEvalSets(logEntries, boundaryEntries);
+    const blendedQueries = result.filter((e) => e.source === "blended").map((e) => e.query);
+    // These are all very different from log entries, should survive (up to cap)
+    expect(blendedQueries.length).toBeGreaterThan(0);
+  });
+
+  test("handles empty synthetic entries", () => {
+    const result = blendEvalSets(logEntries, []);
+    expect(result.length).toBe(logEntries.length);
+    expect(result.every((e) => e.source === "log")).toBe(true);
+  });
+
+  test("handles empty log entries", () => {
+    const result = blendEvalSets([], syntheticEntries);
+    // 0 log entries => cap = 0, so no synthetic entries can be added
+    expect(result.length).toBe(0);
+  });
+
+  test("returns empty array when blending empty logs with synthetic (cold-start)", () => {
+    // This documents the cold-start behavior: blendEvalSets([], synthetics) => []
+    // The CLI layer should detect this and throw a CLIError (BLEND_NO_LOGS)
+    // rather than silently writing an empty eval set.
+    const synthOnly: EvalEntry[] = [
+      { query: "create a presentation about dogs", should_trigger: true, source: "synthetic" },
+      { query: "help me with my code", should_trigger: false, source: "synthetic" },
+    ];
+    const result = blendEvalSets([], synthOnly);
+    expect(result.length).toBe(0);
+  });
+
+  test("preserves should_trigger from original entries", () => {
+    const result = blendEvalSets(logEntries, syntheticEntries);
+    // Log entries should have their original should_trigger values
+    const logPositives = result.filter((e) => e.source === "log" && e.should_trigger);
+    const logNegatives = result.filter((e) => e.source === "log" && !e.should_trigger);
+    expect(logPositives.length).toBe(2);
+    expect(logNegatives.length).toBe(1);
   });
 });

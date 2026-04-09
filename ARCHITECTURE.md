@@ -80,7 +80,7 @@ flowchart LR
 | Cron Adapter      | `cli/selftune/cron/`                                                                     | Optional OpenClaw cron integration                                                    | B             |
 | Eval              | `cli/selftune/eval/`                                                                     | False-negative detection, eval generation, baseline, unit tests, composability        | B             |
 | Grading           | `cli/selftune/grading/`                                                                  | Three-tier session grading with deterministic pre-gates and agent-based evaluation    | B             |
-| Evolution         | `cli/selftune/evolution/`                                                                | Propose, structurally validate, runtime/fixture replay validate, deploy, audit, and rollback skill changes | B             |
+| Evolution         | `cli/selftune/evolution/`                                                                | Propose, structurally validate, runtime/fixture replay validate, deploy, audit, rollback, and shared validation-mode policy | B             |
 | Orchestrator      | `cli/selftune/orchestrate.ts`                                                            | Autonomy-first sync -> candidate selection -> evolve -> watch loop                    | B             |
 | Monitoring        | `cli/selftune/monitoring/`                                                               | Post-deploy regression detection and rollback triggers                                | B             |
 | Local DB          | `cli/selftune/localdb/`                                                                  | SQLite materialization and payload-oriented queries                                   | B             |
@@ -245,7 +245,7 @@ cli/selftune/
 ├── routes/               HTTP route handlers (extracted from dashboard-server)
 ├── eval/                 False-negative detection and eval generation
 ├── grading/              Session grading
-├── evolution/            Propose / validate / runtime-or-fixture replay-validate / deploy / rollback
+├── evolution/            Propose / validate / runtime-or-fixture replay-validate / deploy / rollback / shared validation contract
 ├── monitoring/           Post-deploy watch and rollback
 ├── localdb/              SQLite schema, materialization, queries
 ├── contribute/           Opt-in anonymized export

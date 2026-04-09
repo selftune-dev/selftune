@@ -500,6 +500,40 @@ export function writeCommitTracking(record: {
   });
 }
 
+// -- Grading baseline writer ---------------------------------------------------
+
+export interface GradingBaselineInput {
+  skill_name: string;
+  proposal_id: string | null;
+  measured_at: string;
+  pass_rate: number;
+  mean_score: number | null;
+  sample_size: number;
+  grading_results_json: string | null;
+}
+
+export function writeGradingBaseline(baseline: GradingBaselineInput): boolean {
+  return safeWrite("grading-baseline", (db) => {
+    getStmt(
+      db,
+      "grading-baseline",
+      `
+      INSERT INTO grading_baselines
+        (skill_name, proposal_id, measured_at, pass_rate, mean_score, sample_size, grading_results_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `,
+    ).run(
+      baseline.skill_name,
+      baseline.proposal_id ?? null,
+      baseline.measured_at,
+      baseline.pass_rate,
+      baseline.mean_score ?? null,
+      baseline.sample_size,
+      baseline.grading_results_json ?? null,
+    );
+  });
+}
+
 // -- Cron run audit writer -----------------------------------------------------
 
 export function writeCronRunToDb(

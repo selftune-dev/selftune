@@ -318,6 +318,7 @@ describe("autonomy proof: autonomous deploy end-to-end", () => {
       resolveSkillPath: (name) => (name === "test-autonomy" ? skillPath : undefined),
       readGradingResults: () => [],
       readAlphaIdentity: () => null,
+      buildReplayOptions: () => undefined,
       // This is the key: evolve() does real file I/O (backup + write SKILL.md), but we
       // control the LLM-dependent steps (pattern extraction, proposal, validation)
       // by returning deterministic results.
@@ -335,6 +336,7 @@ describe("autonomy proof: autonomous deploy end-to-end", () => {
             gateModel: undefined,
             proposalModel: undefined,
             validationModel: undefined,
+            validationMode: "judge",
           },
           {
             extractFailurePatterns: () => [makeFailurePattern()],

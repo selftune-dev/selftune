@@ -14,6 +14,8 @@ import { _setTestDb, openDb } from "../../cli/selftune/localdb/db.js";
 import {
   type SkillInvocationWriteInput,
   writeEvolutionAuditToDb,
+  writeGradingBaseline,
+  writeGradingResultToDb,
   writeQueryToDb,
   writeSessionTelemetryToDb,
   writeSkillCheckToDb,
@@ -960,5 +962,255 @@ describe("watch", () => {
       rebuildSkillUsage: true,
     });
     expect(result.sync_result?.repair.repaired_records).toBe(3);
+  });
+
+  // -- Grade regression tests -------------------------------------------------
+
+  test("grade regression detected when grade pass rate drops beyond threshold", async () => {
+    // Seed minimal trigger data (stable — no trigger regression)
+    const skillRecords = [
+      makeSkillUsageRecord({ skill_name: "my-skill", triggered: true }),
+      makeSkillUsageRecord({ skill_name: "my-skill", triggered: true }),
+      makeSkillUsageRecord({ skill_name: "my-skill", triggered: true }),
+      makeSkillUsageRecord({ skill_name: "my-skill", triggered: true }),
+    ];
+    const queryRecords = Array.from({ length: 5 }, () => makeQueryLogRecord());
+    const telemetry = Array.from({ length: 4 }, () =>
+      makeTelemetryRecord({ skills_triggered: ["my-skill"] }),
+    );
+    const auditEntries: EvolutionAuditEntry[] = [
+      {
+        timestamp: "2026-02-28T10:00:00Z",
+        proposal_id: "evo-my-skill-001",
+        action: "deployed",
+        details: "Deployed my-skill proposal",
+        eval_snapshot: { total: 10, passed: 8, failed: 2, pass_rate: 0.8 },
+      },
+    ];
+
+    seedTelemetry(telemetry);
+    seedSkillUsage(skillRecords);
+    seedQueries(queryRecords);
+    seedAudit(auditEntries);
+
+    // Write a high grading baseline scoped to the deployed proposal (pass_rate = 0.9)
+    writeGradingBaseline({
+      skill_name: "my-skill",
+      proposal_id: "evo-my-skill-001",
+      measured_at: "2026-02-28T09:00:00Z",
+      pass_rate: 0.9,
+      mean_score: null,
+      sample_size: 5,
+      grading_results_json: null,
+    });
+
+    // Write a recent grading result with low pass_rate (0.5) — delta = 0.4 > 0.15 threshold
+    writeGradingResultToDb({
+      session_id: "sess-grade-1",
+      skill_name: "my-skill",
+      transcript_path: "/tmp/transcript.jsonl",
+      graded_at: "2026-02-28T12:00:00Z",
+      expectations: [],
+      claims: [],
+      eval_feedback: { positive: [], negative: [], suggestions: [] },
+      execution_metrics: {
+        tool_calls: {},
+        total_tool_calls: 0,
+        total_steps: 0,
+        bash_commands_run: 0,
+        errors_encountered: 0,
+        skills_triggered: [],
+        transcript_chars: 0,
+      },
+      summary: {
+        total: 10,
+        passed: 5,
+        failed: 5,
+        pass_rate: 0.5,
+        mean_score: 0.5,
+      },
+    } as any);
+
+    const auditLogPath = writeJsonl(auditEntries);
+    const { watch } = await import("../../cli/selftune/monitoring/watch.js");
+
+    const result: WatchResult = await watch({
+      skillName: "my-skill",
+      skillPath: "/tmp/skills/my-skill/SKILL.md",
+      windowSessions: 20,
+      regressionThreshold: 0.1,
+      autoRollback: false,
+      enableGradeWatch: true,
+      _auditLogPath: auditLogPath,
+    } as unknown as WatchOptions);
+
+    expect(result.gradeAlert).not.toBeNull();
+    expect(result.gradeAlert).toContain("grade regression");
+    expect(result.gradeRegression).not.toBeNull();
+    expect(result.gradeRegression!.before).toBe(0.9);
+    expect(result.gradeRegression!.after).toBe(0.5);
+    expect(result.gradeRegression!.delta).toBeCloseTo(0.4, 2);
+  });
+
+  test("no grade alert when grades are stable", async () => {
+    const skillRecords = [
+      makeSkillUsageRecord({ skill_name: "my-skill", triggered: true }),
+      makeSkillUsageRecord({ skill_name: "my-skill", triggered: true }),
+      makeSkillUsageRecord({ skill_name: "my-skill", triggered: true }),
+      makeSkillUsageRecord({ skill_name: "my-skill", triggered: true }),
+    ];
+    const queryRecords = Array.from({ length: 5 }, () => makeQueryLogRecord());
+    const telemetry = Array.from({ length: 4 }, () =>
+      makeTelemetryRecord({ skills_triggered: ["my-skill"] }),
+    );
+    const auditEntries: EvolutionAuditEntry[] = [
+      {
+        timestamp: "2026-02-28T10:00:00Z",
+        proposal_id: "evo-my-skill-001",
+        action: "deployed",
+        details: "Deployed my-skill proposal",
+        eval_snapshot: { total: 10, passed: 8, failed: 2, pass_rate: 0.8 },
+      },
+    ];
+
+    seedTelemetry(telemetry);
+    seedSkillUsage(skillRecords);
+    seedQueries(queryRecords);
+    seedAudit(auditEntries);
+
+    // Write a baseline scoped to the deployed proposal with pass_rate = 0.8
+    writeGradingBaseline({
+      skill_name: "my-skill",
+      proposal_id: "evo-my-skill-001",
+      measured_at: "2026-02-28T09:00:00Z",
+      pass_rate: 0.8,
+      mean_score: null,
+      sample_size: 5,
+      grading_results_json: null,
+    });
+
+    // Write a recent grading result close to baseline (0.75) — delta = 0.05 < 0.15
+    writeGradingResultToDb({
+      session_id: "sess-grade-2",
+      skill_name: "my-skill",
+      transcript_path: "/tmp/transcript.jsonl",
+      graded_at: "2026-02-28T12:00:00Z",
+      expectations: [],
+      claims: [],
+      eval_feedback: { positive: [], negative: [], suggestions: [] },
+      execution_metrics: {
+        tool_calls: {},
+        total_tool_calls: 0,
+        total_steps: 0,
+        bash_commands_run: 0,
+        errors_encountered: 0,
+        skills_triggered: [],
+        transcript_chars: 0,
+      },
+      summary: {
+        total: 10,
+        passed: 7,
+        failed: 3,
+        pass_rate: 0.75,
+        mean_score: 0.75,
+      },
+    } as any);
+
+    const auditLogPath = writeJsonl(auditEntries);
+    const { watch } = await import("../../cli/selftune/monitoring/watch.js");
+
+    const result: WatchResult = await watch({
+      skillName: "my-skill",
+      skillPath: "/tmp/skills/my-skill/SKILL.md",
+      windowSessions: 20,
+      regressionThreshold: 0.1,
+      autoRollback: false,
+      enableGradeWatch: true,
+      _auditLogPath: auditLogPath,
+    } as unknown as WatchOptions);
+
+    expect(result.gradeAlert).toBeNull();
+    expect(result.gradeRegression).toBeNull();
+  });
+
+  test("default grade regression threshold is 0.15", async () => {
+    const skillRecords = [
+      makeSkillUsageRecord({ skill_name: "my-skill", triggered: true }),
+      makeSkillUsageRecord({ skill_name: "my-skill", triggered: true }),
+      makeSkillUsageRecord({ skill_name: "my-skill", triggered: true }),
+      makeSkillUsageRecord({ skill_name: "my-skill", triggered: true }),
+    ];
+    const queryRecords = Array.from({ length: 5 }, () => makeQueryLogRecord());
+    const telemetry = Array.from({ length: 4 }, () =>
+      makeTelemetryRecord({ skills_triggered: ["my-skill"] }),
+    );
+    const auditEntries: EvolutionAuditEntry[] = [
+      {
+        timestamp: "2026-02-28T10:00:00Z",
+        proposal_id: "evo-my-skill-001",
+        action: "deployed",
+        details: "Deployed",
+        eval_snapshot: { total: 10, passed: 8, failed: 2, pass_rate: 0.8 },
+      },
+    ];
+
+    seedTelemetry(telemetry);
+    seedSkillUsage(skillRecords);
+    seedQueries(queryRecords);
+    seedAudit(auditEntries);
+
+    // Baseline at 0.8 scoped to deployed proposal, recent at 0.66 — delta = 0.14 < 0.15 default threshold
+    writeGradingBaseline({
+      skill_name: "my-skill",
+      proposal_id: "evo-my-skill-001",
+      measured_at: "2026-02-28T09:00:00Z",
+      pass_rate: 0.8,
+      mean_score: null,
+      sample_size: 5,
+      grading_results_json: null,
+    });
+
+    writeGradingResultToDb({
+      session_id: "sess-grade-3",
+      skill_name: "my-skill",
+      transcript_path: "/tmp/transcript.jsonl",
+      graded_at: "2026-02-28T12:00:00Z",
+      expectations: [],
+      claims: [],
+      eval_feedback: { positive: [], negative: [], suggestions: [] },
+      execution_metrics: {
+        tool_calls: {},
+        total_tool_calls: 0,
+        total_steps: 0,
+        bash_commands_run: 0,
+        errors_encountered: 0,
+        skills_triggered: [],
+        transcript_chars: 0,
+      },
+      summary: {
+        total: 10,
+        passed: 6,
+        failed: 4,
+        pass_rate: 0.66,
+        mean_score: 0.66,
+      },
+    } as any);
+
+    const auditLogPath = writeJsonl(auditEntries);
+    const { watch } = await import("../../cli/selftune/monitoring/watch.js");
+
+    // Use default gradeRegressionThreshold (0.15) — delta 0.14 should NOT trigger
+    const result: WatchResult = await watch({
+      skillName: "my-skill",
+      skillPath: "/tmp/skills/my-skill/SKILL.md",
+      windowSessions: 20,
+      regressionThreshold: 0.1,
+      autoRollback: false,
+      enableGradeWatch: true,
+      _auditLogPath: auditLogPath,
+    } as unknown as WatchOptions);
+
+    expect(result.gradeAlert).toBeNull();
+    expect(result.gradeRegression).toBeNull();
   });
 });

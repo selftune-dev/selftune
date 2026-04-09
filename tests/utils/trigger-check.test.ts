@@ -172,19 +172,3 @@ describe("parseBatchTriggerResponse", () => {
     expect(parseBatchTriggerResponse(response, 3)).toEqual([false, false, false]);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Re-export from validate-proposal still works
-// ---------------------------------------------------------------------------
-
-describe("re-export from validate-proposal", () => {
-  test("validate-proposal re-exports buildTriggerCheckPrompt", async () => {
-    const mod = await import("../../cli/selftune/evolution/validate-proposal.js");
-    expect(typeof mod.buildTriggerCheckPrompt).toBe("function");
-  });
-
-  test("validate-proposal re-exports parseTriggerResponse", async () => {
-    const mod = await import("../../cli/selftune/evolution/validate-proposal.js");
-    expect(typeof mod.parseTriggerResponse).toBe("function");
-  });
-});

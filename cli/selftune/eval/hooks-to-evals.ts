@@ -23,6 +23,7 @@
 import { writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
+import { PUBLIC_COMMAND_SURFACES, renderCommandHelp } from "../command-surface.js";
 import { GENERIC_NEGATIVES, QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
 import { getDb } from "../localdb/db.js";
 import {
@@ -32,6 +33,7 @@ import {
 } from "../localdb/queries.js";
 import type {
   EvalEntry,
+  EvalSourceStats,
   InvocationType,
   QueryLogRecord,
   SessionTelemetryRecord,
@@ -144,6 +146,7 @@ export function buildEvalSet(
   const actionableQueryRecords = filterActionableQueryRecords(queryRecords);
   const effectiveMaxPerSide = Number.isNaN(maxPerSide) || maxPerSide <= 0 ? 50 : maxPerSide;
   const effectiveSeed = Number.isNaN(seed) ? 42 : seed;
+  const buildTimestamp = new Date().toISOString();
 
   // Build set of positive query texts (for exclusion from negatives)
   const positiveQueries = new Set<string>();
@@ -166,7 +169,12 @@ export function buildEvalSet(
     const q = (r.query ?? "").trim();
     if (!q || q === "(query not found)" || seen.has(q)) continue;
     seen.add(q);
-    const entry: EvalEntry = { query: truncateQuery(q), should_trigger: true };
+    const entry: EvalEntry = {
+      query: truncateQuery(q),
+      should_trigger: true,
+      source: "log",
+      created_at: buildTimestamp,
+    };
     if (annotateTaxonomy) {
       entry.invocation_type = classifyInvocation(q, skillName);
     }
@@ -189,7 +197,12 @@ export function buildEvalSet(
 
     const shuffledNeg = seededShuffle(negCandidates, effectiveSeed).slice(0, effectiveMaxPerSide);
     negatives = shuffledNeg.map((q) => {
-      const entry: EvalEntry = { query: truncateQuery(q), should_trigger: false };
+      const entry: EvalEntry = {
+        query: truncateQuery(q),
+        should_trigger: false,
+        source: "log",
+        created_at: buildTimestamp,
+      };
       if (annotateTaxonomy) {
         entry.invocation_type = "negative";
       }
@@ -202,7 +215,12 @@ export function buildEvalSet(
       const fallbacks: EvalEntry[] = [];
       for (const q of GENERIC_NEGATIVES) {
         if (negSeen.has(q) || positiveQueries.has(q)) continue;
-        const entry: EvalEntry = { query: q, should_trigger: false };
+        const entry: EvalEntry = {
+          query: q,
+          should_trigger: false,
+          source: "log",
+          created_at: buildTimestamp,
+        };
         if (annotateTaxonomy) {
           entry.invocation_type = "negative";
         }
@@ -213,6 +231,116 @@ export function buildEvalSet(
   }
 
   return [...shuffledPositives, ...negatives];
+}
+
+// ---------------------------------------------------------------------------
+// Normalized Levenshtein distance
+// ---------------------------------------------------------------------------
+
+function levenshteinDistance(a: string, b: string): number {
+  const la = a.length;
+  const lb = b.length;
+  if (la === 0) return lb;
+  if (lb === 0) return la;
+
+  // Use two-row optimization to keep memory O(min(la, lb))
+  let prev = Array.from<number>({ length: lb + 1 });
+  let curr = Array.from<number>({ length: lb + 1 });
+
+  for (let j = 0; j <= lb; j++) prev[j] = j;
+
+  for (let i = 1; i <= la; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= lb; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+
+  return prev[lb];
+}
+
+function normalizedLevenshtein(a: string, b: string): number {
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 0;
+  return levenshteinDistance(a, b) / maxLen;
+}
+
+// ---------------------------------------------------------------------------
+// Blend eval sets (log + synthetic)
+// ---------------------------------------------------------------------------
+
+/**
+ * Blend log-based and synthetic eval entries.
+ *
+ * Policy:
+ *   - Keep ALL log-based entries (source: "log")
+ *   - Add synthetic entries that cover gaps (boundary cases, underrepresented types)
+ *   - Deduplicate: drop synthetic if normalizedLevenshtein(synthetic, anyLog) < 0.3
+ *   - Mark surviving synthetic entries as source: "blended"
+ *   - Cap total at 2x the log-based count
+ */
+export function blendEvalSets(logEntries: EvalEntry[], syntheticEntries: EvalEntry[]): EvalEntry[] {
+  const result: EvalEntry[] = [...logEntries];
+  const logCount = logEntries.length;
+  const cap = logCount * 2;
+
+  if (logCount === 0 || syntheticEntries.length === 0) {
+    return result.slice(0, cap);
+  }
+
+  // Normalize log queries for comparison
+  const logQueries = logEntries.map((e) => e.query.toLowerCase().trim());
+
+  // Filter synthetic entries: drop those too similar to any log entry
+  const candidates: EvalEntry[] = [];
+  for (const synth of syntheticEntries) {
+    const synthNorm = synth.query.toLowerCase().trim();
+    let tooSimilar = false;
+    for (const logQ of logQueries) {
+      // Length pre-filter: skip Levenshtein if lengths differ by >70%
+      const maxLen = Math.max(synthNorm.length, logQ.length);
+      if (maxLen > 0 && Math.abs(synthNorm.length - logQ.length) / maxLen > 0.7) continue;
+      if (normalizedLevenshtein(synthNorm, logQ) < 0.3) {
+        tooSimilar = true;
+        break;
+      }
+    }
+    if (!tooSimilar) {
+      candidates.push({ ...synth, source: "blended" });
+    }
+  }
+
+  // Add candidates up to the cap
+  const slotsAvailable = cap - result.length;
+  result.push(...candidates.slice(0, slotsAvailable));
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Eval source stats
+// ---------------------------------------------------------------------------
+
+export function computeEvalSourceStats(entries: EvalEntry[]): EvalSourceStats {
+  const stats: EvalSourceStats = { total: entries.length, synthetic: 0, log: 0, blended: 0 };
+  const timestamps: string[] = [];
+
+  for (const entry of entries) {
+    if (entry.source === "synthetic") stats.synthetic++;
+    else if (entry.source === "log") stats.log++;
+    else if (entry.source === "blended") stats.blended++;
+    if (entry.created_at) timestamps.push(entry.created_at);
+  }
+
+  if (timestamps.length > 0) {
+    timestamps.sort();
+    stats.oldest = timestamps[0];
+    stats.newest = timestamps[timestamps.length - 1];
+  }
+
+  return stats;
 }
 
 // ---------------------------------------------------------------------------
@@ -505,11 +633,18 @@ export async function cliMain(): Promise<void> {
       "telemetry-log": { type: "string", default: TELEMETRY_LOG },
       synthetic: { type: "boolean", default: false },
       "auto-synthetic": { type: "boolean", default: false },
+      blend: { type: "boolean", default: false },
       "skill-path": { type: "string" },
       model: { type: "string" },
+      help: { type: "boolean", default: false },
     },
     strict: true,
   });
+
+  if (values.help) {
+    console.log(renderCommandHelp(PUBLIC_COMMAND_SURFACES.evalGenerate));
+    process.exit(0);
+  }
 
   // --- Synthetic mode: generate evals from SKILL.md via LLM ---
   if (values.synthetic) {
@@ -517,14 +652,14 @@ export async function cliMain(): Promise<void> {
       throw new CLIError(
         "--skill required with --synthetic",
         "MISSING_FLAG",
-        "selftune evals --synthetic --skill <name> --skill-path <path>",
+        "selftune eval generate --synthetic --skill <name> --skill-path <path>",
       );
     }
     if (!values["skill-path"]) {
       throw new CLIError(
         "--skill-path required with --synthetic",
         "MISSING_FLAG",
-        "selftune evals --synthetic --skill <name> --skill-path <path>",
+        "selftune eval generate --synthetic --skill <name> --skill-path <path>",
       );
     }
 
@@ -596,7 +731,7 @@ export async function cliMain(): Promise<void> {
     throw new CLIError(
       "--skill required (or use --list-skills)",
       "MISSING_FLAG",
-      "selftune evals --skill <name> or selftune evals --list-skills",
+      "selftune eval generate --skill <name> or selftune eval generate --list-skills",
     );
   }
 
@@ -666,9 +801,61 @@ export async function cliMain(): Promise<void> {
     return;
   }
 
+  // --- Blend mode: merge log-based evals with synthetic gap-fillers ---
+  let finalEvalSet = evalSet;
+  if (values.blend) {
+    const skillPath = values["skill-path"] ?? detectedSkillPath;
+    if (!skillPath) {
+      throw new CLIError(
+        `--blend requires a resolvable SKILL.md path. Use --skill-path or install the skill locally.`,
+        "MISSING_FLAG",
+        `selftune eval generate --skill ${values.skill} --blend --skill-path /path/to/SKILL.md`,
+      );
+    }
+
+    const agent = detectAgent();
+    if (!agent) {
+      throw new CLIError(
+        "No agent CLI found (claude/codex/opencode)",
+        "AGENT_NOT_FOUND",
+        "Install one of the supported agent CLIs",
+      );
+    }
+
+    // Fail fast before expensive LLM calls — blending with zero logs always produces []
+    if (evalSet.length === 0) {
+      throw new CLIError(
+        `--blend requires log-based eval entries to blend with synthetic entries. No log data found for skill "${values.skill}".`,
+        "BLEND_NO_LOGS",
+        `Use --synthetic instead for cold-start skills, or run selftune sync first to ingest session data.`,
+      );
+    }
+
+    const effectiveMax = Number.isNaN(maxPerSide) || maxPerSide <= 0 ? 50 : maxPerSide;
+    console.log(`Generating synthetic evals for blending with '${values.skill}'...`);
+    const syntheticEvalSet = await generateSyntheticEvals(skillPath, values.skill, agent, {
+      maxPositives: effectiveMax,
+      maxNegatives: effectiveMax,
+      modelFlag: values.model,
+    });
+
+    finalEvalSet = blendEvalSets(evalSet, syntheticEvalSet);
+    const stats = computeEvalSourceStats(finalEvalSet);
+    console.log(
+      `Blended: ${stats.log} log + ${stats.blended} synthetic gap-fillers = ${stats.total} total`,
+    );
+  }
+
   const outputPath = values.output ?? values.out ?? `${values.skill}_trigger_eval.json`;
-  writeFileSync(outputPath, JSON.stringify(evalSet, null, 2), "utf-8");
-  printEvalStats(evalSet, values.skill, outputPath, skillRecords, queryRecords, annotateTaxonomy);
+  writeFileSync(outputPath, JSON.stringify(finalEvalSet, null, 2), "utf-8");
+  printEvalStats(
+    finalEvalSet,
+    values.skill,
+    outputPath,
+    skillRecords,
+    queryRecords,
+    annotateTaxonomy,
+  );
   if (positiveCount === 0 && detectedSkillPath) {
     printSyntheticFallbackHint(values.skill, detectedSkillPath);
   }

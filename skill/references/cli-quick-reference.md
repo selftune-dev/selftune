@@ -17,19 +17,19 @@ selftune grade auto      --skill <name> [--expectations "..."] [--agent <name>]
 selftune grade baseline  --skill <name> --skill-path <path> [--eval-set <path>] [--agent <name>]
 
 # Evolve group
-selftune evolve          --skill <name> --skill-path <path> [--dry-run]
+selftune evolve          --skill <name> --skill-path <path> [--dry-run] [--validation-mode auto|replay|judge]
 selftune evolve body     --skill <name> --skill-path <path> --target <body|routing> [--dry-run]
 selftune evolve rollback --skill <name> --skill-path <path> [--proposal-id <id>]
 
 # Eval group
-selftune eval generate      --skill <name> [--list-skills] [--stats] [--max N] [--seed N] [--output PATH]
+selftune eval generate      --skill <name> [--list-skills] [--stats] [--max N] [--seed N] [--output PATH] [--blend]
 selftune eval unit-test      --skill <name> --tests <path> [--run-agent] [--generate]
 selftune eval import         --dir <path> --skill <name> --output <path> [--match-strategy exact|fuzzy]
 selftune eval composability  --skill <name> [--window N] [--telemetry-log <path>]
 selftune eval family-overlap --prefix <family-> | --skills <a,b,c> [--parent-skill <name>] [--min-overlap 0.3] [--min-shared 2]
 
 # Other commands
-selftune watch    --skill <name> --skill-path <path> [--auto-rollback]
+selftune watch    --skill <name> --skill-path <path> [--auto-rollback] [--grade-threshold N] [--no-grade-watch]
 selftune status
 selftune last
 selftune doctor

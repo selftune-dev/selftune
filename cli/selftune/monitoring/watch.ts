@@ -8,12 +8,15 @@
 
 import { parseArgs } from "node:util";
 
+import { PUBLIC_COMMAND_SURFACES, renderCommandHelp } from "../command-surface.js";
 import { QUERY_LOG, SKILL_LOG, TELEMETRY_LOG } from "../constants.js";
 import { classifyInvocation } from "../eval/hooks-to-evals.js";
 import { getLastDeployedProposal } from "../evolution/audit.js";
 import { getDb } from "../localdb/db.js";
 import {
+  queryGradingBaseline,
   queryQueryLog,
+  queryRecentGradingResults,
   querySessionTelemetry,
   querySkillUsageRecords,
 } from "../localdb/queries.js";
@@ -42,6 +45,10 @@ export interface WatchOptions {
   windowSessions: number;
   regressionThreshold: number;
   autoRollback: boolean;
+  /** Grade regression threshold (default 0.15). */
+  gradeRegressionThreshold?: number;
+  /** Enable grade-based regression watch (default true). */
+  enableGradeWatch?: boolean;
   /** Injected log paths for testing (override defaults). */
   _telemetryLogPath?: string;
   _skillLogPath?: string;
@@ -65,6 +72,8 @@ export interface WatchResult {
   rolledBack: boolean;
   recommendation: string;
   sync_result?: SyncResult;
+  gradeAlert?: string | null;
+  gradeRegression?: { before: number; after: number; delta: number } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,6 +82,7 @@ export interface WatchResult {
 
 const DEFAULT_BASELINE_PASS_RATE = 0.5;
 const DEFAULT_REGRESSION_THRESHOLD = 0.1;
+const DEFAULT_GRADE_REGRESSION_THRESHOLD = 0.15;
 export const MIN_MONITORING_SKILL_CHECKS = 3;
 
 // ---------------------------------------------------------------------------
@@ -190,6 +200,8 @@ export async function watch(options: WatchOptions): Promise<WatchResult> {
     skillPath,
     windowSessions = 20,
     regressionThreshold = DEFAULT_REGRESSION_THRESHOLD,
+    gradeRegressionThreshold = DEFAULT_GRADE_REGRESSION_THRESHOLD,
+    enableGradeWatch = true,
     autoRollback = false,
     _telemetryLogPath = TELEMETRY_LOG,
     _skillLogPath = SKILL_LOG,
@@ -266,6 +278,50 @@ export async function watch(options: WatchOptions): Promise<WatchResult> {
     recommendation = `Skill "${skillName}" is stable. Pass rate ${snapshot.pass_rate.toFixed(2)} is within acceptable range of baseline ${baselinePassRate.toFixed(2)}.`;
   }
 
+  // 5b. Grade regression detection (fail-open)
+  let gradeAlert: string | null = null;
+  let gradeRegression: { before: number; after: number; delta: number } | null = null;
+
+  if (enableGradeWatch) {
+    try {
+      const baseline = queryGradingBaseline(db, skillName, lastDeployed?.proposal_id);
+      const recentResults = queryRecentGradingResults(db, skillName, 10);
+
+      if (baseline && recentResults.length > 0) {
+        // Compute the average pass rate from recent grading results
+        const validResults = recentResults.filter((r) => r.pass_rate != null);
+        if (validResults.length > 0) {
+          const recentAvgPassRate =
+            validResults.reduce((sum, r) => sum + (r.pass_rate ?? 0), 0) / validResults.length;
+          const baselinePassRateGrade = baseline.pass_rate;
+          const delta = baselinePassRateGrade - recentAvgPassRate;
+
+          if (delta > gradeRegressionThreshold) {
+            gradeAlert = `grade regression detected for "${skillName}": baseline_grade_pass_rate=${baselinePassRateGrade.toFixed(2)}, recent_avg=${recentAvgPassRate.toFixed(2)}, delta=${delta.toFixed(2)} exceeds threshold=${gradeRegressionThreshold.toFixed(2)}`;
+            gradeRegression = {
+              before: baselinePassRateGrade,
+              after: recentAvgPassRate,
+              delta,
+            };
+            // Escalate to main alert if no trigger regression already detected
+            if (!alert) {
+              alert = gradeAlert;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      // Fail-open: grade watch should never block trigger monitoring
+      console.error(
+        JSON.stringify({
+          level: "debug",
+          code: "grade_watch_failed",
+          message: `Grade watch failed for "${skillName}": ${err instanceof Error ? err.message : String(err)}`,
+        }),
+      );
+    }
+  }
+
   // Update evolution memory (fail-open)
   try {
     updateContextAfterWatch(skillName, snapshot);
@@ -285,6 +341,8 @@ export async function watch(options: WatchOptions): Promise<WatchResult> {
     alert,
     rolledBack,
     recommendation,
+    gradeAlert,
+    gradeRegression,
     ...(syncResult ? { sync_result: syncResult } : {}),
   };
 }
@@ -329,6 +387,8 @@ export async function cliMain(): Promise<void> {
       window: { type: "string", default: "20" },
       threshold: { type: "string", default: "0.1" },
       "auto-rollback": { type: "boolean", default: false },
+      "grade-threshold": { type: "string", default: "0.15" },
+      "grade-watch": { type: "boolean", default: true },
       "sync-first": { type: "boolean", default: false },
       "sync-force": { type: "boolean", default: false },
       help: { type: "boolean", default: false },
@@ -337,20 +397,7 @@ export async function cliMain(): Promise<void> {
   });
 
   if (values.help) {
-    console.log(`selftune watch — Monitor post-deploy skill health
-
-Usage:
-  selftune watch --skill <name> --skill-path <path> [options]
-
-Options:
-  --skill             Skill name (required)
-  --skill-path        Path to SKILL.md (required)
-  --window            Number of recent sessions to consider (default: 20)
-  --threshold         Regression threshold below baseline (default: 0.1)
-  --auto-rollback     Automatically rollback on regression detection
-  --sync-first        Refresh source-truth telemetry before reading watch inputs
-  --sync-force        Force a full rescan during --sync-first
-  --help              Show this help message`);
+    console.log(renderCommandHelp(PUBLIC_COMMAND_SURFACES.watch));
     process.exit(0);
   }
 
@@ -403,11 +450,30 @@ Options:
     );
   }
 
+  const rawGradeThreshold = values["grade-threshold"] ?? "0.15";
+  if (!/^\d+(\.\d+)?$/.test(rawGradeThreshold)) {
+    throw new CLIError(
+      "--grade-threshold must be a finite number between 0 and 1.",
+      "INVALID_FLAG",
+      "selftune watch --grade-threshold 0.15",
+    );
+  }
+  const gradeRegressionThreshold = Number.parseFloat(rawGradeThreshold);
+  if (gradeRegressionThreshold < 0 || gradeRegressionThreshold > 1) {
+    throw new CLIError(
+      "--grade-threshold must be a finite number between 0 and 1.",
+      "INVALID_FLAG",
+      "selftune watch --grade-threshold 0.15",
+    );
+  }
+
   const result = await watch({
     skillName: values.skill,
     skillPath: values["skill-path"],
     windowSessions,
     regressionThreshold,
+    gradeRegressionThreshold,
+    enableGradeWatch: values["grade-watch"] ?? true,
     autoRollback: values["auto-rollback"] ?? false,
     syncFirst: values["sync-first"] ?? false,
     syncForce: values["sync-force"] ?? false,

@@ -19,7 +19,6 @@ import {
   buildGradingPrompt,
   buildGraduatedSummary,
   deriveExpectationsFromSkill,
-  detectAgent,
   findSession,
   GRADER_SYSTEM,
   latestSessionForSkill,
@@ -28,8 +27,8 @@ import {
   MAX_TRANSCRIPT_LENGTH,
   resolveLatestSessionForSkill,
   resolveSessionById,
-  stripMarkdownFences,
 } from "../../cli/selftune/grading/grade-session.js";
+import { detectAgent, stripMarkdownFences } from "../../cli/selftune/utils/llm-call.js";
 import type {
   GraderOutput,
   SessionTelemetryRecord,

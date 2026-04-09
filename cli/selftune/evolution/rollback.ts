@@ -25,7 +25,6 @@ export interface RollbackOptions {
   skillName: string;
   skillPath: string;
   proposalId?: string; // rollback specific proposal, or last deployed
-  logPath?: string; // deprecated — ignored, kept for backward compat
 }
 
 export interface RollbackResult {

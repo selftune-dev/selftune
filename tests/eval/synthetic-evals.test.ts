@@ -224,6 +224,20 @@ describe("parseSyntheticResponse invocation classification", () => {
     expect(result[0].invocation_type).toBe("negative");
   });
 
+  test("sets source='synthetic' and valid created_at on all parsed entries", () => {
+    const raw = JSON.stringify([
+      { query: "use $pptx to make slides", should_trigger: true, invocation_type: "explicit" },
+      { query: "what is the weather?", should_trigger: false, invocation_type: "negative" },
+    ]);
+    const result = parseSyntheticResponse(raw, "pptx");
+    for (const entry of result) {
+      expect(entry.source).toBe("synthetic");
+      expect(entry.created_at).toBeDefined();
+      const parsed = new Date(entry.created_at!);
+      expect(parsed.toISOString()).toBe(entry.created_at);
+    }
+  });
+
   test("classifies contextual queries with proper nouns", () => {
     const raw = JSON.stringify([
       {

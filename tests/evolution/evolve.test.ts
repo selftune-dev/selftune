@@ -7,7 +7,9 @@ import {
   type EvolveDeps,
   type EvolveOptions,
   evolve,
+  validateWithMode,
 } from "../../cli/selftune/evolution/evolve.js";
+import type { ReplayValidationOptions } from "../../cli/selftune/evolution/engines/replay-engine.js";
 import type { ValidationResult } from "../../cli/selftune/evolution/validate-proposal.js";
 import { _setTestDb, openDb } from "../../cli/selftune/localdb/db.js";
 import type {
@@ -739,6 +741,218 @@ describe("evolve orchestrator", () => {
 
     expect(gateModelUsed).toBe("sonnet");
     expect(gateEffortUsed).toBeUndefined();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Validation mode tests
+  // ---------------------------------------------------------------------------
+
+  test("--validation-mode judge uses judge engine (current behavior)", async () => {
+    let validateCalled = false;
+    mockValidateProposal.mockImplementation(async () => {
+      validateCalled = true;
+      return makeValidationResult({ validation_mode: "llm_judge" });
+    });
+
+    const opts = makeOptions({ validationMode: "judge" });
+    const result = await evolve(opts, makeDeps());
+
+    expect(validateCalled).toBe(true);
+    expect(result.deployed).toBe(true);
+    // Audit should record llm_judge
+    const validatedAudits = mockAppendAuditEntry.mock.calls.filter(
+      (call: unknown[]) => (call[0] as EvolutionAuditEntry).action === "validated",
+    );
+    expect(validatedAudits.length).toBeGreaterThanOrEqual(1);
+    const lastValidated = validatedAudits[validatedAudits.length - 1][0] as EvolutionAuditEntry;
+    expect(lastValidated.validation_mode).toBe("llm_judge");
+  });
+
+  test("--validation-mode auto falls back to judge when no replay fixture exists", async () => {
+    let validateCalled = false;
+    mockValidateProposal.mockImplementation(async () => {
+      validateCalled = true;
+      return makeValidationResult({ validation_mode: "llm_judge" });
+    });
+
+    // auto mode with no replayOptions provided -> should fall back to judge
+    const opts = makeOptions({ validationMode: "auto" });
+    const result = await evolve(opts, makeDeps());
+
+    expect(validateCalled).toBe(true);
+    expect(result.deployed).toBe(true);
+    // Audit should record llm_judge since replay was not available
+    const validatedAudits = mockAppendAuditEntry.mock.calls.filter(
+      (call: unknown[]) => (call[0] as EvolutionAuditEntry).action === "validated",
+    );
+    expect(validatedAudits.length).toBeGreaterThanOrEqual(1);
+    const lastValidated = validatedAudits[validatedAudits.length - 1][0] as EvolutionAuditEntry;
+    expect(lastValidated.validation_mode).toBe("llm_judge");
+  });
+
+  test("--validation-mode auto uses replay when replay fixture is available", async () => {
+    // Provide a replayOptions with a fixture and runner that succeeds
+    // The runner is called twice: once with original desc, once with proposed desc.
+    // Make the proposed run pass more entries so improved=true.
+    let runnerCallCount = 0;
+    const replayOptions: ReplayValidationOptions = {
+      replayFixture: {
+        fixture_id: "test-fixture",
+        platform: "claude_code",
+        target_skill_name: "test-skill",
+        target_skill_path: "/tmp/test/SKILL.md",
+        competing_skill_paths: [],
+      },
+      replayRunner: async (_input) => {
+        runnerCallCount++;
+        if (runnerCallCount === 1) {
+          // "before" run: 1 of 2 pass
+          return [
+            { query: "test query", should_trigger: true, triggered: false, passed: false },
+            { query: "unrelated", should_trigger: false, triggered: false, passed: true },
+          ];
+        }
+        // "after" run: 2 of 2 pass
+        return [
+          { query: "test query", should_trigger: true, triggered: true, passed: true },
+          { query: "unrelated", should_trigger: false, triggered: false, passed: true },
+        ];
+      },
+    };
+
+    // The judge validateProposal should NOT be called when replay succeeds
+    let judgeCalled = false;
+    mockValidateProposal.mockImplementation(async () => {
+      judgeCalled = true;
+      return makeValidationResult();
+    });
+
+    const opts = makeOptions({ validationMode: "auto", replayOptions });
+    const result = await evolve(opts, makeDeps());
+
+    expect(judgeCalled).toBe(false);
+    expect(result.deployed).toBe(true);
+    // Audit should record host_replay
+    const validatedAudits = mockAppendAuditEntry.mock.calls.filter(
+      (call: unknown[]) => (call[0] as EvolutionAuditEntry).action === "validated",
+    );
+    expect(validatedAudits.length).toBeGreaterThanOrEqual(1);
+    const lastValidated = validatedAudits[validatedAudits.length - 1][0] as EvolutionAuditEntry;
+    expect(lastValidated.validation_mode).toBe("host_replay");
+  });
+
+  test("--validation-mode replay fails gracefully when no fixture exists", async () => {
+    const opts = makeOptions({ validationMode: "replay" });
+    const result = await evolve(opts, makeDeps());
+
+    // Should fail with a clear error about replay being unavailable
+    expect(result.deployed).toBe(false);
+    expect(result.reason).toContain("Replay validation requested");
+  });
+
+  test("audit entry records actual validation_mode used", async () => {
+    // Use judge mode explicitly and verify audit records it
+    mockValidateProposal.mockImplementation(async () =>
+      makeValidationResult({ validation_mode: "llm_judge" }),
+    );
+
+    const opts = makeOptions({ validationMode: "judge" });
+    await evolve(opts, makeDeps());
+
+    // Check the deployed audit entry
+    const deployedAudits = mockAppendAuditEntry.mock.calls.filter(
+      (call: unknown[]) => (call[0] as EvolutionAuditEntry).action === "deployed",
+    );
+    expect(deployedAudits.length).toBe(1);
+    const deployedAudit = deployedAudits[0][0] as EvolutionAuditEntry;
+    expect(deployedAudit.validation_mode).toBe("llm_judge");
+  });
+
+  // ---------------------------------------------------------------------------
+  // validateWithMode unit tests
+  // ---------------------------------------------------------------------------
+
+  test("validateWithMode routes judge mode to validateFn", async () => {
+    const proposal = makeProposal();
+    const evalSet: EvalEntry[] = [{ query: "test", should_trigger: true }];
+    const mockFn = mock(async () => makeValidationResult());
+
+    const { result, modeUsed } = await validateWithMode(
+      "judge",
+      proposal,
+      evalSet,
+      "claude",
+      undefined,
+      mockFn,
+    );
+
+    expect(modeUsed).toBe("llm_judge");
+    expect(mockFn).toHaveBeenCalledTimes(1);
+    expect(result.proposal_id).toBe(proposal.proposal_id);
+  });
+
+  test("validateWithMode auto mode falls back to judge with no replay options", async () => {
+    const proposal = makeProposal();
+    const evalSet: EvalEntry[] = [{ query: "test", should_trigger: true }];
+    const mockFn = mock(async () => makeValidationResult());
+
+    const { modeUsed } = await validateWithMode(
+      "auto",
+      proposal,
+      evalSet,
+      "claude",
+      undefined,
+      mockFn,
+    );
+
+    expect(modeUsed).toBe("llm_judge");
+    expect(mockFn).toHaveBeenCalledTimes(1);
+  });
+
+  test("validateWithMode auto mode uses replay when fixture available", async () => {
+    const proposal = makeProposal();
+    const evalSet: EvalEntry[] = [{ query: "test", should_trigger: true }];
+    const mockFn = mock(async () => makeValidationResult());
+
+    let callCount = 0;
+    const replayOpts: ReplayValidationOptions = {
+      replayFixture: {
+        fixture_id: "f1",
+        platform: "claude_code",
+        target_skill_name: "test-skill",
+        target_skill_path: "/tmp/test/SKILL.md",
+        competing_skill_paths: [],
+      },
+      replayRunner: async () => {
+        callCount++;
+        return [
+          { query: "test", should_trigger: true, triggered: callCount > 1, passed: callCount > 1 },
+        ];
+      },
+    };
+
+    const { modeUsed } = await validateWithMode(
+      "auto",
+      proposal,
+      evalSet,
+      "claude",
+      replayOpts,
+      mockFn,
+    );
+
+    expect(modeUsed).toBe("host_replay");
+    // Judge should NOT have been called
+    expect(mockFn).toHaveBeenCalledTimes(0);
+  });
+
+  test("validateWithMode replay mode throws when no fixture", async () => {
+    const proposal = makeProposal();
+    const evalSet: EvalEntry[] = [{ query: "test", should_trigger: true }];
+    const mockFn = mock(async () => makeValidationResult());
+
+    expect(
+      validateWithMode("replay", proposal, evalSet, "claude", undefined, mockFn),
+    ).rejects.toThrow("Replay validation requested");
   });
 
   // 15. Retry feeds failure reason into subsequent proposal attempts

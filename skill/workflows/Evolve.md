@@ -42,8 +42,10 @@ selftune evolve --skill <name> --skill-path <path> [options]
 | `--gate-effort <level>`      | Thinking effort for the final gate (`low|medium|high|max`)              | None                           |
 | `--adaptive-gate`            | Escalate risky gate checks to `opus` + `high` effort                    | Off                            |
 | `--proposal-model <model>`   | Model for proposal generation LLM calls                                 | None                           |
+| `--validation-mode <mode>`   | Validation strategy: `auto`, `replay`, or `judge`                       | `auto`                         |
 | `--sync-first`               | Refresh source-truth telemetry before generating evals/failure patterns | Off                            |
 | `--sync-force`               | Force a full source rescan during `--sync-first`                        | Off                            |
+| `--help`                     | Show command help                                                       | Off                            |
 
 ## Output Format
 
@@ -88,6 +90,12 @@ auto-builds a replay fixture from the target skill plus installed sibling
 skills in the same registry, so replay-backed validation is preferred whenever
 that local fixture can be constructed because it captures host-style routing
 behavior instead of model judgment.
+
+Description, routing, and full-body evolution now share the same validation
+mode contract internally: `auto` prefers replay and falls back to judge,
+`replay` requires a replay path, and `judge` bypasses replay entirely. The
+public `--validation-mode` flag currently applies to description evolution;
+body/routing use the shared contract with `auto` semantics.
 
 For Claude Code, the replay path now stages a temporary project-local
 `.claude/skills` registry, swaps in the candidate routing table, and runs a
@@ -280,6 +288,38 @@ The candidate is tested against the full eval set:
 
 If validation fails, the command retries up to `--max-iterations` times
 with adjusted proposals.
+
+### Validation Mode (`--validation-mode`)
+
+The `--validation-mode` flag controls which validation engine is used for
+description proposals. Three modes are available:
+
+| Mode     | Behavior                                                                 |
+| -------- | ------------------------------------------------------------------------ |
+| `auto`   | Try replay-based validation first; fall back to LLM judge if unavailable |
+| `replay` | Replay engine only; error if no replay fixture or runner is available    |
+| `judge`  | LLM judge only (legacy path via `validateProposal`)                      |
+
+The default is `auto`, which provides the strongest available signal without
+requiring manual fixture configuration. When replay is available, it evaluates
+the candidate routing table against the installed skill surfaces in a controlled
+fixture and records per-entry evidence. When replay is not available, `auto`
+falls back to the LLM judge and logs the fallback.
+
+The actual mode used is recorded as `validation_mode` in audit entries
+(`llm_judge`, `host_replay`, or `structural_guard`), along with
+`validation_agent` and `validation_fixture_id` when applicable.
+
+```bash
+# Default: auto (replay-first, judge fallback)
+selftune evolve --skill pptx --skill-path ./skills/pptx/SKILL.md
+
+# Force replay only (error if unavailable)
+selftune evolve --skill pptx --skill-path ./skills/pptx/SKILL.md --validation-mode replay
+
+# Force judge only (legacy behavior)
+selftune evolve --skill pptx --skill-path ./skills/pptx/SKILL.md --validation-mode judge
+```
 
 ### Aggregate Metrics To Report
 

@@ -42,9 +42,6 @@ import {
 } from "../utils/transcript.js";
 import { type PreGateContext, runPreGates } from "./pre-gates.js";
 
-// Re-export for backward compatibility
-export { detectAgent, stripMarkdownFences } from "../utils/llm-call.js";
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------

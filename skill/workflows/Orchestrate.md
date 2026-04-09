@@ -50,6 +50,7 @@ proposalModel = haiku
 | `--max-auto-grade <n>`      | Max ungraded skills to auto-grade per run (0 to disable)   | `5`        |
 | `--loop`                    | Run as a long-lived process that cycles continuously       | Off        |
 | `--loop-interval <seconds>` | Pause between cycles (minimum 60)                          | `3600`     |
+| `--help`                    | Show command help                                          | Off        |
 
 ## Default Behavior
 
@@ -57,8 +58,10 @@ proposalModel = haiku
 - Auto-grade up to 5 ungraded skills that have session data (enables evolution on first run after ingest)
 - Prioritize critical/warning/ungraded skills with real missed-query signal
 - Deploy validated low-risk description changes automatically
+- Auto-grade and write grading baselines for freshly deployed skills
 - Generate review-first new skill proposals from strong workflow patterns
-- Watch recent deployments and roll back regressions automatically
+- Watch recent deployments (including freshly deployed skills in same run) and roll back regressions automatically
+- Monitor grade regression alongside trigger regression during watch
 - Upload personal telemetry to cloud (alpha users)
 - Flush staged creator-directed contribution signals for opted-in skills
 
@@ -114,6 +117,7 @@ Machine-readable JSON with the summary fields plus a `decisions` array containin
 - `skill`, `action`, `reason`
 - `deployed`, `evolveReason`, `validation` (before/after pass rates, improved flag) — when evolved
 - `alert`, `rolledBack`, `passRate`, `recommendation` — when watched
+- `freshlyWatchedSkills` — array of skill names that were deployed and watched in the same run
 
 This is the recommended runtime for recurring autonomous scheduling.
 
@@ -165,9 +169,11 @@ In autonomous mode, orchestrate calls sub-workflows in this fixed order:
 2. **Status** — compute skill health using existing grade results (reads `grading.json` outputs from previous sessions)
 3. **Auto-grade** — grade up to `--max-auto-grade` (default 5) ungraded skills that have session data but no grades yet. Skipped during `--dry-run` (grading makes LLM calls). After grading, status is recomputed so candidate selection sees updated grades. Fail-open: individual grading errors are logged but never block the loop.
 4. **Evolve** — run evolution on selected candidates (pre-flight is skipped; Pareto mode uses 3 candidates; cheap-loop uses `haiku` for proposal + validation and `sonnet` for the final gate; adaptive gate escalation promotes risky proposals to `opus` + `high` effort; baseline and token-efficiency stay off)
-5. **Watch** — monitor recently evolved skills (auto-rollback enabled by default, `--recent-window` hours lookback)
-6. **Workflow proposals** — discover repeated multi-skill patterns and create review-first `new_skill` proposals when a workflow is strong enough to merit codification. These are never auto-deployed; they are surfaced as proposals for review.
-7. **Alpha Upload** — if enrolled in the alpha program (`config.alpha.enrolled === true`) and an API key is configured, stage new canonical records (sessions, invocations, evolution evidence, orchestrate runs) into `canonical_upload_staging`, build V2 push payloads, and flush to the cloud API (`POST /api/v1/push`) with Bearer auth. Fail-open: upload errors never block the orchestrate loop. Respects `--dry-run`.
+5. **Post-deploy grade + baseline** — for each freshly deployed skill, grade the most recent session and write a grading baseline to SQLite (`grading_baselines` table). The baseline records the measured pass rate and sample size, anchoring future grade regression detection. Fail-open: individual grading errors are logged but never block the loop.
+6. **Watch** — monitor recently evolved skills (auto-rollback enabled by default, `--recent-window` hours lookback). Skills freshly deployed in this run are included in the watch set immediately, so they are monitored in the same orchestrate cycle rather than waiting for the next run. These appear in `freshlyWatchedSkills` in the output. Grade watch (`enableGradeWatch: true`) runs alongside trigger regression for all watched skills.
+7. **Workflow proposals** — discover repeated multi-skill patterns and create review-first `new_skill` proposals when a workflow is strong enough to merit codification. These are never auto-deployed; they are surfaced as proposals for review.
+8. **Alpha Upload** — if enrolled in the alpha program (`config.alpha.enrolled === true`) and an API key is configured, stage new canonical records (sessions, invocations, evolution evidence, orchestrate runs) into `canonical_upload_staging`, build V2 push payloads, and flush to the cloud API (`POST /api/v1/push`) with Bearer auth. Fail-open: upload errors never block the orchestrate loop. Respects `--dry-run`.
+9. **Contribution relay flush** — if an API key is configured, flush any staged creator-directed contribution signals for opted-in skills. Fail-open: relay errors never block the orchestrate loop. Respects `--dry-run`.
 
 When orchestrate invokes evolve for a selected candidate, it always passes
 `confidenceThreshold: 0.6` and `maxIterations: 3`, plus the autonomous evolve

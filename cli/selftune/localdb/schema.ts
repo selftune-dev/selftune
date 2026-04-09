@@ -231,6 +231,20 @@ CREATE TABLE IF NOT EXISTS grading_results (
   execution_metrics_json  TEXT
 )`;
 
+// -- Grading baselines table (pre/post deploy grade snapshots) ---------------
+
+export const CREATE_GRADING_BASELINES = `
+CREATE TABLE IF NOT EXISTS grading_baselines (
+  id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+  skill_name            TEXT NOT NULL,
+  proposal_id           TEXT,
+  measured_at           TEXT NOT NULL,
+  pass_rate             REAL NOT NULL,
+  mean_score            REAL,
+  sample_size           INTEGER NOT NULL,
+  grading_results_json  TEXT
+)`;
+
 // -- Improvement signal table (from signal_log.jsonl) ------------------------
 
 export const CREATE_IMPROVEMENT_SIGNALS = `
@@ -369,6 +383,11 @@ export const CREATE_INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_grading_skill ON grading_results(skill_name)`,
   `CREATE INDEX IF NOT EXISTS idx_grading_ts ON grading_results(graded_at)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_grading_dedup ON grading_results(session_id, skill_name, graded_at)`,
+  // -- Grading baseline indexes ------------------------------------------------
+  `CREATE INDEX IF NOT EXISTS idx_grading_bl_skill ON grading_baselines(skill_name)`,
+  `CREATE INDEX IF NOT EXISTS idx_grading_bl_proposal ON grading_baselines(proposal_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_grading_bl_ts ON grading_baselines(measured_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_grading_bl_skill_proposal ON grading_baselines(skill_name, proposal_id, measured_at)`,
   // -- Improvement signal indexes ---------------------------------------------
   `CREATE INDEX IF NOT EXISTS idx_signals_session ON improvement_signals(session_id)`,
   `CREATE INDEX IF NOT EXISTS idx_signals_consumed ON improvement_signals(consumed)`,
@@ -389,6 +408,7 @@ export const CREATE_INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_replay_entry_proposal ON replay_entry_results(proposal_id)`,
   `CREATE INDEX IF NOT EXISTS idx_replay_entry_skill ON replay_entry_results(skill_name)`,
   `CREATE INDEX IF NOT EXISTS idx_replay_entry_passed ON replay_entry_results(passed)`,
+  `CREATE INDEX IF NOT EXISTS idx_replay_entry_proposal_phase ON replay_entry_results(proposal_id, phase)`,
   // -- Commit tracking indexes ------------------------------------------------
   `CREATE INDEX IF NOT EXISTS idx_commit_sha ON commit_tracking(commit_sha)`,
   `CREATE INDEX IF NOT EXISTS idx_commit_session ON commit_tracking(session_id)`,
@@ -485,6 +505,7 @@ export const ALL_DDL = [
   CREATE_ORCHESTRATE_RUNS,
   CREATE_QUERIES,
   CREATE_GRADING_RESULTS,
+  CREATE_GRADING_BASELINES,
   CREATE_IMPROVEMENT_SIGNALS,
   CREATE_UPLOAD_QUEUE,
   CREATE_CREATOR_CONTRIBUTION_STAGING,

@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 
 import {
   type CanonicalPlatform,
@@ -36,12 +36,4 @@ export function serializeCanonicalRecords(records: CanonicalRecord[], pretty = f
   return (
     records.map((record) => JSON.stringify(record)).join("\n") + (records.length > 0 ? "\n" : "")
   );
-}
-
-export function writeCanonicalExport(
-  records: CanonicalRecord[],
-  outPath: string,
-  pretty = false,
-): void {
-  writeFileSync(outPath, serializeCanonicalRecords(records, pretty), "utf-8");
 }

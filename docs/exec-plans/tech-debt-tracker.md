@@ -35,6 +35,9 @@ Track known technical debt with priority and ownership.
 | TD-027 | Cloud V2 push API still rejects some alpha upload payloads from SQLite-backed staging (`HTTP 400 Invalid V2 push payload` with null string fields). Align cloud API schema/parsers with current OSS payload shape before expecting queue health to fully recover. | Cloud     | High     | —     | Open   | 2026-04-01 | 2026-04-01 |
 | TD-028 | Creator-directed relay client is now implemented locally, but the matching cloud relay ingest/storage path is still missing. Implement `POST /v1/signals` ingest, short-retention storage, aggregation thresholds, and creator-facing aggregate reads in the cloud repo.                     | Cloud     | High     | —     | Open   | 2026-04-01 | 2026-04-01 |
 | TD-029 | Creator onboarding for installed skills still relies too heavily on warm telemetry. Resolved: `selftune eval generate` now surfaces installed-skill readiness and supports `--auto-synthetic` cold-start fallback so pairing sessions (e.g. State Change skills) do not stall on missing history. | Eval      | High     | —     | Closed | 2026-04-01 | 2026-04-01 |
+| TD-030 | `writeSkillUsageToDb()` in `localdb/direct-write.ts` is deprecated in favor of `writeSkillCheckToDb()` but still has 16 active callers (all ingestors, hooks, repair, tests). Migrate callers then delete. | Data | Low | — | Open | 2026-04-09 | 2026-04-09 |
+| TD-031 | `recent_invocations` field in `dashboard-contract.ts` is deprecated but consumed by 12 files (frontend, API, tests). Remove after frontend migrates to `canonical_invocations`. | Dashboard | Low | — | Open | 2026-04-09 | 2026-04-09 |
+| TD-032 | Seven JSONL path constants in `constants.ts` are deprecated but still needed by materializer recovery and `selftune export`. Remove when recovery path migrates to SQLite-only. | Data | Low | — | Open | 2026-04-09 | 2026-04-09 |
 
 ## Priority Definitions
 

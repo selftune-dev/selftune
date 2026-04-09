@@ -20,6 +20,9 @@ selftune watch --skill <name> --skill-path <path> [options]
 | `--auto-rollback`     | Automatically rollback on detected regression    | Off      |
 | `--sync-first`        | Refresh source-truth telemetry before evaluating | Off      |
 | `--sync-force`        | Force a full source rescan during `--sync-first` | Off      |
+| `--grade-threshold <n>` | Grade regression threshold (drop from baseline)| 0.15     |
+| `--no-grade-watch`      | Disable grade-based regression monitoring        | Enabled  |
+| `--help`                | Show command help                               | Off      |
 
 ## Output Format
 
@@ -34,7 +37,22 @@ selftune watch --skill <name> --skill-path <path> [options]
   "regression_detected": false,
   "delta": -0.03,
   "status": "healthy",
-  "evaluated_at": "2026-02-28T14:00:00Z"
+  "evaluated_at": "2026-02-28T14:00:00Z",
+  "gradeAlert": null,
+  "gradeRegression": null
+}
+```
+
+When grade regression is detected, the additional fields are populated:
+
+```json
+{
+  "gradeAlert": "grade regression detected for \"pptx\": baseline_grade_pass_rate=0.85, recent_avg=0.65, delta=0.20 exceeds threshold=0.15",
+  "gradeRegression": {
+    "before": 0.85,
+    "after": 0.65,
+    "delta": 0.20
+  }
 }
 ```
 
@@ -46,6 +64,28 @@ selftune watch --skill <name> --skill-path <path> [options]
 | `warning`           | Pass rate dropped but within threshold            |
 | `regression`        | Pass rate dropped below baseline minus threshold  |
 | `insufficient_data` | Not enough sessions in the window to evaluate     |
+
+## Grade Regression Monitoring
+
+In addition to trigger-based regression (pass rate from eval sets), watch now
+monitors **grade regression** using grading baselines stored in SQLite.
+
+Grade regression compares the baseline grade pass rate (written when a skill is
+deployed) against the average pass rate of recent grading results. If the delta
+exceeds `gradeRegressionThreshold` (default 0.15), a `gradeAlert` is raised.
+
+This runs alongside trigger regression:
+
+| Check              | Source                      | Threshold | Field               |
+| ------------------ | --------------------------- | --------- | ------------------- |
+| Trigger regression | Eval set pass rates         | 0.10      | `regression_detected` |
+| Grade regression   | Grading baseline vs recent  | 0.15      | `gradeRegression`     |
+
+Both checks contribute to the overall `alert` field. A grade regression alert
+is appended to the watch alert string alongside any trigger regression alert.
+
+Grade watch is enabled by default. Disable it by passing `--no-grade-watch`
+if you only want trigger-based monitoring.
 
 ## Parsing Instructions
 

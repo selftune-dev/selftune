@@ -78,6 +78,9 @@ Runs the proposed description against the full eval set.
 - **Per-entry tracking**: Collects `per_entry_results` array during the validation loop
 - **Invocation type breakdown**: Computes `by_invocation_type` scores from per-entry results
 - **Cached validation**: `validateProposalCached` caches "before" results for efficiency across multiple candidates in the same Pareto run
+- **Shared validation contract**: `validation-contract.ts` now owns replay-first
+  vs judge fallback policy so description, routing, and body validation do not
+  each implement their own mode-selection logic
 
 ### 4. Pareto Selection (`evolution/pareto.ts`)
 
@@ -184,7 +187,7 @@ terminal failure for that candidate.
 
 ### Batch Trigger Validation
 
-Trigger checks are batched (10 queries per LLM call by default) via `validateProposalBatched()`. This reduces LLM calls from 2N to ~2\*(N/10). The sequential `validateProposalSequential()` is kept for backward compatibility.
+Trigger checks are batched (10 queries per LLM call by default) via `validateProposalBatched()`. This reduces LLM calls from 2N to ~2\*(N/10).
 
 ### Cheap-Loop Mode
 
@@ -337,7 +340,8 @@ Imports external evaluation tasks from the SkillsBench corpus:
 | `grading/pre-gates.ts`             | Deterministic pre-gate checks before LLM grading                                 |
 | `evolution/extract-patterns.ts`    | Cluster missed queries into failure patterns (with optional feedback attachment) |
 | `evolution/propose-description.ts` | LLM-based description improvement (single + multi-candidate)                     |
-| `evolution/validate-proposal.ts`   | Before/after eval set validation (with cached mode)                              |
+| `evolution/validation-contract.ts` | Shared replay-first/judge-fallback policy and validation-mode contract           |
+| `evolution/validate-proposal.ts`   | Before/after eval set validation (description judge path + replay adaptation)    |
 | `evolution/pareto.ts`              | Pareto frontier computation, candidate selection, token efficiency               |
 | `evolution/deploy-proposal.ts`     | SKILL.md description replacement, section parsing, body replacement              |
 | `evolution/evolve.ts`              | Description orchestrator with retry loop (standard + Pareto paths)               |

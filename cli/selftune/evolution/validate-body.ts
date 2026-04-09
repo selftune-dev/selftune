@@ -15,11 +15,13 @@ import type {
   BodyEvolutionProposal,
   BodyValidationResult,
   EvalEntry,
+  RoutingReplayEntryResult,
   ValidationMode,
 } from "../types.js";
 import { callLlm, stripMarkdownFences } from "../utils/llm-call.js";
 import { runJudgeValidation } from "./engines/judge-engine.js";
-import { runReplayValidation, type ReplayValidationOptions } from "./engines/replay-engine.js";
+import type { ReplayValidationOptions } from "./engines/replay-engine.js";
+import { runValidationContract } from "./validation-contract.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -112,45 +114,53 @@ export async function validateBodyTriggerAccuracy(
     };
   }
 
-  // Try replay-backed validation when options are provided
-  if (options?.replay) {
-    const replayResult = await runReplayValidation(
-      originalBody,
-      proposedBody,
-      evalSet,
-      agent,
-      options.replay,
-    );
-
-    if (replayResult) {
-      return {
-        before_pass_rate: replayResult.before_pass_rate,
-        after_pass_rate: replayResult.after_pass_rate,
-        improved: replayResult.improved,
-        regressions: [],
-        validation_mode: replayResult.validation_mode,
-        per_entry_results: replayResult.per_entry_results,
-        before_entry_results: replayResult.before_entry_results,
-      };
-    }
-  }
-
-  // Fall back to LLM judge
-  const judgeResult = await runJudgeValidation(
-    originalBody,
-    proposedBody,
+  const { result } = await runValidationContract<{
+    before_pass_rate: number;
+    after_pass_rate: number;
+    improved: boolean;
+    regressions: string[];
+    validation_mode: ValidationMode;
+    per_entry_results?: RoutingReplayEntryResult[];
+    before_entry_results?: RoutingReplayEntryResult[];
+  }>({
+    mode: "auto",
+    originalContent: originalBody,
+    proposedContent: proposedBody,
     evalSet,
     agent,
-    modelFlag,
-  );
+    replayOptions: options?.replay,
+    runJudge: async () => {
+      const judgeResult = await runJudgeValidation(
+        originalBody,
+        proposedBody,
+        evalSet,
+        agent,
+        modelFlag,
+      );
 
-  return {
-    before_pass_rate: judgeResult.before_pass_rate,
-    after_pass_rate: judgeResult.after_pass_rate,
-    improved: judgeResult.improved,
-    regressions: judgeResult.regressions,
-    validation_mode: judgeResult.validation_mode,
-  };
+      return {
+        result: {
+          before_pass_rate: judgeResult.before_pass_rate,
+          after_pass_rate: judgeResult.after_pass_rate,
+          improved: judgeResult.improved,
+          regressions: judgeResult.regressions,
+          validation_mode: judgeResult.validation_mode,
+        },
+        modeUsed: judgeResult.validation_mode,
+      };
+    },
+    adaptReplayResult: (replayResult) => ({
+      before_pass_rate: replayResult.before_pass_rate,
+      after_pass_rate: replayResult.after_pass_rate,
+      improved: replayResult.improved,
+      regressions: [],
+      validation_mode: replayResult.validation_mode,
+      per_entry_results: replayResult.per_entry_results,
+      before_entry_results: replayResult.before_entry_results,
+    }),
+  });
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------

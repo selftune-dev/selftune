@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,7 +8,6 @@ import {
   filterCanonicalRecords,
   readCanonicalRecords,
   serializeCanonicalRecords,
-  writeCanonicalExport,
 } from "../../cli/selftune/utils/canonical-log.js";
 
 describe("canonical-log utils", () => {
@@ -83,28 +82,22 @@ describe("canonical-log utils", () => {
     expect(serialized.endsWith("\n")).toBe(true);
   });
 
-  test("writes pretty exports", () => {
-    const dir = mkdtempSync(join(tmpdir(), "selftune-canonical-export-"));
-    const outPath = join(dir, "export.json");
-    writeCanonicalExport(
-      [
-        {
-          record_kind: "session",
-          schema_version: CANONICAL_SCHEMA_VERSION,
-          normalizer_version: "1.0.0",
-          normalized_at: "2026-03-10T10:00:00.000Z",
-          platform: "codex",
-          capture_mode: "batch_ingest",
-          source_session_kind: "replayed",
-          session_id: "sess-2",
-          raw_source_ref: { path: "/tmp/rollout.jsonl" },
-        },
-      ],
-      outPath,
-      true,
-    );
+  test("serializes pretty format", () => {
+    const records = [
+      {
+        record_kind: "session",
+        schema_version: CANONICAL_SCHEMA_VERSION,
+        normalizer_version: "1.0.0",
+        normalized_at: "2026-03-10T10:00:00.000Z",
+        platform: "codex",
+        capture_mode: "batch_ingest",
+        source_session_kind: "replayed",
+        session_id: "sess-2",
+        raw_source_ref: { path: "/tmp/rollout.jsonl" },
+      },
+    ] as const;
 
-    expect(readFileSync(outPath, "utf-8")).toContain('"record_kind": "session"');
-    rmSync(dir, { recursive: true, force: true });
+    const pretty = serializeCanonicalRecords([...records], true);
+    expect(pretty).toContain('"record_kind": "session"');
   });
 });

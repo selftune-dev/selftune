@@ -18,14 +18,11 @@ mock.module("../../cli/selftune/utils/llm-call.js", () => ({
 }));
 
 // Import after mocking
-const {
-  buildTriggerCheckPrompt,
-  parseTriggerResponse,
-  validateProposal,
-  validateProposalSequential,
-  validateProposalBatched,
-  TRIGGER_CHECK_BATCH_SIZE,
-} = await import("../../cli/selftune/evolution/validate-proposal.js");
+const { validateProposal, validateProposalBatched, TRIGGER_CHECK_BATCH_SIZE } =
+  await import("../../cli/selftune/evolution/validate-proposal.js");
+
+const { buildTriggerCheckPrompt, parseTriggerResponse } =
+  await import("../../cli/selftune/utils/trigger-check.js");
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -441,44 +438,5 @@ describe("validateProposalBatched", () => {
     await validateProposalBatched(proposal, [makeEval("q", true)], "claude", "haiku");
 
     expect(capturedModel).toBe("haiku");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// validateProposalSequential — backward compat
-// ---------------------------------------------------------------------------
-
-describe("validateProposalSequential", () => {
-  test("exists and works with single-query mocking", async () => {
-    mockCallLlm.mockImplementation(async () => "NO");
-
-    const proposal = makeProposal();
-    const evalSet: EvalEntry[] = [makeEval("test query", true)];
-
-    const result = await validateProposalSequential(proposal, evalSet, "claude");
-
-    expect(result.proposal_id).toBe("prop-test-001");
-    expect(typeof result.before_pass_rate).toBe("number");
-  });
-
-  test("makes 2 calls per eval entry (not batched)", async () => {
-    let callCount = 0;
-    mockCallLlm.mockImplementation(async () => {
-      callCount++;
-      return "NO";
-    });
-
-    const evalSet: EvalEntry[] = [
-      makeEval("q1", true),
-      makeEval("q2", true),
-      makeEval("q3", false),
-    ];
-
-    callCount = 0;
-    const proposal = makeProposal();
-    await validateProposalSequential(proposal, evalSet, "claude");
-
-    // 3 entries * 2 calls each = 6
-    expect(callCount).toBe(6);
   });
 });

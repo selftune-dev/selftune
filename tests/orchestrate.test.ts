@@ -372,6 +372,16 @@ describe("orchestrate", () => {
     expect(syncCalled).toBe(true);
   });
 
+  test("preserves the original failure when orchestration throws", async () => {
+    const deps = makeDeps({
+      syncSources: () => {
+        throw new Error("sync exploded");
+      },
+    });
+
+    await expect(orchestrate(baseOptions, deps)).rejects.toThrow("sync exploded");
+  });
+
   test("returns summary with correct counts for empty skill list", async () => {
     const result = await orchestrate(baseOptions, makeDeps());
     expect(result.summary.totalSkills).toBe(0);
@@ -555,6 +565,87 @@ describe("orchestrate", () => {
     expect(result.summary.watched).toBe(1);
   });
 
+  test("freshly evolved and deployed skills are watched in the same run", async () => {
+    let watchCalledFor: string[] = [];
+    // First call to readAuditEntries (for candidate selection) returns empty;
+    // subsequent calls (after evolve) return the newly deployed entry.
+    let auditCallCount = 0;
+    const deps = makeDeps({
+      computeStatus: () =>
+        makeStatusResult([
+          makeSkill({ name: "FreshSkill", status: "CRITICAL", passRate: 0.2, missedQueries: 5 }),
+        ]),
+      evolve: async () => ({
+        proposal: null,
+        validation: null,
+        deployed: true,
+        auditEntries: [
+          {
+            timestamp: new Date().toISOString(),
+            proposal_id: "p-fresh",
+            action: "deployed" as const,
+            details: "deployed FreshSkill",
+            skill_name: "FreshSkill",
+          },
+        ],
+        reason: "improvement found",
+        llmCallCount: 2,
+        elapsedMs: 200,
+      }),
+      readAuditEntries: () => {
+        auditCallCount++;
+        // First call is for candidate selection — no recent deploys
+        if (auditCallCount <= 1) return [];
+        // After evolve, return the freshly deployed entry
+        return [
+          {
+            timestamp: new Date().toISOString(),
+            proposal_id: "p-fresh",
+            action: "deployed" as const,
+            details: "deployed FreshSkill",
+            skill_name: "FreshSkill",
+          },
+        ];
+      },
+      watch: async (opts) => {
+        watchCalledFor.push(opts.skillName);
+        return {
+          snapshot: {
+            timestamp: new Date().toISOString(),
+            skill_name: opts.skillName,
+            window_sessions: 20,
+            skill_checks: 10,
+            pass_rate: 0.85,
+            false_negative_rate: 0.1,
+            by_invocation_type: {
+              explicit: { passed: 5, total: 5 },
+              implicit: { passed: 3, total: 5 },
+              contextual: { passed: 0, total: 0 },
+              negative: { passed: 0, total: 0 },
+            },
+            regression_detected: false,
+            baseline_pass_rate: 0.8,
+          },
+          alert: null,
+          rolledBack: false,
+          recommendation: "stable",
+          gradeAlert: null,
+          gradeRegression: null,
+        };
+      },
+    });
+
+    const result = await orchestrate(baseOptions, deps);
+
+    // FreshSkill should be watched in the same run
+    expect(watchCalledFor).toContain("FreshSkill");
+    expect(result.summary.freshlyWatchedSkills).toContain("FreshSkill");
+    // The evolve candidate should have watchResult attached
+    const freshCandidate = result.candidates.find((c) => c.skill === "FreshSkill");
+    expect(freshCandidate?.watchResult).toBeDefined();
+    expect(freshCandidate?.watchResult?.snapshot.pass_rate).toBe(0.85);
+  });
+
   test("skips evolve when no agent CLI is available", async () => {
     const deps = makeDeps({
       computeStatus: () =>
@@ -726,6 +817,8 @@ function makeOrchestrateResult(overrides: Partial<OrchestrateResult> = {}): Orch
       deployed: 0,
       watched: 0,
       skipped: 1,
+      autoGraded: 0,
+      freshlyWatchedSkills: [],
       dryRun: true,
       approvalMode: "auto",
       elapsedMs: 1200,
