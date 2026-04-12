@@ -272,6 +272,10 @@ automatically. If you need to force the restart, use:
 selftune dashboard --restart
 ```
 
+If the server is newer than the loaded browser client, the dashboard now shows
+an explicit reload prompt based on `/api/health` build metadata. Reload first
+before assuming the runtime is still stale.
+
 If the DB needs to be recreated, prefer:
 
 ```bash

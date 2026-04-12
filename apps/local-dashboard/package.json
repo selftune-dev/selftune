@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"sh -c 'dashboard_port=${DASHBOARD_PORT:-7888}; cd ../.. && bun --watch run cli/selftune/dashboard-server.ts --port $dashboard_port --runtime-mode dev-server'\" \"sh -c 'dashboard_port=${DASHBOARD_PORT:-7888}; vite_port=${VITE_PORT:-5199}; echo \\\"Waiting for dashboard server on localhost:${dashboard_port}...\\\"; i=0; max=150; until curl -fsS http://localhost:${dashboard_port}/api/health >/dev/null 2>&1; do i=$((i+1)); if [ \\\"$i\\\" -ge \\\"$max\\\" ]; then echo \\\"Dashboard server did not become healthy within 30s\\\"; exit 1; fi; sleep 0.2; done; echo \\\"Dashboard server healthy; starting Vite on localhost:${vite_port}.\\\"; vite --strictPort --port ${vite_port}'\"",
+    "dev": "concurrently \"sh -c 'vite_port=${VITE_PORT:-5199}; echo \\\"Starting Vite on localhost:\\$vite_port.\\\"; vite --strictPort --port \\$vite_port'\" \"sh -c 'dashboard_port=${DASHBOARD_PORT:-7888}; vite_port=${VITE_PORT:-5199}; echo \\\"Waiting for Vite on localhost:\\$vite_port...\\\"; i=0; max=150; until curl -fsS http://localhost:\\$vite_port >/dev/null 2>&1; do i=\\$((i+1)); if [ \\\"\\$i\\\" -ge \\\"\\$max\\\" ]; then echo \\\"Vite did not become healthy within 30s\\\"; exit 1; fi; sleep 0.2; done; echo \\\"Vite healthy; serving dashboard at http://localhost:\\$dashboard_port.\\\"; cd ../.. && SPA_PROXY_URL=http://localhost:\\$vite_port bun --watch run cli/selftune/dashboard-server.ts --port \\$dashboard_port --runtime-mode dev-server'\"",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

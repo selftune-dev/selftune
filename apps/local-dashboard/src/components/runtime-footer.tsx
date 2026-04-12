@@ -50,6 +50,8 @@ export function RuntimeFooter() {
   if (!health) return null;
   const legacyWatcherMode = health.watcher_mode === "jsonl";
   const disabledWatcherMode = health.watcher_mode === "none";
+  const spaModeLabel =
+    health.spa_mode === "proxy" ? "proxy" : health.spa_mode === "dist" ? "dist" : "missing";
   const statusLabel = legacyWatcherMode
     ? "Legacy watcher"
     : disabledWatcherMode
@@ -61,7 +63,7 @@ export function RuntimeFooter() {
     <RuntimeBadge
       href="/status"
       label={statusLabel}
-      detail={health.process_mode}
+      detail={`${health.process_mode} · ${spaModeLabel}`}
       tone={tone}
       renderLink={renderRouterLink}
     />

@@ -172,9 +172,28 @@ function RuntimeDetailsPanel({ refreshKey }: { refreshKey: number }) {
         </div>
         <div className="rounded-xl border border-border/10 bg-background/35 p-4">
           <p className="text-[10px] font-headline uppercase tracking-[0.18em] text-muted-foreground">
+            SPA mode
+          </p>
+          <p className="mt-2 text-sm font-semibold text-foreground">{health.spa_mode ?? "dist"}</p>
+        </div>
+        <div className="rounded-xl border border-border/10 bg-background/35 p-4">
+          <p className="text-[10px] font-headline uppercase tracking-[0.18em] text-muted-foreground">
             Git SHA
           </p>
           <p className="mt-2 truncate font-mono text-sm text-foreground">{health.git_sha}</p>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl border border-border/10 bg-background/35 p-4">
+          <p className="text-[10px] font-headline uppercase tracking-[0.18em] text-muted-foreground">
+            SPA build
+          </p>
+          <p className="mt-2 truncate font-mono text-sm text-foreground">
+            {health.spa_build_id ?? health.version}
+          </p>
+          {health.spa_proxy_url ? (
+            <p className="mt-1 truncate text-xs text-muted-foreground">{health.spa_proxy_url}</p>
+          ) : null}
         </div>
         <div className="rounded-xl border border-border/10 bg-background/35 p-4">
           <p className="text-[10px] font-headline uppercase tracking-[0.18em] text-muted-foreground">

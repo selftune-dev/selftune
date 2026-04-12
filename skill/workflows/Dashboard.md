@@ -42,6 +42,10 @@ dashboard version is older than the installed CLI, the command restarts it
 automatically to pick up the update. Use `--restart` to force that behavior
 even when the versions match.
 
+The dashboard client also polls `/api/health` for `spa_build_id`. If the server
+is newer than the loaded client, the UI shows a reload prompt instead of silently
+staying stale.
+
 ### Endpoints
 
 | Method | Path                       | Description                                                |
@@ -195,6 +199,8 @@ to trigger watch, evolve, or rollback directly from the dashboard.
 > Run `selftune dashboard`. It reuses a healthy instance when possible and
 > automatically restarts an older standalone dashboard version on the same port.
 > If the user explicitly wants a restart, run `selftune dashboard --restart`.
+> If the browser still has an older client loaded, the dashboard shows a reload
+> prompt based on `/api/health` build metadata.
 
 **Dashboard shows no data**
 

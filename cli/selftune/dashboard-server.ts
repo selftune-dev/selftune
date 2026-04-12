@@ -58,6 +58,7 @@ export interface DashboardServerOptions {
   port?: number;
   host?: string;
   spaDir?: string;
+  spaProxyUrl?: string;
   openBrowser?: boolean;
   runtimeMode?: HealthResponse["process_mode"];
   statusLoader?: () => StatusResult | Promise<StatusResult>;
@@ -90,6 +91,10 @@ function getGitSha(): string {
   return cachedGitSha;
 }
 
+function getSpaBuildId(): string {
+  return process.env.SELFTUNE_SPA_BUILD_ID || getSelftuneVersion();
+}
+
 const WORKSPACE_ROOT = resolve(import.meta.dir, "..", "..");
 
 function findSpaDir(): string | null {
@@ -120,6 +125,47 @@ function allowedDashboardOrigins(hostname: string, port: number): Set<string> {
     origins.add(`http://localhost:${port}`);
   }
   return origins;
+}
+
+function normalizeSpaProxyUrl(rawValue: string | undefined): URL | null {
+  if (!rawValue) return null;
+  try {
+    const url = new URL(rawValue);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+function shouldProxySpaRequest(pathname: string): boolean {
+  return (
+    !pathname.startsWith("/api/") &&
+    !pathname.startsWith("/badge/") &&
+    !pathname.startsWith("/report/")
+  );
+}
+
+async function proxySpaRequest(req: Request, proxyBaseUrl: URL, url: URL): Promise<Response> {
+  const targetUrl = new URL(`${url.pathname}${url.search}`, proxyBaseUrl);
+  const headers = new Headers(req.headers);
+  headers.set("host", targetUrl.host);
+  const upstreamResponse = await fetch(targetUrl, {
+    method: req.method,
+    headers,
+    redirect: "manual",
+  });
+  const proxiedHeaders = new Headers(upstreamResponse.headers);
+  for (const [key, value] of Object.entries(corsHeaders())) {
+    proxiedHeaders.set(key, value);
+  }
+  return new Response(upstreamResponse.body, {
+    status: upstreamResponse.status,
+    statusText: upstreamResponse.statusText,
+    headers: proxiedHeaders,
+  });
 }
 
 const MIME_TYPES: Record<string, string> = {
@@ -173,6 +219,7 @@ export async function startDashboardServer(
   const hostname = options?.host ?? "localhost";
   const openBrowser = options?.openBrowser ?? true;
   const runtimeMode = options?.runtimeMode ?? (import.meta.main ? "dev-server" : "test");
+  const spaProxyUrl = normalizeSpaProxyUrl(options?.spaProxyUrl ?? process.env.SPA_PROXY_URL);
   const getStatusResult = options?.statusLoader ?? computeStatusFromDb;
   const getEvidenceEntries = options?.evidenceLoader ?? readEvidenceTrail;
   const getOverviewResponse = options?.overviewLoader;
@@ -183,7 +230,14 @@ export async function startDashboardServer(
   const requestedSpaDir = options?.spaDir ?? findSpaDir();
   const spaDir =
     requestedSpaDir && existsSync(join(requestedSpaDir, "index.html")) ? requestedSpaDir : null;
-  if (spaDir) {
+  const spaMode: NonNullable<HealthResponse["spa_mode"]> = spaProxyUrl
+    ? "proxy"
+    : spaDir
+      ? "dist"
+      : "missing";
+  if (spaProxyUrl) {
+    console.log(`SPA proxy enabled at ${spaProxyUrl.toString()}`);
+  } else if (spaDir) {
     console.log(`SPA found at ${spaDir}, serving as default dashboard`);
   } else {
     if (options?.spaDir) {
@@ -248,6 +302,7 @@ export async function startDashboardServer(
 
   let fsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const FS_DEBOUNCE_MS = 500;
+  const proxiedSpaSockets = new Map<unknown, WebSocket>();
 
   function onWALChange(): void {
     if (fsDebounceTimer) return;
@@ -303,6 +358,44 @@ export async function startDashboardServer(
     port,
     hostname,
     idleTimeout: 255,
+    websocket: {
+      open(ws) {
+        const upstreamUrl = (ws.data as { upstreamUrl?: string } | undefined)?.upstreamUrl;
+        if (!upstreamUrl) {
+          ws.close(1011, "Missing upstream websocket target");
+          return;
+        }
+        const upstreamSocket = new WebSocket(upstreamUrl);
+        proxiedSpaSockets.set(ws, upstreamSocket);
+        upstreamSocket.onmessage = (event) => {
+          ws.send(event.data);
+        };
+        upstreamSocket.onclose = (event) => {
+          proxiedSpaSockets.delete(ws);
+          try {
+            ws.close(event.code || 1000, event.reason);
+          } catch {
+            ws.close();
+          }
+        };
+        upstreamSocket.onerror = () => {
+          proxiedSpaSockets.delete(ws);
+          ws.close(1011, "Upstream websocket error");
+        };
+      },
+      message(ws, message) {
+        const upstreamSocket = proxiedSpaSockets.get(ws);
+        if (!upstreamSocket || upstreamSocket.readyState !== WebSocket.OPEN) {
+          return;
+        }
+        upstreamSocket.send(message);
+      },
+      close(ws) {
+        const upstreamSocket = proxiedSpaSockets.get(ws);
+        proxiedSpaSockets.delete(ws);
+        upstreamSocket?.close();
+      },
+    },
     async fetch(req) {
       const url = new URL(req.url);
 
@@ -318,7 +411,10 @@ export async function startDashboardServer(
           service: "selftune-dashboard",
           version: getSelftuneVersion(),
           pid: process.pid,
-          spa: Boolean(spaDir),
+          spa: Boolean(spaDir || spaProxyUrl),
+          spa_mode: spaMode,
+          spa_build_id: getSpaBuildId(),
+          spa_proxy_url: spaProxyUrl?.toString() ?? null,
           v2_data_available: Boolean(getOverviewResponse || db),
           workspace_root: WORKSPACE_ROOT,
           git_sha: getGitSha(),
@@ -331,6 +427,26 @@ export async function startDashboardServer(
           port: boundPort,
         };
         return Response.json(healthResponse, { headers: corsHeaders() });
+      }
+
+      if (
+        spaProxyUrl &&
+        req.headers.get("upgrade")?.toLowerCase() === "websocket" &&
+        shouldProxySpaRequest(url.pathname)
+      ) {
+        const upstreamUrl = new URL(`${url.pathname}${url.search}`, spaProxyUrl);
+        upstreamUrl.protocol = spaProxyUrl.protocol === "https:" ? "wss:" : "ws:";
+        if (
+          server.upgrade(req, {
+            data: { upstreamUrl: upstreamUrl.toString() },
+          })
+        ) {
+          return undefined;
+        }
+        return new Response("WebSocket upgrade failed", {
+          status: 502,
+          headers: corsHeaders(),
+        });
       }
 
       // ---- GET /api/v2/events ---- SSE stream for live updates
@@ -357,6 +473,22 @@ export async function startDashboardServer(
       // ---- GET /api/v2/doctor ----
       if (url.pathname === "/api/v2/doctor" && req.method === "GET") {
         return withCors(await handleDoctor());
+      }
+
+      // ---- SPA static assets ----
+      if (spaProxyUrl && req.method === "GET" && shouldProxySpaRequest(url.pathname)) {
+        try {
+          return await proxySpaRequest(req, spaProxyUrl, url);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return new Response(
+            `Dashboard SPA proxy unavailable at ${spaProxyUrl.toString()}: ${message}`,
+            {
+              status: 502,
+              headers: { "Content-Type": "text/plain; charset=utf-8", ...corsHeaders() },
+            },
+          );
+        }
       }
 
       // ---- SPA static assets ----
@@ -577,6 +709,14 @@ export async function startDashboardServer(
       }
     }
     sseClients.clear();
+    for (const upstreamSocket of proxiedSpaSockets.values()) {
+      try {
+        upstreamSocket.close();
+      } catch {
+        /* already closed */
+      }
+    }
+    proxiedSpaSockets.clear();
     if (fsDebounceTimer) clearTimeout(fsDebounceTimer);
     closeSingleton();
     server.stop();
@@ -604,5 +744,10 @@ if (import.meta.main) {
     runtimeModeArg === "standalone" || runtimeModeArg === "dev-server" || runtimeModeArg === "test"
       ? runtimeModeArg
       : "dev-server";
-  startDashboardServer({ port, openBrowser: false, runtimeMode });
+  startDashboardServer({
+    port,
+    openBrowser: false,
+    runtimeMode,
+    spaProxyUrl: process.env.SPA_PROXY_URL,
+  });
 }

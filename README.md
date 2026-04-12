@@ -66,6 +66,23 @@ automatically restarts an older standalone dashboard instance after upgrades so
 the new UI is picked up without manual process hunting. Use
 `selftune dashboard --restart` to force a restart.
 
+If the browser is still holding an older client after a restart, the dashboard
+now shows an explicit reload prompt instead of silently staying stale.
+
+## Local dashboard development
+
+For contributor HMR, use the repo dev server and open the dashboard port, not
+the Vite port:
+
+```bash
+cd oss/selftune
+bun run dev
+```
+
+This starts Vite internally and serves the dashboard at `http://localhost:7888`
+through `dashboard-server`, so API routes and the browser entrypoint stay on one
+origin.
+
 ## Before / After
 
 <p align="center">

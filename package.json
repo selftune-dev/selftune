@@ -65,7 +65,7 @@
   ],
   "type": "module",
   "scripts": {
-    "dev": "trap 'kill 0' EXIT; dashboard_port=${DASHBOARD_PORT:-7888}; vite_port=${VITE_PORT:-5199}; bun --watch run cli/selftune/dashboard-server.ts --port $dashboard_port --runtime-mode dev-server & sleep 1 && cd apps/local-dashboard && bunx vite --strictPort --port $vite_port",
+    "dev": "cd apps/local-dashboard && bun run dev",
     "dev:server": "sh -c 'dashboard_port=${DASHBOARD_PORT:-7888}; bun --watch run cli/selftune/dashboard-server.ts --port $dashboard_port --runtime-mode dev-server'",
     "dev:dashboard": "sh -c 'dashboard_port=${DASHBOARD_PORT:-7888}; bun run cli/selftune/index.ts dashboard --port $dashboard_port --no-open'",
     "lint": "bunx oxlint",

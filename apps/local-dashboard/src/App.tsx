@@ -25,6 +25,7 @@ import {
 } from "react-router-dom";
 
 import { RuntimeFooter } from "@/components/runtime-footer";
+import { StaleClientBanner } from "@/components/stale-client-banner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { useOverview } from "@/hooks/useOverview";
 import { useSSE } from "@/hooks/useSSE";
@@ -232,6 +233,7 @@ export function App() {
         <ThemeProvider defaultTheme="dark">
           <DashboardHostProvider adapter={localHostAdapter} capabilities={LOCAL_CAPABILITIES}>
             <DashboardShell />
+            <StaleClientBanner />
           </DashboardHostProvider>
           {import.meta.env.DEV && <Agentation />}
         </ThemeProvider>

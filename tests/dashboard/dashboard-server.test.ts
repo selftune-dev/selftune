@@ -204,6 +204,72 @@ describe("dashboard-server", () => {
       expect(html).toContain('<div id="root"></div>');
       expect(html).toContain("/assets/");
     });
+
+    it("proxies SPA shell and assets when spaProxyUrl is configured", async () => {
+      const proxiedRequests: string[] = [];
+      const proxyServer = Bun.serve({
+        port: 0,
+        hostname: "127.0.0.1",
+        fetch(req) {
+          const url = new URL(req.url);
+          proxiedRequests.push(`${req.method} ${url.pathname}`);
+          if (url.pathname === "/") {
+            return new Response("<!DOCTYPE html><html><body>proxied dashboard</body></html>", {
+              headers: { "Content-Type": "text/html; charset=utf-8" },
+            });
+          }
+          if (url.pathname === "/src/main.tsx") {
+            return new Response("console.log('proxied vite asset');", {
+              headers: { "Content-Type": "application/javascript; charset=utf-8" },
+            });
+          }
+          return new Response("Not Found", { status: 404 });
+        },
+      });
+
+      const server = await startDashboardServer({
+        port: 0,
+        host: "127.0.0.1",
+        spaProxyUrl: `http://127.0.0.1:${proxyServer.port}`,
+        openBrowser: false,
+        overviewLoader: () => ({ ...overviewFixture, watched_skills: loadWatchedSkills() }),
+        skillReportLoader: (skillName) => (skillName === "test-skill" ? skillReportFixture : null),
+        statusLoader: () => ({
+          skills: [],
+          unmatchedQueries: 0,
+          pendingProposals: 0,
+          lastSession: null,
+          system: {
+            healthy: true,
+            pass: 1,
+            fail: 0,
+            warn: 0,
+          },
+        }),
+        evidenceLoader: () => [],
+      });
+
+      try {
+        const shellResponse = await fetch(`http://127.0.0.1:${server.port}/`);
+        expect(shellResponse.status).toBe(200);
+        await expect(shellResponse.text()).resolves.toContain("proxied dashboard");
+
+        const assetResponse = await fetch(`http://127.0.0.1:${server.port}/src/main.tsx`);
+        expect(assetResponse.status).toBe(200);
+        await expect(assetResponse.text()).resolves.toContain("proxied vite asset");
+
+        const healthResponse = await fetch(`http://127.0.0.1:${server.port}/api/health`);
+        const health = await healthResponse.json();
+        expect(health.spa).toBe(true);
+        expect(health.spa_mode).toBe("proxy");
+        expect(health.spa_proxy_url).toBe(`http://127.0.0.1:${proxyServer.port}/`);
+
+        expect(proxiedRequests).toEqual(expect.arrayContaining(["GET /", "GET /src/main.tsx"]));
+      } finally {
+        server.stop();
+        proxyServer.stop();
+      }
+    });
   });
 
   describe("GET /api/v2/overview", () => {
@@ -246,6 +312,8 @@ describe("dashboard-server", () => {
       expect(data.port).toBe(server.port);
       expect(typeof data.pid).toBe("number");
       expect(data.pid).toBeGreaterThan(0);
+      expect(data.spa_mode).toBe("dist");
+      expect(data.spa_build_id).toBeTruthy();
     });
   });
 

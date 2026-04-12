@@ -396,6 +396,9 @@ export interface HealthResponse {
   version: string;
   pid: number;
   spa: boolean;
+  spa_mode?: "dist" | "proxy" | "missing";
+  spa_build_id?: string | null;
+  spa_proxy_url?: string | null;
   v2_data_available: boolean;
   workspace_root: string;
   git_sha: string;

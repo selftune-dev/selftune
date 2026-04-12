@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import tailwindcss from "@tailwindcss/vite";
@@ -11,8 +12,16 @@ function resolvePort(rawValue: string | undefined, fallback: number): number {
 
 const vitePort = resolvePort(process.env.VITE_PORT, 5199);
 const dashboardPort = resolvePort(process.env.DASHBOARD_PORT, 7888);
+const packageVersion = JSON.parse(
+  readFileSync(new URL("../../package.json", import.meta.url), "utf-8"),
+).version as string;
+const spaBuildId = process.env.SELFTUNE_SPA_BUILD_ID ?? packageVersion;
 
 export default defineConfig({
+  define: {
+    __SELFTUNE_PACKAGE_VERSION__: JSON.stringify(packageVersion),
+    __SELFTUNE_SPA_BUILD_ID__: JSON.stringify(spaBuildId),
+  },
   plugins: [tailwindcss(), react()],
   resolve: {
     alias: {
@@ -21,6 +30,12 @@ export default defineConfig({
   },
   server: {
     port: vitePort,
+    hmr: {
+      host: "localhost",
+      protocol: "ws",
+      port: vitePort,
+      clientPort: vitePort,
+    },
     proxy: {
       "/api": {
         target: `http://localhost:${dashboardPort}`,

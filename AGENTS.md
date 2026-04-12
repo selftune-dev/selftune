@@ -24,6 +24,7 @@ The CLI (`cli/selftune/`) is the **agent's API**. The skill definition (`skill/S
 - New CLI commands need a workflow doc and a routing entry in `skill/SKILL.md`
 - Error messages should guide the agent, not the human (e.g., suggest the next CLI command, not "check the docs")
 - The SKILL.md routing table and trigger keywords are as important as the CLI code itself — they determine whether the agent can find and use the feature
+- `skill/SKILL.md` and `skill/workflows/*.md` are shipped product surface for users' agents. Do not put repo-local contributor commands or monorepo workflow there (for example: `cd oss/selftune`, `bun run dev`, Vite/HMR details). Put contributor guidance in `README.md`, `AGENTS.md`, or internal docs instead.
 
 ## Project Structure
 
