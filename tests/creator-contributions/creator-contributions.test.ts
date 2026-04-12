@@ -19,6 +19,8 @@ const { isValidCreatorUUID, writeCreatorContributionConfig, discoverCreatorContr
 
 const originalArgv = [...process.argv];
 const originalLog = console.log;
+const SEARCH_CREATOR_ID = "550e8400-e29b-41d4-a716-446655440000";
+const COMPARE_CREATOR_ID = "550e8400-e29b-41d4-a716-446655440001";
 
 function seedSkill(skillName: string): string {
   const root = join(skillDir, skillName);
@@ -63,7 +65,7 @@ describe("creator-contributions", () => {
       "--skill",
       "sc-search",
       "--creator-id",
-      "cr_search",
+      SEARCH_CREATOR_ID,
       "--signals",
       "trigger,grade",
     ];
@@ -76,7 +78,7 @@ describe("creator-contributions", () => {
       creator_id: string;
       contribution: { signals: string[] };
     };
-    expect(config.creator_id).toBe("cr_search");
+    expect(config.creator_id).toBe(SEARCH_CREATOR_ID);
     expect(config.contribution.signals).toEqual(["trigger", "grade"]);
   });
 
@@ -87,7 +89,7 @@ describe("creator-contributions", () => {
       JSON.stringify(
         {
           version: 1,
-          creator_id: "cr_search",
+          creator_id: SEARCH_CREATOR_ID,
           skill_name: "sc-search",
           contribution: { enabled: true, signals: ["trigger"] },
         },
@@ -106,7 +108,7 @@ describe("creator-contributions", () => {
     await cliMain();
 
     expect(lines.join("\n")).toContain("Creator contribution config:");
-    expect(lines.join("\n")).toContain("creator_id: cr_search");
+    expect(lines.join("\n")).toContain(`creator_id: ${SEARCH_CREATOR_ID}`);
     expect(lines.join("\n")).toContain("signals: trigger");
   });
 
@@ -117,7 +119,7 @@ describe("creator-contributions", () => {
       JSON.stringify(
         {
           version: 1,
-          creator_id: "cr_search",
+          creator_id: SEARCH_CREATOR_ID,
           skill_name: "sc-search",
           contribution: { enabled: true, signals: ["trigger"] },
         },
@@ -148,7 +150,7 @@ describe("creator-contributions", () => {
       "--prefix",
       "sc-",
       "--creator-id",
-      "cr_search",
+      SEARCH_CREATOR_ID,
     ];
 
     await cliMain();
@@ -168,7 +170,7 @@ describe("creator-contributions", () => {
   });
 
   test("enable with UUID creator-id writes and round-trips correctly", async () => {
-    const uuid = "550e8400-e29b-41d4-a716-446655440000";
+    const uuid = SEARCH_CREATOR_ID;
     seedSkill("sc-roundtrip");
     console.log = mock(() => {});
     process.argv = [
@@ -223,7 +225,7 @@ describe("creator-contributions", () => {
   });
 
   test("writeCreatorContributionConfig round-trips with UUID creator_id", () => {
-    const uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+    const uuid = COMPARE_CREATOR_ID;
     const skillPath = seedSkill("sc-write-roundtrip");
 
     const result = writeCreatorContributionConfig({
@@ -255,7 +257,7 @@ describe("creator-contributions", () => {
       JSON.stringify(
         {
           version: 1,
-          creator_id: "cr_search",
+          creator_id: SEARCH_CREATOR_ID,
           skill_name: "sc-search",
           contribution: { enabled: true, signals: ["trigger"] },
         },
@@ -275,5 +277,39 @@ describe("creator-contributions", () => {
 
     expect(lines.join("\n")).toContain("Installed skills without creator contribution config:");
     expect(lines.join("\n")).toContain("sc-compare");
+  });
+
+  test("enable rejects non-UUID creator ids", async () => {
+    seedSkill("sc-search");
+    console.log = mock(() => {});
+    process.argv = [
+      "bun",
+      "selftune",
+      "enable",
+      "--skill",
+      "sc-search",
+      "--creator-id",
+      "cr_search",
+    ];
+
+    await expect(cliMain()).rejects.toThrow("Creator ID must be a cloud user UUID.");
+  });
+
+  test("enable rejects unsupported signal names", async () => {
+    seedSkill("sc-search");
+    console.log = mock(() => {});
+    process.argv = [
+      "bun",
+      "selftune",
+      "enable",
+      "--skill",
+      "sc-search",
+      "--creator-id",
+      SEARCH_CREATOR_ID,
+      "--signals",
+      "trigger,custom_signal",
+    ];
+
+    await expect(cliMain()).rejects.toThrow("Unsupported contribution signals: custom_signal.");
   });
 });

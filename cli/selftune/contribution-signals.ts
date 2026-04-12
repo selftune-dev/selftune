@@ -12,6 +12,7 @@ export type ContributionSignal = "trigger" | "grade" | "miss_category";
 export interface CreatorContributionRelayPayload {
   version: 1;
   signal_type: "skill_session";
+  skill_name?: string;
   relay_destination: string;
   skill_hash: string;
   user_cohort: string;
@@ -114,11 +115,12 @@ export function buildCreatorDirectedContributionSignals(
   options: ContributionSignalBuildOptions = {},
 ): CreatorContributionSignalRecord[] {
   const bySkill = new Map(configs.map((config) => [config.skill_name, config]));
-  const gradingBySession = new Map<string, "A" | "B" | "C" | "F">();
+  const gradingBySkillSession = new Map<string, "A" | "B" | "C" | "F">();
   for (const row of queryGradingResults(db)) {
     const source = typeof row.mean_score === "number" ? row.mean_score : row.pass_rate;
-    if (typeof source === "number" && !gradingBySession.has(row.session_id)) {
-      gradingBySession.set(row.session_id, gradeBucket(source));
+    const key = `${row.skill_name}::${row.session_id}`;
+    if (typeof source === "number" && !gradingBySkillSession.has(key)) {
+      gradingBySkillSession.set(key, gradeBucket(source));
     }
   }
 
@@ -136,7 +138,7 @@ export function buildCreatorDirectedContributionSignals(
         signals.miss_detected = row.triggered === 0;
       }
       if (config.contribution.signals.includes("grade")) {
-        const grade = gradingBySession.get(row.session_id);
+        const grade = gradingBySkillSession.get(`${row.skill_name}::${row.session_id}`);
         if (grade) signals.execution_grade = grade;
       }
       if (config.contribution.signals.includes("miss_category")) {
@@ -162,6 +164,7 @@ export function buildCreatorDirectedContributionSignals(
         payload: {
           version: 1 as const,
           signal_type: "skill_session" as const,
+          skill_name: config.skill_name,
           relay_destination: config.creator_id,
           skill_hash: buildContributionSkillHash(config.skill_name),
           user_cohort: cohort,
@@ -206,6 +209,7 @@ export function buildContributionPreview(
     samplePayload: payloads[0]?.payload ?? {
       version: 1,
       signal_type: "skill_session",
+      skill_name: config.skill_name,
       relay_destination: config.creator_id,
       skill_hash: buildContributionSkillHash(config.skill_name),
       user_cohort: buildContributionUserCohort(options.now ?? new Date(), options.cohortSeed),

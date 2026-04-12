@@ -4,6 +4,14 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
+function resolvePort(rawValue: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(rawValue ?? "", 10);
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535 ? parsed : fallback;
+}
+
+const vitePort = resolvePort(process.env.VITE_PORT, 5199);
+const dashboardPort = resolvePort(process.env.DASHBOARD_PORT, 7888);
+
 export default defineConfig({
   plugins: [tailwindcss(), react()],
   resolve: {
@@ -12,10 +20,10 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5199,
+    port: vitePort,
     proxy: {
       "/api": {
-        target: "http://localhost:7888",
+        target: `http://localhost:${dashboardPort}`,
         changeOrigin: true,
       },
     },

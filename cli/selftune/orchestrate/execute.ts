@@ -8,19 +8,10 @@ import { writeGradingBaseline, writeGradingResultToDb } from "../localdb/direct-
 import type { watch as watchSkill } from "../monitoring/watch.js";
 import type { EvolveOptions, evolve as evolveSkill } from "../evolution/evolve.js";
 import type { ReplayValidationOptions } from "../evolution/engines/replay-engine.js";
-import {
-  buildRoutingReplayFixture,
-  runClaudeRuntimeReplayFixture,
-} from "../evolution/validate-host-replay.js";
+import { buildRuntimeReplayValidationOptions } from "../evolution/validate-host-replay.js";
 import { findRecentlyDeployedSkills } from "./plan.js";
 import type { OrchestrateOptions, SkillAction } from "../orchestrate.js";
-import type {
-  EvalEntry,
-  EvolutionAuditEntry,
-  RoutingReplayFixture,
-  SessionTelemetryRecord,
-  SkillUsageRecord,
-} from "../types.js";
+import type { EvolutionAuditEntry, SessionTelemetryRecord, SkillUsageRecord } from "../types.js";
 import { readExcerpt } from "../utils/transcript.js";
 
 export interface ReplayOptionBuildInput {
@@ -35,34 +26,12 @@ export function buildReplayValidationOptions(
   const { skillName, skillPath, agent } = input;
   if (!agent) return undefined;
 
-  try {
-    const replayFixture = buildRoutingReplayFixture({
-      skillName,
-      skillPath,
-      platform: agent === "codex" ? "codex" : "claude_code",
-    });
-    const replayRunner =
-      replayFixture.platform === "claude_code" && agent === "claude"
-        ? async ({
-            routing,
-            evalSet,
-            fixture,
-          }: {
-            routing: string;
-            evalSet: EvalEntry[];
-            fixture: RoutingReplayFixture;
-          }) =>
-            await runClaudeRuntimeReplayFixture({
-              routing,
-              evalSet,
-              fixture,
-            })
-        : undefined;
-
-    return { replayFixture, ...(replayRunner ? { replayRunner } : {}) };
-  } catch {
-    return undefined;
-  }
+  return buildRuntimeReplayValidationOptions({
+    skillName,
+    skillPath,
+    agent,
+    contentTarget: "description",
+  });
 }
 
 export interface RunEvolutionPhaseInput {

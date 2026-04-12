@@ -39,7 +39,7 @@ import type {
   SkillUsageRecord,
 } from "../types.js";
 import { CLIError, handleCLIError } from "../utils/cli-error.js";
-import { detectAgent } from "../utils/llm-call.js";
+import { detectLlmAgent } from "../utils/llm-call.js";
 import {
   filterActionableQueryRecords,
   filterActionableSkillUsageRecords,
@@ -602,10 +602,10 @@ export async function cliMain(): Promise<void> {
       );
     }
 
-    const agent = detectAgent();
+    const agent = detectLlmAgent();
     if (!agent) {
       throw new CLIError(
-        "No agent CLI found (claude/codex/opencode)",
+        "No agent CLI found (claude/codex/opencode/pi)",
         "AGENT_NOT_FOUND",
         "Install one of the supported agent CLIs",
       );
@@ -719,10 +719,10 @@ export async function cliMain(): Promise<void> {
       );
     }
 
-    const agent = detectAgent();
+    const agent = detectLlmAgent();
     if (!agent) {
       throw new CLIError(
-        "No agent CLI found (claude/codex/opencode)",
+        "No agent CLI found (claude/codex/opencode/pi)",
         "AGENT_NOT_FOUND",
         "Install one of the supported agent CLIs",
       );
@@ -765,10 +765,10 @@ export async function cliMain(): Promise<void> {
       );
     }
 
-    const agent = detectAgent();
+    const agent = detectLlmAgent();
     if (!agent) {
       throw new CLIError(
-        "No agent CLI found (claude/codex/opencode)",
+        "No agent CLI found (claude/codex/opencode/pi)",
         "AGENT_NOT_FOUND",
         "Install one of the supported agent CLIs",
       );

@@ -47,7 +47,7 @@ Implemented on `WellDunDun/cold-start-and-replay-validation` and follow-on repla
 - `validate-host-replay.ts` now exists and can run Claude Code routing replay against a temporary project-local skill registry, observing actual `Skill(...)` tool use in print-mode output.
 - `validate-routing.ts` prefers `host_replay` whenever a replay fixture is present, while preserving `llm_judge` as the fallback.
 - Routing evolve runs now auto-build a replay fixture from the target skill plus sibling skills in the same registry.
-- Routing evolve now threads a Claude runtime replay runner when the fixture platform is `claude_code`, while preserving fixture-backed replay as the explicit fallback when runtime replay is unavailable.
+- Routing evolve now threads a Claude runtime replay runner when the fixture platform is `claude_code`; when runtime replay is unavailable, validation falls back explicitly to `llm_judge` instead of reporting simulated fixture matching as replay.
 - Validation provenance (`validation_mode`, `validation_agent`, `validation_fixture_id`, `validation_evidence_ref`) now persists through audit logs, SQLite materialization, dashboard contracts, and skill-report payloads.
 - The skill report UI now shows whether a proposal was replay-validated, judge-validated, or only passed structural guards.
 

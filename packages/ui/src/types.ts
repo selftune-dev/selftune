@@ -58,6 +58,7 @@ export interface EvalSnapshot {
   validation_mode?: string;
   validation_agent?: string;
   validation_fixture_id?: string;
+  validation_fallback_reason?: string;
   validation_evidence_ref?: string;
 }
 

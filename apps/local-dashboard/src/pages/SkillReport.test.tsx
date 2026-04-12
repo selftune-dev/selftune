@@ -40,9 +40,28 @@ vi.mock("@selftune/ui/primitives", () => ({
 }));
 
 vi.mock("@selftune/ui/components", () => ({
+  DataQualityPanel: () => (
+    <div>
+      <div>Evidence Quality Rates</div>
+      <div>Data Hygiene</div>
+    </div>
+  ),
   EvolutionTimeline: () => <div>Evolution Timeline</div>,
   EvidenceViewer: () => <div>Evidence Viewer</div>,
   InfoTip: () => <span>i</span>,
+  InvocationsPanel: () => <div>Invoker codex</div>,
+  PromptEvidencePanel: () => <div>Prompt Evidence</div>,
+  SkillReportGuideSheet: () => <div>How this works</div>,
+  SkillReportOnboardingBanner: () => <div>How selftune is improving this skill</div>,
+  SkillReportTopRow: () => <div>Latest Decision</div>,
+  SkillTrustNarrativePanel: () => (
+    <div>
+      <div>What selftune saw</div>
+      <div>Why it acted</div>
+      <div>What happened next</div>
+    </div>
+  ),
+  TrustSignalsGrid: () => <div>Trust Signals</div>,
 }));
 
 vi.mock("@selftune/ui/lib", () => ({
@@ -216,7 +235,23 @@ beforeEach(() => {
           observation_kind: "canonical",
         },
       ],
-      missed: [],
+      missed: [
+        {
+          timestamp: "2026-03-31T01:00:00Z",
+          session_id: "sess-2",
+          query_text: "missed query",
+          triggered: false,
+          confidence: 0.42,
+          invocation_mode: "implicit",
+          prompt_kind: "meta",
+          source: "codex",
+          platform: "codex",
+          workspace_path: "/workspace",
+          query_origin: "missing",
+          is_system_like: false,
+          observation_kind: "repaired_contextual_miss",
+        },
+      ],
       noisy: [],
     },
   };
@@ -252,6 +287,7 @@ describe("SkillReport", () => {
     expect(html).toContain("Prompt Evidence");
     expect(html).toContain("Evidence Quality Rates");
     expect(html).toContain("Data Hygiene");
+    expect(html).toContain("Missed Queries");
   });
 
   it("shows invoker fallback data from session metadata", async () => {

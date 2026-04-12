@@ -12,7 +12,7 @@ import { parseArgs } from "node:util";
 
 import type { BaselineResult, EvalEntry } from "../types.js";
 import { CLIError, handleCLIError } from "../utils/cli-error.js";
-import { callLlm } from "../utils/llm-call.js";
+import { callLlm, detectLlmAgent } from "../utils/llm-call.js";
 import { buildTriggerCheckPrompt, parseTriggerResponse } from "../utils/trigger-check.js";
 
 // ---------------------------------------------------------------------------
@@ -208,7 +208,6 @@ Options:
   }
 
   // Detect agent
-  const { detectAgent } = await import("../utils/llm-call.js");
   const requestedAgent = values.agent;
   if (requestedAgent && !Bun.which(requestedAgent)) {
     throw new CLIError(
@@ -217,12 +216,12 @@ Options:
       "Install it or omit --agent to use auto-detection",
     );
   }
-  const agent = requestedAgent ?? detectAgent();
+  const agent = requestedAgent ?? detectLlmAgent();
   if (!agent) {
     throw new CLIError(
-      "No agent CLI (claude/codex/opencode) found in PATH",
+      "No agent CLI (claude/codex/opencode/pi) found in PATH",
       "AGENT_NOT_FOUND",
-      "Install Claude Code, Codex, or OpenCode",
+      "Install Claude Code, Codex, OpenCode, or Pi",
     );
   }
 

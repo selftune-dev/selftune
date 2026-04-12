@@ -317,6 +317,7 @@ export async function startDashboardServer(
           ok: true,
           service: "selftune-dashboard",
           version: getSelftuneVersion(),
+          pid: process.pid,
           spa: Boolean(spaDir),
           v2_data_available: Boolean(getOverviewResponse || db),
           workspace_root: WORKSPACE_ROOT,
@@ -545,7 +546,7 @@ export async function startDashboardServer(
     },
   });
 
-  boundPort = server.port;
+  boundPort = server.port ?? port;
 
   if (openBrowser) {
     const url = `http://${hostname}:${boundPort}`;

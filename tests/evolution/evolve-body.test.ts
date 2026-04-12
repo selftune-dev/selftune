@@ -462,6 +462,59 @@ describe("evolveBody orchestrator", () => {
     expect(typeof routingValidationOptions?.replayRunner).toBe("function");
   });
 
+  test("body target forwards validation mode and persists replay fallback provenance", async () => {
+    const fallbackReason = "no real host/runtime replay runner is configured";
+    mockValidateBodyProposal.mockImplementation(async () =>
+      makeValidationResult({
+        validation_mode: "llm_judge",
+        validation_agent: "claude",
+        validation_fallback_reason: fallbackReason,
+      }),
+    );
+
+    const result = await evolveBody(
+      makeOptions({
+        target: "body",
+        dryRun: true,
+        validationMode: "replay",
+      }),
+      makeDeps(),
+    );
+
+    const bodyValidationOptions = mockValidateBodyProposal.mock.calls[0]?.[5] as
+      | { mode?: string; onReplayFallback?: unknown }
+      | undefined;
+    expect(bodyValidationOptions?.mode).toBe("replay");
+    expect(typeof bodyValidationOptions?.onReplayFallback).toBe("function");
+
+    const validatedAudit = result.auditEntries.find((entry) => entry.action === "validated");
+    expect(validatedAudit?.details).toContain(`replay fallback: ${fallbackReason}`);
+
+    const validatedEvidence = mockAppendEvidenceEntry.mock.calls.find(
+      (call: unknown[]) => (call[0] as EvolutionEvidenceEntry).stage === "validated",
+    )?.[0] as EvolutionEvidenceEntry | undefined;
+    expect(validatedEvidence?.validation?.validation_fallback_reason).toBe(fallbackReason);
+  });
+
+  test("routing target builds a replay fixture and runner for codex validation", async () => {
+    const result = await evolveBody(
+      makeOptions({
+        target: "routing",
+        studentAgent: "codex",
+        dryRun: true,
+      }),
+      makeDeps(),
+    );
+
+    expect(result.deployed).toBe(false);
+    const routingValidationOptions = mockValidateRoutingProposal.mock.calls[0]?.[4] as
+      | { replayFixture?: RoutingReplayFixture; replayRunner?: unknown; mode?: string }
+      | undefined;
+    expect(routingValidationOptions?.replayFixture?.target_skill_name).toBe("test-skill");
+    expect(typeof routingValidationOptions?.replayRunner).toBe("function");
+    expect(routingValidationOptions?.mode).toBe("auto");
+  });
+
   test("retry loop terminates at maxIterations", async () => {
     let generateCallCount = 0;
     mockGenerateBodyProposal.mockImplementation(async () => {

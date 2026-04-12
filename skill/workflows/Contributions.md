@@ -5,7 +5,7 @@ Manage local **sharing preferences** for creator-directed contribution flows.
 This is **not** the same as:
 - `selftune contribute` — exporting an anonymized **export bundle** for the community
 - `selftune creator-contributions` — managing the **creator sharing setup** file (`selftune.contribute.json`)
-- The community dashboard — viewing aggregated **community data** from all contributors
+- The signals dashboard — viewing aggregated **contributor signal data** from all contributors
 
 ## When to Use
 

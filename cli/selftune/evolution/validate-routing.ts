@@ -17,7 +17,7 @@ import type {
 } from "../types.js";
 import { runJudgeValidation } from "./engines/judge-engine.js";
 import { type ReplayValidationOptions } from "./engines/replay-engine.js";
-import { runValidationContract } from "./validation-contract.js";
+import { runValidationContract, type ValidationStrategy } from "./validation-contract.js";
 
 export interface RoutingTriggerAccuracyResult {
   before_pass_rate: number;
@@ -26,8 +26,14 @@ export interface RoutingTriggerAccuracyResult {
   validation_mode: ValidationMode;
   validation_agent: string;
   validation_fixture_id?: string;
+  validation_fallback_reason?: string;
   per_entry_results?: RoutingReplayEntryResult[];
   before_entry_results?: RoutingReplayEntryResult[];
+}
+
+export interface RoutingValidationOptions extends ReplayValidationOptions {
+  mode?: ValidationStrategy;
+  onReplayFallback?: (reason?: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +98,7 @@ export function validateRoutingStructure(routing: string): { valid: boolean; rea
  * Run before/after trigger checks on the eval set using the routing content.
  * Returns pass rates for comparison.
  *
- * Prefers replay-backed validation when a fixture is available,
+ * Prefers host/runtime replay when a runtime runner is available,
  * falls back to LLM judge otherwise.
  */
 export async function validateRoutingTriggerAccuracy(
@@ -101,7 +107,7 @@ export async function validateRoutingTriggerAccuracy(
   evalSet: EvalEntry[],
   agent: string,
   modelFlag?: string,
-  options: ReplayValidationOptions = {},
+  options: RoutingValidationOptions = {},
 ): Promise<RoutingTriggerAccuracyResult> {
   if (evalSet.length === 0) {
     return {
@@ -113,8 +119,8 @@ export async function validateRoutingTriggerAccuracy(
     };
   }
 
-  const { result } = await runValidationContract<RoutingTriggerAccuracyResult>({
-    mode: "auto",
+  const { result, fallbackReason } = await runValidationContract<RoutingTriggerAccuracyResult>({
+    mode: options.mode ?? "auto",
     originalContent: originalRouting,
     proposedContent: proposedRouting,
     evalSet,
@@ -140,10 +146,11 @@ export async function validateRoutingTriggerAccuracy(
         modeUsed: judgeResult.validation_mode,
       };
     },
+    onReplayFallback: options.onReplayFallback,
     adaptReplayResult: (replayResult) => replayResult,
   });
 
-  return result;
+  return fallbackReason ? { ...result, validation_fallback_reason: fallbackReason } : result;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,7 +163,7 @@ export async function validateRoutingProposal(
   evalSet: EvalEntry[],
   agent: string,
   modelFlag?: string,
-  options: ReplayValidationOptions = {},
+  options: RoutingValidationOptions = {},
 ): Promise<BodyValidationResult> {
   const gateResults: Array<{ gate: string; passed: boolean; reason: string }> = [];
 
@@ -210,6 +217,7 @@ export async function validateRoutingProposal(
     validation_mode: accuracy.validation_mode,
     validation_agent: accuracy.validation_agent,
     validation_fixture_id: accuracy.validation_fixture_id,
+    validation_fallback_reason: accuracy.validation_fallback_reason,
     before_pass_rate: accuracy.before_pass_rate,
     after_pass_rate: accuracy.after_pass_rate,
     per_entry_results: accuracy.per_entry_results,

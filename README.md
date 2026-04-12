@@ -55,6 +55,17 @@ npx skills add selftune-dev/selftune
 
 This reinstalls the latest version of both the skill (SKILL.md, workflows) and the CLI. `selftune doctor` will warn you when a newer version is available.
 
+If you already have the local dashboard running, rerun:
+
+```bash
+selftune dashboard
+```
+
+The command now reuses a healthy dashboard already on the target port and
+automatically restarts an older standalone dashboard instance after upgrades so
+the new UI is picked up without manual process hunting. Use
+`selftune dashboard --restart` to force a restart.
+
 ## Before / After
 
 <p align="center">
@@ -67,11 +78,22 @@ selftune learned that real users say "slides", "deck", "presentation for Monday"
 
 **I write and use my own skills** — Your skill descriptions don't match how you actually talk. Tell your agent "improve my skills" and selftune learns your language from real sessions, evolves descriptions to match, and validates before deploying. No manual tuning.
 
-**I publish skills others install** — Your skill works for you, but every user talks differently. selftune ships skills that get better for every user automatically — adapting descriptions to how each person actually works.
+**I publish skills others install** — Your skill works for you, but every user talks differently. selftune gives creators a real before-ship / after-ship loop: test the router before launch, bundle creator-directed contribution, inspect community signal after launch, then turn that signal into proposals and watched improvements.
 
 **I manage an agent setup with many skills** — You have 15+ skills installed. Some work. Some don't. Some conflict. Tell your agent "how are my skills doing?" and selftune gives you a health dashboard and automatically improves the skills that aren't keeping up.
 
 **I use skills for non-coding work** — Marketing workflows, research pipelines, compliance checks, slide decks. You say "make me a presentation" and nothing happens. selftune learns that "slides", "deck", and "presentation for Monday" all mean the same skill — and fixes the routing automatically.
+
+## Creator Loop
+
+If you publish skills, the loop is:
+
+1. structure the skill router, workflows, references, and tools clearly
+2. run evals before launch
+3. bundle `selftune.contribute.json` with `selftune creator-contributions enable`
+4. review community signal on the Community page after launch
+5. create proposals from contributor aggregate data only when thresholds are met
+6. apply and watch changes through the normal proposal flow
 
 ## How It Works
 
@@ -181,16 +203,16 @@ selftune is complementary to these tools, not competitive. They trace what happe
 
 ## Platforms
 
-| Platform | Support | Real-time Hooks | Eval/Optimizer Agents | Batch Ingest | Config Location |
+| Platform | Support | Session capture | LLM-backed judge / evolve | Optimizer agents | Config location |
 | --- | --- | --- | --- | --- | --- |
-| **Claude Code** | Full | Automatic via `selftune init` | `claude --agent` (native) | `selftune ingest claude` | `~/.claude/settings.json` |
-| **Codex** | Experimental | `selftune codex install` | `codex exec` (inlined) | `selftune ingest codex` | `~/.codex/hooks.json` |
-| **OpenCode** | Experimental | `selftune opencode install` | `opencode run --agent` (native) | `selftune ingest opencode` | `./opencode.json` or `~/.config/opencode/opencode.json` |
-| **Cline** | Experimental | `selftune cline install` | — | — | `~/Documents/Cline/Hooks/` |
-| **OpenClaw** | Experimental | — | — | `selftune ingest openclaw` | — |
-| **Pi** | Experimental | `selftune pi install` | — | `selftune ingest pi` | `~/.pi/extensions/selftune/` |
+| **Claude Code** | Full | Automatic hooks via `selftune init` + `selftune ingest claude` | Yes | Native `claude --agent` | `~/.claude/settings.json` |
+| **Codex** | Experimental | `selftune codex install`, `selftune ingest codex`, or `selftune ingest wrap-codex` | Yes | Inlined into `codex exec` | `~/.codex/hooks.json` |
+| **OpenCode** | Experimental | `selftune opencode install` + `selftune ingest opencode` | Yes | Native `opencode run --agent` | `./opencode.json` or `~/.config/opencode/opencode.json` |
+| **Cline** | Experimental | `selftune cline install` | No | No | `~/Documents/Cline/Hooks/` |
+| **OpenClaw** | Experimental | `selftune ingest openclaw` + `selftune cron setup --platform openclaw` | No | No | — |
+| **Pi** | Experimental | `selftune pi install` + `selftune ingest pi` | Yes | Inlined into `pi -p` with system-prompt setup | `~/.pi/extensions/selftune/` |
 
-OpenCode and Codex now support eval/optimizer agent workflows (evolution-reviewer, diagnosis-analyst, pattern-analyst, integration-guide). OpenCode agents are registered in the config during `selftune opencode install`; Codex inlines agent instructions into the prompt since it lacks a native `--agent` flag. OpenCode lacks a prompt-submission hook event, so prompt logging and auto-activate are unavailable. Cline only exposes PostToolUse and task lifecycle events, limiting coverage to commit tracking and session telemetry. All platforms write to the same shared log schema.
+Codex, OpenCode, Claude Code, and Pi can run selftune's LLM-backed judge, eval, and optimizer workflows. Codex and OpenCode also participate in experimental runtime replay validation during `selftune evolve`, using `codex exec --json` and `opencode run --format json` respectively. OpenCode agents are registered in config during `selftune opencode install`; Codex still inlines bundled agent instructions into the prompt because it has no native `--agent` flag. OpenCode has weaker hook coverage than Claude Code because it lacks a prompt-submission event and cannot hard-block pre-tool writes. Pi has no native subagent flag, so selftune inlines bundled optimizer instructions into `pi -p` calls. Cline is telemetry-only today. OpenClaw remains ingest and cron only. All platforms write to the same shared log schema.
 
 Requires [Bun](https://bun.sh) or Node.js 18+. No extra API keys.
 

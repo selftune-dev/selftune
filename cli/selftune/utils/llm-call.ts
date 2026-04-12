@@ -2,7 +2,7 @@
  * Shared LLM call utility.
  *
  * Provides a unified interface for calling LLMs via agent subprocess
- * (claude/codex/opencode). Extracted from grade-session.ts so other
+ * (claude/codex/opencode/pi). Extracted from grade-session.ts so other
  * modules can reuse the same calling logic.
  */
 
@@ -14,6 +14,8 @@ import { AGENT_CANDIDATES } from "../constants.js";
 import { createLogger } from "./logging.js";
 
 const logger = createLogger("llm-call");
+export const LLM_BACKED_AGENT_CANDIDATES = ["claude", "codex", "opencode", "pi"] as const;
+type LlmBackedAgent = (typeof LLM_BACKED_AGENT_CANDIDATES)[number];
 
 // ---------------------------------------------------------------------------
 // Model alias resolution
@@ -48,6 +50,17 @@ function resolveOpenCodeModel(flag: string): string {
   return OPENCODE_MODEL_MAP[flag] ?? flag;
 }
 
+const PI_THINKING_MAP: Record<EffortLevel, string> = {
+  low: "low",
+  medium: "medium",
+  high: "high",
+  max: "xhigh",
+};
+
+function resolvePiThinking(effort: EffortLevel): string {
+  return PI_THINKING_MAP[effort];
+}
+
 // ---------------------------------------------------------------------------
 // Bundled agent file loading (for codex inline prompt injection)
 // ---------------------------------------------------------------------------
@@ -77,6 +90,29 @@ export function detectAgent(): string | null {
     if (Bun.which(agent)) return agent;
   }
   return null;
+}
+
+/** Detect first available agent CLI that can execute selftune LLM-backed workflows. */
+export function detectLlmAgent(): LlmBackedAgent | null {
+  for (const agent of LLM_BACKED_AGENT_CANDIDATES) {
+    if (Bun.which(agent)) return agent;
+  }
+  return null;
+}
+
+function unsupportedAgentError(agent: string, capability: "llm calls" | "subagent calls"): Error {
+  const supported = LLM_BACKED_AGENT_CANDIDATES.join(", ");
+  if (agent === "openclaw") {
+    return new Error(
+      `Detected agent CLI '${agent}', but selftune ${capability} currently support only ${supported}. ` +
+        `LLM-backed judge, eval, and optimizer workflows are unavailable on ${agent}; ` +
+        `use Claude Code, Codex, OpenCode, or Pi for those workflows, or stay on ingest/sync support for ${agent}.`,
+    );
+  }
+
+  return new Error(
+    `Unknown agent '${agent}'. selftune ${capability} currently support only ${supported}.`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -160,7 +196,7 @@ function sleep(ms: number): Promise<void> {
 /** Effort level for Claude CLI (controls thinking depth). Opus 4.6 only for 'max'. */
 export type EffortLevel = "low" | "medium" | "high" | "max";
 
-/** Call LLM via agent subprocess (claude/codex/opencode). Returns raw text. */
+/** Call LLM via agent subprocess (claude/codex/opencode/pi). Returns raw text. */
 export async function callViaAgent(
   systemPrompt: string,
   userPrompt: string,
@@ -194,8 +230,30 @@ export async function callViaAgent(
         cmd.push("--model", resolveOpenCodeModel(modelFlag));
       }
       cmd.push(promptContent);
+    } else if (agent === "pi") {
+      cmd = [
+        "pi",
+        "-p",
+        "--mode",
+        "text",
+        "--no-session",
+        "--no-tools",
+        "--no-extensions",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--system-prompt",
+        systemPrompt,
+      ];
+      if (modelFlag) {
+        cmd.push("--model", modelFlag);
+      }
+      if (effort) {
+        cmd.push("--thinking", resolvePiThinking(effort));
+      }
+      cmd.push(userPrompt);
     } else {
-      throw new Error(`Unknown agent: ${agent}`);
+      throw unsupportedAgentError(agent, "llm calls");
     }
 
     // Retry loop with exponential backoff for transient failures
@@ -256,6 +314,23 @@ export async function callViaAgent(
   }
 }
 
+function mapAllowedToolsToPi(tools?: string[]): string[] {
+  if (!tools || tools.length === 0) return [];
+
+  const mapped = new Set<string>();
+  for (const tool of tools) {
+    if (tool === "Read") mapped.add("read");
+    else if (tool === "Write") mapped.add("write");
+    else if (tool === "Edit") mapped.add("edit");
+    else if (tool === "Bash") mapped.add("bash");
+    else if (tool === "Grep") mapped.add("grep");
+    else if (tool === "Glob" || tool === "Find") mapped.add("find");
+    else if (tool === "LS" || tool === "Ls") mapped.add("ls");
+  }
+
+  return [...mapped];
+}
+
 // ---------------------------------------------------------------------------
 // Call LLM via named subagent (multi-turn, agentic)
 // ---------------------------------------------------------------------------
@@ -301,10 +376,10 @@ export async function callViaSubagent(options: SubagentCallOptions): Promise<str
     allowedTools,
   } = options;
 
-  const agent = detectAgent();
-  if (!agent || (agent !== "claude" && agent !== "opencode" && agent !== "codex")) {
+  const agent = detectLlmAgent();
+  if (!agent) {
     throw new Error(
-      `Subagent calls require 'claude', 'opencode', or 'codex' CLI in PATH (detected: ${agent ?? "none"})`,
+      "Subagent calls require one of these CLIs in PATH: claude, codex, opencode, pi.",
     );
   }
 
@@ -333,6 +408,47 @@ export async function callViaSubagent(options: SubagentCallOptions): Promise<str
     const agentInstructions = loadAgentInstructions(agentName);
     const fullPrompt = agentInstructions ? `${agentInstructions}\n\n---\n\n${prompt}` : prompt;
     cmd = ["codex", "exec", "--skip-git-repo-check", fullPrompt];
+  } else if (agent === "pi") {
+    if (maxTurns !== 8) {
+      logger.warn(`Subagent '${agentName}' on pi: maxTurns is not supported and will be ignored`);
+    }
+    const agentInstructions = loadAgentInstructions(agentName);
+    const systemParts = [agentInstructions, appendSystemPrompt].filter((value): value is string =>
+      Boolean(value?.trim()),
+    );
+
+    cmd = [
+      "pi",
+      "-p",
+      "--mode",
+      "text",
+      "--no-session",
+      "--no-extensions",
+      "--no-skills",
+      "--no-prompt-templates",
+      "--no-themes",
+    ];
+
+    if (systemParts.length > 0) {
+      cmd.push("--system-prompt", systemParts.join("\n\n"));
+    }
+    if (modelFlag) {
+      cmd.push("--model", modelFlag);
+    }
+    if (effort) {
+      cmd.push("--thinking", resolvePiThinking(effort));
+    }
+
+    const piTools = mapAllowedToolsToPi(allowedTools);
+    if (allowedTools && allowedTools.length > 0) {
+      if (piTools.length > 0) {
+        cmd.push("--tools", piTools.join(","));
+      } else {
+        cmd.push("--no-tools");
+      }
+    }
+
+    cmd.push(prompt);
   } else {
     // Claude Code
     cmd = ["claude", "-p", prompt, "--agent", agentName, "--max-turns", String(maxTurns)];

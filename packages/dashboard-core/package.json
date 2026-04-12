@@ -1,0 +1,39 @@
+{
+  "name": "@selftune/dashboard-core",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared dashboard application layer for selftune cloud and local hosts",
+  "license": "MIT",
+  "author": "Daniel Petro",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/selftune-dev/selftune.git",
+    "directory": "packages/dashboard-core"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./host": "./src/host/index.ts",
+    "./models": "./src/models/index.ts",
+    "./routes": "./src/routes/index.ts",
+    "./chrome": "./src/chrome/index.ts",
+    "./gates": "./src/gates/index.ts",
+    "./screens": "./src/screens/index.ts",
+    "./screens/analytics": "./src/screens/analytics/index.ts",
+    "./screens/overview": "./src/screens/overview/index.ts",
+    "./screens/skill-report": "./src/screens/skill-report/index.ts",
+    "./screens/skills": "./src/screens/skills/index.ts"
+  },
+  "dependencies": {
+    "@selftune/ui": "workspace:*",
+    "lucide-react": "^0.576.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

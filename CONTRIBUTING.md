@@ -25,7 +25,7 @@ bun run cli/selftune/index.ts init
 ## Running Checks
 
 ```bash
-make check        # Full check: lint + typecheck + tests + sandbox
+make check        # Full check: lint + runtime typecheck + dashboard typecheck + tests + sandbox
 make lint         # oxlint + oxfmt --check + architecture lint
 make lint-fix     # Auto-fix lint + format issues
 make format       # Format all files with oxfmt
@@ -35,6 +35,11 @@ make test-slow    # Integration tests only (~80s)
 ```
 
 All checks must pass before submitting a PR.
+
+The OSS repo currently enforces a narrow CLI runtime typecheck (`make typecheck-runtime`)
+that verifies Bun/Node ambient type resolution for the embedded CLI surface. The full CLI
+and test tree still has broader existing TypeScript debt, so `make check` gates the runtime
+boundary plus the local dashboard typecheck rather than a repo-wide `tsc --noEmit`.
 
 ### Test Split
 

@@ -13,12 +13,12 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { parseArgs } from "node:util";
 
-import { AGENT_CANDIDATES, TELEMETRY_LOG } from "../constants.js";
+import { TELEMETRY_LOG } from "../constants.js";
 import { getDb } from "../localdb/db.js";
 import { querySessionTelemetry, querySkillUsageRecords } from "../localdb/queries.js";
 import type { GradingResult, SessionTelemetryRecord, SkillUsageRecord } from "../types.js";
 import { CLIError, handleCLIError } from "../utils/cli-error.js";
-import { detectAgent as _detectAgent } from "../utils/llm-call.js";
+import { detectLlmAgent as _detectAgent, LLM_BACKED_AGENT_CANDIDATES } from "../utils/llm-call.js";
 import { readExcerpt } from "../utils/transcript.js";
 import {
   buildDefaultGradingOutputPath,
@@ -55,7 +55,7 @@ Options:
   --session-id        Grade a specific session (auto-detects most recent if omitted)
   --telemetry-log     Path to telemetry log (default: ~/.claude/session_telemetry_log.jsonl)
   --output            Output path for grading JSON (default: ~/.selftune/grading/result-<session>.json)
-  --agent             Agent CLI to use (${AGENT_CANDIDATES.join(", ")})
+  --agent             Agent CLI to use (${LLM_BACKED_AGENT_CANDIDATES.join(", ")})
   --show-transcript   Print transcript excerpt before grading
   -h, --help          Show this help message`);
     process.exit(0);
@@ -68,7 +68,7 @@ Options:
 
   // --- Determine agent ---
   let agent: string | null = null;
-  const validAgents = [...AGENT_CANDIDATES];
+  const validAgents = [...LLM_BACKED_AGENT_CANDIDATES];
   if (values.agent) {
     if (!validAgents.includes(values.agent)) {
       throw new CLIError(
@@ -84,9 +84,9 @@ Options:
 
   if (!agent) {
     throw new CLIError(
-      `No supported agent CLI (${AGENT_CANDIDATES.join("/")}) found in PATH`,
+      `No supported agent CLI (${LLM_BACKED_AGENT_CANDIDATES.join("/")}) found in PATH`,
       "AGENT_NOT_FOUND",
-      "Install one of the supported agent CLIs",
+      "Install Claude Code, Codex, OpenCode, or Pi",
     );
   }
 

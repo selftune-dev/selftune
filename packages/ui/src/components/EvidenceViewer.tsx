@@ -166,6 +166,36 @@ function getPerEntryPassStatus(entry: unknown): boolean | null {
   return typeof afterPass === "boolean" ? afterPass : typeof passed === "boolean" ? passed : null;
 }
 
+function getEvidenceListKey(prefix: string, value: unknown): string {
+  if (typeof value !== "object" || value === null) {
+    return `${prefix}:${JSON.stringify(value)}`;
+  }
+
+  const record = value as Record<string, unknown>;
+  const nested =
+    typeof record.entry === "object" && record.entry !== null
+      ? (record.entry as Record<string, unknown>)
+      : null;
+  const query =
+    typeof nested?.query === "string"
+      ? nested.query
+      : typeof record.query === "string"
+        ? record.query
+        : typeof record.prompt === "string"
+          ? record.prompt
+          : typeof record.input === "string"
+            ? record.input
+            : null;
+
+  if (query) return `${prefix}:${query}`;
+
+  const action = typeof record.action === "string" ? record.action : null;
+  const timestamp = typeof record.timestamp === "string" ? record.timestamp : null;
+  if (action && timestamp) return `${prefix}:${action}:${timestamp}`;
+
+  return `${prefix}:${JSON.stringify(record)}`;
+}
+
 /** Render a per_entry_result row — handles both flat EvalEntry and nested { entry, before_pass, after_pass } */
 function PerEntryResult({ entry }: { entry: Record<string, unknown> }) {
   // Handle nested shape: { entry: { query, should_trigger }, before_pass, after_pass }
@@ -225,6 +255,7 @@ function ValidationResults({ validation }: { validation: Record<string, unknown>
     validation_mode,
     validation_agent,
     validation_fixture_id,
+    validation_fallback_reason,
     ...rest
   } = validation;
 
@@ -235,6 +266,8 @@ function ValidationResults({ validation }: { validation: Record<string, unknown>
   const validationAgent = typeof validation_agent === "string" ? validation_agent : null;
   const validationFixtureId =
     typeof validation_fixture_id === "string" ? validation_fixture_id : null;
+  const validationFallbackReason =
+    typeof validation_fallback_reason === "string" ? validation_fallback_reason : null;
 
   return (
     <div className="rounded-md border bg-muted/30 p-3 space-y-3">
@@ -282,6 +315,12 @@ function ValidationResults({ validation }: { validation: Record<string, unknown>
         )}
       </div>
 
+      {validationFallbackReason && (
+        <div className="rounded border border-amber-300/60 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+          Replay fallback: {validationFallbackReason}
+        </div>
+      )}
+
       {/* New passes */}
       {newPassesArr.length > 0 && (
         <div>
@@ -289,9 +328,9 @@ function ValidationResults({ validation }: { validation: Record<string, unknown>
             New Passes ({newPassesArr.length})
           </p>
           <div className="rounded border bg-card p-2">
-            {newPassesArr.map((entry, j) => (
+            {newPassesArr.map((entry) => (
               <PerEntryResult
-                key={j}
+                key={getEvidenceListKey("new-pass", entry)}
                 entry={
                   typeof entry === "object" && entry !== null
                     ? (entry as Record<string, unknown>)
@@ -310,9 +349,9 @@ function ValidationResults({ validation }: { validation: Record<string, unknown>
             Regressions ({regressionsArr.length})
           </p>
           <div className="rounded border border-red-200 dark:border-red-900/50 bg-card p-2">
-            {regressionsArr.map((entry, j) => (
+            {regressionsArr.map((entry) => (
               <PerEntryResult
-                key={j}
+                key={getEvidenceListKey("regression", entry)}
                 entry={
                   typeof entry === "object" && entry !== null
                     ? (entry as Record<string, unknown>)
@@ -372,9 +411,9 @@ function PerEntryResultsSection({ entries }: { entries: unknown[] }) {
         />
       </div>
       <div className="rounded border bg-card p-2 max-h-[300px] overflow-y-auto">
-        {display.map((entry, j) => (
+        {display.map((entry) => (
           <PerEntryResult
-            key={j}
+            key={getEvidenceListKey("per-entry", entry)}
             entry={
               typeof entry === "object" && entry !== null
                 ? (entry as Record<string, unknown>)
@@ -437,13 +476,13 @@ function EvalSetSection({ evalSet }: { evalSet: Array<Record<string, unknown>> }
       </button>
       {expanded && (
         <div className="space-y-1">
-          {evalSet.map((evalEntry, j) => {
+          {evalSet.map((evalEntry) => {
             const query = evalEntry.query ?? evalEntry.prompt ?? evalEntry.input;
             const expected = evalEntry.expected ?? evalEntry.should_trigger;
             const passed = evalEntry.passed ?? evalEntry.result;
             return (
               <div
-                key={j}
+                key={getEvidenceListKey("eval-set", evalEntry)}
                 className="flex items-start gap-2 text-xs py-1 border-b border-border/50 last:border-0"
               >
                 {typeof passed === "boolean" ? (
@@ -686,7 +725,7 @@ export function EvidenceViewer({ proposalId, evolution, evidence }: Props) {
         <CardContent className="space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
             {steps.map((step, i) => (
-              <div key={`${step.action}-${i}`} className="contents">
+              <div key={`${step.action}-${step.timestamp}`} className="contents">
                 {i > 0 && <ArrowRightIcon className="size-3 text-muted-foreground/50 shrink-0" />}
                 <div className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 bg-card">
                   {ACTION_ICON[step.action]}

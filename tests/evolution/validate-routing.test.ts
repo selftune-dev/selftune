@@ -304,8 +304,10 @@ describe("validateRoutingProposal", () => {
     expect(result.gate_results[1]?.reason).toContain("host_replay");
   });
 
-  test("uses the default fixture-backed replay runner when no custom runner is passed", async () => {
-    mockCallLlm.mockClear();
+  test("falls back to llm_judge when only a replay fixture is provided", async () => {
+    mockCallLlm.mockImplementation(async (_sys: string, user: string) =>
+      user.includes("make slides, create deck") ? "YES" : "NO",
+    );
     const rootDir = mkdtempSync(join(tmpdir(), "selftune-routing-"));
     try {
       const targetPath = writeReplaySkill(
@@ -336,18 +338,23 @@ describe("validateRoutingProposal", () => {
         },
       );
 
-      expect(result.validation_mode).toBe("fixture_replay");
-      expect(result.validation_fixture_id).toBe("fixture-default-runner");
+      expect(result.validation_mode).toBe("llm_judge");
+      expect(result.validation_fixture_id).toBeUndefined();
+      expect(result.validation_fallback_reason).toContain(
+        "no real host/runtime replay runner is configured",
+      );
       expect(result.before_pass_rate).toBe(0);
       expect(result.after_pass_rate).toBe(1);
-      expect(mockCallLlm).not.toHaveBeenCalled();
+      expect(mockCallLlm).toHaveBeenCalled();
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
     }
   });
 
-  test("falls back to fixture_replay when custom replay runner throws", async () => {
-    mockCallLlm.mockClear();
+  test("falls back to llm_judge when custom replay runner throws", async () => {
+    mockCallLlm.mockImplementation(async (_sys: string, user: string) =>
+      user.includes("make slides, create deck") ? "YES" : "NO",
+    );
     const rootDir = mkdtempSync(join(tmpdir(), "selftune-routing-"));
     try {
       const targetPath = writeReplaySkill(
@@ -384,12 +391,13 @@ describe("validateRoutingProposal", () => {
         },
       );
 
-      expect(result.validation_mode).toBe("fixture_replay");
-      expect(result.validation_fixture_id).toBe("fixture-fallback-test");
+      expect(result.validation_mode).toBe("llm_judge");
+      expect(result.validation_fixture_id).toBeUndefined();
+      expect(result.validation_fallback_reason).toContain("real host/runtime replay failed");
       expect(result.before_pass_rate).toBe(0);
       expect(result.after_pass_rate).toBe(1);
       expect(failingRunner).toHaveBeenCalled();
-      expect(mockCallLlm).not.toHaveBeenCalled();
+      expect(mockCallLlm).toHaveBeenCalled();
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
     }

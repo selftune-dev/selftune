@@ -89,8 +89,11 @@ which selftune
 If `selftune` is not on PATH, install it:
 
 ```bash
-npm install -g selftune
+npx skills add selftune-dev/selftune
 ```
+
+If you manage the CLI directly instead of using the skill installer, use
+`npm install -g selftune` or `bun add -g selftune`.
 
 ### 2. Check Existing Config
 
@@ -415,8 +418,9 @@ retrying with `selftune init --alpha --alpha-email <email> --force`.
 
 **User asks to set up or initialize selftune**
 
-> Run `which selftune` to check installation. If missing, install with
-> `npm install -g selftune`. Run `selftune init`, then verify with
+> Run `which selftune` to check installation. If missing, install or refresh with
+> `npx skills add selftune-dev/selftune`. If the user manages the CLI directly,
+> use `npm install -g selftune` or `bun add -g selftune`. Run `selftune init`, then verify with
 > `selftune doctor`. Report results to the user.
 
 **User wants alpha enrollment**

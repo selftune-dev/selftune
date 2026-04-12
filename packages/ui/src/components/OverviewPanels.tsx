@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { CheckCircleIcon, ChevronDownIcon } from "lucide-react";
 
@@ -95,7 +96,22 @@ const BUCKET_CFG: Record<TrustBucket, { label: string; accent: string; dot: stri
 };
 
 // Ambient bar heights for hero background
-const BARS = [35, 55, 40, 70, 45, 80, 30, 65, 50, 75, 38, 60, 42, 72];
+const BARS = [
+  { id: "autonomy-bar-1", height: 35 },
+  { id: "autonomy-bar-2", height: 55 },
+  { id: "autonomy-bar-3", height: 40 },
+  { id: "autonomy-bar-4", height: 70 },
+  { id: "autonomy-bar-5", height: 45 },
+  { id: "autonomy-bar-6", height: 80 },
+  { id: "autonomy-bar-7", height: 30 },
+  { id: "autonomy-bar-8", height: 65 },
+  { id: "autonomy-bar-9", height: 50 },
+  { id: "autonomy-bar-10", height: 75 },
+  { id: "autonomy-bar-11", height: 38 },
+  { id: "autonomy-bar-12", height: 60 },
+  { id: "autonomy-bar-13", height: 42 },
+  { id: "autonomy-bar-14", height: 72 },
+] as const;
 
 // ---------------------------------------------------------------------------
 // AutonomyHeroCard
@@ -104,9 +120,10 @@ const BARS = [35, 55, 40, 70, 45, 80, 30, 65, 50, 75, 38, 60, 42, 72];
 export interface AutonomyHeroCardProps {
   status: AutonomyStatus;
   lastRun: string | null;
+  actions?: ReactNode;
 }
 
-export function AutonomyHeroCard({ status, lastRun }: AutonomyHeroCardProps) {
+export function AutonomyHeroCard({ status, lastRun, actions }: AutonomyHeroCardProps) {
   const dot = STATUS_DOT[status.level];
   const primaryStat =
     status.attention_required > 0
@@ -117,13 +134,13 @@ export function AutonomyHeroCard({ status, lastRun }: AutonomyHeroCardProps) {
     <Card className="relative min-h-[332px] border-none bg-gradient-to-br from-muted via-muted to-primary/5 shadow-none py-0 ring-0">
       {/* Ambient bars */}
       <div className="absolute inset-0 flex items-end justify-around px-8 pb-24 pt-20 opacity-[0.08] pointer-events-none">
-        {BARS.map((h, i) => (
+        {BARS.map((bar) => (
           <div
-            key={i}
+            key={bar.id}
             className="flex-1 rounded-t-sm min-w-[12px]"
             style={{
-              height: `${h}%`,
-              backgroundColor: `rgba(79, 242, 255, ${0.15 + (h / 100) * 0.3})`,
+              height: `${bar.height}%`,
+              backgroundColor: `rgba(79, 242, 255, ${0.15 + (bar.height / 100) * 0.3})`,
             }}
           />
         ))}
@@ -188,16 +205,17 @@ export function AutonomyHeroCard({ status, lastRun }: AutonomyHeroCardProps) {
           </div>
         </div>
 
-        {status.attention_required > 0 ? (
-          <a
-            href="#supervision-feed"
-            className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80 w-fit"
-          >
-            Review Attention Queue
-          </a>
-        ) : (
-          <span className="text-sm text-muted-foreground/70">No action needed</span>
-        )}
+        {actions ??
+          (status.attention_required > 0 ? (
+            <a
+              href="#supervision-feed"
+              className="inline-flex w-fit items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80"
+            >
+              Review Attention Queue
+            </a>
+          ) : (
+            <span className="text-sm text-muted-foreground/70">No action needed</span>
+          ))}
       </CardContent>
     </Card>
   );
@@ -210,10 +228,11 @@ export function AutonomyHeroCard({ status, lastRun }: AutonomyHeroCardProps) {
 export interface TrustWatchlistRailProps {
   entries: TrustWatchlistEntry[];
   /** Optional render prop for skill name links */
-  renderSkillLink?: (skillName: string) => React.ReactNode;
+  renderSkillLink?: (skillName: string) => ReactNode;
+  footer?: ReactNode;
 }
 
-export function TrustWatchlistRail({ entries, renderSkillLink }: TrustWatchlistRailProps) {
+export function TrustWatchlistRail({ entries, renderSkillLink, footer }: TrustWatchlistRailProps) {
   const buckets = useMemo(() => {
     const order: TrustBucket[] = ["at_risk", "improving", "uncertain", "stable"];
     const grouped: Record<TrustBucket, TrustWatchlistEntry[]> = {
@@ -229,7 +248,10 @@ export function TrustWatchlistRail({ entries, renderSkillLink }: TrustWatchlistR
   }, [entries]);
 
   return (
-    <Card className="border-none bg-muted shadow-none py-0 max-h-[360px] ring-0">
+    <Card
+      data-parity-root="overview-trust-watchlist"
+      className="border-none bg-muted shadow-none py-0 max-h-[360px] ring-0"
+    >
       <CardHeader className="px-5 pt-5 pb-0">
         <div>
           <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
@@ -262,6 +284,10 @@ export function TrustWatchlistRail({ entries, renderSkillLink }: TrustWatchlistR
           ))}
         </CardContent>
       )}
+
+      {footer ? (
+        <CardContent className="mt-auto px-5 pb-5 pt-1 shrink-0">{footer}</CardContent>
+      ) : null}
     </Card>
   );
 }
@@ -273,7 +299,7 @@ function RailBucket({
 }: {
   bucket: TrustBucket;
   items: TrustWatchlistEntry[];
-  renderSkillLink?: (skillName: string) => React.ReactNode;
+  renderSkillLink?: (skillName: string) => ReactNode;
 }) {
   const cfg = BUCKET_CFG[bucket];
   const [open, setOpen] = useState(false);
@@ -342,13 +368,14 @@ export interface SupervisionFeedProps {
   attention: AttentionItem[];
   decisions: AutonomousDecision[];
   /** Optional render prop for skill name links */
-  renderSkillLink?: (skillName: string) => React.ReactNode;
+  renderSkillLink?: (skillName: string) => ReactNode;
 }
 
 export function SupervisionFeed({ attention, decisions, renderSkillLink }: SupervisionFeedProps) {
   return (
     <Card
       id="supervision-feed"
+      data-parity-root="overview-supervision-feed"
       className="relative overflow-hidden border-none bg-muted shadow-none py-0 scroll-mt-6 ring-0"
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-primary/5 via-transparent to-transparent" />
@@ -398,7 +425,7 @@ function AttentionContent({
   renderSkillLink,
 }: {
   attention: AttentionItem[];
-  renderSkillLink?: (skillName: string) => React.ReactNode;
+  renderSkillLink?: (skillName: string) => ReactNode;
 }) {
   const [showAll, setShowAll] = useState(false);
 
@@ -468,10 +495,24 @@ function DecisionsContent({
   renderSkillLink,
 }: {
   decisions: AutonomousDecision[];
-  renderSkillLink?: (skillName: string) => React.ReactNode;
+  renderSkillLink?: (skillName: string) => ReactNode;
 }) {
   const [showAll, setShowAll] = useState(false);
   const visible = showAll ? decisions : decisions.slice(0, 10);
+  const keyedVisible = useMemo(() => {
+    const seen = new Map<string, number>();
+
+    return visible.map((decision) => {
+      const baseKey = `${decision.timestamp}-${decision.skill_name}-${decision.kind}`;
+      const occurrence = seen.get(baseKey) ?? 0;
+      seen.set(baseKey, occurrence + 1);
+
+      return {
+        decision,
+        key: `${baseKey}-${occurrence}`,
+      };
+    });
+  }, [visible]);
 
   if (decisions.length === 0) {
     return <p className="text-xs text-muted-foreground/70 py-4">No autonomous decisions yet.</p>;
@@ -479,11 +520,11 @@ function DecisionsContent({
 
   return (
     <div className="space-y-1">
-      {visible.map((d, i) => {
+      {keyedVisible.map(({ decision: d, key }) => {
         const marker = DECISION_MARKERS[d.kind];
         return (
           <div
-            key={`${d.timestamp}-${d.skill_name}-${i}`}
+            key={key}
             className="flex items-start gap-2.5 rounded-xl bg-background/30 px-3 py-2 transition-colors hover:bg-background/45"
           >
             <span className={`mt-1.5 size-2 shrink-0 rounded-full ${marker}`} />
@@ -535,7 +576,7 @@ export interface SkillComparisonRow {
 export interface SkillComparisonGridProps {
   rows: SkillComparisonRow[];
   /** Optional render prop for skill name links */
-  renderSkillLink?: (skillName: string) => React.ReactNode;
+  renderSkillLink?: (skillName: string) => ReactNode;
 }
 
 function formatEvolutionAction(action: string): string {

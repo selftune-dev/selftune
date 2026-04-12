@@ -14,10 +14,36 @@ import {
  * local development but will be rejected by the relay endpoint.
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const SUPPORTED_CONTRIBUTION_SIGNALS = ["trigger", "grade", "miss_category"] as const;
+export type SupportedContributionSignal = (typeof SUPPORTED_CONTRIBUTION_SIGNALS)[number];
 
 /** Returns `true` when `value` looks like a valid UUID v4 (case-insensitive). */
 export function isValidCreatorUUID(value: string): boolean {
   return UUID_RE.test(value);
+}
+
+export function isSupportedContributionSignal(value: string): value is SupportedContributionSignal {
+  return SUPPORTED_CONTRIBUTION_SIGNALS.includes(value as SupportedContributionSignal);
+}
+
+export function normalizeSupportedContributionSignals(
+  rawSignals: string[],
+): SupportedContributionSignal[] {
+  const normalized = [...new Set(rawSignals.map((signal) => signal.trim()).filter(Boolean))];
+  if (normalized.length === 0) {
+    throw new Error(
+      `At least one contribution signal is required. Supported signals: ${SUPPORTED_CONTRIBUTION_SIGNALS.join(", ")}`,
+    );
+  }
+
+  const invalid = normalized.filter((signal) => !isSupportedContributionSignal(signal));
+  if (invalid.length > 0) {
+    throw new Error(
+      `Unsupported contribution signals: ${invalid.join(", ")}. Supported signals: ${SUPPORTED_CONTRIBUTION_SIGNALS.join(", ")}`,
+    );
+  }
+
+  return normalized;
 }
 
 export interface CreatorContributionConfig {
@@ -172,6 +198,12 @@ export function resolveContributionSkillPath(
 export function writeCreatorContributionConfig(
   input: CreatorContributionConfigInput,
 ): CreatorContributionConfig {
+  if (!isValidCreatorUUID(input.creator_id)) {
+    throw new Error(
+      `creator_id must be the creator's cloud user UUID. Received "${input.creator_id}".`,
+    );
+  }
+  const signals = normalizeSupportedContributionSignals(input.signals);
   const normalized = normalizeContributionConfig(
     {
       version: 1,
@@ -179,7 +211,7 @@ export function writeCreatorContributionConfig(
       skill_name: input.skill_name,
       contribution: {
         enabled: true,
-        signals: input.signals,
+        signals,
         message: input.message,
         privacy_url: input.privacy_url,
       },

@@ -30,9 +30,10 @@ function seedSession(
   occurredAt: string,
   triggered: 0 | 1,
   invocationMode: string | null,
+  skillName = "sc-search",
 ): void {
   db.run(
-    `INSERT INTO sessions (session_id, started_at, platform, capture_mode)
+    `INSERT OR IGNORE INTO sessions (session_id, started_at, platform, capture_mode)
      VALUES (?, ?, 'claude_code', 'canonical')`,
     [sessionId, occurredAt],
   );
@@ -45,8 +46,16 @@ function seedSession(
     `INSERT INTO skill_invocations (
        skill_invocation_id, session_id, skill_name, occurred_at, invocation_mode,
        triggered, matched_prompt_id, capture_mode
-     ) VALUES (?, ?, 'sc-search', ?, ?, ?, ?, 'canonical')`,
-    [`${sessionId}:s:0`, sessionId, occurredAt, invocationMode, triggered, promptId],
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'canonical')`,
+    [
+      `${sessionId}:${skillName}:${promptId}`,
+      sessionId,
+      skillName,
+      occurredAt,
+      invocationMode,
+      triggered,
+      promptId,
+    ],
   );
 }
 
@@ -101,6 +110,7 @@ describe("contribution-signals", () => {
 
     expect(implicitPayload?.creator_id).toBe("cr_search");
     expect(implicitPayload?.source_key).toHaveLength(16);
+    expect(implicitPayload?.payload.skill_name).toBe("sc-search");
     expect(implicitPayload?.payload.relay_destination).toBe("cr_search");
     expect(implicitPayload?.payload.skill_hash).toMatch(/^sk_sha256_/);
     expect(implicitPayload?.payload.user_cohort).toBe(
@@ -132,6 +142,7 @@ describe("contribution-signals", () => {
     expect(preview.observedCount).toBe(1);
     expect(preview.triggerRate).toBe(100);
     expect(preview.missRate).toBe(0);
+    expect(preview.samplePayload.skill_name).toBe("sc-search");
     expect(preview.samplePayload.relay_destination).toBe("cr_search");
     expect(preview.samplePayload.signals.query_bucket).toBe("comparison");
   });
@@ -146,7 +157,46 @@ describe("contribution-signals", () => {
     expect(preview.triggerRate).toBeNull();
     expect(preview.missRate).toBeNull();
     expect(preview.gradedSessions).toBe(0);
+    expect(preview.samplePayload.skill_name).toBe("sc-search");
     expect(preview.samplePayload.relay_destination).toBe("cr_search");
     expect(preview.samplePayload.signals.query_bucket).toBe("other");
+  });
+
+  test("keeps grades scoped to the matching skill within a multi-skill session", () => {
+    seedSession(
+      "shared-session",
+      "p1",
+      "Compare React vs Vue for dashboards",
+      "2026-04-01T00:00:00.000Z",
+      1,
+      "implicit",
+      "sc-search",
+    );
+    seedSession(
+      "shared-session",
+      "p2",
+      "Fix the routing bug in this workflow",
+      "2026-04-01T00:05:00.000Z",
+      1,
+      "explicit",
+      "sc-debug",
+    );
+    db.run(
+      `INSERT INTO grading_results (
+         grading_id, session_id, skill_name, graded_at, pass_rate, mean_score
+       ) VALUES
+         ('g-search', 'shared-session', 'sc-search', '2026-04-03T00:00:00.000Z', 1.0, 0.95),
+         ('g-debug', 'shared-session', 'sc-debug', '2026-04-03T00:01:00.000Z', 0.2, 0.25)`,
+    );
+
+    const payloads = buildCreatorDirectedContributionSignals(db, [config], {
+      now: new Date("2026-04-10T00:00:00.000Z"),
+      cohortSeed: "device-123",
+      clientVersion: "0.4.0",
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]?.payload.skill_name).toBe("sc-search");
+    expect(payloads[0]?.payload.signals.execution_grade).toBe("A");
   });
 });

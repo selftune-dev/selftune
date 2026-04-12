@@ -5,19 +5,14 @@
  * Rubric-based grader for Claude Code skill sessions.
  * Migrated from grade_session.py.
  *
- * Grades via an installed agent CLI selected from AGENT_CANDIDATES.
+ * Grades via an installed agent CLI selected from the LLM-backed agent set.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 
-import {
-  AGENT_CANDIDATES,
-  CLAUDE_CODE_PROJECTS_DIR,
-  SELFTUNE_CONFIG_DIR,
-  TELEMETRY_LOG,
-} from "../constants.js";
+import { CLAUDE_CODE_PROJECTS_DIR, SELFTUNE_CONFIG_DIR, TELEMETRY_LOG } from "../constants.js";
 import { getDb } from "../localdb/db.js";
 import { querySessionTelemetry, querySkillUsageRecords } from "../localdb/queries.js";
 import type {
@@ -31,7 +26,8 @@ import type {
 } from "../types.js";
 import { CLIError, handleCLIError } from "../utils/cli-error.js";
 import {
-  detectAgent as _detectAgent,
+  detectLlmAgent as _detectAgent,
+  LLM_BACKED_AGENT_CANDIDATES,
   stripMarkdownFences as _stripMarkdownFences,
   callViaAgent,
 } from "../utils/llm-call.js";
@@ -753,7 +749,7 @@ Options:
   --transcript        Path to transcript file
   --telemetry-log     Path to telemetry log (default: ~/.claude/session_telemetry_log.jsonl)
   --output            Output path for grading JSON (default: ~/.selftune/grading/result-<session>.json)
-  --agent             Agent CLI to use (${AGENT_CANDIDATES.join(", ")})
+  --agent             Agent CLI to use (${LLM_BACKED_AGENT_CANDIDATES.join(", ")})
   --show-transcript   Print transcript excerpt before grading
   -h, --help          Show this help message`);
     process.exit(0);
@@ -766,7 +762,7 @@ Options:
 
   // --- Determine agent ---
   let agent: string | null = null;
-  const validAgents = [...AGENT_CANDIDATES];
+  const validAgents = [...LLM_BACKED_AGENT_CANDIDATES];
   if (values.agent) {
     if (!validAgents.includes(values.agent)) {
       throw new CLIError(
@@ -782,9 +778,9 @@ Options:
 
   if (!agent) {
     throw new CLIError(
-      `No supported agent CLI (${AGENT_CANDIDATES.join("/")}) found in PATH`,
+      `No supported agent CLI (${LLM_BACKED_AGENT_CANDIDATES.join("/")}) found in PATH`,
       "AGENT_NOT_FOUND",
-      "Install claude, codex, or opencode CLI, then retry",
+      "Install Claude Code, Codex, OpenCode, or Pi, then retry",
     );
   }
 

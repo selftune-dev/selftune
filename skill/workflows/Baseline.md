@@ -26,7 +26,7 @@ selftune grade baseline --skill <name> --skill-path <path> [options]
 | `--skill <name>`      | Skill name                   | Required                 |
 | `--skill-path <path>` | Path to the skill's SKILL.md | Required                 |
 | `--eval-set <path>`   | Pre-built eval set JSON      | Auto-generated from logs |
-| `--agent <name>`      | Agent CLI to use             | Auto-detected            |
+| `--agent <name>`      | Agent CLI to use (claude, codex, opencode, pi) | Auto-detected            |
 
 ## Output Format
 
@@ -85,6 +85,7 @@ Ask one `AskUserQuestion` at a time in this order:
    - `claude`
    - `codex`
    - `opencode`
+   - `pi`
 
 If `AskUserQuestion` is not available or Claude does not invoke it, fall back to presenting the same choices as inline numbered options.
 

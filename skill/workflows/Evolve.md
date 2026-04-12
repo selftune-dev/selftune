@@ -26,7 +26,7 @@ selftune evolve --skill <name> --skill-path <path> [options]
 | `--skill <name>`             | Skill name                                                              | Required                       |
 | `--skill-path <path>`        | Path to the skill's SKILL.md                                            | Required                       |
 | `--eval-set <path>`          | Pre-built eval set JSON                                                 | Auto-generated from logs       |
-| `--agent <name>`             | Agent CLI to use (claude, codex, opencode)                              | Auto-detected                  |
+| `--agent <name>`             | Agent CLI to use (claude, codex, opencode, pi)                          | Auto-detected                  |
 | `--dry-run`                  | Propose and validate without deploying                                  | Off                            |
 | `--confidence <n>`           | Minimum confidence threshold (0-1)                                      | 0.6                            |
 | `--max-iterations <n>`       | Maximum retry iterations                                                | 3                              |
@@ -85,43 +85,42 @@ Routing/body validation may also carry provenance fields such as:
 - `validation_fixture_id` — fixture identifier when replay-backed validation is used
 - `before_pass_rate` / `after_pass_rate` — only present when trigger validation actually ran; structural-guard exits do not emit synthetic pass rates
 
-Most evolve runs today still validate through `llm_judge`. Routing evolution now
-auto-builds a replay fixture from the target skill plus installed sibling
-skills in the same registry, so replay-backed validation is preferred whenever
-that local fixture can be constructed because it captures host-style routing
-behavior instead of model judgment.
+Most evolve runs today still validate through `llm_judge`. Replay-backed
+validation is only considered available when selftune can run a real
+host/runtime replay for the target host. Today that means the Claude Code,
+Codex, and OpenCode paths can stage a temporary local registry, apply the
+candidate skill content, and observe the runtime's actual routing decision;
+when that runtime path is unavailable, `auto` falls back to `llm_judge` and
+`replay` errors explicitly instead of silently downgrading to fixture
+simulation.
 
-Description, routing, and full-body evolution now share the same validation
-mode contract internally: `auto` prefers replay and falls back to judge,
-`replay` requires a replay path, and `judge` bypasses replay entirely. The
-public `--validation-mode` flag currently applies to description evolution;
-body/routing use the shared contract with `auto` semantics.
+Description, routing, and full-body evolution now share the same public
+validation contract: `auto` prefers replay and falls back to judge, `replay`
+requires a replay path, and `judge` bypasses replay entirely. Audit and
+evidence records may also include `validation_fallback_reason` when `auto`
+had to fall back from replay to judge.
 
-For Claude Code, the replay path now stages a temporary project-local
-`.claude/skills` registry, swaps in the candidate routing table, and runs a
-one-turn Claude print-mode session with project/local settings only. Validation
-records whether Claude actually invoked the target skill, invoked a competing
-skill, invoked an unrelated skill, or made no routing decision at all.
-Unrelated skill use is treated as a replay failure even on negative evals,
-because it still indicates the runtime routed somewhere unexpected. If that
-runtime path is unavailable or fails to reach a runtime decision, selftune
-falls back to the existing fixture-backed surface simulation and notes the
-fallback in the replay evidence instead of pretending it was a runtime result.
+Replay stages the candidate into the target host's project-local registry:
+Claude Code uses `.claude/skills`, Codex uses `.agents/skills`, and OpenCode
+uses `.opencode/skills`. Validation records whether the runtime selected the
+target skill, selected a competing skill, selected an unrelated skill, or made
+no routing decision at all. Reads outside the staged skill set are treated as
+replay failures even on negative evals, because they indicate the runtime left
+the controlled evaluation surface.
 
-For non-Claude platforms today, replay remains fixture-backed: it evaluates the
-target routing table against the installed target/competing skill surfaces in a
-controlled replay fixture and records per-entry evidence. That is still a
-stronger signal than a free-form judge prompt, but you should describe it as
-replay-backed validation, not as live operator telemetry.
+For hosts without runtime replay support today, replay is not available. In
+`auto` mode selftune falls back to `llm_judge`; in `replay` mode it exits with
+`REPLAY_UNAVAILABLE`. Do not describe fixture-only surface matching as replay
+validation in user-facing summaries.
 
 Replay parsing is intentionally conservative: unreadable skill files degrade to
 empty surfaces instead of throwing, and malformed routing rows with empty
-trigger cells are ignored rather than treated as valid triggers. Claude replay
-also normalizes observed `Read` paths against the staged workspace, so relative
-skill reads still count as read-only evidence for the target or competing
-skill. Reads outside the staged skill set are treated as replay failures rather
-than benign negatives, because they indicate the runtime left the controlled
-evaluation surface.
+trigger cells are ignored rather than treated as valid triggers. Replay also
+normalizes observed skill reads against the staged workspace, so relative skill
+paths from Claude, Codex, or OpenCode still count as evidence for the target or
+competing skill. Reads outside the staged skill set are treated as replay
+failures rather than benign negatives, because they indicate the runtime left
+the controlled evaluation surface.
 
 ## Parsing Instructions
 
@@ -301,10 +300,12 @@ description proposals. Three modes are available:
 | `judge`  | LLM judge only (legacy path via `validateProposal`)                      |
 
 The default is `auto`, which provides the strongest available signal without
-requiring manual fixture configuration. When replay is available, it evaluates
-the candidate routing table against the installed skill surfaces in a controlled
-fixture and records per-entry evidence. When replay is not available, `auto`
-falls back to the LLM judge and logs the fallback.
+requiring manual fixture configuration. When replay is available, it stages the
+candidate skill content into a temporary local registry and records the
+runtime's actual routing decision per eval entry. For description evolution,
+that means the proposed description is applied to the target skill before
+replay. When replay is not available, `auto` falls back to the LLM judge and
+logs the fallback.
 
 The actual mode used is recorded as `validation_mode` in audit entries
 (`llm_judge`, `host_replay`, or `structural_guard`), along with
@@ -469,7 +470,7 @@ Also check if the eval set has contradictory expectations.
 
 **Agent CLI override needed:**
 The evolve command auto-detects the installed agent CLI.
-Use `--agent <name>` to override (claude, codex, opencode).
+Use `--agent <name>` to override (claude, codex, opencode, pi).
 
 ## Subagent Escalation
 

@@ -84,6 +84,8 @@ What you should see:
 - `sync` rebuilds source-truth local evidence
 - `status` shows skills, unmatched queries, and current health
 - `dashboard` starts the local server without requiring the old HTML runtime
+- rerunning `dashboard` reuses an existing healthy instance on the same port and
+  automatically restarts an older standalone dashboard after upgrades
 
 If you want the autonomous path immediately:
 
@@ -248,7 +250,7 @@ Then open `http://127.0.0.1:3141`.
 ### If the dashboard looks wrong
 
 1. Run `selftune sync`
-2. Restart `selftune dashboard`
+2. Run `selftune dashboard --restart`
 3. If needed, remove `~/.selftune/selftune.db`, rerun `selftune sync --force`, or use `selftune recover --full --force` when you explicitly need JSONL/export recovery
 
 SQLite is the operational database. Direct-write hooks and ingestors keep it current in real time. JSONL is legacy/export material only and should not be treated as the normal runtime path.
@@ -262,8 +264,15 @@ selftune sync --force
 selftune status
 ```
 
-If the problem is only the SPA view, restart the dashboard first. If the DB
-needs to be recreated, prefer:
+If the problem is only the SPA view, rerun `selftune dashboard` first. It will
+reuse a healthy instance or restart an older standalone dashboard version
+automatically. If you need to force the restart, use:
+
+```bash
+selftune dashboard --restart
+```
+
+If the DB needs to be recreated, prefer:
 
 ```bash
 selftune export

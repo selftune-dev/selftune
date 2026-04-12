@@ -1,4 +1,4 @@
-.PHONY: all clean lint lint-fix format format-check test test-fast test-slow check typecheck-dashboard dev dev-server dev-dashboard sandbox sandbox-install sandbox-llm sandbox-shell sandbox-shell-empty sandbox-shell-empty-workspace sandbox-reset sandbox-reset-state sandbox-openclaw sandbox-openclaw-keep sandbox-openclaw-clean clean-branches
+.PHONY: all clean lint lint-fix format format-check test test-fast test-slow check typecheck-runtime typecheck-dashboard dev dev-server dev-dashboard sandbox sandbox-install sandbox-llm sandbox-shell sandbox-shell-empty sandbox-shell-empty-workspace sandbox-reset sandbox-reset-state sandbox-openclaw sandbox-openclaw-keep sandbox-openclaw-clean clean-branches
 
 SANDBOX_CLI_VERSION := $(subst .,-,$(shell node -p "require('./package.json').version"))
 SANDBOX_DATE_STAMP := $(shell date +%Y-%m-%d-%H%M%S)
@@ -48,23 +48,30 @@ test-slow:
 
 # ── Typecheck & Full Check ─────────────────────────────────────────────
 
+typecheck-runtime:
+	bun run typecheck:runtime
+
 typecheck-dashboard:
 	cd apps/local-dashboard && bunx tsc --noEmit
 
-check: lint typecheck-dashboard test sandbox
+check: lint typecheck-runtime typecheck-dashboard test sandbox
 
 # ── Development ────────────────────────────────────────────────────────
 
 dev:
 	@trap 'kill 0' EXIT; \
-	bun --watch run cli/selftune/dashboard-server.ts --port 7888 --runtime-mode dev-server & \
-	sleep 1 && cd apps/local-dashboard && bunx vite --strictPort
+	DASHBOARD_PORT=$${DASHBOARD_PORT:-7888}; \
+	VITE_PORT=$${VITE_PORT:-5199}; \
+	bun --watch run cli/selftune/dashboard-server.ts --port $$DASHBOARD_PORT --runtime-mode dev-server & \
+	sleep 1 && cd apps/local-dashboard && bunx vite --strictPort --port $$VITE_PORT
 
 dev-server:
-	bun --watch run cli/selftune/dashboard-server.ts --port 7888 --runtime-mode dev-server
+	@DASHBOARD_PORT=$${DASHBOARD_PORT:-7888}; \
+	bun --watch run cli/selftune/dashboard-server.ts --port $$DASHBOARD_PORT --runtime-mode dev-server
 
 dev-dashboard:
-	bun run cli/selftune/index.ts dashboard --port 7888 --no-open
+	@DASHBOARD_PORT=$${DASHBOARD_PORT:-7888}; \
+	bun run cli/selftune/index.ts dashboard --port $$DASHBOARD_PORT --no-open
 
 # ── Sandbox ────────────────────────────────────────────────────────────
 

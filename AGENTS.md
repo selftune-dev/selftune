@@ -265,6 +265,7 @@ These rules are non-negotiable. Before performing the action in the "If" column,
 - SQLite is the sole write target and operational store; legacy JSONL files on disk are pre-cutover history only (see docs/design-docs/sqlite-first-migration.md)
 - Evolution proposals require validation against eval set before deploy
 - `selftune orchestrate` is the primary autonomous loop; `selftune cron setup` installs OS-level scheduling (`selftune schedule` is a backward-compatible alias)
+- OSS dashboard dev ports are configurable via `DASHBOARD_PORT` (backend, default `7888`) and `VITE_PORT` (frontend, default `5199`) to avoid workspace collisions
 - All knowledge lives in-repo, not in external tools
 - The core CLI keeps zero runtime dependencies and uses only Bun built-ins
 - **`@selftune/telemetry-contract` uses `workspace:*` in the repo; `prepack` rewrites to `file:` at publish time.** Do NOT hardcode `file:` (causes bun lockfile duplicates) or remove the prepack/postpack scripts (breaks registry installs). A CI test (`tests/trust-floor/publish-deps.test.ts`) enforces the full pipeline.

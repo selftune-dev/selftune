@@ -20,19 +20,17 @@ import { queryQueryLog, querySkillUsageRecords } from "../localdb/queries.js";
 import type {
   BodyEvolutionProposal,
   BodyValidationResult,
-  EvalEntry,
   EvolutionAuditEntry,
   EvolutionEvidenceEntry,
   EvolutionTarget,
   FailurePattern,
   GradingResult,
   QueryLogRecord,
-  RoutingReplayFixture,
   SkillUsageRecord,
 } from "../types.js";
 import { CLIError, handleCLIError } from "../utils/cli-error.js";
 import type { EffortLevel, SubagentCallOptions } from "../utils/llm-call.js";
-import { callViaSubagent } from "../utils/llm-call.js";
+import { callViaSubagent, detectLlmAgent } from "../utils/llm-call.js";
 import { appendAuditEntry } from "./audit.js";
 import { checkConstitutionSizeOnly } from "./constitutional.js";
 import { parseSkillSections, replaceBody, replaceSection } from "./deploy-proposal.js";
@@ -43,11 +41,9 @@ import { generateRoutingProposal } from "./propose-routing.js";
 import { refineBodyProposal } from "./refine-body.js";
 import type { BodyValidationOptions } from "./validate-body.js";
 import { validateBodyProposal } from "./validate-body.js";
-import {
-  buildRoutingReplayFixture,
-  runClaudeRuntimeReplayFixture,
-} from "./validate-host-replay.js";
+import { buildRuntimeReplayValidationOptions } from "./validate-host-replay.js";
 import { validateRoutingProposal } from "./validate-routing.js";
+import { DEFAULT_VALIDATION_STRATEGY, type ValidationStrategy } from "./validation-contract.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -69,6 +65,7 @@ export interface EvolveBodyOptions {
   fewShotExamples?: string[];
   gradingResults?: GradingResult[];
   validationModel?: string;
+  validationMode?: ValidationStrategy;
   teacherEffort?: EffortLevel;
   /** Run evolution-reviewer subagent as Gate 4 before deployment. */
   useReviewer?: boolean;
@@ -176,6 +173,7 @@ export async function evolveBody(
   const teacherModel = options.teacherModel ?? DEFAULT_TEACHER_MODEL;
   const studentModel = options.studentModel ?? DEFAULT_STUDENT_MODEL;
   const teacherEffort = options.teacherEffort ?? DEFAULT_TEACHER_EFFORT;
+  const effectiveValidationMode = options.validationMode ?? DEFAULT_VALIDATION_STRATEGY;
 
   // Resolve injectable dependencies
   const _extractFailurePatterns = _deps.extractFailurePatterns ?? extractFailurePatterns;
@@ -468,30 +466,17 @@ export async function evolveBody(
       // Validate (validationModel overrides studentModel for validation calls)
       const validationModelFlag = options.validationModel ?? studentModel;
       let validation: BodyValidationResult;
+      let replayFallbackReason: string | undefined;
 
-      // Build replay fixture + runner for ALL targets (not just routing)
-      const replayFixture = buildRoutingReplayFixture({
+      // Build replay fixture + runner for targets that can use runtime replay.
+      const replayOptions = buildRuntimeReplayValidationOptions({
         skillName,
         skillPath,
-        platform: studentAgent === "codex" ? "codex" : "claude_code",
+        agent: studentAgent,
+        contentTarget: target === "body" ? "body" : "routing",
       });
-      const replayRunner =
-        replayFixture.platform === "claude_code" && studentAgent === "claude"
-          ? async ({
-              routing,
-              evalSet,
-              fixture,
-            }: {
-              routing: string;
-              evalSet: EvalEntry[];
-              fixture: RoutingReplayFixture;
-            }) =>
-              await runClaudeRuntimeReplayFixture({
-                routing,
-                evalSet,
-                fixture,
-              })
-          : undefined;
+      const replayFixture = replayOptions?.replayFixture;
+      const replayRunner = replayOptions?.replayRunner;
 
       if (target === "routing") {
         validation = await _validateRoutingProposal(
@@ -500,14 +485,47 @@ export async function evolveBody(
           studentAgent,
           validationModelFlag,
           {
-            replayFixture,
+            ...(replayFixture ? { replayFixture } : {}),
             ...(replayRunner ? { replayRunner } : {}),
+            mode: effectiveValidationMode,
+            onReplayFallback: (reason) => {
+              replayFallbackReason = reason;
+              if (reason) {
+                console.error(
+                  `[evolve-body] Replay not available (${reason}), falling back to LLM judge validation.`,
+                );
+                return;
+              }
+              console.error(
+                "[evolve-body] Replay not available, falling back to LLM judge validation.",
+              );
+            },
           },
         );
       } else {
-        const bodyReplayOptions: BodyValidationOptions = replayRunner
-          ? { replay: { replayFixture, replayRunner } }
-          : {};
+        const bodyReplayOptions: BodyValidationOptions = {
+          ...(replayFixture
+            ? {
+                replay: {
+                  replayFixture,
+                  ...(replayRunner ? { replayRunner } : {}),
+                },
+              }
+            : {}),
+          mode: effectiveValidationMode,
+          onReplayFallback: (reason) => {
+            replayFallbackReason = reason;
+            if (reason) {
+              console.error(
+                `[evolve-body] Replay not available (${reason}), falling back to LLM judge validation.`,
+              );
+              return;
+            }
+            console.error(
+              "[evolve-body] Replay not available, falling back to LLM judge validation.",
+            );
+          },
+        };
         validation = await _validateBodyProposal(
           proposal,
           evalSet,
@@ -517,13 +535,23 @@ export async function evolveBody(
           bodyReplayOptions,
         );
       }
+      if (replayFallbackReason && !validation.validation_fallback_reason) {
+        validation = {
+          ...validation,
+          validation_fallback_reason: replayFallbackReason,
+        };
+      }
       lastValidation = validation;
       const validatedEvidenceRef = buildValidationEvidenceRef(proposal.proposal_id, "validated");
 
       recordAudit(
         proposal.proposal_id,
         "validated",
-        `Validation: ${validation.gates_passed}/${validation.gates_total} gates passed`,
+        `Validation: ${validation.gates_passed}/${validation.gates_total} gates passed${
+          validation.validation_fallback_reason
+            ? ` (replay fallback: ${validation.validation_fallback_reason})`
+            : ""
+        }`,
         {
           validation_mode: validation.validation_mode,
           validation_agent: validation.validation_agent,
@@ -540,7 +568,11 @@ export async function evolveBody(
         stage: "validated",
         rationale: proposal.rationale,
         confidence: proposal.confidence,
-        details: `Validation: ${validation.gates_passed}/${validation.gates_total} gates passed`,
+        details: `Validation: ${validation.gates_passed}/${validation.gates_total} gates passed${
+          validation.validation_fallback_reason
+            ? ` (replay fallback: ${validation.validation_fallback_reason})`
+            : ""
+        }`,
         validation: {
           improved: validation.improved,
           gates_passed: validation.gates_passed,
@@ -552,6 +584,7 @@ export async function evolveBody(
           validation_mode: validation.validation_mode,
           validation_agent: validation.validation_agent,
           validation_fixture_id: validation.validation_fixture_id,
+          validation_fallback_reason: validation.validation_fallback_reason,
           validation_evidence_ref: validatedEvidenceRef,
         },
       });
@@ -603,7 +636,11 @@ export async function evolveBody(
       recordAudit(
         proposal.proposal_id,
         "rejected",
-        `Validation failed: ${validation.gates_passed}/${validation.gates_total} gates`,
+        `Validation failed: ${validation.gates_passed}/${validation.gates_total} gates${
+          validation.validation_fallback_reason
+            ? ` (replay fallback: ${validation.validation_fallback_reason})`
+            : ""
+        }`,
         {
           validation_mode: validation.validation_mode,
           validation_agent: validation.validation_agent,
@@ -620,7 +657,11 @@ export async function evolveBody(
         stage: "rejected",
         rationale: proposal.rationale,
         confidence: proposal.confidence,
-        details: `Validation failed: ${validation.gates_passed}/${validation.gates_total} gates`,
+        details: `Validation failed: ${validation.gates_passed}/${validation.gates_total} gates${
+          validation.validation_fallback_reason
+            ? ` (replay fallback: ${validation.validation_fallback_reason})`
+            : ""
+        }`,
         validation: {
           improved: validation.improved,
           gates_passed: validation.gates_passed,
@@ -632,6 +673,7 @@ export async function evolveBody(
           validation_mode: validation.validation_mode,
           validation_agent: validation.validation_agent,
           validation_fixture_id: validation.validation_fixture_id,
+          validation_fallback_reason: validation.validation_fallback_reason,
           validation_evidence_ref: buildValidationEvidenceRef(proposal.proposal_id, "rejected"),
         },
       });
@@ -731,7 +773,11 @@ export async function evolveBody(
       recordAudit(
         lastProposal.proposal_id,
         "deployed",
-        `Deployed ${target} proposal for ${skillName}`,
+        `Deployed ${target} proposal for ${skillName}${
+          lastValidation.validation_fallback_reason
+            ? ` (replay fallback: ${lastValidation.validation_fallback_reason})`
+            : ""
+        }`,
         {
           validation_mode: lastValidation.validation_mode,
           validation_agent: lastValidation.validation_agent,
@@ -760,6 +806,7 @@ export async function evolveBody(
           validation_mode: lastValidation.validation_mode,
           validation_agent: lastValidation.validation_agent,
           validation_fixture_id: lastValidation.validation_fixture_id,
+          validation_fallback_reason: lastValidation.validation_fallback_reason,
           validation_evidence_ref: buildValidationEvidenceRef(lastProposal.proposal_id, "deployed"),
         },
       });
@@ -813,6 +860,7 @@ export async function cliMain(): Promise<void> {
       "task-description": { type: "string" },
       "few-shot": { type: "string" },
       "validation-model": { type: "string" },
+      "validation-mode": { type: "string", default: DEFAULT_VALIDATION_STRATEGY },
       "teacher-effort": { type: "string", default: "high" },
       review: { type: "boolean", default: false },
       help: { type: "boolean", default: false },
@@ -841,6 +889,7 @@ Options:
   --task-description  Optional task description context
   --few-shot          Comma-separated paths to example skill files
   --validation-model  Model for trigger-check validation calls (overrides --student-model for validation)
+  --validation-mode   Validation strategy: auto, replay, or judge (default: auto)
   --teacher-effort    Effort level for teacher LLM: low, medium, high, max (default: high)
   --review            Run evolution-reviewer subagent before deployment (Gate 4)
   --help              Show this help message`);
@@ -855,15 +904,24 @@ Options:
     );
   }
 
-  const { detectAgent } = await import("../utils/llm-call.js");
-  const teacherAgent = values["teacher-agent"] ?? detectAgent() ?? "";
+  if (
+    values["validation-mode"] &&
+    !["auto", "replay", "judge"].includes(values["validation-mode"])
+  ) {
+    throw new CLIError(
+      `Invalid --validation-mode value: ${values["validation-mode"]}`,
+      "INVALID_FLAG",
+      "Use one of: auto, replay, judge",
+    );
+  }
+  const teacherAgent = values["teacher-agent"] ?? detectLlmAgent() ?? "";
   const studentAgent = values["student-agent"] ?? teacherAgent;
 
   if (!teacherAgent) {
     throw new CLIError(
-      "No agent CLI found. Install Claude Code, Codex, or OpenCode.",
+      "No agent CLI found. Install Claude Code, Codex, OpenCode, or Pi.",
       "AGENT_NOT_FOUND",
-      "Install Claude Code, Codex, or OpenCode.",
+      "Install Claude Code, Codex, OpenCode, or Pi.",
     );
   }
 
@@ -901,6 +959,8 @@ Options:
     fewShotExamples,
     gradingResults,
     validationModel: values["validation-model"],
+    validationMode:
+      (values["validation-mode"] as ValidationStrategy | undefined) ?? DEFAULT_VALIDATION_STRATEGY,
     teacherEffort: (values["teacher-effort"] as EffortLevel) ?? "high",
     useReviewer: values.review ?? false,
   });

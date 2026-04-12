@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"cd ../.. && bun --watch run cli/selftune/dashboard-server.ts --port 7888 --runtime-mode dev-server\" \"sh -c 'echo \\\"Waiting for dashboard server on localhost:7888...\\\"; i=0; max=150; until curl -fsS http://localhost:7888/api/health >/dev/null 2>&1; do i=$((i+1)); if [ \\\"$i\\\" -ge \\\"$max\\\" ]; then echo \\\"Dashboard server did not become healthy within 30s\\\"; exit 1; fi; sleep 0.2; done; echo \\\"Dashboard server healthy; starting Vite.\\\"; vite --strictPort'\"",
+    "dev": "concurrently \"sh -c 'dashboard_port=${DASHBOARD_PORT:-7888}; cd ../.. && bun --watch run cli/selftune/dashboard-server.ts --port $dashboard_port --runtime-mode dev-server'\" \"sh -c 'dashboard_port=${DASHBOARD_PORT:-7888}; vite_port=${VITE_PORT:-5199}; echo \\\"Waiting for dashboard server on localhost:${dashboard_port}...\\\"; i=0; max=150; until curl -fsS http://localhost:${dashboard_port}/api/health >/dev/null 2>&1; do i=$((i+1)); if [ \\\"$i\\\" -ge \\\"$max\\\" ]; then echo \\\"Dashboard server did not become healthy within 30s\\\"; exit 1; fi; sleep 0.2; done; echo \\\"Dashboard server healthy; starting Vite on localhost:${vite_port}.\\\"; vite --strictPort --port ${vite_port}'\"",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
@@ -17,6 +17,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@fontsource-variable/geist": "^5.2.8",
+    "@selftune/dashboard-core": "workspace:*",
     "@selftune/ui": "workspace:*",
     "@tanstack/react-query": "^5.90.21",
     "@tanstack/react-table": "^8.21.3",

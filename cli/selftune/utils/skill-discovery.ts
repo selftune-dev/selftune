@@ -341,6 +341,8 @@ export function extractSkillNamesFromPathReferences(
   const patterns = [
     /(?:^|[\s"'`])(?:[^"'`\s]*?\.agents\/skills\/)([^/\s"'`]+)(?=\/)/gi,
     /(?:^|[\s"'`])(?:[^"'`\s]*?\.codex\/skills\/(?:\.system\/)?)([^/\s"'`]+)(?=\/)/gi,
+    /(?:^|[\s"'`])(?:[^"'`\s]*?\.opencode\/skills\/)([^/\s"'`]+)(?=\/)/gi,
+    /(?:^|[\s"'`])(?:[^"'`\s]*?\.claude\/skills\/)([^/\s"'`]+)(?=\/)/gi,
     /(?:^|[\s"'`])(\/etc\/codex\/skills\/)([^/\s"'`]+)(?=\/)/gi,
   ];
 

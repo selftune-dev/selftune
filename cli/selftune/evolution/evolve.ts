@@ -61,10 +61,7 @@ import { generateMultipleProposals, generateProposal } from "./propose-descripti
 import { evaluateStoppingCriteria } from "./stopping-criteria.js";
 import { buildUnblockSuggestions } from "./unblock-suggestions.js";
 import type { ReplayValidationOptions, ReplayValidationResult } from "./engines/replay-engine.js";
-import {
-  buildRoutingReplayFixture,
-  runClaudeRuntimeReplayFixture,
-} from "./validate-host-replay.js";
+import { buildRuntimeReplayValidationOptions } from "./validate-host-replay.js";
 import type { ValidationResult } from "./validate-proposal.js";
 import {
   TRIGGER_CHECK_BATCH_SIZE,
@@ -311,10 +308,19 @@ export async function validateWithMode(
     },
     adaptReplayResult: (replayResult) =>
       adaptReplayResultToValidationResult(proposal, replayResult, evalSet),
-    onReplayFallback: () => {
+    onReplayFallback: (reason) => {
+      if (reason) {
+        console.error(
+          `[evolve] Replay not available (${reason}), falling back to LLM judge validation.`,
+        );
+        return;
+      }
       console.error("[evolve] Replay not available, falling back to LLM judge validation.");
     },
-  });
+  }).then(({ result, modeUsed, fallbackReason }) => ({
+    result: fallbackReason ? { ...result, validation_fallback_reason: fallbackReason } : result,
+    modeUsed,
+  }));
 }
 
 function adaptReplayResultToValidationResult(
@@ -786,7 +792,11 @@ export async function evolve(
         recordAudit(
           proposal.proposal_id,
           "validated",
-          `Pareto validation (${paretoModeUsed}): improved=${validation.improved}`,
+          `Pareto validation (${paretoModeUsed}): improved=${validation.improved}${
+            validation.validation_fallback_reason
+              ? ` (replay fallback: ${validation.validation_fallback_reason})`
+              : ""
+          }`,
           undefined,
           undefined,
           {
@@ -805,7 +815,11 @@ export async function evolve(
           stage: "validated",
           rationale: proposal.rationale,
           confidence: proposal.confidence,
-          details: `Pareto validation: improved=${validation.improved}`,
+          details: `Pareto validation: improved=${validation.improved}${
+            validation.validation_fallback_reason
+              ? ` (replay fallback: ${validation.validation_fallback_reason})`
+              : ""
+          }`,
           validation: {
             improved: validation.improved,
             before_pass_rate: validation.before_pass_rate,
@@ -818,6 +832,7 @@ export async function evolve(
             validation_mode: validation.validation_mode,
             validation_agent: validation.validation_agent,
             validation_fixture_id: validation.validation_fixture_id,
+            validation_fallback_reason: validation.validation_fallback_reason,
             validation_evidence_ref: evidenceRef,
           },
         });
@@ -1034,7 +1049,11 @@ export async function evolve(
         recordAudit(
           proposal.proposal_id,
           "validated",
-          `Validation complete (${retryModeUsed}): improved=${validation.improved}`,
+          `Validation complete (${retryModeUsed}): improved=${validation.improved}${
+            validation.validation_fallback_reason
+              ? ` (replay fallback: ${validation.validation_fallback_reason})`
+              : ""
+          }`,
           evalSnapshot,
           undefined,
           {
@@ -1053,7 +1072,11 @@ export async function evolve(
           stage: "validated",
           rationale: proposal.rationale,
           confidence: proposal.confidence,
-          details: `Validation complete (${retryModeUsed}): improved=${validation.improved}`,
+          details: `Validation complete (${retryModeUsed}): improved=${validation.improved}${
+            validation.validation_fallback_reason
+              ? ` (replay fallback: ${validation.validation_fallback_reason})`
+              : ""
+          }`,
           validation: {
             improved: validation.improved,
             before_pass_rate: validation.before_pass_rate,
@@ -1066,6 +1089,7 @@ export async function evolve(
             validation_mode: retryModeUsed,
             validation_agent: validation.validation_agent,
             validation_fixture_id: validation.validation_fixture_id,
+            validation_fallback_reason: validation.validation_fallback_reason,
             validation_evidence_ref: validatedEvidenceRef,
           },
         });
@@ -1290,6 +1314,7 @@ export async function evolve(
             validation_mode: gateValidation.validation_mode,
             validation_agent: gateValidation.validation_agent,
             validation_fixture_id: gateValidation.validation_fixture_id,
+            validation_fallback_reason: gateValidation.validation_fallback_reason,
           },
         });
         finishTui();
@@ -1336,7 +1361,11 @@ export async function evolve(
       recordAudit(
         lastProposal.proposal_id,
         "deployed",
-        `Deployed proposal for ${skillName}`,
+        `Deployed proposal for ${skillName}${
+          lastValidation.validation_fallback_reason
+            ? ` (replay fallback: ${lastValidation.validation_fallback_reason})`
+            : ""
+        }`,
         {
           total: evalSet.length,
           passed: Math.round(lastValidation.after_pass_rate * evalSet.length),
@@ -1347,6 +1376,7 @@ export async function evolve(
         {
           validation_mode: lastValidation.validation_mode,
           validation_agent: lastValidation.validation_agent,
+          validation_fixture_id: lastValidation.validation_fixture_id,
           validation_evidence_ref: buildValidationEvidenceRef(lastProposal.proposal_id, "deployed"),
         },
       );
@@ -1359,7 +1389,11 @@ export async function evolve(
         stage: "deployed",
         rationale: lastProposal.rationale,
         confidence: lastProposal.confidence,
-        details: `Deployed proposal for ${skillName}`,
+        details: `Deployed proposal for ${skillName}${
+          lastValidation.validation_fallback_reason
+            ? ` (replay fallback: ${lastValidation.validation_fallback_reason})`
+            : ""
+        }`,
         validation: {
           improved: lastValidation.improved,
           before_pass_rate: lastValidation.before_pass_rate,
@@ -1372,6 +1406,7 @@ export async function evolve(
           validation_mode: lastValidation.validation_mode,
           validation_agent: lastValidation.validation_agent,
           validation_fixture_id: lastValidation.validation_fixture_id,
+          validation_fallback_reason: lastValidation.validation_fallback_reason,
           validation_evidence_ref: buildValidationEvidenceRef(lastProposal.proposal_id, "deployed"),
         },
       });
@@ -1503,7 +1538,7 @@ export async function cliMain(): Promise<void> {
     );
   }
 
-  const { detectAgent } = await import("../utils/llm-call.js");
+  const { detectLlmAgent } = await import("../utils/llm-call.js");
   const requestedAgent = values.agent;
   if (requestedAgent && !Bun.which(requestedAgent)) {
     throw new CLIError(
@@ -1512,12 +1547,12 @@ export async function cliMain(): Promise<void> {
       "Install it or omit --agent to use auto-detection.",
     );
   }
-  const agent = requestedAgent ?? detectAgent();
+  const agent = requestedAgent ?? detectLlmAgent();
   if (!agent) {
     throw new CLIError(
-      "No agent CLI (claude/codex/opencode) found in PATH.",
+      "No agent CLI (claude/codex/opencode/pi) found in PATH.",
       "AGENT_NOT_FOUND",
-      "Install Claude Code, Codex, or OpenCode.",
+      "Install Claude Code, Codex, OpenCode, or Pi.",
     );
   }
 
@@ -1586,36 +1621,15 @@ export async function cliMain(): Promise<void> {
     console.error(`[verbose] Gate effort: ${values["gate-effort"] ?? "(default)"}`);
   }
 
-  // Build replay options automatically (matching evolve-body.ts pattern)
+  // Build replay options automatically when a real runtime replay runner exists.
   let replayOptions: ReplayValidationOptions | undefined;
   if (values["validation-mode"] !== "judge") {
-    try {
-      const replayFixture = buildRoutingReplayFixture({
-        skillName: values.skill,
-        skillPath: values["skill-path"],
-        platform: agent === "codex" ? "codex" : "claude_code",
-      });
-      const replayRunner =
-        replayFixture.platform === "claude_code" && agent === "claude"
-          ? async ({
-              routing,
-              evalSet,
-              fixture,
-            }: {
-              routing: string;
-              evalSet: EvalEntry[];
-              fixture: import("../types.js").RoutingReplayFixture;
-            }) =>
-              await runClaudeRuntimeReplayFixture({
-                routing,
-                evalSet,
-                fixture,
-              })
-          : undefined;
-      replayOptions = { replayFixture, ...(replayRunner ? { replayRunner } : {}) };
-    } catch {
-      // Replay fixture construction failed — will fall back to judge in auto mode
-    }
+    replayOptions = buildRuntimeReplayValidationOptions({
+      skillName: values.skill,
+      skillPath: values["skill-path"],
+      agent,
+      contentTarget: "description",
+    });
   }
 
   const result = await evolve({

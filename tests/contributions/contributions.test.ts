@@ -24,10 +24,12 @@ const originalArgv = [...process.argv];
 const originalLog = console.log;
 const originalFetch = globalThis.fetch;
 let db = openDb(":memory:");
+const SEARCH_CREATOR_ID = "550e8400-e29b-41d4-a716-446655440000";
+const COMPARE_CREATOR_ID = "550e8400-e29b-41d4-a716-446655440001";
 
 function seedContributionSkill(
   skillName: string,
-  creatorId = "cr_test123",
+  creatorId = SEARCH_CREATOR_ID,
   signals: string[] = ["trigger", "grade"],
 ): void {
   const root = join(skillDir, skillName);
@@ -121,7 +123,7 @@ describe("contributions preferences", () => {
   });
 
   test("approve persists opted-in state", async () => {
-    seedContributionSkill("sc-search", "cr_search", ["trigger", "grade", "miss_category"]);
+    seedContributionSkill("sc-search", SEARCH_CREATOR_ID, ["trigger", "grade", "miss_category"]);
     process.argv = ["bun", "selftune", "approve", "sc-search"];
     console.log = mock(() => {});
     await cliMain();
@@ -129,11 +131,24 @@ describe("contributions preferences", () => {
     const prefs = loadContributionPreferences();
     expect(prefs.skills["sc-search"]?.status).toBe("opted_in");
     expect(typeof prefs.skills["sc-search"]?.opted_in_at).toBe("string");
-    expect(prefs.skills["sc-search"]?.creator_id).toBe("cr_search");
+    expect(prefs.skills["sc-search"]?.creator_id).toBe(SEARCH_CREATOR_ID);
     expect(prefs.skills["sc-search"]?.signals).toEqual(["trigger", "grade", "miss_category"]);
   });
 
+  test("approve rejects unknown skills instead of writing dead overrides", async () => {
+    process.argv = ["bun", "selftune", "approve", "sc-missing"];
+    console.log = mock(() => {});
+
+    await expect(cliMain()).rejects.toThrow(
+      'No creator contribution request found for "sc-missing".',
+    );
+
+    const prefs = loadContributionPreferences();
+    expect(prefs.skills["sc-missing"]).toBeUndefined();
+  });
+
   test("revoke persists opted-out state", async () => {
+    seedContributionSkill("sc-search", SEARCH_CREATOR_ID);
     process.argv = ["bun", "selftune", "revoke", "sc-search"];
     console.log = mock(() => {});
     await cliMain();
@@ -153,17 +168,17 @@ describe("contributions preferences", () => {
   });
 
   test("discovers installed creator contribution configs", () => {
-    seedContributionSkill("sc-search", "cr_search");
-    seedContributionSkill("sc-compare", "cr_compare", ["trigger"]);
+    seedContributionSkill("sc-search", SEARCH_CREATOR_ID);
+    seedContributionSkill("sc-compare", COMPARE_CREATOR_ID, ["trigger"]);
 
     const configs = discoverCreatorContributionConfigs();
     expect(configs.map((config) => config.skill_name)).toEqual(["sc-compare", "sc-search"]);
-    expect(configs[0]?.creator_id).toBe("cr_compare");
+    expect(configs[0]?.creator_id).toBe(COMPARE_CREATOR_ID);
     expect(configs[1]?.contribution.signals).toEqual(["trigger", "grade"]);
   });
 
   test("status prints separation from contribute and alpha upload", async () => {
-    seedContributionSkill("sc-search", "cr_search");
+    seedContributionSkill("sc-search", SEARCH_CREATOR_ID);
     seedTrustedTrigger("sc-search");
     resetContributionPreferencesState();
     rmSync(contributionPreferencesPath, { force: true });
@@ -176,7 +191,7 @@ describe("contributions preferences", () => {
 
     expect(lines.join("\n")).toContain("Installed skill requests:");
     expect(lines.join("\n")).toContain("sc-search: default (ask)");
-    expect(lines.join("\n")).toContain("creator: cr_search");
+    expect(lines.join("\n")).toContain(`creator: ${SEARCH_CREATOR_ID}`);
     expect(lines.join("\n")).toContain("Relay queue:");
     expect(lines.join("\n")).toContain("selftune contribute");
     expect(lines.join("\n")).toContain("selftune push / alpha");
@@ -184,7 +199,7 @@ describe("contributions preferences", () => {
   });
 
   test("preview prints relay payload shape and privacy guarantees", async () => {
-    seedContributionSkill("sc-search", "cr_search", ["trigger", "grade", "miss_category"]);
+    seedContributionSkill("sc-search", SEARCH_CREATOR_ID, ["trigger", "grade", "miss_category"]);
     const lines: string[] = [];
     console.log = mock((...args: unknown[]) => {
       lines.push(args.join(" "));
@@ -198,7 +213,17 @@ describe("contributions preferences", () => {
     expect(output).toContain("requested signals: trigger, grade, miss_category");
     expect(output).toContain("never shared: raw prompts, code/files, your identity");
     expect(output).toContain('"signal_type": "skill_session"');
-    expect(output).toContain('"relay_destination": "cr_search"');
+    expect(output).toContain(`"relay_destination": "${SEARCH_CREATOR_ID}"`);
+  });
+
+  test("approve rejects creator requests with invalid creator ids", async () => {
+    seedContributionSkill("sc-search", "cr_search", ["trigger"]);
+    process.argv = ["bun", "selftune", "approve", "sc-search"];
+    console.log = mock(() => {});
+
+    await expect(cliMain()).rejects.toThrow(
+      'Creator contribution request for "sc-search" has an invalid creator_id.',
+    );
   });
 
   test("upload dry-run reports pending staged rows", async () => {

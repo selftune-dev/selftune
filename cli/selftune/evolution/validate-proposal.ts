@@ -40,6 +40,7 @@ export interface ValidationResult {
   validation_mode?: ValidationMode;
   validation_agent?: string;
   validation_fixture_id?: string;
+  validation_fallback_reason?: string;
   before_entry_results?: Array<{ entry: EvalEntry; before_pass: boolean; after_pass: boolean }>;
 }
 

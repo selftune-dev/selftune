@@ -55,6 +55,7 @@
     "bin/",
     "cli/selftune/",
     "apps/local-dashboard/dist/",
+    "packages/dashboard-core/",
     "packages/telemetry-contract/",
     "packages/ui/",
     "templates/",
@@ -64,9 +65,9 @@
   ],
   "type": "module",
   "scripts": {
-    "dev": "trap 'kill 0' EXIT; bun --watch run cli/selftune/dashboard-server.ts --port 7888 --runtime-mode dev-server & sleep 1 && cd apps/local-dashboard && bunx vite --strictPort",
-    "dev:server": "bun --watch run cli/selftune/dashboard-server.ts --port 7888 --runtime-mode dev-server",
-    "dev:dashboard": "bun run cli/selftune/index.ts dashboard --port 7888 --no-open",
+    "dev": "trap 'kill 0' EXIT; dashboard_port=${DASHBOARD_PORT:-7888}; vite_port=${VITE_PORT:-5199}; bun --watch run cli/selftune/dashboard-server.ts --port $dashboard_port --runtime-mode dev-server & sleep 1 && cd apps/local-dashboard && bunx vite --strictPort --port $vite_port",
+    "dev:server": "sh -c 'dashboard_port=${DASHBOARD_PORT:-7888}; bun --watch run cli/selftune/dashboard-server.ts --port $dashboard_port --runtime-mode dev-server'",
+    "dev:dashboard": "sh -c 'dashboard_port=${DASHBOARD_PORT:-7888}; bun run cli/selftune/index.ts dashboard --port $dashboard_port --no-open'",
     "lint": "bunx oxlint",
     "lint:fix": "bunx oxlint --fix",
     "format": "bunx oxfmt",
@@ -82,8 +83,9 @@
     "sync-version": "bun run scripts/sync-skill-version.ts",
     "validate:subagents": "bun run scripts/validate-subagent-docs.ts",
     "prepublishOnly": "bun run sync-version && bun run build:dashboard",
+    "typecheck:runtime": "bunx tsc --noEmit -p tsconfig.runtime.json",
     "typecheck:dashboard": "cd apps/local-dashboard && bunx tsc --noEmit",
-    "check": "bun run lint && bun run format:check && bun run lint:arch && bun run typecheck:dashboard && bun run test",
+    "check": "bun run lint && bun run format:check && bun run lint:arch && bun run typecheck:runtime && bun run typecheck:dashboard && bun run test",
     "prepare": "bunx lefthook install || true",
     "start": "bun run cli/selftune/index.ts --help"
   },
@@ -92,7 +94,8 @@
   },
   "devDependencies": {
     "@evilmartians/lefthook": "^1.13.6",
-    "@types/bun": "^1.1.0",
+    "@types/bun": "^1.3.11",
+    "bun-types": "^1.3.11",
     "oxfmt": "^0.41.0",
     "oxlint": "^1.56.0"
   },

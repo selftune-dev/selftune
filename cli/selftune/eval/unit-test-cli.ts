@@ -20,7 +20,7 @@ import { parseArgs } from "node:util";
 import { SELFTUNE_CONFIG_DIR } from "../constants.js";
 import type { EvalEntry } from "../types.js";
 import { CLIError } from "../utils/cli-error.js";
-import { callLlm, detectAgent } from "../utils/llm-call.js";
+import { callLlm, detectLlmAgent } from "../utils/llm-call.js";
 import { generateUnitTests } from "./generate-unit-tests.js";
 import type { AgentRunner } from "./unit-test.js";
 import { loadUnitTests, runUnitTestSuite } from "./unit-test.js";
@@ -58,10 +58,10 @@ export async function cliMain(): Promise<void> {
 
   // --generate: create tests from skill content
   if (values.generate) {
-    const agent = detectAgent();
+    const agent = detectLlmAgent();
     if (!agent) {
       throw new CLIError(
-        "No agent CLI found (claude/codex/opencode). Cannot generate tests",
+        "No agent CLI found (claude/codex/opencode/pi). Cannot generate tests",
         "AGENT_NOT_FOUND",
         "Install one of the supported agent CLIs",
       );
@@ -118,7 +118,7 @@ export async function cliMain(): Promise<void> {
   let agentRunner: AgentRunner;
 
   if (values["run-agent"]) {
-    const agent = detectAgent();
+    const agent = detectLlmAgent();
     if (!agent) {
       throw new CLIError(
         "No agent CLI found. Cannot run agent-based tests",

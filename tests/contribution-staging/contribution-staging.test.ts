@@ -9,10 +9,12 @@ import type { ContributionPreferences } from "../../cli/selftune/contributions.j
 import { openDb } from "../../cli/selftune/localdb/db.js";
 
 let db: ReturnType<typeof openDb>;
+const SEARCH_CREATOR_ID = "550e8400-e29b-41d4-a716-446655440000";
+const COMPARE_CREATOR_ID = "550e8400-e29b-41d4-a716-446655440001";
 
 const configA: CreatorContributionConfig = {
   version: 1,
-  creator_id: "cr_search",
+  creator_id: SEARCH_CREATOR_ID,
   skill_name: "sc-search",
   config_path: "/tmp/sc-search/selftune.contribute.json",
   skill_path: "/tmp/sc-search/SKILL.md",
@@ -21,7 +23,7 @@ const configA: CreatorContributionConfig = {
 
 const configB: CreatorContributionConfig = {
   version: 1,
-  creator_id: "cr_compare",
+  creator_id: COMPARE_CREATOR_ID,
   skill_name: "sc-compare",
   config_path: "/tmp/sc-compare/selftune.contribute.json",
   skill_path: "/tmp/sc-compare/SKILL.md",
@@ -126,7 +128,7 @@ describe("contribution-staging", () => {
     }>;
     expect(rows).toHaveLength(1);
     expect(rows[0]?.skill_name).toBe("sc-search");
-    expect(rows[0]?.creator_id).toBe("cr_search");
+    expect(rows[0]?.creator_id).toBe(SEARCH_CREATOR_ID);
     expect(rows[0]?.status).toBe("pending");
     expect(rows[0]?.payload_json).toContain('"signal_type":"skill_session"');
   });
@@ -190,5 +192,20 @@ describe("contribution-staging", () => {
       count: number;
     };
     expect(count.count).toBe(0);
+  });
+
+  test("excludes configs with invalid creator ids from eligibility", () => {
+    const prefs: ContributionPreferences = {
+      version: 1,
+      global_default: "always",
+      skills: {},
+    };
+
+    const eligible = resolveEligibleContributionConfigs(prefs, [
+      configA,
+      { ...configB, creator_id: "cr_compare" },
+    ]);
+
+    expect(eligible.map((config) => config.skill_name)).toEqual(["sc-search"]);
   });
 });

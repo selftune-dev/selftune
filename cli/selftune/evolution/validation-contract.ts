@@ -13,6 +13,7 @@ export const DEFAULT_VALIDATION_STRATEGY: ValidationStrategy = "auto";
 export interface ValidationExecutionResult<TResult> {
   result: TResult;
   modeUsed: ValidationMode;
+  fallbackReason?: string;
 }
 
 export interface ValidationContractOptions<TResult> {
@@ -24,7 +25,7 @@ export interface ValidationContractOptions<TResult> {
   replayOptions?: ReplayValidationOptions;
   runJudge: () => Promise<ValidationExecutionResult<TResult>>;
   adaptReplayResult: (replayResult: ReplayValidationResult) => TResult;
-  onReplayFallback?: () => void;
+  onReplayFallback?: (reason?: string) => void;
 }
 
 export function hasReplayValidationPath(
@@ -33,11 +34,14 @@ export function hasReplayValidationPath(
   return Boolean(replayOptions?.replayFixture || replayOptions?.replayRunner);
 }
 
-export function createReplayUnavailableError(): CLIError {
+export function createReplayUnavailableError(reason?: string): CLIError {
+  const message = reason
+    ? `Replay validation requested but real host/runtime replay is unavailable: ${reason}`
+    : "Replay validation requested but real host/runtime replay is unavailable.";
   return new CLIError(
-    "Replay validation requested but no replay fixture or runner is available.",
+    message,
     "REPLAY_UNAVAILABLE",
-    "Use --validation-mode auto to allow judge fallback, or ensure the skill has a valid SKILL.md path for replay fixture construction.",
+    "Use --validation-mode auto to allow LLM judge fallback, or run selftune on a host/agent with runtime replay support for this skill.",
   );
 }
 
@@ -51,7 +55,7 @@ export async function runValidationContract<TResult>(
   }
 
   if (hasReplayValidationPath(options.replayOptions)) {
-    const replayResult = await runReplayValidation(
+    const replayAttempt = await runReplayValidation(
       options.originalContent,
       options.proposedContent,
       options.evalSet,
@@ -59,12 +63,23 @@ export async function runValidationContract<TResult>(
       options.replayOptions,
     );
 
-    if (replayResult) {
+    if (replayAttempt.result) {
       return {
-        result: options.adaptReplayResult(replayResult),
-        modeUsed: replayResult.validation_mode,
+        result: options.adaptReplayResult(replayAttempt.result),
+        modeUsed: replayAttempt.result.validation_mode,
       };
     }
+
+    if (mode === "replay") {
+      throw createReplayUnavailableError(replayAttempt.fallbackReason);
+    }
+
+    options.onReplayFallback?.(replayAttempt.fallbackReason);
+    const judgeResult = await options.runJudge();
+    return {
+      ...judgeResult,
+      fallbackReason: replayAttempt.fallbackReason,
+    };
   }
 
   if (mode === "replay") {

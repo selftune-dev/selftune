@@ -1,0 +1,451 @@
+import type { LucideIcon } from "lucide-react";
+import {
+  BarChart3Icon,
+  BrainCircuitIcon,
+  GitPullRequestIcon,
+  HeartPulseIcon,
+  HelpCircleIcon,
+  LayoutDashboardIcon,
+  PackageIcon,
+  SettingsIcon,
+  UsersIcon,
+} from "lucide-react";
+
+import {
+  canDiscoverFeature,
+  canUseFeature,
+  type Capabilities,
+  type DashboardDiscoverableFeatureKey,
+  type DashboardFeatureKey,
+  type DashboardHostKind,
+} from "../host/capabilities";
+import type { DashboardRouteAccess } from "./types";
+
+export type DashboardRouteId =
+  | "overview"
+  | "skills"
+  | "analytics"
+  | "status"
+  | "registry"
+  | "signals"
+  | "proposals"
+  | "unmatched"
+  | "settings";
+
+export type DashboardRouteMatchMode = "exact" | "prefix";
+
+export interface DashboardPathMatcher {
+  mode: DashboardRouteMatchMode;
+  value: string;
+}
+
+export interface DashboardHostRouteConfig {
+  path: string;
+  title?: string;
+  badge?: string;
+  backHref?: string | null;
+  backLabel?: string | null;
+  activePatterns?: DashboardPathMatcher[];
+  detailPrefixes?: string[];
+  detailBadge?: string;
+  detailBackHref?: string | null;
+  detailBackLabel?: string | null;
+}
+
+export interface DashboardRouteManifestEntry {
+  id: DashboardRouteId;
+  label: string;
+  tooltip: string;
+  icon: LucideIcon;
+  feature?: DashboardFeatureKey;
+  discoverableFeature?: DashboardDiscoverableFeatureKey;
+  lockedTitle?: string;
+  lockedBody?: string;
+  lockedHighlights?: readonly string[];
+  lockedPrimaryCtaLabel?: string;
+  lockedPrimaryCtaHref?: string;
+  lockedSecondaryCtaLabel?: string;
+  lockedSecondaryCtaHref?: string;
+  hosts: Partial<Record<DashboardHostKind, DashboardHostRouteConfig>>;
+}
+
+export interface ResolvedDashboardRoute {
+  id: DashboardRouteId;
+  label: string;
+  tooltip: string;
+  icon: LucideIcon;
+  host: DashboardHostKind;
+  path: string;
+  title: string;
+  badge: string;
+  backHref: string | null;
+  backLabel: string | null;
+  activePatterns: DashboardPathMatcher[];
+  detailPrefixes: string[];
+  detailBadge: string;
+  detailBackHref: string | null;
+  detailBackLabel: string | null;
+  access: DashboardRouteAccess;
+  lockedTitle?: string;
+  lockedBody?: string;
+  lockedHighlights?: readonly string[];
+  lockedPrimaryCtaLabel?: string;
+  lockedPrimaryCtaHref?: string;
+  lockedSecondaryCtaLabel?: string;
+  lockedSecondaryCtaHref?: string;
+}
+
+export interface MatchedDashboardRoute extends ResolvedDashboardRoute {
+  matchKind: "route" | "detail";
+}
+
+function matchesPattern(pathname: string, pattern: DashboardPathMatcher): boolean {
+  if (pattern.mode === "exact") {
+    return pathname === pattern.value;
+  }
+
+  return pathname.startsWith(pattern.value);
+}
+
+function getManifestRouteAccess(
+  route: DashboardRouteManifestEntry,
+  capabilities: Capabilities,
+): DashboardRouteAccess {
+  if (!route.feature) {
+    return "enabled";
+  }
+
+  if (canUseFeature(capabilities, route.feature)) {
+    return "enabled";
+  }
+
+  if (route.discoverableFeature && canDiscoverFeature(capabilities, route.discoverableFeature)) {
+    return "locked";
+  }
+
+  return "hidden";
+}
+
+export const DASHBOARD_ROUTE_MANIFEST: readonly DashboardRouteManifestEntry[] = [
+  {
+    id: "overview",
+    label: "Overview",
+    tooltip: "Dashboard overview",
+    icon: LayoutDashboardIcon,
+    hosts: {
+      cloud: {
+        path: "/",
+        title: "Dashboard",
+        badge: "Overview",
+        activePatterns: [{ mode: "exact", value: "/" }],
+      },
+      local: {
+        path: "/",
+        title: "Dashboard",
+        badge: "Overview",
+        activePatterns: [{ mode: "exact", value: "/" }],
+      },
+    },
+  },
+  {
+    id: "skills",
+    label: "Skills",
+    tooltip: "Skills Library",
+    icon: BrainCircuitIcon,
+    hosts: {
+      cloud: {
+        path: "/skills",
+        title: "Skills",
+        badge: "Library",
+        backHref: "/",
+        backLabel: "Dashboard",
+        activePatterns: [
+          { mode: "exact", value: "/skills" },
+          { mode: "prefix", value: "/skills/" },
+        ],
+        detailPrefixes: ["/skills/"],
+        detailBadge: "Skill Report",
+        detailBackHref: "/skills",
+        detailBackLabel: "Skills",
+      },
+      local: {
+        path: "/skills",
+        title: "Skills",
+        badge: "Library",
+        backHref: "/",
+        backLabel: "Dashboard",
+        activePatterns: [
+          { mode: "exact", value: "/skills" },
+          { mode: "prefix", value: "/skills/" },
+        ],
+        detailPrefixes: ["/skills/"],
+        detailBadge: "Skill Report",
+        detailBackHref: "/skills",
+        detailBackLabel: "Skills",
+      },
+    },
+  },
+  {
+    id: "analytics",
+    label: "Analytics",
+    tooltip: "Performance analytics",
+    icon: BarChart3Icon,
+    feature: "analytics",
+    hosts: {
+      cloud: {
+        path: "/analytics",
+        title: "Analytics",
+        badge: "Performance",
+        backHref: "/",
+        backLabel: "Dashboard",
+        activePatterns: [{ mode: "exact", value: "/analytics" }],
+      },
+      local: {
+        path: "/analytics",
+        title: "Analytics",
+        badge: "Performance",
+        backHref: "/",
+        backLabel: "Dashboard",
+        activePatterns: [{ mode: "exact", value: "/analytics" }],
+      },
+    },
+  },
+  {
+    id: "registry",
+    label: "Registry",
+    tooltip: "Team skill registry",
+    icon: PackageIcon,
+    feature: "registry",
+    discoverableFeature: "registry",
+    lockedTitle: "Team Registry lives in Selftune Cloud",
+    lockedBody:
+      "Publish versioned skills, watch installations across projects, and roll back bad versions from a single cloud workspace.",
+    lockedHighlights: [
+      "Version timeline with rollback controls",
+      "Installation map across your team",
+      "Managed publish flow for shared skills",
+    ],
+    lockedPrimaryCtaLabel: "Upgrade to Team",
+    lockedPrimaryCtaHref: "https://selftune.dev/pricing",
+    lockedSecondaryCtaLabel: "Read registry docs",
+    lockedSecondaryCtaHref: "https://docs.selftune.dev/cloud/registry",
+    hosts: {
+      cloud: {
+        path: "/registry",
+        title: "Registry",
+        badge: "Team",
+        backHref: "/",
+        backLabel: "Dashboard",
+        activePatterns: [{ mode: "exact", value: "/registry" }],
+      },
+      local: {
+        path: "/registry",
+        title: "Registry",
+        badge: "Locked",
+        backHref: "/",
+        backLabel: "Dashboard",
+        activePatterns: [{ mode: "exact", value: "/registry" }],
+      },
+    },
+  },
+  {
+    id: "signals",
+    label: "Signals",
+    tooltip: "Contributor signals",
+    icon: UsersIcon,
+    feature: "signals",
+    discoverableFeature: "signals",
+    lockedTitle: "Contributor signals run through Selftune Cloud",
+    lockedBody:
+      "See anonymized contributor signals, compare bundle submissions, and turn real-world usage into proposals without leaving the shared dashboard.",
+    lockedHighlights: [
+      "Cross-skill contributor signal overview",
+      "Bundle submission trends and cohorts",
+      "Proposal generation from contributor evidence",
+    ],
+    lockedPrimaryCtaLabel: "View cloud plans",
+    lockedPrimaryCtaHref: "https://selftune.dev/pricing",
+    lockedSecondaryCtaLabel: "Read signals docs",
+    lockedSecondaryCtaHref: "https://docs.selftune.dev/cloud/signals",
+    hosts: {
+      cloud: {
+        path: "/signals",
+        title: "Signals",
+        badge: "Signals",
+        backHref: "/",
+        backLabel: "Dashboard",
+        activePatterns: [{ mode: "exact", value: "/signals" }],
+      },
+      local: {
+        path: "/signals",
+        title: "Signals",
+        badge: "Locked",
+        backHref: "/",
+        backLabel: "Dashboard",
+        activePatterns: [{ mode: "exact", value: "/signals" }],
+      },
+    },
+  },
+  {
+    id: "proposals",
+    label: "Proposals",
+    tooltip: "Evolution proposals",
+    icon: GitPullRequestIcon,
+    feature: "proposals",
+    discoverableFeature: "proposals",
+    lockedTitle: "Proposal review is unlocked in Cloud",
+    lockedBody:
+      "Keep a shared review queue for contributor-driven improvements, approve the right changes, and coordinate deployment across your team.",
+    lockedHighlights: [
+      "Shared approval and rejection queue",
+      "Proposal detail with rationale and evidence",
+      "Tighter loop from contributor signals to deployment",
+    ],
+    lockedPrimaryCtaLabel: "Upgrade for review workflows",
+    lockedPrimaryCtaHref: "https://selftune.dev/pricing",
+    lockedSecondaryCtaLabel: "See dashboard docs",
+    lockedSecondaryCtaHref: "https://docs.selftune.dev/cloud/dashboard",
+    hosts: {
+      cloud: {
+        path: "/proposals",
+        title: "Proposals",
+        badge: "Review Queue",
+        backHref: "/",
+        backLabel: "Dashboard",
+        activePatterns: [{ mode: "exact", value: "/proposals" }],
+      },
+      local: {
+        path: "/proposals",
+        title: "Proposals",
+        badge: "Locked",
+        backHref: "/",
+        backLabel: "Dashboard",
+        activePatterns: [{ mode: "exact", value: "/proposals" }],
+      },
+    },
+  },
+  {
+    id: "unmatched",
+    label: "Unmatched",
+    tooltip: "Unmatched queries",
+    icon: HelpCircleIcon,
+    hosts: {
+      cloud: {
+        path: "/unmatched",
+        title: "Unmatched",
+        badge: "Attention",
+        backHref: "/",
+        backLabel: "Dashboard",
+        activePatterns: [{ mode: "exact", value: "/unmatched" }],
+      },
+    },
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    tooltip: "Settings and API keys",
+    icon: SettingsIcon,
+    hosts: {
+      cloud: {
+        path: "/settings",
+        title: "Settings",
+        badge: "Workspace",
+        backHref: "/",
+        backLabel: "Dashboard",
+        activePatterns: [{ mode: "exact", value: "/settings" }],
+      },
+    },
+  },
+  {
+    id: "status",
+    label: "System Status",
+    tooltip: "System health diagnostics",
+    icon: HeartPulseIcon,
+    feature: "runtimeStatus",
+    hosts: {
+      local: {
+        path: "/status",
+        title: "System Status",
+        badge: "Diagnostics",
+        backHref: "/",
+        backLabel: "Dashboard",
+        activePatterns: [{ mode: "exact", value: "/status" }],
+      },
+    },
+  },
+] as const;
+
+export function resolveDashboardRoutes(
+  host: DashboardHostKind,
+  capabilities: Capabilities,
+): ResolvedDashboardRoute[] {
+  return DASHBOARD_ROUTE_MANIFEST.flatMap((route) => {
+    const hostConfig = route.hosts[host];
+    if (!hostConfig) {
+      return [];
+    }
+
+    const access = getManifestRouteAccess(route, capabilities);
+    if (access === "hidden") {
+      return [];
+    }
+
+    return [
+      {
+        id: route.id,
+        label: route.label,
+        tooltip: route.tooltip,
+        icon: route.icon,
+        host,
+        path: hostConfig.path,
+        title: hostConfig.title ?? route.label,
+        badge: hostConfig.badge ?? route.label,
+        backHref: hostConfig.backHref ?? null,
+        backLabel: hostConfig.backLabel ?? null,
+        activePatterns: hostConfig.activePatterns ?? [{ mode: "exact", value: hostConfig.path }],
+        detailPrefixes: hostConfig.detailPrefixes ?? [],
+        detailBadge: hostConfig.detailBadge ?? hostConfig.badge ?? route.label,
+        detailBackHref: hostConfig.detailBackHref ?? hostConfig.backHref ?? null,
+        detailBackLabel: hostConfig.detailBackLabel ?? hostConfig.backLabel ?? null,
+        access,
+        lockedTitle: route.lockedTitle,
+        lockedBody: route.lockedBody,
+        lockedHighlights: route.lockedHighlights,
+        lockedPrimaryCtaLabel: route.lockedPrimaryCtaLabel,
+        lockedPrimaryCtaHref: route.lockedPrimaryCtaHref,
+        lockedSecondaryCtaLabel: route.lockedSecondaryCtaLabel,
+        lockedSecondaryCtaHref: route.lockedSecondaryCtaHref,
+      },
+    ];
+  });
+}
+
+export function isDashboardRouteActive(pathname: string, route: ResolvedDashboardRoute): boolean {
+  return Boolean(matchDashboardRoute(pathname, [route]));
+}
+
+export function matchDashboardRoute(
+  pathname: string,
+  routes: readonly ResolvedDashboardRoute[],
+): MatchedDashboardRoute | null {
+  for (const route of routes) {
+    if (route.detailPrefixes.some((prefix) => pathname.startsWith(prefix))) {
+      return {
+        ...route,
+        matchKind: "detail",
+        badge: route.detailBadge,
+        backHref: route.detailBackHref,
+        backLabel: route.detailBackLabel,
+      };
+    }
+
+    if (route.activePatterns.some((pattern) => matchesPattern(pathname, pattern))) {
+      return {
+        ...route,
+        matchKind: "route",
+      };
+    }
+  }
+
+  return null;
+}

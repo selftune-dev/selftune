@@ -99,6 +99,7 @@ export interface EvalSnapshot {
   validation_mode?: string;
   validation_agent?: string;
   validation_fixture_id?: string;
+  validation_fallback_reason?: string;
   validation_evidence_ref?: string;
 }
 
@@ -393,6 +394,7 @@ export interface HealthResponse {
   ok: boolean;
   service: string;
   version: string;
+  pid: number;
   spa: boolean;
   v2_data_available: boolean;
   workspace_root: string;

@@ -14,14 +14,20 @@ import { basename, dirname, isAbsolute, join } from "node:path";
 
 import type { EvalEntry, RoutingReplayEntryResult, RoutingReplayFixture } from "../types.js";
 import { parseFrontmatter } from "../utils/frontmatter.js";
-import { containsWholeSkillMention } from "../utils/skill-discovery.js";
-import { findGitRepositoryRoot } from "../utils/skill-discovery.js";
+import {
+  containsWholeSkillMention,
+  extractExplicitSkillMentions,
+  extractSkillNamesFromPathReferences,
+  findGitRepositoryRoot,
+} from "../utils/skill-discovery.js";
 import {
   extractWhenToUseLines,
   jaccardSimilarity,
   tokenizeText,
 } from "../utils/text-similarity.js";
-import { replaceSection } from "./deploy-proposal.js";
+import { replaceBody, replaceSection } from "./deploy-proposal.js";
+import { replaceDescription } from "../utils/frontmatter.js";
+import type { ReplayValidationOptions } from "./engines/replay-engine.js";
 
 interface ReplaySkillSurface {
   skillName: string;
@@ -31,29 +37,34 @@ interface ReplaySkillSurface {
 
 interface ReplayWorkspace {
   rootDir: string;
+  skillRegistryDir: string;
   targetSkillPath: string;
   competingSkillPaths: string[];
 }
 
-export interface ClaudeRuntimeReplayInvokerInput {
+export type RuntimeReplayContentTarget = "routing" | "description" | "body";
+
+export interface RuntimeReplayInvokerInput {
   query: string;
+  platform: RoutingReplayFixture["platform"];
   workspaceRoot: string;
+  skillRegistryDir: string;
   targetSkillName: string;
   targetSkillPath: string;
   competingSkillPaths: string[];
 }
 
-export interface ClaudeRuntimeReplayObservation {
-  invokedSkillNames: string[];
+export interface RuntimeReplayObservation {
+  triggeredSkillNames: string[];
   readSkillPaths: string[];
   rawOutput: string;
   sessionId?: string;
   runtimeError?: string;
 }
 
-export type ClaudeRuntimeReplayInvoker = (
-  input: ClaudeRuntimeReplayInvokerInput,
-) => Promise<ClaudeRuntimeReplayObservation>;
+export type RuntimeReplayInvoker = (
+  input: RuntimeReplayInvokerInput,
+) => Promise<RuntimeReplayObservation>;
 
 /**
  * Minimum score needed before replay treats routing text or skill-surface overlap
@@ -64,6 +75,13 @@ const HOST_REPLAY_MATCH_THRESHOLD = 0.18;
 const CLAUDE_RUNTIME_REPLAY_TIMEOUT_MS = 30_000;
 const CLAUDE_RUNTIME_ROUTING_PROMPT =
   "You are being evaluated only on skill routing. Do not solve the user's task. If a local project skill is relevant, invoke exactly one skill immediately. If no local project skill fits, respond with NO_SKILL and do not browse unrelated files.";
+const HOST_RUNTIME_REPLAY_TIMEOUT_MS = 45_000;
+const GENERIC_RUNTIME_ROUTING_PROMPT = [
+  "You are being evaluated only on local skill routing.",
+  "Do not solve the user's task.",
+  "If exactly one local project skill is relevant, open only that skill's SKILL.md immediately and stop after selecting it.",
+  "If no local project skill fits, reply with NO_SKILL and do not browse unrelated files.",
+].join(" ");
 
 function resolveReplayPath(path: string): string {
   try {
@@ -105,6 +123,26 @@ function listCompetingSkillPaths(targetSkillPath: string): string[] {
   return competingPaths.sort((a, b) => a.localeCompare(b));
 }
 
+function getRuntimeReplayRegistryRelativeDir(platform: RoutingReplayFixture["platform"]): string {
+  switch (platform) {
+    case "claude_code":
+      return join(".claude", "skills");
+    case "codex":
+      return join(".agents", "skills");
+    case "opencode":
+      return join(".opencode", "skills");
+  }
+}
+
+export function resolveRuntimeReplayPlatform(
+  agent: string | null | undefined,
+): RoutingReplayFixture["platform"] | undefined {
+  if (agent === "claude") return "claude_code";
+  if (agent === "codex") return "codex";
+  if (agent === "opencode") return "opencode";
+  return undefined;
+}
+
 export function buildRoutingReplayFixture(options: {
   skillName: string;
   skillPath: string;
@@ -127,9 +165,19 @@ export function buildRoutingReplayFixture(options: {
   };
 }
 
-function buildRuntimeReplayTargetContent(skillPath: string, routing: string): string {
+function buildRuntimeReplayTargetContent(
+  skillPath: string,
+  content: string,
+  contentTarget: RuntimeReplayContentTarget,
+): string {
   const currentContent = readFileSync(skillPath, "utf8");
-  return replaceSection(currentContent, "Workflow Routing", routing.trim());
+  if (contentTarget === "body") {
+    return replaceBody(currentContent, content.trim());
+  }
+  if (contentTarget === "description") {
+    return replaceDescription(currentContent, content.trim());
+  }
+  return replaceSection(currentContent, "Workflow Routing", content.trim());
 }
 
 function stageReplaySkill(
@@ -148,18 +196,19 @@ function stageReplaySkill(
 
 function buildRuntimeReplayWorkspace(
   fixture: RoutingReplayFixture,
-  routing: string,
+  content: string,
+  contentTarget: RuntimeReplayContentTarget,
 ): ReplayWorkspace {
   const rootDir = mkdtempSync(join(tmpdir(), "selftune-runtime-replay-"));
   try {
-    const registryDir = join(rootDir, ".claude", "skills");
+    const registryDir = join(rootDir, getRuntimeReplayRegistryRelativeDir(fixture.platform));
     mkdirSync(join(rootDir, ".git"), { recursive: true });
     mkdirSync(registryDir, { recursive: true });
 
     const targetSkillPath = stageReplaySkill(
       registryDir,
       fixture.target_skill_path,
-      buildRuntimeReplayTargetContent(fixture.target_skill_path, routing),
+      buildRuntimeReplayTargetContent(fixture.target_skill_path, content, contentTarget),
     );
     const competingSkillPaths = fixture.competing_skill_paths.map((skillPath) =>
       stageReplaySkill(registryDir, skillPath),
@@ -167,6 +216,7 @@ function buildRuntimeReplayWorkspace(
 
     return {
       rootDir,
+      skillRegistryDir: registryDir,
       targetSkillPath,
       competingSkillPaths,
     };
@@ -180,8 +230,8 @@ function cleanupRuntimeReplayWorkspace(workspace: ReplayWorkspace): void {
   rmSync(workspace.rootDir, { recursive: true, force: true });
 }
 
-function parseClaudeRuntimeReplayOutput(rawOutput: string): ClaudeRuntimeReplayObservation {
-  const invokedSkillNames = new Set<string>();
+function parseClaudeRuntimeReplayOutput(rawOutput: string): RuntimeReplayObservation {
+  const triggeredSkillNames = new Set<string>();
   const readSkillPaths = new Set<string>();
   let sessionId: string | undefined;
   let runtimeError: string | undefined;
@@ -227,7 +277,7 @@ function parseClaudeRuntimeReplayOutput(rawOutput: string): ClaudeRuntimeReplayO
       if (toolName === "Skill") {
         const skillName = input.skill;
         if (typeof skillName === "string" && skillName.trim()) {
-          invokedSkillNames.add(skillName.trim());
+          triggeredSkillNames.add(skillName.trim());
         }
       }
 
@@ -241,7 +291,265 @@ function parseClaudeRuntimeReplayOutput(rawOutput: string): ClaudeRuntimeReplayO
   }
 
   return {
-    invokedSkillNames: [...invokedSkillNames],
+    triggeredSkillNames: [...triggeredSkillNames],
+    readSkillPaths: [...readSkillPaths],
+    rawOutput,
+    ...(sessionId ? { sessionId } : {}),
+    ...(runtimeError ? { runtimeError } : {}),
+  };
+}
+
+function buildKnownSkillNames(input: RuntimeReplayInvokerInput): Set<string> {
+  return new Set([
+    input.targetSkillName.trim(),
+    ...input.competingSkillPaths.map((skillPath) => basename(dirname(skillPath)).trim()),
+  ]);
+}
+
+function extractReplaySkillPathReferences(text: string): string[] {
+  if (!text) return [];
+
+  const matches = new Set<string>();
+  const patterns = [
+    /(?:^|[\s"'`])((?:\/etc\/codex\/skills\/[^/\s"'`]+|[^"'`\s]*?\.agents\/skills\/[^/\s"'`]+|[^"'`\s]*?\.codex\/skills\/(?:\.system\/)?[^/\s"'`]+|[^"'`\s]*?\.opencode\/skills\/[^/\s"'`]+|[^"'`\s]*?\.claude\/skills\/[^/\s"'`]+)\/SKILL\.md)(?=[\s"'`]|$)/gi,
+  ];
+
+  for (const pattern of patterns) {
+    let match = pattern.exec(text);
+    while (match !== null) {
+      const value = match[1]?.trim();
+      if (value) {
+        matches.add(value);
+      }
+      match = pattern.exec(text);
+    }
+  }
+
+  return [...matches];
+}
+
+function normalizeReplayEventType(value: unknown): string {
+  return typeof value === "string" ? value.replace(/[._]/g, "-").trim().toLowerCase() : "";
+}
+
+export function parseCodexRuntimeReplayOutput(
+  rawOutput: string,
+  knownSkillNames: Set<string>,
+): RuntimeReplayObservation {
+  const triggeredSkillNames = new Set<string>();
+  const readSkillPaths = new Set<string>();
+  let sessionId: string | undefined;
+  let runtimeError: string | undefined;
+
+  const noteSkillPathsAndNames = (text: unknown): void => {
+    if (typeof text !== "string" || !text) return;
+
+    for (const filePath of extractReplaySkillPathReferences(text)) {
+      readSkillPaths.add(filePath);
+    }
+
+    for (const skillName of extractSkillNamesFromPathReferences(text, knownSkillNames)) {
+      triggeredSkillNames.add(skillName);
+    }
+  };
+
+  const noteExplicitMentions = (text: unknown): void => {
+    if (typeof text !== "string" || !text) return;
+    for (const skillName of extractExplicitSkillMentions(text, knownSkillNames)) {
+      triggeredSkillNames.add(skillName);
+    }
+  };
+
+  for (const line of rawOutput.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+
+    const eventType = normalizeReplayEventType(parsed.type);
+
+    const threadId = parsed.thread_id;
+    if (typeof threadId === "string" && threadId) {
+      sessionId = threadId;
+    }
+
+    if (typeof parsed.error === "string" && parsed.error) {
+      runtimeError = parsed.error;
+    } else if (eventType === "turn-failed") {
+      const error = parsed.error;
+      if (typeof error === "object" && error !== null && typeof error.message === "string") {
+        runtimeError = error.message;
+      }
+    } else if (eventType === "error" && typeof parsed.message === "string" && parsed.message) {
+      runtimeError = parsed.message;
+    }
+
+    if (
+      eventType === "item-completed" ||
+      eventType === "item-started" ||
+      eventType === "item-updated"
+    ) {
+      const item =
+        typeof parsed.item === "object" && parsed.item !== null
+          ? (parsed.item as Record<string, unknown>)
+          : undefined;
+      const itemType = normalizeReplayEventType(item?.item_type ?? item?.type);
+
+      if (itemType === "command-execution") {
+        noteSkillPathsAndNames(item?.command);
+        if (item?.exit_code !== undefined && item.exit_code !== 0 && !runtimeError) {
+          runtimeError = `command execution exited with code ${String(item.exit_code)}`;
+        }
+      }
+    }
+
+    if (eventType === "response-item") {
+      const payload =
+        typeof parsed.payload === "object" && parsed.payload !== null
+          ? (parsed.payload as Record<string, unknown>)
+          : undefined;
+      const payloadType = normalizeReplayEventType(payload?.type);
+
+      if (payloadType === "function-call") {
+        noteSkillPathsAndNames(payload?.arguments);
+      } else if (payloadType === "message") {
+        const role = payload?.role;
+        const content = Array.isArray(payload?.content)
+          ? (payload.content as Array<Record<string, unknown>>)
+          : [];
+        for (const part of content) {
+          const text = part?.text;
+          noteSkillPathsAndNames(text);
+          if (role === "user") {
+            noteExplicitMentions(text);
+          }
+        }
+      } else if (payloadType === "agent-reasoning") {
+        noteSkillPathsAndNames(payload?.text);
+      }
+    }
+  }
+
+  return {
+    triggeredSkillNames: [...triggeredSkillNames],
+    readSkillPaths: [...readSkillPaths],
+    rawOutput,
+    ...(sessionId ? { sessionId } : {}),
+    ...(runtimeError ? { runtimeError } : {}),
+  };
+}
+
+export function parseOpenCodeRuntimeReplayOutput(
+  rawOutput: string,
+  knownSkillNames: Set<string>,
+): RuntimeReplayObservation {
+  const triggeredSkillNames = new Set<string>();
+  const readSkillPaths = new Set<string>();
+  let sessionId: string | undefined;
+  let runtimeError: string | undefined;
+
+  const noteSkillPathsAndNames = (text: unknown): void => {
+    if (typeof text !== "string" || !text) return;
+
+    for (const filePath of extractReplaySkillPathReferences(text)) {
+      readSkillPaths.add(filePath);
+    }
+
+    for (const skillName of extractSkillNamesFromPathReferences(text, knownSkillNames)) {
+      triggeredSkillNames.add(skillName);
+    }
+  };
+
+  const noteExplicitMentions = (text: unknown): void => {
+    if (typeof text !== "string" || !text) return;
+    for (const skillName of extractExplicitSkillMentions(text, knownSkillNames)) {
+      triggeredSkillNames.add(skillName);
+    }
+  };
+
+  for (const line of rawOutput.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+
+    const nestedPart =
+      typeof parsed.part === "object" && parsed.part !== null
+        ? (parsed.part as Record<string, unknown>)
+        : undefined;
+    const eventType = normalizeReplayEventType(nestedPart?.type ?? parsed.type);
+    const payload =
+      nestedPart &&
+      (nestedPart.tool !== undefined || nestedPart.state !== undefined || nestedPart.text)
+        ? nestedPart
+        : parsed;
+
+    const possibleSessionId = parsed.sessionID ?? parsed.session_id ?? payload.sessionID;
+    if (typeof possibleSessionId === "string" && possibleSessionId) {
+      sessionId = possibleSessionId;
+    }
+
+    if (typeof parsed.error === "string" && parsed.error) {
+      runtimeError = parsed.error;
+    } else if (typeof payload.error === "string" && payload.error) {
+      runtimeError = payload.error;
+    }
+
+    if (eventType === "tool") {
+      const toolName = normalizeReplayEventType(payload.tool ?? payload.name);
+      const state =
+        typeof payload.state === "object" && payload.state !== null
+          ? (payload.state as Record<string, unknown>)
+          : {};
+      const input =
+        typeof state.input === "object" && state.input !== null
+          ? (state.input as Record<string, unknown>)
+          : {};
+      const status = normalizeReplayEventType(state.status);
+
+      if (toolName === "read" || toolName === "read-file") {
+        const filePath = input.filePath ?? input.file_path ?? input.path;
+        if (typeof filePath === "string" && basename(filePath).toUpperCase() === "SKILL.MD") {
+          readSkillPaths.add(filePath);
+          triggeredSkillNames.add(basename(dirname(filePath)));
+        }
+      } else if (toolName === "bash" || toolName === "execute-bash") {
+        noteSkillPathsAndNames(input.command ?? input.cmd);
+      }
+
+      const metadata =
+        typeof state.metadata === "object" && state.metadata !== null
+          ? (state.metadata as Record<string, unknown>)
+          : {};
+      const exitCode = metadata.exit;
+      if (status === "completed" && exitCode !== undefined && exitCode !== 0 && !runtimeError) {
+        runtimeError = `tool exited with code ${String(exitCode)}`;
+      }
+    } else if (eventType === "text" || eventType === "reasoning") {
+      noteSkillPathsAndNames(payload.text);
+      noteExplicitMentions(payload.text);
+    } else if (eventType === "error" && typeof payload.message === "string" && payload.message) {
+      runtimeError = payload.message;
+    } else if (eventType === "step-finish") {
+      const reason = payload.reason;
+      if (typeof reason === "string" && reason.toLowerCase() === "error" && !runtimeError) {
+        runtimeError = "step finished with error";
+      }
+    }
+  }
+
+  return {
+    triggeredSkillNames: [...triggeredSkillNames],
     readSkillPaths: [...readSkillPaths],
     rawOutput,
     ...(sessionId ? { sessionId } : {}),
@@ -250,8 +558,8 @@ function parseClaudeRuntimeReplayOutput(rawOutput: string): ClaudeRuntimeReplayO
 }
 
 async function invokeClaudeRuntimeReplay(
-  input: ClaudeRuntimeReplayInvokerInput,
-): Promise<ClaudeRuntimeReplayObservation> {
+  input: RuntimeReplayInvokerInput,
+): Promise<RuntimeReplayObservation> {
   const command = [
     "claude",
     "-p",
@@ -289,7 +597,7 @@ async function invokeClaudeRuntimeReplay(
   const observation = parseClaudeRuntimeReplayOutput(stdoutText);
   const combinedError = [observation.runtimeError, stderrText.trim()].filter(Boolean).join(" | ");
   const hasRoutingSignal =
-    observation.invokedSkillNames.length > 0 || observation.readSkillPaths.length > 0;
+    observation.triggeredSkillNames.length > 0 || observation.readSkillPaths.length > 0;
 
   if (exitCode !== 0 && !hasRoutingSignal) {
     throw new Error(combinedError || `claude runtime replay exited with code ${exitCode}`);
@@ -301,20 +609,101 @@ async function invokeClaudeRuntimeReplay(
   };
 }
 
-function prefixReplayEvidence(
-  results: RoutingReplayEntryResult[],
-  prefix: string,
-): RoutingReplayEntryResult[] {
-  return results.map((result) => ({
-    ...result,
-    evidence: result.evidence ? `${prefix}; ${result.evidence}` : prefix,
-  }));
+async function invokeCodexRuntimeReplay(
+  input: RuntimeReplayInvokerInput,
+): Promise<RuntimeReplayObservation> {
+  const prompt = `${GENERIC_RUNTIME_ROUTING_PROMPT}\n\nUser request: ${input.query}`;
+  const command = [
+    "codex",
+    "exec",
+    "--json",
+    "--skip-git-repo-check",
+    "--sandbox",
+    "read-only",
+    "-C",
+    input.workspaceRoot,
+    prompt,
+  ];
+
+  const proc = Bun.spawn(command, {
+    cwd: input.workspaceRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, CLAUDECODE: "" },
+  });
+  const timeout = setTimeout(() => proc.kill(), HOST_RUNTIME_REPLAY_TIMEOUT_MS);
+
+  const [stdoutText, stderrText, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  clearTimeout(timeout);
+
+  const observation = parseCodexRuntimeReplayOutput(stdoutText, buildKnownSkillNames(input));
+  const combinedError = [observation.runtimeError, stderrText.trim()].filter(Boolean).join(" | ");
+  const hasRoutingSignal =
+    observation.triggeredSkillNames.length > 0 || observation.readSkillPaths.length > 0;
+
+  if (exitCode !== 0 && !hasRoutingSignal) {
+    throw new Error(combinedError || `codex runtime replay exited with code ${exitCode}`);
+  }
+
+  return {
+    ...observation,
+    ...(combinedError ? { runtimeError: combinedError } : {}),
+  };
+}
+
+async function invokeOpenCodeRuntimeReplay(
+  input: RuntimeReplayInvokerInput,
+): Promise<RuntimeReplayObservation> {
+  const prompt = `${GENERIC_RUNTIME_ROUTING_PROMPT}\n\nUser request: ${input.query}`;
+  const command = [
+    "opencode",
+    "run",
+    "--format",
+    "json",
+    "--dir",
+    input.workspaceRoot,
+    "--dangerously-skip-permissions",
+    prompt,
+  ];
+
+  const proc = Bun.spawn(command, {
+    cwd: input.workspaceRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, CLAUDECODE: "" },
+  });
+  const timeout = setTimeout(() => proc.kill(), HOST_RUNTIME_REPLAY_TIMEOUT_MS);
+
+  const [stdoutText, stderrText, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  clearTimeout(timeout);
+
+  const observation = parseOpenCodeRuntimeReplayOutput(stdoutText, buildKnownSkillNames(input));
+  const combinedError = [observation.runtimeError, stderrText.trim()].filter(Boolean).join(" | ");
+  const hasRoutingSignal =
+    observation.triggeredSkillNames.length > 0 || observation.readSkillPaths.length > 0;
+
+  if (exitCode !== 0 && !hasRoutingSignal) {
+    throw new Error(combinedError || `opencode runtime replay exited with code ${exitCode}`);
+  }
+
+  return {
+    ...observation,
+    ...(combinedError ? { runtimeError: combinedError } : {}),
+  };
 }
 
 function evaluateRuntimeReplayObservation(
   entry: EvalEntry,
   fixture: RoutingReplayFixture,
-  observation: ClaudeRuntimeReplayObservation,
+  observation: RuntimeReplayObservation,
   workspace: ReplayWorkspace,
 ): RoutingReplayEntryResult {
   const normalizedReadPaths = new Set(
@@ -325,14 +714,14 @@ function evaluateRuntimeReplayObservation(
     ...workspace.competingSkillPaths.map(resolveReplayPath),
   ]);
   const targetSkillName = fixture.target_skill_name.trim();
-  const targetInvoked = observation.invokedSkillNames.includes(targetSkillName);
-  const competingInvoked = observation.invokedSkillNames.find((skillName) =>
+  const targetTriggered = observation.triggeredSkillNames.includes(targetSkillName);
+  const competingTriggered = observation.triggeredSkillNames.find((skillName) =>
     fixture.competing_skill_paths.some(
       (skillPath) => basename(dirname(skillPath)).trim() === skillName.trim(),
     ),
   );
-  const unrelatedInvoked = observation.invokedSkillNames.find(
-    (skillName) => skillName.trim() !== targetSkillName && skillName.trim() !== competingInvoked,
+  const unrelatedTriggered = observation.triggeredSkillNames.find(
+    (skillName) => skillName.trim() !== targetSkillName && skillName.trim() !== competingTriggered,
   );
   const unrelatedReadPaths = [...normalizedReadPaths].filter((path) => !allowedReadPaths.has(path));
   const targetRead = normalizedReadPaths.has(resolveReplayPath(workspace.targetSkillPath));
@@ -342,43 +731,43 @@ function evaluateRuntimeReplayObservation(
   const sessionPrefix = observation.sessionId
     ? `runtime replay session ${observation.sessionId}`
     : "runtime replay";
-  if (observation.invokedSkillNames.length > 1) {
+  if (observation.triggeredSkillNames.length > 1) {
     return {
       query: entry.query,
       should_trigger: entry.should_trigger,
       triggered: false,
       passed: false,
-      evidence: `${sessionPrefix} invoked multiple skills: ${observation.invokedSkillNames.join(", ")}`,
+      evidence: `${sessionPrefix} selected multiple skills: ${observation.triggeredSkillNames.join(", ")}`,
     };
   }
 
-  if (targetInvoked) {
+  if (targetTriggered) {
     return {
       query: entry.query,
       should_trigger: entry.should_trigger,
       triggered: true,
       passed: entry.should_trigger,
-      evidence: `${sessionPrefix} invoked target skill: ${targetSkillName}`,
+      evidence: `${sessionPrefix} selected target skill: ${targetSkillName}`,
     };
   }
 
-  if (competingInvoked) {
+  if (competingTriggered) {
     return {
       query: entry.query,
       should_trigger: entry.should_trigger,
       triggered: false,
       passed: !entry.should_trigger,
-      evidence: `${sessionPrefix} invoked competing skill: ${competingInvoked}`,
+      evidence: `${sessionPrefix} selected competing skill: ${competingTriggered}`,
     };
   }
 
-  if (unrelatedInvoked) {
+  if (unrelatedTriggered) {
     return {
       query: entry.query,
       should_trigger: entry.should_trigger,
       triggered: false,
       passed: false,
-      evidence: `${sessionPrefix} invoked unrelated skill: ${unrelatedInvoked}`,
+      evidence: `${sessionPrefix} selected unrelated skill: ${unrelatedTriggered}`,
     };
   }
 
@@ -398,7 +787,7 @@ function evaluateRuntimeReplayObservation(
       should_trigger: entry.should_trigger,
       triggered: false,
       passed: !entry.should_trigger,
-      evidence: `${sessionPrefix} only read the target skill without invoking it`,
+      evidence: `${sessionPrefix} only read the target skill without selecting it`,
     };
   }
 
@@ -408,7 +797,7 @@ function evaluateRuntimeReplayObservation(
       should_trigger: entry.should_trigger,
       triggered: false,
       passed: !entry.should_trigger,
-      evidence: `${sessionPrefix} only read a competing skill without invoking it`,
+      evidence: `${sessionPrefix} only read a competing skill without selecting it`,
     };
   }
 
@@ -421,7 +810,7 @@ function evaluateRuntimeReplayObservation(
     should_trigger: entry.should_trigger,
     triggered: false,
     passed: !entry.should_trigger,
-    evidence: `${sessionPrefix} did not invoke any local project skill`,
+    evidence: `${sessionPrefix} did not select any local project skill`,
   };
 }
 
@@ -578,33 +967,75 @@ export function runHostReplayFixture(options: {
   });
 }
 
-export async function runClaudeRuntimeReplayFixture(options: {
+function getDefaultRuntimeReplayInvoker(
+  platform: RoutingReplayFixture["platform"],
+): RuntimeReplayInvoker {
+  switch (platform) {
+    case "claude_code":
+      return invokeClaudeRuntimeReplay;
+    case "codex":
+      return invokeCodexRuntimeReplay;
+    case "opencode":
+      return invokeOpenCodeRuntimeReplay;
+  }
+}
+
+export function buildRuntimeReplayValidationOptions(options: {
+  skillName: string;
+  skillPath: string;
+  agent: string | null | undefined;
+  contentTarget?: RuntimeReplayContentTarget;
+}): ReplayValidationOptions | undefined {
+  const platform = resolveRuntimeReplayPlatform(options.agent);
+  if (!platform) return undefined;
+
+  try {
+    const replayFixture = buildRoutingReplayFixture({
+      skillName: options.skillName,
+      skillPath: options.skillPath,
+      platform,
+    });
+
+    return {
+      replayFixture,
+      replayRunner: async ({ routing, evalSet, fixture }) =>
+        await runHostRuntimeReplayFixture({
+          routing,
+          evalSet,
+          fixture,
+          contentTarget: options.contentTarget ?? "routing",
+        }),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export async function runHostRuntimeReplayFixture(options: {
   routing: string;
   evalSet: EvalEntry[];
   fixture: RoutingReplayFixture;
-  runtimeInvoker?: ClaudeRuntimeReplayInvoker;
+  contentTarget?: RuntimeReplayContentTarget;
+  runtimeInvoker?: RuntimeReplayInvoker;
 }): Promise<RoutingReplayEntryResult[]> {
-  const fallbackReason = (reason: string) =>
-    `runtime replay unavailable; fell back to fixture simulation (${reason})`;
-
-  if (options.fixture.platform !== "claude_code") {
-    return prefixReplayEvidence(
-      runHostReplayFixture(options),
-      fallbackReason(`unsupported platform ${options.fixture.platform}`),
-    );
-  }
-
-  const invokeRuntime = options.runtimeInvoker ?? invokeClaudeRuntimeReplay;
+  const invokeRuntime =
+    options.runtimeInvoker ?? getDefaultRuntimeReplayInvoker(options.fixture.platform);
   let workspace: ReplayWorkspace | undefined;
 
   try {
-    workspace = buildRuntimeReplayWorkspace(options.fixture, options.routing);
+    workspace = buildRuntimeReplayWorkspace(
+      options.fixture,
+      options.routing,
+      options.contentTarget ?? "routing",
+    );
     const results: RoutingReplayEntryResult[] = [];
 
     for (const entry of options.evalSet) {
       const observation = await invokeRuntime({
         query: entry.query,
+        platform: options.fixture.platform,
         workspaceRoot: workspace.rootDir,
+        skillRegistryDir: workspace.skillRegistryDir,
         targetSkillName: options.fixture.target_skill_name,
         targetSkillPath: workspace.targetSkillPath,
         competingSkillPaths: workspace.competingSkillPaths,
@@ -617,8 +1048,24 @@ export async function runClaudeRuntimeReplayFixture(options: {
     return results;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return prefixReplayEvidence(runHostReplayFixture(options), fallbackReason(message));
+    throw new Error(message);
   } finally {
     if (workspace) cleanupRuntimeReplayWorkspace(workspace);
   }
+}
+
+export async function runClaudeRuntimeReplayFixture(options: {
+  routing: string;
+  evalSet: EvalEntry[];
+  fixture: RoutingReplayFixture;
+  contentTarget?: RuntimeReplayContentTarget;
+  runtimeInvoker?: RuntimeReplayInvoker;
+}): Promise<RoutingReplayEntryResult[]> {
+  if (options.fixture.platform !== "claude_code") {
+    throw new Error(
+      `runtime replay is only supported for claude_code fixtures (received ${options.fixture.platform})`,
+    );
+  }
+
+  return runHostRuntimeReplayFixture(options);
 }

@@ -253,7 +253,7 @@ Immediate next steps, in order:
 
 **Files**
 - [apps/local-dashboard/src/pages/SkillReport.tsx](../../../apps/local-dashboard/src/pages/SkillReport.tsx)
-- [apps/local-dashboard/src/components/skill-report-panels.tsx](../../../apps/local-dashboard/src/components/skill-report-panels.tsx)
+- [packages/ui/src/components/SkillReportPanels.tsx](../../../../packages/ui/src/components/SkillReportPanels.tsx)
 - [packages/ui/src/components/EvidenceViewer.tsx](../../../packages/ui/src/components/EvidenceViewer.tsx)
 
 **Exit criteria**

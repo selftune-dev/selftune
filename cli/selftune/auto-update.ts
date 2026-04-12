@@ -5,23 +5,42 @@
  * Set SELFTUNE_SKIP_AUTO_UPDATE=1 or SELFTUNE_SKIP_UPDATE_CHECK=1 to disable
  * it for source-tree smoke tests and hermetic automation.
  * Checks npm registry at most once per hour (cached in ~/.selftune/update-check.json).
- * If outdated, auto-updates via `npm install -g selftune@latest` and notifies the user.
+ * If outdated, auto-updates the active global install (npm or Bun) and syncs
+ * bundled skill files into common global skill registries.
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { SELFTUNE_CONFIG_DIR } from "./constants.js";
 
 const UPDATE_CHECK_PATH = join(SELFTUNE_CONFIG_DIR, "update-check.json");
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+const PACKAGE_NAME = "selftune";
+const PACKAGE_ROOT = resolve(import.meta.dir, "..", "..");
+const BUNDLED_SKILL_DIR = join(PACKAGE_ROOT, "skill");
 
 interface UpdateCheckCache {
   lastCheck: number;
   currentVersion: string;
   latestVersion: string;
+}
+
+type InstallSource = "bun-global" | "npm-global";
+
+interface UpdateCommand {
+  source: InstallSource;
+  command: string;
+  args: string[];
+  manualCommand: string;
+}
+
+interface UpdateCommandOptions {
+  homeDir?: string;
+  moduleDir?: string;
+  npmGlobalRoot?: string | null;
 }
 
 function isTruthyEnv(value: string | undefined): boolean {
@@ -61,6 +80,139 @@ function getCurrentVersion(): string {
   return JSON.parse(readFileSync(pkgPath, "utf-8")).version;
 }
 
+function normalizePath(path: string): string {
+  return resolve(path).replaceAll("\\", "/");
+}
+
+function getActivePackageRoot(moduleDir = import.meta.dir): string {
+  return resolve(moduleDir, "..", "..");
+}
+
+function getNpmGlobalRoot(): string | null {
+  const result = spawnSync("npm", ["root", "-g"], {
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: 5000,
+  });
+  if (result.status !== 0) return null;
+  const root = result.stdout?.toString().trim();
+  return root ? root : null;
+}
+
+function buildManualUpdateCommand(source: InstallSource, version: string): string {
+  const packageSpec = `${PACKAGE_NAME}@${version}`;
+  if (source === "bun-global") {
+    return `bun add -g ${packageSpec}`;
+  }
+  return `npm install -g ${packageSpec}`;
+}
+
+export function resolveSelftuneUpdateCommand(
+  version: string,
+  options?: UpdateCommandOptions,
+): UpdateCommand | null {
+  const homeDir = options?.homeDir ?? homedir();
+  const activePackageRoot = normalizePath(getActivePackageRoot(options?.moduleDir));
+
+  const bunPackageRoot = normalizePath(
+    join(homeDir, ".bun", "install", "global", "node_modules", PACKAGE_NAME),
+  );
+  if (
+    activePackageRoot === bunPackageRoot ||
+    activePackageRoot.includes("/.bun/install/global/node_modules/selftune")
+  ) {
+    return {
+      source: "bun-global",
+      command: "bun",
+      args: ["add", "-g", `${PACKAGE_NAME}@${version}`],
+      manualCommand: buildManualUpdateCommand("bun-global", version),
+    };
+  }
+
+  const npmGlobalRoot = options?.npmGlobalRoot ?? getNpmGlobalRoot();
+  if (npmGlobalRoot) {
+    const npmPackageRoot = normalizePath(join(npmGlobalRoot, PACKAGE_NAME));
+    if (activePackageRoot === npmPackageRoot) {
+      return {
+        source: "npm-global",
+        command: "npm",
+        args: ["install", "-g", `${PACKAGE_NAME}@${version}`],
+        manualCommand: buildManualUpdateCommand("npm-global", version),
+      };
+    }
+  }
+
+  if (activePackageRoot.includes("/lib/node_modules/selftune")) {
+    return {
+      source: "npm-global",
+      command: "npm",
+      args: ["install", "-g", `${PACKAGE_NAME}@${version}`],
+      manualCommand: buildManualUpdateCommand("npm-global", version),
+    };
+  }
+
+  return null;
+}
+
+export function getSelftuneUpdateHint(version = "latest", options?: UpdateCommandOptions): string {
+  return (
+    resolveSelftuneUpdateCommand(version, options)?.manualCommand ??
+    "npx skills add selftune-dev/selftune"
+  );
+}
+
+function readSkillVersion(skillDir: string): string | null {
+  try {
+    const skillPath = join(skillDir, "SKILL.md");
+    if (!existsSync(skillPath)) return null;
+    const skillContent = readFileSync(skillPath, "utf-8");
+    const match = skillContent.match(/^\s*version:\s*(.+)$/m);
+    return match?.[1]?.trim() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function getInstalledSkillDirs(homeDir = homedir()): string[] {
+  return [
+    join(homeDir, ".claude", "skills", PACKAGE_NAME),
+    join(homeDir, ".agents", "skills", PACKAGE_NAME),
+  ].filter((dir) => existsSync(dir));
+}
+
+export function syncInstalledSkillFiles(options?: {
+  force?: boolean;
+  homeDir?: string;
+  packageSkillDir?: string;
+}): string[] {
+  const homeDir = options?.homeDir ?? homedir();
+  const packageSkillDir = options?.packageSkillDir ?? BUNDLED_SKILL_DIR;
+  if (!existsSync(packageSkillDir)) return [];
+
+  const sourceVersion = readSkillVersion(packageSkillDir);
+  const syncedDirs: string[] = [];
+
+  for (const targetDir of getInstalledSkillDirs(homeDir)) {
+    const targetVersion = readSkillVersion(targetDir);
+    const shouldSync =
+      options?.force ||
+      sourceVersion === null ||
+      targetVersion === null ||
+      sourceVersion !== targetVersion;
+    if (!shouldSync) continue;
+
+    mkdirSync(targetDir, { recursive: true });
+    for (const entry of readdirSync(packageSkillDir)) {
+      cpSync(join(packageSkillDir, entry), join(targetDir, entry), {
+        recursive: true,
+        force: true,
+      });
+    }
+    syncedDirs.push(targetDir);
+  }
+
+  return syncedDirs;
+}
+
 function compareSemver(a: string, b: string): -1 | 0 | 1 {
   const pa = a.split(".").map(Number);
   const pb = b.split(".").map(Number);
@@ -90,6 +242,8 @@ export async function autoUpdate(): Promise<void> {
       // Even with a recent check, if we know we're outdated, try updating
       if (cache.latestVersion && compareSemver(currentVersion, cache.latestVersion) < 0) {
         await performUpdate(currentVersion, cache.latestVersion);
+      } else if (cache.latestVersion && compareSemver(currentVersion, cache.latestVersion) >= 0) {
+        syncInstalledSkillFiles();
       }
       return;
     }
@@ -103,7 +257,7 @@ export async function autoUpdate(): Promise<void> {
         signal: controller.signal,
       });
       if (!res.ok) {
-        writeCache({ lastCheck: Date.now(), currentVersion, latestVersion: currentVersion });
+        writeCache({ lastCheck: Date.now(), currentVersion, latestVersion: "" });
         return;
       }
       const data = (await res.json()) as { version: string };
@@ -118,7 +272,10 @@ export async function autoUpdate(): Promise<void> {
     // Auto-update if outdated
     if (compareSemver(currentVersion, latestVersion) < 0) {
       await performUpdate(currentVersion, latestVersion);
+      return;
     }
+
+    syncInstalledSkillFiles();
   } catch {
     // Non-critical — silently skip
   }
@@ -127,7 +284,16 @@ export async function autoUpdate(): Promise<void> {
 async function performUpdate(currentVersion: string, latestVersion: string): Promise<void> {
   console.error(`[selftune] Update available: v${currentVersion} → v${latestVersion}. Updating...`);
 
-  const result = spawnSync("npm", ["install", "-g", `selftune@${latestVersion}`], {
+  const updateCommand = resolveSelftuneUpdateCommand(latestVersion);
+  if (!updateCommand) {
+    console.error(
+      "[selftune] Auto-update skipped. Current install path is not a supported global package install.",
+    );
+    console.error(`[selftune] Refresh manually: ${getSelftuneUpdateHint(latestVersion)}`);
+    return;
+  }
+
+  const result = spawnSync(updateCommand.command, updateCommand.args, {
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 30000,
   });
@@ -147,35 +313,20 @@ async function performUpdate(currentVersion: string, latestVersion: string): Pro
       // Non-critical — updated CLI is usable even if agent sync fails
     }
 
-    // Sync skill files to ~/.claude/skills/selftune/ if installed there
+    // Refresh installed selftune skill registries after a successful package update.
     try {
-      const skillInstallDir = join(homedir(), ".claude", "skills", "selftune");
-      if (existsSync(skillInstallDir)) {
-        const packageSkillDir = join(import.meta.dir, "../../skill");
-        if (existsSync(packageSkillDir)) {
-          const cpResult = spawnSync(
-            "sh",
-            ["-c", `cp -R "${packageSkillDir}"/* "${skillInstallDir}"/`],
-            {
-              stdio: ["ignore", "pipe", "pipe"],
-              timeout: 10000,
-            },
-          );
-          if (cpResult.status !== 0) {
-            console.error(
-              "[selftune] Skill file sync failed — run: npx skills add selftune-dev/selftune",
-            );
-          }
-        }
+      const syncedSkillDirs = syncInstalledSkillFiles({ force: true });
+      if (getInstalledSkillDirs().length > 0 && syncedSkillDirs.length === 0) {
+        console.error(
+          `[selftune] Skill file sync failed — run: ${getSelftuneUpdateHint(latestVersion)}`,
+        );
       }
     } catch {
       // Non-critical — skill files can be updated manually
     }
   } else {
     const stderr = result.stderr?.toString().trim();
-    console.error(
-      `[selftune] Auto-update failed. Run manually: npm install -g selftune@${latestVersion}`,
-    );
+    console.error(`[selftune] Auto-update failed. Run manually: ${updateCommand.manualCommand}`);
     if (stderr) {
       console.error(`  ${stderr.split("\n")[0]}`);
     }

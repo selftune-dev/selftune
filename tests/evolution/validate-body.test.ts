@@ -302,13 +302,12 @@ describe("validateBodyProposal", () => {
     expect(result.validation_mode).toBe("llm_judge");
   });
 
-  test("falls back to fixture_replay when replay runner throws", async () => {
+  test("falls back to llm_judge when replay runner throws", async () => {
     mockCallLlm.mockImplementation(async (_sys: string, user: string) => {
       if (user.includes("Rate the quality")) {
         return JSON.stringify({ score: 0.9, reason: "Great" });
       }
-      // Should NOT be called for gate 2 when fixture fallback handles it
-      return "NO";
+      return user.includes("Improved body") ? "YES" : "NO";
     });
 
     const failingRunner = mock(async () => {
@@ -331,7 +330,9 @@ describe("validateBodyProposal", () => {
       },
     });
 
-    expect(result.validation_mode).toBe("fixture_replay");
+    expect(result.validation_mode).toBe("llm_judge");
+    expect(result.validation_fallback_reason).toContain("real host/runtime replay failed");
     expect(failingRunner).toHaveBeenCalled();
+    expect(mockCallLlm).toHaveBeenCalled();
   });
 });

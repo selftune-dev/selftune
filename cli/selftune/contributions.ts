@@ -3,6 +3,8 @@
 import {
   discoverCreatorContributionConfigs,
   findCreatorContributionConfig,
+  isSupportedContributionSignal,
+  isValidCreatorUUID,
 } from "./contribution-config.js";
 import {
   cloneDefaultContributionPreferences,
@@ -128,6 +130,11 @@ export function listContributionPromptCandidates(
 
   const bySkill = new Map(getSkillTrustSummaries(getDb()).map((row) => [row.skill_name, row]));
   return discoverCreatorContributionConfigs()
+    .filter(
+      (config) =>
+        isValidCreatorUUID(config.creator_id) &&
+        config.contribution.signals.some((signal) => isSupportedContributionSignal(signal)),
+    )
     .filter((config) => !preferences.skills[config.skill_name])
     .map((config) => {
       const summary = bySkill.get(config.skill_name);
@@ -152,19 +159,40 @@ function upsertSkillPreference(skill: string, status: ContributionSkillStatus): 
   const preferences = loadContributionPreferences();
   const timestamp = new Date().toISOString();
   const discovered = findCreatorContributionConfig(normalizedSkill);
+  if (!discovered) {
+    throw new CLIError(
+      `No creator contribution request found for "${normalizedSkill}".`,
+      "FILE_NOT_FOUND",
+      "Run `selftune contributions` to see installed skill requests.",
+    );
+  }
+  if (!isValidCreatorUUID(discovered.creator_id)) {
+    throw new CLIError(
+      `Creator contribution request for "${normalizedSkill}" has an invalid creator_id.`,
+      "INVALID_FLAG",
+      "Ask the skill creator to ship a valid selftune.contribute.json or choose another skill.",
+    );
+  }
+  const validSignals = discovered.contribution.signals.filter(
+    (signal): signal is ContributionSignal => isSupportedContributionSignal(signal),
+  );
+  if (validSignals.length === 0) {
+    throw new CLIError(
+      `Creator contribution request for "${normalizedSkill}" does not declare any supported signals.`,
+      "INVALID_FLAG",
+      "Ask the skill creator to ship a valid selftune.contribute.json or choose another skill.",
+    );
+  }
   preferences.skills[normalizedSkill] =
     status === "opted_in"
       ? { status, opted_in_at: timestamp }
       : { status, opted_out_at: timestamp };
-  if (status === "opted_in" && discovered) {
+  if (status === "opted_in") {
     preferences.skills[normalizedSkill] = {
       status,
       opted_in_at: timestamp,
       creator_id: discovered.creator_id,
-      signals: discovered.contribution.signals.filter(
-        (signal): signal is ContributionSignal =>
-          signal === "trigger" || signal === "grade" || signal === "miss_category",
-      ),
+      signals: validSignals,
     };
   }
   saveContributionPreferences(preferences);

@@ -5,6 +5,9 @@ import { dirname, join } from "node:path";
 
 import {
   buildRoutingReplayFixture,
+  parseCodexRuntimeReplayOutput,
+  parseOpenCodeRuntimeReplayOutput,
+  runHostRuntimeReplayFixture,
   runClaudeRuntimeReplayFixture,
   runHostReplayFixture,
 } from "../../cli/selftune/evolution/validate-host-replay.js";
@@ -214,14 +217,14 @@ describe("runHostReplayFixture", () => {
           expect(readFileSync(input.targetSkillPath, "utf8")).toContain("create deck, board deck");
           if (input.query.includes("board deck")) {
             return {
-              invokedSkillNames: ["deck-skill"],
+              triggeredSkillNames: ["deck-skill"],
               readSkillPaths: [input.targetSkillPath],
               rawOutput: "",
               sessionId: "runtime-session-1",
             };
           }
           return {
-            invokedSkillNames: ["compare-skill"],
+            triggeredSkillNames: ["compare-skill"],
             readSkillPaths: input.competingSkillPaths,
             rawOutput: "",
             sessionId: "runtime-session-2",
@@ -240,7 +243,7 @@ describe("runHostReplayFixture", () => {
     }
   });
 
-  test("falls back to fixture simulation when claude runtime replay fails", async () => {
+  test("stages description-only content for runtime replay when requested", async () => {
     const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
     try {
       const targetPath = writeSkill(
@@ -250,25 +253,79 @@ describe("runHostReplayFixture", () => {
         ["Presentation building requests"],
       );
       const fixture = makeFixture(targetPath);
+      const newDescription = "Handle investor decks and board-ready presentation requests.";
 
       const [result] = await runClaudeRuntimeReplayFixture({
-        routing: "| Trigger | Workflow |\n| --- | --- |\n| create deck, board deck | present |",
+        routing: newDescription,
+        contentTarget: "description",
         evalSet: [{ query: "create a board deck", should_trigger: true }],
         fixture,
-        runtimeInvoker: async () => {
-          throw new Error("claude not available");
+        runtimeInvoker: async (input) => {
+          const stagedContent = readFileSync(input.targetSkillPath, "utf8");
+          expect(stagedContent).toContain(`description: ${newDescription}`);
+          expect(stagedContent).toContain("## When to Use");
+          return {
+            triggeredSkillNames: ["deck-skill"],
+            readSkillPaths: [input.targetSkillPath],
+            rawOutput: "",
+            sessionId: "runtime-session-description",
+          };
         },
       });
 
-      expect(result?.triggered).toBe(true);
       expect(result?.passed).toBe(true);
-      expect(result?.evidence).toContain("fell back to fixture simulation");
+      expect(result?.evidence).toContain("runtime replay session runtime-session-description");
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
     }
   });
 
-  test("falls back to fixture simulation when runtime replay returns an error state", async () => {
+  test("stages full body content for runtime replay when requested", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
+    try {
+      const targetPath = writeSkill(
+        rootDir,
+        "deck-skill",
+        "Create decks and slide presentations.",
+        ["Presentation building requests"],
+      );
+      const fixture = makeFixture(targetPath);
+      const newBody = [
+        "Coordinate board-ready presentations and investor updates.",
+        "",
+        "## Workflow Routing",
+        "",
+        "| Trigger | Workflow |",
+        "| --- | --- |",
+        "| board deck, investor update | present |",
+      ].join("\n");
+
+      const [result] = await runClaudeRuntimeReplayFixture({
+        routing: newBody,
+        contentTarget: "body",
+        evalSet: [{ query: "create a board deck", should_trigger: true }],
+        fixture,
+        runtimeInvoker: async (input) => {
+          const stagedContent = readFileSync(input.targetSkillPath, "utf8");
+          expect(stagedContent).toContain("# deck-skill");
+          expect(stagedContent).toContain(newBody);
+          return {
+            triggeredSkillNames: ["deck-skill"],
+            readSkillPaths: [input.targetSkillPath],
+            rawOutput: "",
+            sessionId: "runtime-session-body",
+          };
+        },
+      });
+
+      expect(result?.passed).toBe(true);
+      expect(result?.evidence).toContain("runtime replay session runtime-session-body");
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test("throws when claude runtime replay fails", async () => {
     const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
     try {
       const targetPath = writeSkill(
@@ -279,24 +336,74 @@ describe("runHostReplayFixture", () => {
       );
       const fixture = makeFixture(targetPath);
 
-      const [result] = await runClaudeRuntimeReplayFixture({
-        routing: "| Trigger | Workflow |\n| --- | --- |\n| create deck, board deck | present |",
-        evalSet: [{ query: "create a board deck", should_trigger: true }],
-        fixture,
-        runtimeInvoker: async () => ({
-          invokedSkillNames: [],
-          readSkillPaths: [],
-          rawOutput: "",
-          sessionId: "runtime-session-error",
-          runtimeError: "tool call timed out",
+      await expect(
+        runClaudeRuntimeReplayFixture({
+          routing: "| Trigger | Workflow |\n| --- | --- |\n| create deck, board deck | present |",
+          evalSet: [{ query: "create a board deck", should_trigger: true }],
+          fixture,
+          runtimeInvoker: async () => {
+            throw new Error("claude not available");
+          },
         }),
-      });
+      ).rejects.toThrow("claude not available");
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
 
-      expect(result?.triggered).toBe(true);
-      expect(result?.passed).toBe(true);
-      expect(result?.evidence).toContain("fell back to fixture simulation");
-      expect(result?.evidence).toContain("runtime replay session runtime-session-error");
-      expect(result?.evidence).toContain("tool call timed out");
+  test("throws when runtime replay returns an error state", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
+    try {
+      const targetPath = writeSkill(
+        rootDir,
+        "deck-skill",
+        "Create decks and slide presentations.",
+        ["Presentation building requests"],
+      );
+      const fixture = makeFixture(targetPath);
+
+      await expect(
+        runClaudeRuntimeReplayFixture({
+          routing: "| Trigger | Workflow |\n| --- | --- |\n| create deck, board deck | present |",
+          evalSet: [{ query: "create a board deck", should_trigger: true }],
+          fixture,
+          runtimeInvoker: async () => ({
+            triggeredSkillNames: [],
+            readSkillPaths: [],
+            rawOutput: "",
+            sessionId: "runtime-session-error",
+            runtimeError: "tool call timed out",
+          }),
+        }),
+      ).rejects.toThrow(
+        "runtime replay session runtime-session-error did not reach a skill decision",
+      );
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test("throws when asked to run runtime replay for a non-claude fixture", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
+    try {
+      const targetPath = writeSkill(
+        rootDir,
+        "deck-skill",
+        "Create decks and slide presentations.",
+        ["Presentation building requests"],
+      );
+      const fixture: RoutingReplayFixture = {
+        ...makeFixture(targetPath),
+        platform: "codex",
+      };
+
+      await expect(
+        runClaudeRuntimeReplayFixture({
+          routing: "| Trigger | Workflow |\n| --- | --- |\n| create deck | present |",
+          evalSet: [{ query: "create a board deck", should_trigger: true }],
+          fixture,
+        }),
+      ).rejects.toThrow("runtime replay is only supported for claude_code fixtures");
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
     }
@@ -321,7 +428,7 @@ describe("runHostReplayFixture", () => {
           evalSet: [{ query: "create a board deck", should_trigger: true }],
           fixture,
           runtimeInvoker: async (input) => ({
-            invokedSkillNames: [],
+            triggeredSkillNames: [],
             readSkillPaths: [
               useRelativeReadPath ? ".claude/skills/deck-skill/SKILL.md" : input.targetSkillPath,
             ],
@@ -332,7 +439,7 @@ describe("runHostReplayFixture", () => {
 
         expect(result?.triggered).toBe(false);
         expect(result?.passed).toBe(false);
-        expect(result?.evidence).toContain("only read the target skill without invoking it");
+        expect(result?.evidence).toContain("only read the target skill without selecting it");
       }
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
@@ -355,7 +462,7 @@ describe("runHostReplayFixture", () => {
         evalSet: [{ query: "what's the weather in amman", should_trigger: false }],
         fixture,
         runtimeInvoker: async () => ({
-          invokedSkillNames: [],
+          triggeredSkillNames: [],
           readSkillPaths: [],
           rawOutput: "",
           sessionId: "runtime-session-none",
@@ -364,7 +471,7 @@ describe("runHostReplayFixture", () => {
 
       expect(result?.triggered).toBe(false);
       expect(result?.passed).toBe(true);
-      expect(result?.evidence).toContain("did not invoke any local project skill");
+      expect(result?.evidence).toContain("did not select any local project skill");
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
     }
@@ -386,7 +493,7 @@ describe("runHostReplayFixture", () => {
         evalSet: [{ query: "what's the weather in amman", should_trigger: false }],
         fixture,
         runtimeInvoker: async (input) => ({
-          invokedSkillNames: [],
+          triggeredSkillNames: [],
           readSkillPaths: [join(dirname(input.targetSkillPath), "..", "..", "README.md")],
           rawOutput: "",
           sessionId: "runtime-session-unrelated-read",
@@ -417,7 +524,7 @@ describe("runHostReplayFixture", () => {
         evalSet: [{ query: "create a board deck", should_trigger: true }],
         fixture,
         runtimeInvoker: async () => ({
-          invokedSkillNames: ["browser"],
+          triggeredSkillNames: ["browser"],
           readSkillPaths: [],
           rawOutput: "",
           sessionId: "runtime-session-unrelated",
@@ -426,7 +533,7 @@ describe("runHostReplayFixture", () => {
 
       expect(result?.triggered).toBe(false);
       expect(result?.passed).toBe(false);
-      expect(result?.evidence).toContain("invoked unrelated skill: browser");
+      expect(result?.evidence).toContain("selected unrelated skill: browser");
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
     }
@@ -448,7 +555,7 @@ describe("runHostReplayFixture", () => {
         evalSet: [{ query: "what's the weather in amman", should_trigger: false }],
         fixture,
         runtimeInvoker: async () => ({
-          invokedSkillNames: ["browser"],
+          triggeredSkillNames: ["browser"],
           readSkillPaths: [],
           rawOutput: "",
           sessionId: "runtime-session-unrelated-negative",
@@ -457,13 +564,13 @@ describe("runHostReplayFixture", () => {
 
       expect(result?.triggered).toBe(false);
       expect(result?.passed).toBe(false);
-      expect(result?.evidence).toContain("invoked unrelated skill: browser");
+      expect(result?.evidence).toContain("selected unrelated skill: browser");
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
     }
   });
 
-  test("treats multiple invoked skills as an ambiguous failure", async () => {
+  test("treats multiple selected skills as an ambiguous failure", async () => {
     const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
     try {
       const targetPath = writeSkill(
@@ -482,7 +589,7 @@ describe("runHostReplayFixture", () => {
         evalSet: [{ query: "create a board deck", should_trigger: true }],
         fixture,
         runtimeInvoker: async () => ({
-          invokedSkillNames: ["deck-skill", "compare-skill"],
+          triggeredSkillNames: ["deck-skill", "compare-skill"],
           readSkillPaths: [],
           rawOutput: "",
           sessionId: "runtime-session-ambiguous",
@@ -491,9 +598,127 @@ describe("runHostReplayFixture", () => {
 
       expect(result?.triggered).toBe(false);
       expect(result?.passed).toBe(false);
-      expect(result?.evidence).toContain("invoked multiple skills: deck-skill, compare-skill");
+      expect(result?.evidence).toContain("selected multiple skills: deck-skill, compare-skill");
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
     }
+  });
+
+  test("uses codex runtime replay when a runtime invoker is provided", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
+    try {
+      const targetPath = writeSkill(
+        rootDir,
+        "deck-skill",
+        "Create decks and slide presentations.",
+        ["Presentation building requests"],
+      );
+      const fixture: RoutingReplayFixture = {
+        ...makeFixture(targetPath),
+        fixture_id: "fixture-routing-codex",
+        platform: "codex",
+      };
+
+      const [result] = await runHostRuntimeReplayFixture({
+        routing: "| Trigger | Workflow |\n| --- | --- |\n| create deck, board deck | present |",
+        evalSet: [{ query: "create a board deck", should_trigger: true }],
+        fixture,
+        runtimeInvoker: async (input) => {
+          expect(input.platform).toBe("codex");
+          expect(input.skillRegistryDir).toContain(".agents/skills");
+          return {
+            triggeredSkillNames: ["deck-skill"],
+            readSkillPaths: [".agents/skills/deck-skill/SKILL.md"],
+            rawOutput: "",
+            sessionId: "runtime-session-codex",
+          };
+        },
+      });
+
+      expect(result?.passed).toBe(true);
+      expect(result?.evidence).toContain("selected target skill: deck-skill");
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test("uses opencode runtime replay when a runtime invoker is provided", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
+    try {
+      const targetPath = writeSkill(
+        rootDir,
+        "deck-skill",
+        "Create decks and slide presentations.",
+        ["Presentation building requests"],
+      );
+      const fixture: RoutingReplayFixture = {
+        ...makeFixture(targetPath),
+        fixture_id: "fixture-routing-opencode",
+        platform: "opencode",
+      };
+
+      const [result] = await runHostRuntimeReplayFixture({
+        routing: "| Trigger | Workflow |\n| --- | --- |\n| create deck, board deck | present |",
+        evalSet: [{ query: "create a board deck", should_trigger: true }],
+        fixture,
+        runtimeInvoker: async (input) => {
+          expect(input.platform).toBe("opencode");
+          expect(input.skillRegistryDir).toContain(".opencode/skills");
+          return {
+            triggeredSkillNames: ["deck-skill"],
+            readSkillPaths: [".opencode/skills/deck-skill/SKILL.md"],
+            rawOutput: "",
+            sessionId: "runtime-session-opencode",
+          };
+        },
+      });
+
+      expect(result?.passed).toBe(true);
+      expect(result?.evidence).toContain("selected target skill: deck-skill");
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test("parses codex runtime JSONL into triggered skills and read paths", () => {
+    const observation = parseCodexRuntimeReplayOutput(
+      [
+        '{"type":"thread.started","thread_id":"th-123"}',
+        '{"type":"item.completed","item":{"item_type":"command_execution","command":"cat .agents/skills/deck-skill/SKILL.md","exit_code":0}}',
+        '{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"use compare-skill for a pricing tradeoff"}]}}',
+      ].join("\n"),
+      new Set(["deck-skill", "compare-skill"]),
+    );
+
+    expect(observation.sessionId).toBe("th-123");
+    expect(observation.triggeredSkillNames).toEqual(["deck-skill", "compare-skill"]);
+    expect(observation.readSkillPaths).toEqual([".agents/skills/deck-skill/SKILL.md"]);
+  });
+
+  test("parses opencode runtime JSON into triggered skills and read paths", () => {
+    const observation = parseOpenCodeRuntimeReplayOutput(
+      [
+        '{"type":"tool","timestamp":1,"sessionID":"ses-123","tool":"read","state":{"status":"completed","input":{"filePath":".opencode/skills/deck-skill/SKILL.md"},"metadata":{"exit":0}}}',
+        '{"type":"reasoning","timestamp":2,"sessionID":"ses-123","text":"use compare-skill for this pricing question"}',
+      ].join("\n"),
+      new Set(["deck-skill", "compare-skill"]),
+    );
+
+    expect(observation.sessionId).toBe("ses-123");
+    expect(observation.triggeredSkillNames).toEqual(["deck-skill", "compare-skill"]);
+    expect(observation.readSkillPaths).toEqual([".opencode/skills/deck-skill/SKILL.md"]);
+  });
+
+  test("parses opencode reasoning path references into triggered skills", () => {
+    const observation = parseOpenCodeRuntimeReplayOutput(
+      [
+        '{"type":"reasoning","timestamp":1,"sessionID":"ses-456","text":"I should inspect .opencode/skills/deck-skill/SKILL.md before answering."}',
+      ].join("\n"),
+      new Set(["deck-skill", "compare-skill"]),
+    );
+
+    expect(observation.sessionId).toBe("ses-456");
+    expect(observation.triggeredSkillNames).toEqual(["deck-skill"]);
+    expect(observation.readSkillPaths).toEqual([".opencode/skills/deck-skill/SKILL.md"]);
   });
 });

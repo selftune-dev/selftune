@@ -160,6 +160,40 @@ describe("validation-contract", () => {
     expect(onReplayFallback).toHaveBeenCalledTimes(1);
   });
 
+  test("auto mode falls back to judge with a runtime failure reason when replay runner throws", async () => {
+    const runJudge = mock(async () => ({
+      result: { engine: "judge", improved: false },
+      modeUsed: "llm_judge" as const,
+    }));
+    const replayRunner = mock(async () => {
+      throw new Error("claude runtime exited early");
+    });
+    const onReplayFallback = mock((_reason?: string) => {});
+
+    const result = await runValidationContract({
+      mode: "auto",
+      originalContent: "before",
+      proposedContent: "after",
+      evalSet,
+      agent: "claude",
+      replayOptions: { replayFixture, replayRunner },
+      runJudge,
+      adaptReplayResult: () => ({ engine: "replay", improved: true }),
+      onReplayFallback,
+    });
+
+    expect(result).toEqual({
+      result: { engine: "judge", improved: false },
+      modeUsed: "llm_judge",
+      fallbackReason: "real host/runtime replay failed: claude runtime exited early",
+    });
+    expect(replayRunner).toHaveBeenCalledTimes(1);
+    expect(runJudge).toHaveBeenCalledTimes(1);
+    expect(onReplayFallback).toHaveBeenCalledWith(
+      expect.stringContaining("real host/runtime replay failed"),
+    );
+  });
+
   test("replay mode throws a targeted unavailable error when replay cannot run", async () => {
     const runJudge = mock(async () => ({
       result: { engine: "judge", improved: false },
@@ -181,5 +215,33 @@ describe("validation-contract", () => {
       code: "REPLAY_UNAVAILABLE",
     });
     expect(runJudge).toHaveBeenCalledTimes(0);
+  });
+
+  test("replay mode throws a targeted unavailable error when runtime replay fails", async () => {
+    const runJudge = mock(async () => ({
+      result: { engine: "judge", improved: false },
+      modeUsed: "llm_judge" as const,
+    }));
+    const replayRunner = mock(async () => {
+      throw new Error("no routing decision observed");
+    });
+
+    await expect(
+      runValidationContract({
+        mode: "replay",
+        originalContent: "before",
+        proposedContent: "after",
+        evalSet,
+        agent: "claude",
+        replayOptions: { replayFixture, replayRunner },
+        runJudge,
+        adaptReplayResult: () => ({ engine: "replay", improved: true }),
+      }),
+    ).rejects.toMatchObject({
+      code: "REPLAY_UNAVAILABLE",
+      message: expect.stringContaining("real host/runtime replay failed"),
+    });
+    expect(runJudge).toHaveBeenCalledTimes(0);
+    expect(replayRunner).toHaveBeenCalledTimes(1);
   });
 });

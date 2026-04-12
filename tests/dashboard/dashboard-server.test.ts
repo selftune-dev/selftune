@@ -236,6 +236,19 @@ describe("dashboard-server", () => {
     });
   });
 
+  describe("GET /api/health", () => {
+    it("returns runtime identity including the serving process pid", async () => {
+      const server = await getServer();
+      const res = await fetch(`http://127.0.0.1:${server.port}/api/health`);
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.service).toBe("selftune-dashboard");
+      expect(data.port).toBe(server.port);
+      expect(typeof data.pid).toBe("number");
+      expect(data.pid).toBeGreaterThan(0);
+    });
+  });
+
   describe("GET /api/v2/skills/:name", () => {
     it("returns 200 with JSON", async () => {
       const server = await getServer();

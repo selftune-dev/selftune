@@ -69,7 +69,7 @@ Run `selftune <command> --help` for exact flags. Read
 | replay, backfill, claude transcripts, historical sessions | Replay | workflows/Replay.md |
 | contributions, sharing preferences, opt in/out creator sharing, approve/revoke contributions | Contributions | workflows/Contributions.md |
 | creator contributions, selftune.contribute.json, enable/disable creator contribution | CreatorContributions | workflows/CreatorContributions.md |
-| community dashboard, community data, contributor stats, community health, how is community | CommunityDashboard | workflows/CommunityDashboard.md |
+| signals dashboard, contributor signals, signals page, community dashboard, community data, contributor stats, signal health, how are signals, how is community | SignalsDashboard | workflows/SignalsDashboard.md |
 | contribute, share, export bundle, export data, anonymized, give back | Contribute | workflows/Contribute.md |
 | init, setup, set up, bootstrap, first time, install, configure selftune, alpha, enroll | Initialize | workflows/Initialize.md |
 | cron, schedule, automate evolution, run automatically | Cron | workflows/Cron.md |
@@ -160,6 +160,7 @@ Load these on demand — do not read unless needed for the current task:
 | `references/cli-quick-reference.md` | Need exact CLI flags beyond `--help` |
 | `references/troubleshooting.md` | Diagnosing common errors |
 | `references/examples.md` | Need step-by-step scenario walkthroughs |
+| `references/creator-playbook.md` | Publishing skills others install; before-ship vs after-ship creator loop |
 | `references/interactive-config.md` | Before mutating workflows |
 | `references/grading-methodology.md` | Grading sessions or interpreting grades |
 | `references/invocation-taxonomy.md` | Analyzing trigger coverage |

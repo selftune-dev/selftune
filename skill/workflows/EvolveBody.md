@@ -26,6 +26,7 @@ selftune evolve body --skill <name> --skill-path <path> --target <target> [optio
 | `--max-iterations <n>`       | Maximum refinement iterations                                                         | 3                        |
 | `--task-description <text>`  | Context for the evolution goal                                                        | None                     |
 | `--validation-model <model>` | Model for trigger-check validation calls (overrides `--student-model` for validation) | None                     |
+| `--validation-mode <mode>`   | Validation strategy: `auto`, `replay`, or `judge`                                     | `auto`                   |
 | `--teacher-effort <level>`   | Effort level for teacher LLM: `low`, `medium`, `high`, `max`                          | `high`                   |
 | `--review`                   | Run `evolution-reviewer` subagent as Gate 4 before deployment                         | Off                      |
 | `--few-shot <paths>`         | Comma-separated paths to example SKILL.md files                                       | None                     |
@@ -51,7 +52,7 @@ Every proposal passes through three sequential gates:
 | Gate                          | Type        | What it checks                                                                                  | Cost     |
 | ----------------------------- | ----------- | ----------------------------------------------------------------------------------------------- | -------- |
 | **Gate 1: Structural**        | Pure code   | YAML frontmatter present, `# Title` exists, `## Workflow Routing` preserved if original had one | Free     |
-| **Gate 2: Trigger Accuracy**  | Student LLM | YES/NO trigger check per eval entry on the extracted description                                | Cheap    |
+| **Gate 2: Trigger Accuracy**  | Replay or student LLM | Runtime replay when available; otherwise YES/NO trigger check per eval entry                     | Cheap    |
 | **Gate 3: Quality**           | Student LLM | Body clarity and completeness score (0.0-1.0)                                                   | Cheap    |
 | **Gate 4: Reviewer** (opt-in) | Subagent    | `evolution-reviewer` multi-turn review — reads files, checks evidence, APPROVE/REJECT verdict   | Moderate |
 
@@ -141,6 +142,25 @@ Few-shot examples from `--few-shot` paths provide structural guidance.
 Each gate runs in sequence. If a gate fails, the teacher receives the
 failure details and generates a refined proposal.
 
+### Validation Mode (`--validation-mode`)
+
+`evolve body` uses the same validation contract as `evolve`:
+
+| Mode     | Behavior                                                                 |
+| -------- | ------------------------------------------------------------------------ |
+| `auto`   | Try replay-backed validation first; fall back to LLM judge if unavailable |
+| `replay` | Replay engine only; error if no replay fixture or runner is available    |
+| `judge`  | LLM judge only                                                           |
+
+When replay is available, selftune stages the candidate skill content into a
+temporary local registry before running the real host/runtime replay. Claude
+Code uses `.claude/skills`, Codex uses `.agents/skills`, and OpenCode uses
+`.opencode/skills`. Routing targets stage the candidate `## Workflow Routing`
+section; body targets stage the full candidate body while preserving
+frontmatter and title. When replay is not available, `auto` falls back to the
+LLM judge and records the `validation_fallback_reason` in audit/evidence
+output.
+
 ### 6. Deploy or Preview
 
 If `--dry-run`, prints the proposal without deploying. Otherwise:
@@ -163,6 +183,10 @@ If `--dry-run`, prints the proposal without deploying. Otherwise:
 **"Use a stronger model for generation"**
 
 > `selftune evolve body --skill pptx --skill-path /path/SKILL.md --target body --teacher-model opus --student-model haiku`
+
+**"Force replay-only validation for a routing change"**
+
+> `selftune evolve body --skill Research --skill-path ~/.claude/skills/Research/SKILL.md --target routing --validation-mode replay`
 
 **"Preview what would change"**
 

@@ -3,12 +3,12 @@
  *
  * Cohesive module for all replay-based validation logic:
  *   - Host/runtime replay (PRIMARY path — real agent routing decisions)
- *   - Fixture-backed replay (FALLBACK — surface similarity matching)
  *   - Custom replay runner support
  *
  * Host/runtime replay is preferred because it captures actual agent routing
- * behavior. Fixture-backed replay is used as a fallback when no invoker is
- * provided or when the invoker returns an error.
+ * behavior. If the runtime path is unavailable or fails, callers must fall
+ * back explicitly to another validation mode instead of treating simulated
+ * fixture matching as equivalent replay evidence.
  *
  * Extracted from validate-routing.ts and validate-body.ts to isolate
  * replay-specific concerns from judge-specific concerns.
@@ -20,7 +20,6 @@ import type {
   RoutingReplayFixture,
   ValidationMode,
 } from "../../types.js";
-import { runHostReplayFixture } from "../validate-host-replay.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,6 +50,11 @@ export interface ReplayValidationResult {
   per_entry_results?: RoutingReplayEntryResult[];
   /** Before-phase per-entry results for structured persistence. */
   before_entry_results?: RoutingReplayEntryResult[];
+}
+
+export interface ReplayValidationAttempt {
+  result: ReplayValidationResult | null;
+  fallbackReason?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,12 +109,11 @@ function computeReplayResult(
 // ---------------------------------------------------------------------------
 
 /**
- * Attempt replay-backed validation. Prefers host/runtime replay when a
- * replayRunner is provided; falls back to fixture-based replay when:
- *   - No replayRunner is provided
- *   - The replayRunner throws an error
+ * Attempt replay-backed validation using a real host/runtime runner.
  *
- * Returns null if no replay path is available (no fixture provided).
+ * Returns a null result with a fallback reason when runtime replay is
+ * unavailable or fails. Callers decide whether to fall back to a judge-based
+ * validator (`auto`) or surface an explicit unavailable error (`replay`).
  */
 export async function runReplayValidation(
   originalContent: string,
@@ -118,61 +121,60 @@ export async function runReplayValidation(
   evalSet: EvalEntry[],
   agent: string,
   options: ReplayValidationOptions = {},
-): Promise<ReplayValidationResult | null> {
-  if (evalSet.length === 0 || !options.replayFixture) {
-    return null;
+): Promise<ReplayValidationAttempt> {
+  if (evalSet.length === 0) {
+    return { result: null };
+  }
+
+  if (!options.replayFixture) {
+    return {
+      result: null,
+      fallbackReason: "no replay fixture is available for runtime validation",
+    };
+  }
+
+  if (!options.replayRunner) {
+    return {
+      result: null,
+      fallbackReason: "no real host/runtime replay runner is configured",
+    };
   }
 
   const fixture = options.replayFixture;
   const total = evalSet.length;
 
-  // PRIMARY path: Host/runtime replay when a runner is provided
-  if (options.replayRunner) {
-    try {
-      const beforeResults = await options.replayRunner({
-        routing: originalContent,
-        evalSet,
-        agent,
-        fixture,
-      });
-      const afterResults = await options.replayRunner({
-        routing: proposedContent,
-        evalSet,
-        agent,
-        fixture,
-      });
+  try {
+    const beforeResults = await options.replayRunner({
+      routing: originalContent,
+      evalSet,
+      agent,
+      fixture,
+    });
+    const afterResults = await options.replayRunner({
+      routing: proposedContent,
+      evalSet,
+      agent,
+      fixture,
+    });
 
-      return computeReplayResult(
+    return {
+      result: computeReplayResult(
         beforeResults,
         afterResults,
         total,
         "host_replay",
         agent,
         fixture.fixture_id,
-      );
-    } catch {
-      // Host replay failed — fall through to fixture-based fallback
-    }
+      ),
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error && error.message.trim()
+        ? error.message.trim()
+        : "runtime replay failed before producing a routing decision";
+    return {
+      result: null,
+      fallbackReason: `real host/runtime replay failed: ${message}`,
+    };
   }
-
-  // FALLBACK path: Fixture-backed replay (surface similarity matching)
-  const beforeResults = runHostReplayFixture({
-    routing: originalContent,
-    evalSet,
-    fixture,
-  });
-  const afterResults = runHostReplayFixture({
-    routing: proposedContent,
-    evalSet,
-    fixture,
-  });
-
-  return computeReplayResult(
-    beforeResults,
-    afterResults,
-    total,
-    "fixture_replay",
-    agent,
-    fixture.fixture_id,
-  );
 }

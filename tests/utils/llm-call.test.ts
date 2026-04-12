@@ -9,7 +9,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { RetryOptions } from "../../cli/selftune/utils/llm-call.js";
 import {
   callViaAgent,
+  callViaSubagent,
   detectAgent,
+  detectLlmAgent,
   stripMarkdownFences,
 } from "../../cli/selftune/utils/llm-call.js";
 
@@ -104,6 +106,32 @@ describe("detectAgent", () => {
     // @ts-expect-error -- mocking global
     Bun.which = (name: string) => (name === "opencode" ? "/usr/bin/opencode" : null);
     expect(detectAgent()).toBe("opencode");
+  });
+});
+
+describe("detectLlmAgent", () => {
+  let originalWhich: typeof Bun.which;
+
+  beforeEach(() => {
+    originalWhich = Bun.which;
+  });
+
+  afterEach(() => {
+    // @ts-expect-error -- restoring global mock
+    Bun.which = originalWhich;
+  });
+
+  it("returns pi when only pi is available", () => {
+    // @ts-expect-error -- mocking global
+    Bun.which = (name: string) => (name === "pi" ? "/usr/bin/pi" : null);
+    expect(detectLlmAgent()).toBe("pi");
+  });
+
+  it("skips openclaw and falls through to pi for llm-backed work", () => {
+    // @ts-expect-error -- mocking global
+    Bun.which = (name: string) =>
+      name === "openclaw" ? "/usr/bin/openclaw" : name === "pi" ? "/usr/bin/pi" : null;
+    expect(detectLlmAgent()).toBe("pi");
   });
 });
 
@@ -219,6 +247,44 @@ describe("callViaAgent", () => {
     expect(capturedCmd?.[1]).toBe("run");
   });
 
+  it("constructs correct command for pi agent", async () => {
+    let capturedCmd: string[] | undefined;
+
+    // @ts-expect-error -- mocking global
+    Bun.spawn = (cmd: string[], _opts: unknown) => {
+      capturedCmd = cmd;
+      return {
+        stdout: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("ok"));
+            controller.close();
+          },
+        }),
+        stderr: new ReadableStream({
+          start(controller) {
+            controller.close();
+          },
+        }),
+        exited: Promise.resolve(0),
+        kill: () => {},
+      };
+    };
+
+    await callViaAgent("sys", "user", "pi", "sonnet", NO_RETRY, "high");
+
+    expect(capturedCmd).toBeDefined();
+    expect(capturedCmd?.[0]).toBe("pi");
+    expect(capturedCmd).toContain("-p");
+    expect(capturedCmd).toContain("--no-session");
+    expect(capturedCmd).toContain("--no-tools");
+    expect(capturedCmd).toContain("--system-prompt");
+    expect(capturedCmd).toContain("sys");
+    expect(capturedCmd).toContain("--model");
+    expect(capturedCmd).toContain("sonnet");
+    expect(capturedCmd).toContain("--thinking");
+    expect(capturedCmd).toContain("high");
+  });
+
   it("appends --model flag for claude agent when modelFlag is set", async () => {
     let capturedCmd: string[] | undefined;
 
@@ -310,7 +376,15 @@ describe("callViaAgent", () => {
   });
 
   it("throws on unknown agent type", async () => {
-    expect(callViaAgent("sys", "user", "unknown-agent")).rejects.toThrow("Unknown agent");
+    expect(callViaAgent("sys", "user", "unknown-agent")).rejects.toThrow(
+      "selftune llm calls currently support only",
+    );
+  });
+
+  it("throws a capability-specific error for openclaw", async () => {
+    expect(callViaAgent("sys", "user", "openclaw")).rejects.toThrow(
+      "LLM-backed judge, eval, and optimizer workflows are unavailable on openclaw",
+    );
   });
 
   it("throws when agent process exits with non-zero code", async () => {
@@ -336,5 +410,70 @@ describe("callViaAgent", () => {
     expect(callViaAgent("sys", "user", "claude", undefined, NO_RETRY)).rejects.toThrow(
       /exited with code 1/,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// callViaSubagent
+// ---------------------------------------------------------------------------
+
+describe("callViaSubagent", () => {
+  let originalWhich: typeof Bun.which;
+  let originalSpawn: typeof Bun.spawn;
+
+  beforeEach(() => {
+    originalWhich = Bun.which;
+    originalSpawn = Bun.spawn;
+  });
+
+  afterEach(() => {
+    // @ts-expect-error -- restoring global mock
+    Bun.which = originalWhich;
+    // @ts-expect-error -- restoring global mock
+    Bun.spawn = originalSpawn;
+  });
+
+  it("constructs a pi subagent call when only pi is available", async () => {
+    let capturedCmd: string[] | undefined;
+
+    // @ts-expect-error -- mocking global
+    Bun.which = (name: string) => (name === "pi" ? "/usr/bin/pi" : null);
+    // @ts-expect-error -- mocking global
+    Bun.spawn = (cmd: string[], _opts: unknown) => {
+      capturedCmd = cmd;
+      return {
+        stdout: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("ok"));
+            controller.close();
+          },
+        }),
+        stderr: new ReadableStream({
+          start(controller) {
+            controller.close();
+          },
+        }),
+        exited: Promise.resolve(0),
+        kill: () => {},
+      };
+    };
+
+    const result = await callViaSubagent({
+      agentName: "evolution-reviewer",
+      prompt: "test",
+      allowedTools: ["Read", "Grep", "Glob", "Bash"],
+      effort: "max",
+      appendSystemPrompt: "extra rules",
+    });
+
+    expect(result).toBe("ok");
+    expect(capturedCmd).toBeDefined();
+    expect(capturedCmd?.[0]).toBe("pi");
+    expect(capturedCmd).toContain("-p");
+    expect(capturedCmd).toContain("--system-prompt");
+    expect(capturedCmd).toContain("--tools");
+    expect(capturedCmd).toContain("read,grep,find,bash");
+    expect(capturedCmd).toContain("--thinking");
+    expect(capturedCmd).toContain("xhigh");
   });
 });

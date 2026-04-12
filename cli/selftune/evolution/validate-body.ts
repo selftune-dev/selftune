@@ -7,8 +7,8 @@
  *   Gate 3 (quality): Student model rates body clarity/completeness 0.0-1.0
  *
  * Gate 2 now supports replay-backed validation (via replay engine) in addition
- * to LLM-judge-based checking. When replay options are provided and succeed,
- * the replay path is preferred. Falls back to LLM judge otherwise.
+ * to LLM-judge-based checking. When real host/runtime replay is available and
+ * succeeds, the replay path is preferred. Falls back to LLM judge otherwise.
  */
 
 import type {
@@ -21,7 +21,7 @@ import type {
 import { callLlm, stripMarkdownFences } from "../utils/llm-call.js";
 import { runJudgeValidation } from "./engines/judge-engine.js";
 import type { ReplayValidationOptions } from "./engines/replay-engine.js";
-import { runValidationContract } from "./validation-contract.js";
+import { runValidationContract, type ValidationStrategy } from "./validation-contract.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,6 +30,8 @@ import { runValidationContract } from "./validation-contract.js";
 export interface BodyValidationOptions {
   /** Replay options for Gate 2 trigger accuracy. */
   replay?: ReplayValidationOptions;
+  mode?: ValidationStrategy;
+  onReplayFallback?: (reason?: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,7 +87,7 @@ export function validateBodyStructure(proposedBody: string): { valid: boolean; r
  * Run trigger checks on the eval set using the proposed body content.
  * Returns before/after pass rates.
  *
- * When replay options are provided, attempts replay-backed validation first.
+ * When replay options are provided, attempts host/runtime replay first.
  * Falls back to LLM judge when replay is unavailable or no options given.
  */
 export async function validateBodyTriggerAccuracy(
@@ -101,6 +103,9 @@ export async function validateBodyTriggerAccuracy(
   improved: boolean;
   regressions: string[];
   validation_mode: ValidationMode;
+  validation_agent?: string;
+  validation_fixture_id?: string;
+  validation_fallback_reason?: string;
   per_entry_results?: import("../types.js").RoutingReplayEntryResult[];
   before_entry_results?: import("../types.js").RoutingReplayEntryResult[];
 }> {
@@ -111,19 +116,23 @@ export async function validateBodyTriggerAccuracy(
       improved: false,
       regressions: [],
       validation_mode: "llm_judge",
+      validation_agent: agent,
     };
   }
 
-  const { result } = await runValidationContract<{
+  const { result, fallbackReason } = await runValidationContract<{
     before_pass_rate: number;
     after_pass_rate: number;
     improved: boolean;
     regressions: string[];
     validation_mode: ValidationMode;
+    validation_agent?: string;
+    validation_fixture_id?: string;
+    validation_fallback_reason?: string;
     per_entry_results?: RoutingReplayEntryResult[];
     before_entry_results?: RoutingReplayEntryResult[];
   }>({
-    mode: "auto",
+    mode: options?.mode ?? "auto",
     originalContent: originalBody,
     proposedContent: proposedBody,
     evalSet,
@@ -145,22 +154,26 @@ export async function validateBodyTriggerAccuracy(
           improved: judgeResult.improved,
           regressions: judgeResult.regressions,
           validation_mode: judgeResult.validation_mode,
+          validation_agent: judgeResult.validation_agent,
         },
         modeUsed: judgeResult.validation_mode,
       };
     },
+    onReplayFallback: options?.onReplayFallback,
     adaptReplayResult: (replayResult) => ({
       before_pass_rate: replayResult.before_pass_rate,
       after_pass_rate: replayResult.after_pass_rate,
       improved: replayResult.improved,
       regressions: [],
       validation_mode: replayResult.validation_mode,
+      validation_agent: replayResult.validation_agent,
+      validation_fixture_id: replayResult.validation_fixture_id,
       per_entry_results: replayResult.per_entry_results,
       before_entry_results: replayResult.before_entry_results,
     }),
   });
 
-  return result;
+  return fallbackReason ? { ...result, validation_fallback_reason: fallbackReason } : result;
 }
 
 // ---------------------------------------------------------------------------
@@ -297,7 +310,9 @@ export async function validateBodyProposal(
     improved: gatesPassed === 3,
     regressions: accuracy.regressions,
     validation_mode: accuracy.validation_mode,
-    validation_agent: agent,
+    validation_agent: accuracy.validation_agent ?? agent,
+    validation_fallback_reason: accuracy.validation_fallback_reason,
+    validation_fixture_id: accuracy.validation_fixture_id,
     ...(evalSet.length > 0
       ? {
           before_pass_rate: accuracy.before_pass_rate,

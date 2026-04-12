@@ -9,6 +9,8 @@ import {
   discoverCreatorContributionConfigs,
   findCreatorContributionConfig,
   getContributionConfigSearchRoots,
+  isValidCreatorUUID,
+  normalizeSupportedContributionSignals,
   removeCreatorContributionConfig,
   resolveContributionSkillPath,
   writeCreatorContributionConfig,
@@ -98,6 +100,13 @@ function enableCreatorContributionConfigs(options: {
     throw new CLIError(
       "Creator ID is required. Must be the creator's cloud user UUID.",
       "MISSING_FLAG",
+      "Pass --creator-id <uuid> or enroll alpha so cloud_user_id is available.",
+    );
+  }
+  if (!isValidCreatorUUID(creatorId)) {
+    throw new CLIError(
+      `Creator ID must be a cloud user UUID. Received "${creatorId}".`,
+      "INVALID_FLAG",
       "Pass --creator-id <uuid> or enroll alpha so cloud_user_id is available.",
     );
   }
@@ -227,10 +236,18 @@ Purpose:
         );
       }
 
-      const signals = (values.signals ?? "trigger,grade,miss_category")
-        .split(",")
-        .map((signal) => signal.trim())
-        .filter(Boolean);
+      let signals: string[];
+      try {
+        signals = normalizeSupportedContributionSignals(
+          (values.signals ?? "trigger,grade,miss_category").split(","),
+        );
+      } catch (error) {
+        throw new CLIError(
+          error instanceof Error ? error.message : String(error),
+          "INVALID_FLAG",
+          "selftune creator-contributions enable --help",
+        );
+      }
       const outcome = enableCreatorContributionConfigs({
         skillName: values.skill?.trim(),
         all: values.all,

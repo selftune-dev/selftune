@@ -17,7 +17,7 @@ selftune grade --skill <name> [options]
 | `--expectations "..."` | Explicit expectations (semicolon-separated) | Auto-derived  |
 | `--evals-json <path>`  | Pre-built eval set JSON file                | None          |
 | `--eval-id <n>`        | Specific eval ID to grade from the eval set | None          |
-| `--agent <name>`       | Agent CLI to use (claude, codex, opencode)  | Auto-detected |
+| `--agent <name>`       | Agent CLI to use (claude, codex, opencode, pi)  | Auto-detected |
 
 ## Output Format
 

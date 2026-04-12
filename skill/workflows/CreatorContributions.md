@@ -6,7 +6,7 @@ bundled with a skill package.
 This is **not** the same as:
 - `selftune contributions` — end-user **sharing preferences** (opt-in / opt-out)
 - `selftune contribute` — community **export bundle** (anonymized data export)
-- The community dashboard — viewing aggregated **community data** from all contributors
+- The signals dashboard — viewing aggregated **contributor signal data** from all contributors
 
 ## When to Use
 
@@ -50,6 +50,7 @@ selftune creator-contributions disable --skill <name> [--skill-path <path>]
 - The `creator_id` field must be the creator's cloud user UUID (the `cloud_user_id` from alpha enrollment). This is the canonical identifier used to route signals back to the correct creator account.
 - The creator ID is sourced from `--creator-id` or the local alpha identity's `cloud_user_id`.
 - Use this workflow when the user is preparing a skill package.
+- For the full creator lifecycle, read `references/creator-playbook.md` before shipping.
 
 ## Selftune Dogfood Config
 
@@ -70,13 +71,14 @@ set to the production selftune creator's cloud user UUID.
 > Run `selftune creator-contributions enable --skill <name>`.
 > If auto-discovery fails, rerun with `--skill-path /path/to/SKILL.md`.
 > If no creator identity is available locally, rerun with `--creator-id <id>`.
-> Example: `selftune creator-contributions enable --skill sc-search --skill-path ./skills/sc-search/SKILL.md --creator-id cr_state_change --signals trigger,grade,miss_category --message "Share privacy-safe usage signals with the skill creator." --privacy-url https://statechange.ai/privacy`
+> The command rejects non-UUID creator IDs and unsupported signal names.
+> Example: `selftune creator-contributions enable --skill sc-search --skill-path ./skills/sc-search/SKILL.md --creator-id 550e8400-e29b-41d4-a716-446655440000 --signals trigger,grade,miss_category --message "Share privacy-safe usage signals with the skill creator." --privacy-url https://statechange.ai/privacy`
 
 **User wants to enable creator contributions for a whole installed skill suite**
 
 > Run `selftune creator-contributions enable --all --prefix sc-`.
 > This is the fastest path when preparing a whole family of skills like State Change skills.
-> Example: `selftune creator-contributions enable --all --prefix sc- --creator-id cr_state_change`
+> Example: `selftune creator-contributions enable --all --prefix sc- --creator-id 550e8400-e29b-41d4-a716-446655440000`
 
 **User wants to stop bundling creator contribution config**
 

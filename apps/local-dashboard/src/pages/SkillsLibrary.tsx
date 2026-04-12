@@ -1,18 +1,12 @@
 import {
-  LibraryHealthCard,
-  PendingProposalsCard,
-  SkillCardItem,
-  SkillFilterTabs,
-  SkillGridEmpty,
-  SkillHeroCard,
-  SkillHeroEmpty,
-  SkillsLibraryError,
-  SkillsLibrarySkeleton,
-} from "@selftune/ui/components";
-import type { DerivedSkill, FilterTab } from "@selftune/ui/components";
+  SkillsLibraryScreen,
+  type SkillsLibraryHero,
+  type SkillsLibraryPendingProposal,
+} from "@selftune/dashboard-core/screens/skills";
+import type { DerivedSkill } from "@selftune/ui/components";
 import { deriveStatus, sortByPassRateAndChecks } from "@selftune/ui/lib";
 import type { UseQueryResult } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 
 import type { EvolutionEntry, OverviewResponse, SkillSummary } from "@/types";
@@ -113,127 +107,52 @@ export function SkillsLibrary({
   overviewQuery: UseQueryResult<OverviewResponse>;
 }) {
   const { data, isLoading, isError, error, refetch } = overviewQuery;
-  const [filter, setFilter] = useState<FilterTab>("ALL");
-  const [sortDesc, setSortDesc] = useState(true);
 
   const allSkills = useMemo(() => (data ? deriveSkills(data.skills) : []), [data]);
-
-  const filteredSkills = useMemo(() => {
-    let result = allSkills;
-    if (filter !== "ALL") {
-      result = result.filter((s) => s.status === filter);
-    }
-    if (!sortDesc) {
-      return result;
-    }
-    return result.reduceRight<DerivedSkill[]>((acc, skill) => {
-      acc.push(skill);
-      return acc;
-    }, []);
-  }, [allSkills, filter, sortDesc]);
 
   const heroData = useMemo(() => {
     if (!data) return null;
     return findMostActiveSkill(data.skills, data.overview.evolution);
   }, [data]);
 
-  const filterCounts = useMemo(() => {
-    const counts: Record<FilterTab, number> = {
-      ALL: allSkills.length,
-      HEALTHY: 0,
-      WARNING: 0,
-      CRITICAL: 0,
-      UNGRADED: 0,
+  const heroSkill = useMemo<SkillsLibraryHero | null>(() => {
+    if (!heroData) return null;
+    return {
+      skillName: heroData.skill.skill_name,
+      skillScope: heroData.skill.skill_scope,
+      passRate: heroData.skill.total_checks > 0 ? heroData.skill.pass_rate : null,
+      totalChecks: heroData.skill.total_checks,
+      uniqueSessions: heroData.skill.unique_sessions,
+      status: deriveStatus(heroData.skill.pass_rate, heroData.skill.total_checks),
+      latestEvolutionTimestamp: heroData.latestEvolution?.timestamp ?? null,
     };
-    for (const s of allSkills) {
-      if (s.status in counts) {
-        counts[s.status as Exclude<FilterTab, "ALL">]++;
-      }
-    }
-    return counts;
-  }, [allSkills]);
+  }, [heroData]);
 
-  if (isLoading) {
-    return <SkillsLibrarySkeleton />;
-  }
-
-  if (isError) {
-    return (
-      <SkillsLibraryError
-        message={error instanceof Error ? error.message : "Failed to load skills library."}
-        onRetry={() => refetch()}
-      />
-    );
-  }
-
-  if (!data) {
-    return <SkillsLibrarySkeleton />;
-  }
-
-  const pendingProposals = data.overview.pending_proposals.map((p) => ({
-    id: p.proposal_id,
-    skillName: p.skill_name ?? null,
-    action: p.action,
-  }));
-
-  const aggRate = aggregatePassRate(data.skills);
-  const gradedCount = data.skills.filter((s) => s.total_checks >= 5).length;
+  const pendingProposals = useMemo<SkillsLibraryPendingProposal[]>(() => {
+    if (!data) return [];
+    return data.overview.pending_proposals.map((proposal) => ({
+      id: proposal.proposal_id,
+      skillName: proposal.skill_name ?? null,
+      action: proposal.action,
+    }));
+  }, [data]);
 
   return (
-    <div className="@container/main flex flex-1 flex-col gap-8 py-8 px-4 lg:px-6 animate-in fade-in duration-500">
-      {/* Header */}
-      <div>
-        <h1 className="font-headline text-4xl font-bold tracking-tight text-foreground">
-          Skills Library
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground max-w-2xl">
-          Monitor and manage your evolving skill definitions across all scopes.
-        </p>
-      </div>
-
-      {/* Bento Grid: Hero + Stats */}
-      <div className="grid grid-cols-12 gap-6">
-        {heroData ? (
-          <SkillHeroCard
-            skillName={heroData.skill.skill_name}
-            skillScope={heroData.skill.skill_scope}
-            passRate={heroData.skill.total_checks > 0 ? heroData.skill.pass_rate : null}
-            totalChecks={heroData.skill.total_checks}
-            uniqueSessions={heroData.skill.unique_sessions}
-            status={deriveStatus(heroData.skill.pass_rate, heroData.skill.total_checks)}
-            latestEvolutionTimestamp={heroData.latestEvolution?.timestamp ?? null}
-            renderActions={renderHeroActions}
-          />
-        ) : (
-          <SkillHeroEmpty />
-        )}
-
-        <div className="col-span-12 lg:col-span-4 flex flex-col gap-6">
-          <LibraryHealthCard aggregatePassRate={aggRate} gradedCount={gradedCount} />
-          <PendingProposalsCard proposals={pendingProposals} />
-        </div>
-      </div>
-
-      {/* Skills Grid Section */}
-      <div className="space-y-6">
-        <SkillFilterTabs
-          filter={filter}
-          onFilterChange={setFilter}
-          counts={filterCounts}
-          sortDesc={sortDesc}
-          onSortToggle={() => setSortDesc((p) => !p)}
-        />
-
-        {filteredSkills.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredSkills.map((skill: DerivedSkill) => (
-              <SkillCardItem key={skill.name} skill={skill} renderActions={renderCardActions} />
-            ))}
-          </div>
-        ) : (
-          <SkillGridEmpty />
-        )}
-      </div>
-    </div>
+    <SkillsLibraryScreen
+      skills={allSkills}
+      heroSkill={heroSkill}
+      aggregatePassRate={data ? aggregatePassRate(data.skills) : null}
+      gradedCount={data ? data.skills.filter((skill) => skill.total_checks >= 5).length : 0}
+      pendingProposals={pendingProposals}
+      isLoading={isLoading}
+      error={
+        isError ? (error instanceof Error ? error.message : "Failed to load skills library.") : null
+      }
+      onRetry={() => {
+        void refetch();
+      }}
+      renderHeroActions={renderHeroActions}
+      renderCardActions={renderCardActions}
+    />
   );
 }

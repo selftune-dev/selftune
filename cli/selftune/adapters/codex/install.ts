@@ -19,18 +19,30 @@ import { join } from "node:path";
 // Types
 // ---------------------------------------------------------------------------
 
-interface CodexHookEntry {
-  event: string;
-  command: string;
-  timeout_ms?: number;
-  matchers?: string[];
-  /** Marker field so selftune can identify its own hooks. */
-  _selftune?: boolean;
-}
+type CodexHookEvent = "PreToolUse" | "PostToolUse" | "SessionStart" | "UserPromptSubmit" | "Stop";
 
-interface CodexHooksFile {
-  hooks?: CodexHookEntry[];
-  [key: string]: unknown;
+type CodexHookHandler = Record<string, unknown> & {
+  command?: string;
+  _selftune?: boolean;
+};
+
+type CodexMatcherGroup = Record<string, unknown> & {
+  hooks: CodexHookHandler[];
+};
+
+type CodexHooksByEvent = Record<string, CodexMatcherGroup[]>;
+
+type LegacyCodexHookEntry = Record<string, unknown> & {
+  event?: unknown;
+  command?: unknown;
+  timeout_ms?: unknown;
+  matchers?: unknown;
+  _selftune?: unknown;
+};
+
+interface ParsedCodexHooksFile {
+  hooksByEvent: CodexHooksByEvent;
+  otherFields: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -39,40 +51,64 @@ interface CodexHooksFile {
 
 const DEFAULT_CODEX_HOME = join(homedir(), ".codex");
 const HOOKS_FILENAME = "hooks.json";
-const DEFAULT_TIMEOUT_MS = 10_000;
-const SESSION_TIMEOUT_MS = 30_000;
+const DEFAULT_TIMEOUT_SEC = 10;
+const SESSION_TIMEOUT_SEC = 30;
 
 /** The command Codex will run for each hook event. */
 const HOOK_COMMAND =
   'bash -c \'if [ -n "$SELFTUNE_CLI_PATH" ]; then exec "$SELFTUNE_CLI_PATH" codex hook; else exec npx -y selftune@latest codex hook; fi\'';
 
 /** Hook entries selftune installs into Codex. */
-const SELFTUNE_HOOKS: CodexHookEntry[] = [
-  {
-    event: "SessionStart",
-    command: HOOK_COMMAND,
-    timeout_ms: SESSION_TIMEOUT_MS,
-    _selftune: true,
-  },
-  {
-    event: "PreToolUse",
-    command: HOOK_COMMAND,
-    timeout_ms: DEFAULT_TIMEOUT_MS,
-    _selftune: true,
-  },
-  {
-    event: "PostToolUse",
-    command: HOOK_COMMAND,
-    timeout_ms: DEFAULT_TIMEOUT_MS,
-    _selftune: true,
-  },
-  {
-    event: "Stop",
-    command: HOOK_COMMAND,
-    timeout_ms: SESSION_TIMEOUT_MS,
-    _selftune: true,
-  },
-];
+const SELFTUNE_HOOKS: Record<Exclude<CodexHookEvent, "UserPromptSubmit">, CodexMatcherGroup[]> = {
+  SessionStart: [
+    {
+      hooks: [
+        {
+          type: "command",
+          command: HOOK_COMMAND,
+          timeout: SESSION_TIMEOUT_SEC,
+          _selftune: true,
+        },
+      ],
+    },
+  ],
+  PreToolUse: [
+    {
+      hooks: [
+        {
+          type: "command",
+          command: HOOK_COMMAND,
+          timeout: DEFAULT_TIMEOUT_SEC,
+          _selftune: true,
+        },
+      ],
+    },
+  ],
+  PostToolUse: [
+    {
+      hooks: [
+        {
+          type: "command",
+          command: HOOK_COMMAND,
+          timeout: DEFAULT_TIMEOUT_SEC,
+          _selftune: true,
+        },
+      ],
+    },
+  ],
+  Stop: [
+    {
+      hooks: [
+        {
+          type: "command",
+          command: HOOK_COMMAND,
+          timeout: SESSION_TIMEOUT_SEC,
+          _selftune: true,
+        },
+      ],
+    },
+  ],
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -87,51 +123,226 @@ function getCodexHome(): string {
   return process.env.CODEX_HOME ?? DEFAULT_CODEX_HOME;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function cloneHooksByEvent(hooksByEvent: CodexHooksByEvent): CodexHooksByEvent {
+  return Object.fromEntries(
+    Object.entries(hooksByEvent).map(([eventName, groups]) => [
+      eventName,
+      groups.map((group) => ({
+        ...group,
+        hooks: group.hooks.map((handler) => ({ ...handler })),
+      })),
+    ]),
+  );
+}
+
+function normalizeMatcherGroup(
+  value: unknown,
+  eventName: string,
+  index: number,
+): CodexMatcherGroup {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid Codex hooks file: hooks.${eventName}[${index}] must be an object`);
+  }
+
+  if (!Array.isArray(value.hooks)) {
+    throw new Error(
+      `Invalid Codex hooks file: hooks.${eventName}[${index}].hooks must be an array`,
+    );
+  }
+
+  return {
+    ...value,
+    hooks: value.hooks.map((handler, handlerIndex) => {
+      if (!isRecord(handler)) {
+        throw new Error(
+          `Invalid Codex hooks file: hooks.${eventName}[${index}].hooks[${handlerIndex}] must be an object`,
+        );
+      }
+      return { ...handler };
+    }),
+  };
+}
+
+function normalizeEventMapHooks(value: unknown): CodexHooksByEvent {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid Codex hooks file: "hooks" must be an object or legacy array`);
+  }
+
+  const hooksByEvent: CodexHooksByEvent = {};
+  for (const [eventName, groups] of Object.entries(value)) {
+    if (!Array.isArray(groups)) {
+      throw new Error(`Invalid Codex hooks file: hooks.${eventName} must be an array`);
+    }
+    hooksByEvent[eventName] = groups.map((group, index) =>
+      normalizeMatcherGroup(group, eventName, index),
+    );
+  }
+  return hooksByEvent;
+}
+
+function convertLegacyHooks(entries: unknown[]): CodexHooksByEvent {
+  const hooksByEvent: CodexHooksByEvent = {};
+
+  for (const [index, entry] of entries.entries()) {
+    if (!isRecord(entry) || typeof entry.event !== "string" || typeof entry.command !== "string") {
+      throw new Error(
+        `Invalid Codex hooks file: legacy hooks[${index}] must include string event and command`,
+      );
+    }
+
+    const legacyEntry = entry as LegacyCodexHookEntry;
+    const handler: CodexHookHandler = {
+      type: "command",
+      command: legacyEntry.command as string,
+    };
+
+    if (typeof legacyEntry.timeout_ms === "number" && Number.isFinite(legacyEntry.timeout_ms)) {
+      handler.timeout = Math.max(1, Math.ceil((legacyEntry.timeout_ms as number) / 1000));
+    }
+
+    if (legacyEntry._selftune === true) {
+      handler._selftune = true;
+    }
+
+    const matchers =
+      Array.isArray(legacyEntry.matchers) &&
+      legacyEntry.matchers.every((matcher) => typeof matcher === "string")
+        ? (legacyEntry.matchers as string[])
+        : [];
+
+    const groups = hooksByEvent[legacyEntry.event as string] ?? [];
+    if (matchers.length === 0) {
+      groups.push({ hooks: [{ ...handler }] });
+    } else {
+      for (const matcher of matchers) {
+        groups.push({ matcher, hooks: [{ ...handler }] });
+      }
+    }
+    hooksByEvent[legacyEntry.event as string] = groups;
+  }
+
+  return hooksByEvent;
+}
+
+function serializeHooksByEvent(hooksByEvent: CodexHooksByEvent): CodexHooksByEvent {
+  return Object.fromEntries(
+    Object.entries(hooksByEvent).map(([eventName, groups]) => [
+      eventName,
+      groups.map((group) => {
+        const { hooks, ...rest } = group;
+        return {
+          ...rest,
+          hooks: hooks.map((handler) => {
+            const { _selftune, ...serialized } = handler;
+            return serialized;
+          }),
+        };
+      }),
+    ]),
+  );
+}
+
 /** Read and parse existing hooks.json, or return empty structure. */
-function readHooksFile(path: string): CodexHooksFile {
-  if (!existsSync(path)) return { hooks: [] };
+function readHooksFile(path: string): ParsedCodexHooksFile {
+  if (!existsSync(path)) return { hooksByEvent: {}, otherFields: {} };
   try {
     const raw = readFileSync(path, "utf-8").trim();
-    if (!raw) return { hooks: [] };
-    const parsed = JSON.parse(raw) as CodexHooksFile;
-    if (parsed.hooks !== undefined && !Array.isArray(parsed.hooks)) {
-      throw new Error(`Invalid Codex hooks file: "hooks" must be an array`);
+    if (!raw) return { hooksByEvent: {}, otherFields: {} };
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isRecord(parsed)) {
+      throw new Error(`Invalid Codex hooks file: root must be an object`);
     }
-    if (!Array.isArray(parsed.hooks)) parsed.hooks = [];
-    return parsed;
+
+    const { hooks, ...otherFields } = parsed;
+    if (hooks === undefined) {
+      return { hooksByEvent: {}, otherFields };
+    }
+
+    if (Array.isArray(hooks)) {
+      return { hooksByEvent: convertLegacyHooks(hooks), otherFields };
+    }
+
+    return { hooksByEvent: normalizeEventMapHooks(hooks), otherFields };
   } catch (err) {
-    throw new Error(`Failed to parse ${path}: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(
+      `Failed to parse ${path}: ${err instanceof Error ? err.message : String(err)}`,
+      {
+        cause: err,
+      },
+    );
   }
 }
 
 /** Legacy command strings that identify selftune-installed hooks (before the _selftune marker). */
-const LEGACY_SELFTUNE_COMMANDS = [
+const LEGACY_SELFTUNE_COMMANDS = new Set([
   "npx selftune codex hook",
   "npx -y selftune@latest codex hook",
   "npx -y selftune codex hook",
-];
+]);
 
 /** Check if a hook entry was installed by selftune. */
-function isSelftuneHook(entry: CodexHookEntry): boolean {
+function isSelftuneHook(entry: CodexHookHandler): boolean {
   if (entry._selftune === true) return true;
   // Exact match against known legacy commands only
-  return typeof entry.command === "string" && LEGACY_SELFTUNE_COMMANDS.includes(entry.command);
+  if (typeof entry.command !== "string") return false;
+  return entry.command === HOOK_COMMAND || LEGACY_SELFTUNE_COMMANDS.has(entry.command);
+}
+
+function stripSelftuneHooks(existing: CodexHooksByEvent): {
+  hooksByEvent: CodexHooksByEvent;
+  removedCount: number;
+} {
+  const hooksByEvent: CodexHooksByEvent = {};
+  let removedCount = 0;
+
+  for (const [eventName, groups] of Object.entries(existing)) {
+    const cleanedGroups: CodexMatcherGroup[] = [];
+
+    for (const group of groups) {
+      const preservedHooks = group.hooks.filter((handler) => !isSelftuneHook(handler));
+      removedCount += group.hooks.length - preservedHooks.length;
+      if (preservedHooks.length > 0) {
+        cleanedGroups.push({
+          ...group,
+          hooks: preservedHooks.map((handler) => ({ ...handler })),
+        });
+      }
+    }
+
+    if (cleanedGroups.length > 0) {
+      hooksByEvent[eventName] = cleanedGroups;
+    }
+  }
+
+  return { hooksByEvent, removedCount };
 }
 
 /** Merge selftune hooks into existing hooks, replacing any previous selftune entries. */
 export function mergeHooks(
-  existing: CodexHookEntry[],
-  incoming: CodexHookEntry[],
-): CodexHookEntry[] {
-  // Keep all non-selftune hooks
-  const preserved = existing.filter((h) => !isSelftuneHook(h));
-  // Append new selftune hooks
-  return [...preserved, ...incoming];
+  existing: CodexHooksByEvent,
+  incoming: CodexHooksByEvent,
+): CodexHooksByEvent {
+  const { hooksByEvent } = stripSelftuneHooks(existing);
+  const merged = cloneHooksByEvent(hooksByEvent);
+
+  for (const [eventName, groups] of Object.entries(incoming)) {
+    merged[eventName] = [
+      ...(merged[eventName] ?? []),
+      ...cloneHooksByEvent({ [eventName]: groups })[eventName],
+    ];
+  }
+
+  return merged;
 }
 
 /** Remove all selftune hooks from the list. */
-export function removeSelftuneHooks(existing: CodexHookEntry[]): CodexHookEntry[] {
-  return existing.filter((h) => !isSelftuneHook(h));
+export function removeSelftuneHooks(existing: CodexHooksByEvent): CodexHooksByEvent {
+  return stripSelftuneHooks(existing).hooksByEvent;
 }
 
 // ---------------------------------------------------------------------------
@@ -150,13 +361,14 @@ export function installHooks(options: { dryRun?: boolean } = {}): InstallResult 
   const hooksPath = getCodexHooksPath();
   const codexHome = getCodexHome();
   const hooksFile = readHooksFile(hooksPath);
-  const existingHooks = hooksFile.hooks ?? [];
-
+  const existingHooks = hooksFile.hooksByEvent;
   const merged = mergeHooks(existingHooks, SELFTUNE_HOOKS);
+  const serializedExisting = serializeHooksByEvent(existingHooks);
+  const serializedMerged = serializeHooksByEvent(merged);
 
-  // Check if anything changed
-  const existingJson = JSON.stringify(existingHooks);
-  const mergedJson = JSON.stringify(merged);
+  // Compare the persisted shape; _selftune markers are internal only.
+  const existingJson = JSON.stringify(serializedExisting);
+  const mergedJson = JSON.stringify(serializedMerged);
 
   if (existingJson === mergedJson) {
     return {
@@ -172,15 +384,27 @@ export function installHooks(options: { dryRun?: boolean } = {}): InstallResult 
     if (!existsSync(codexHome)) {
       mkdirSync(codexHome, { recursive: true });
     }
-    hooksFile.hooks = merged;
-    writeFileSync(hooksPath, JSON.stringify(hooksFile, null, 2) + "\n", "utf-8");
+    writeFileSync(
+      hooksPath,
+      JSON.stringify(
+        {
+          ...hooksFile.otherFields,
+          hooks: serializedMerged,
+        },
+        null,
+        2,
+      ) + "\n",
+      "utf-8",
+    );
   }
+
+  const { removedCount } = stripSelftuneHooks(existingHooks);
 
   return {
     hooksPath,
     action: "installed",
-    hooksWritten: SELFTUNE_HOOKS.length,
-    hooksRemoved: existingHooks.filter((h) => isSelftuneHook(h)).length,
+    hooksWritten: Object.keys(SELFTUNE_HOOKS).length,
+    hooksRemoved: removedCount,
     dryRun: options.dryRun ?? false,
   };
 }
@@ -188,10 +412,8 @@ export function installHooks(options: { dryRun?: boolean } = {}): InstallResult 
 export function uninstallHooks(options: { dryRun?: boolean } = {}): InstallResult {
   const hooksPath = getCodexHooksPath();
   const hooksFile = readHooksFile(hooksPath);
-  const existingHooks = hooksFile.hooks ?? [];
-
-  const cleaned = removeSelftuneHooks(existingHooks);
-  const removedCount = existingHooks.length - cleaned.length;
+  const existingHooks = hooksFile.hooksByEvent;
+  const { hooksByEvent: cleaned, removedCount } = stripSelftuneHooks(existingHooks);
 
   if (removedCount === 0) {
     return {
@@ -204,8 +426,18 @@ export function uninstallHooks(options: { dryRun?: boolean } = {}): InstallResul
   }
 
   if (!options.dryRun) {
-    hooksFile.hooks = cleaned;
-    writeFileSync(hooksPath, JSON.stringify(hooksFile, null, 2) + "\n", "utf-8");
+    writeFileSync(
+      hooksPath,
+      JSON.stringify(
+        {
+          ...hooksFile.otherFields,
+          hooks: serializeHooksByEvent(cleaned),
+        },
+        null,
+        2,
+      ) + "\n",
+      "utf-8",
+    );
   }
 
   return {
@@ -225,9 +457,9 @@ export function uninstallHooks(options: { dryRun?: boolean } = {}): InstallResul
  * CLI entry point for `selftune codex install`.
  */
 export async function cliMain(): Promise<void> {
-  const args = process.argv.slice(2);
-  const dryRun = args.includes("--dry-run");
-  const uninstall = args.includes("--uninstall");
+  const args = new Set(process.argv.slice(2));
+  const dryRun = args.has("--dry-run");
+  const uninstall = args.has("--uninstall");
 
   try {
     if (uninstall) {

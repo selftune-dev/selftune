@@ -22,6 +22,7 @@ generate JSONL from SQLite for debugging or offline analysis.
 | Flag            | Description                               | Default |
 | --------------- | ----------------------------------------- | ------- |
 | `--port <port>` | Custom port for the server                | 3141    |
+| `--restart`     | Force-restart an existing dashboard on the target port | Off |
 | `--no-open`     | Start server without opening browser      | Off     |
 | `--serve`       | _(Deprecated)_ Alias for default behavior | —       |
 
@@ -34,6 +35,12 @@ suggesting `selftune dashboard` instead.
 
 The live server binds to `localhost:3141` by default. Use `--port` to
 override.
+
+If a healthy selftune dashboard is already running on the requested port,
+`selftune dashboard` reuses it instead of failing. If the running standalone
+dashboard version is older than the installed CLI, the command restarts it
+automatically to pick up the update. Use `--restart` to force that behavior
+even when the versions match.
 
 ### Endpoints
 
@@ -162,6 +169,7 @@ checked file paths.
 ```bash
 selftune dashboard
 selftune dashboard --port 8080
+selftune dashboard --restart
 selftune dashboard --no-open
 ```
 
@@ -181,6 +189,12 @@ to trigger watch, evolve, or rollback directly from the dashboard.
 
 > Run `selftune dashboard`. The server provides real-time updates via SSE
 > (~1 second latency).
+
+**User just updated selftune and wants the dashboard to pick up the new UI**
+
+> Run `selftune dashboard`. It reuses a healthy instance when possible and
+> automatically restarts an older standalone dashboard version on the same port.
+> If the user explicitly wants a restart, run `selftune dashboard --restart`.
 
 **Dashboard shows no data**
 

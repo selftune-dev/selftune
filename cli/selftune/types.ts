@@ -455,6 +455,7 @@ export interface EvolutionEvidenceValidation {
   validation_mode?: ValidationMode;
   validation_agent?: string;
   validation_fixture_id?: string;
+  validation_fallback_reason?: string;
   validation_evidence_ref?: string;
 }
 
@@ -740,11 +741,11 @@ export interface BodyEvolutionProposal {
 /** Closed union of gate names used in the validation pipeline. */
 export type ValidationGate = "structural" | "trigger_accuracy" | "quality";
 
-export type ValidationMode = "structural_guard" | "host_replay" | "fixture_replay" | "llm_judge";
+export type ValidationMode = "structural_guard" | "host_replay" | "llm_judge";
 
 export interface RoutingReplayFixture {
   fixture_id: string;
-  platform: "claude_code" | "codex";
+  platform: "claude_code" | "codex" | "opencode";
   target_skill_name: string;
   target_skill_path: string;
   competing_skill_paths: string[];
@@ -770,6 +771,7 @@ export interface BodyValidationResult {
   validation_mode?: ValidationMode;
   validation_agent?: string;
   validation_fixture_id?: string;
+  validation_fallback_reason?: string;
   before_pass_rate?: number;
   after_pass_rate?: number;
   per_entry_results?: RoutingReplayEntryResult[];

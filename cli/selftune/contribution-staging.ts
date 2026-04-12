@@ -1,7 +1,11 @@
 import type { Database } from "bun:sqlite";
 
 import type { CreatorContributionConfig } from "./contribution-config.js";
-import { discoverCreatorContributionConfigs } from "./contribution-config.js";
+import {
+  discoverCreatorContributionConfigs,
+  isSupportedContributionSignal,
+  isValidCreatorUUID,
+} from "./contribution-config.js";
 import {
   loadContributionPreferences,
   type ContributionPreferences,
@@ -37,6 +41,10 @@ export function resolveEligibleContributionConfigs(
   configs: CreatorContributionConfig[] = discoverCreatorContributionConfigs(),
 ): CreatorContributionConfig[] {
   return configs.filter((config) => {
+    if (!isValidCreatorUUID(config.creator_id)) return false;
+    if (!config.contribution.signals.some((signal) => isSupportedContributionSignal(signal))) {
+      return false;
+    }
     const pref = preferences.skills[config.skill_name];
     if (pref?.status === "opted_out") return false;
     if (pref?.status === "opted_in") return true;

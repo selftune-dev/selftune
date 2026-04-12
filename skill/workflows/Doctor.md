@@ -163,7 +163,7 @@ For each failed check, take the appropriate action:
 | `evolution_audit`          | Remove corrupted entries. Future operations will append clean entries.                                                                           |
 | `dashboard_freshness_mode` | This is an operator warning, not a broken install. Expect possible freshness gaps for SQLite-only writes and export before destructive recovery. |
 | `skill_version_sync`       | Run `bun run sync-version` to stamp SKILL.md from package.json.                                                                                  |
-| `version_up_to_date`       | Run `npm install -g selftune` to update.                                                                                                         |
+| `version_up_to_date`       | Follow `.checks[].guidance.next_command` for the active install source. Common fixes are `npm install -g selftune@latest`, `bun add -g selftune@latest`, or `npx skills add selftune-dev/selftune`. |
 
 ### 4. Re-run Doctor
 

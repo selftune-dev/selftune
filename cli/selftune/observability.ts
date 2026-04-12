@@ -14,6 +14,7 @@ import { join } from "node:path";
 
 import { getAlphaGuidance } from "./agent-guidance.js";
 import { getAlphaLinkState, readAlphaIdentity } from "./alpha-identity.js";
+import { getSelftuneUpdateHint } from "./auto-update.js";
 import { LOG_DIR, REQUIRED_FIELDS, SELFTUNE_CONFIG_PATH } from "./constants.js";
 import { DB_PATH, getDb } from "./localdb/db.js";
 import type {
@@ -318,12 +319,13 @@ export async function checkVersionHealth(): Promise<HealthCheck[]> {
         if (cmp >= 0) {
           check.message = `v${currentVersion} (latest)`;
         } else {
+          const updateCommand = getSelftuneUpdateHint("latest");
           check.status = "warn";
-          check.message = `v${currentVersion} installed, v${latestVersion} available. Run: npx skills add selftune-dev/selftune`;
+          check.message = `v${currentVersion} installed, v${latestVersion} available. Run: ${updateCommand}`;
           check.guidance = {
             code: "version_update_available",
             message: "A newer selftune release is available.",
-            next_command: "npx skills add selftune-dev/selftune",
+            next_command: updateCommand,
             suggested_commands: ["selftune doctor"],
             blocking: false,
           };

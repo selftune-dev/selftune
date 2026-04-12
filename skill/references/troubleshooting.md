@@ -8,9 +8,11 @@ Cause: CLI not installed or not on PATH.
 
 Solution:
 
-1. Run `npm install -g selftune` or check `bin/selftune.cjs` exists
-2. Verify with `which selftune`
-3. If using bun: `bun link` in the repo root
+1. Reinstall or refresh with `npx skills add selftune-dev/selftune`
+2. If you manage the CLI directly, use `npm install -g selftune` or `bun add -g selftune`
+3. Check `bin/selftune.cjs` exists if running from a source checkout
+4. Verify with `which selftune`
+5. If using bun from a source checkout: `bun link` in the repo root
 
 ## No sessions to grade
 

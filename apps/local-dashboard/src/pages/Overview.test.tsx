@@ -3,15 +3,19 @@ import { describe, expect, it, vi } from "vitest";
 // Mock heavy external dependencies to avoid import timeouts
 vi.mock("lucide-react", () => ({
   AlertCircleIcon: () => null,
+  AlertTriangleIcon: () => null,
   BoltIcon: () => null,
   CheckCircleIcon: () => null,
   ChevronDownIcon: () => null,
+  CircleDotIcon: () => null,
   ClockIcon: () => null,
   EyeIcon: () => null,
+  HelpCircleIcon: () => null,
   LayersIcon: () => null,
   RefreshCwIcon: () => null,
   RocketIcon: () => null,
   SparklesIcon: () => null,
+  XCircleIcon: () => null,
 }));
 
 vi.mock("@selftune/ui/primitives", () => ({
@@ -27,6 +31,12 @@ vi.mock("@selftune/ui/primitives", () => ({
   TabsContent: ({ children }: { children: unknown }) => children,
   TabsList: ({ children }: { children: unknown }) => children,
   TabsTrigger: ({ children }: { children: unknown }) => children,
+}));
+
+vi.mock("@selftune/ui/components", () => ({
+  AutonomyHeroCard: () => <div>Autonomy Hero</div>,
+  SupervisionFeed: () => <div>Supervision Feed</div>,
+  TrustWatchlistRail: () => <div>Trust Watchlist</div>,
 }));
 
 vi.mock("@/components/ui/skeleton", () => ({

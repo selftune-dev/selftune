@@ -1,95 +1,32 @@
-import { EvolutionTimeline } from "@selftune/ui/components";
-import { EvidenceViewer } from "@selftune/ui/components";
-import { InvocationsPanel } from "@selftune/ui/components";
-import { SkillReportGuideSheet } from "@selftune/ui/components";
-import { SkillReportOnboardingBanner } from "@selftune/ui/components";
 import { timeAgo } from "@selftune/ui/lib";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@selftune/ui/primitives";
+import { Badge, Button, Card, CardContent } from "@selftune/ui/primitives";
 import {
   AlertCircleIcon,
   ArrowLeftIcon,
   EyeIcon,
   RefreshCwIcon,
-  ShieldCheckIcon,
-  ShieldAlertIcon,
-  ShieldIcon,
-  ShieldQuestionIcon,
   SearchIcon,
   AlertTriangleIcon,
   CheckCircleIcon,
   ArrowRightIcon,
   GitBranchIcon,
-  ChevronDownIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-
 import {
-  DataQualityPanel,
-  PromptEvidencePanel,
-  SkillReportTopRow,
-  SkillTrustNarrativePanel,
-  TrustSignalsGrid,
-} from "@/components/skill-report-panels";
+  SkillReportDataQualityTabContent,
+  SkillReportEvidenceTabContent,
+  SkillReportInvocationsSection,
+  SkillReportMissedQueriesSection,
+  SkillReportScaffold,
+  SkillReportTabs,
+  SkillReportTrustBadge,
+} from "@selftune/dashboard-core/screens/skill-report";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSkillReport } from "@/hooks/useSkillReport";
-import type { EvolutionEntry, TrustState } from "@/types";
+import type { TrustState } from "@/types";
 
-type SkillReportTab = "evidence" | "invocations" | "data-quality";
-
-/* ─── Trust badge config ──────────────────────────────── */
-
-const TRUST_BADGE: Record<
-  TrustState,
-  {
-    label: string;
-    variant: "default" | "secondary" | "destructive" | "outline";
-    icon: React.ReactNode;
-  }
-> = {
-  low_sample: {
-    label: "Low Sample",
-    variant: "secondary",
-    icon: <ShieldQuestionIcon className="size-3" />,
-  },
-  observed: {
-    label: "Observed",
-    variant: "outline",
-    icon: <EyeIcon className="size-3" />,
-  },
-  watch: {
-    label: "Watch",
-    variant: "secondary",
-    icon: <ShieldAlertIcon className="size-3" />,
-  },
-  validated: {
-    label: "Validated",
-    variant: "default",
-    icon: <ShieldCheckIcon className="size-3" />,
-  },
-  deployed: {
-    label: "Deployed",
-    variant: "default",
-    icon: <ShieldCheckIcon className="size-3" />,
-  },
-  rolled_back: {
-    label: "Rolled Back",
-    variant: "destructive",
-    icon: <ShieldIcon className="size-3" />,
-  },
-};
+type SkillReportTab = "evidence" | "missed" | "invocations" | "data-quality";
 
 /* ─── Next best action logic ──────────────────────────── */
 
@@ -185,66 +122,6 @@ function deriveNextAction(
   };
 }
 
-/* ─── Collapsible timeline sidebar ────────────────────── */
-
-function TimelineSidebar({
-  evolution,
-  activeProposal,
-  onSelect,
-}: {
-  evolution: EvolutionEntry[];
-  activeProposal: string | null;
-  onSelect: (proposalId: string) => void;
-}) {
-  const collapsedProposalCount = 6;
-  const proposalCount = new Set(evolution.map((entry) => entry.proposal_id)).size;
-  const shouldCollapse = proposalCount > collapsedProposalCount;
-  const [expanded, setExpanded] = useState(!shouldCollapse);
-
-  const visibleEntries = useMemo(() => {
-    if (expanded) return evolution;
-
-    const allowed = new Set<string>();
-    const collapsed: typeof evolution = [];
-    for (const entry of evolution) {
-      if (!allowed.has(entry.proposal_id)) {
-        if (allowed.size >= collapsedProposalCount) continue;
-        allowed.add(entry.proposal_id);
-      }
-      collapsed.push(entry);
-    }
-    return collapsed;
-  }, [collapsedProposalCount, evolution, expanded]);
-
-  return (
-    <aside className="w-full px-4 py-4 @5xl/main:w-[252px] @5xl/main:self-start @5xl/main:pr-0">
-      <div className="@5xl/main:sticky @5xl/main:top-16">
-        <div
-          className={`rounded-xl border border-border/10 bg-muted/20 px-3 py-3 text-xs ${expanded ? "themed-scroll max-h-[26rem] overflow-y-auto @5xl/main:max-h-[calc(100svh-6rem)]" : "overflow-visible"}`}
-        >
-          <EvolutionTimeline
-            entries={visibleEntries}
-            selectedProposalId={activeProposal}
-            onSelect={onSelect}
-          />
-          {shouldCollapse && (
-            <button
-              type="button"
-              onClick={() => setExpanded(!expanded)}
-              className="mt-2 flex w-full items-center justify-center gap-1.5 py-2 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ChevronDownIcon
-                className={`size-3 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
-              />
-              {expanded ? "Collapse timeline" : `Show full timeline (${proposalCount} proposals)`}
-            </button>
-          )}
-        </div>
-      </div>
-    </aside>
-  );
-}
-
 /* ═══════════════════════════════════════════════════════════
    SkillReport — trust-first skill report page
    ═══════════════════════════════════════════════════════════ */
@@ -253,7 +130,6 @@ export function SkillReport() {
   const { name } = useParams<{ name: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data, isPending, isError, error, refetch } = useSkillReport(name);
-  const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<SkillReportTab>("invocations");
 
   // Derive proposal state from data (safe to compute even when data is null)
@@ -385,7 +261,7 @@ export function SkillReport() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 py-16">
         <p className="text-sm text-muted-foreground">No data found for skill "{name}".</p>
-        <Button variant="outline" size="sm" render={<Link to="/" />}>
+        <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/" />}>
           <ArrowLeftIcon className="mr-2 size-3.5" />
           Back to Overview
         </Button>
@@ -394,7 +270,6 @@ export function SkillReport() {
   }
 
   const trustState = trust?.state ?? "low_sample";
-  const trustBadge = TRUST_BADGE[trustState];
 
   const nextAction = deriveNextAction(
     trustState,
@@ -405,244 +280,198 @@ export function SkillReport() {
   );
 
   return (
-    <Tabs value={activeTab} onValueChange={setActiveTab}>
-      <SkillReportGuideSheet open={isGuideOpen} onOpenChange={setIsGuideOpen} />
-      <div className="@container/main flex flex-1 flex-col gap-5 p-4 lg:px-6 lg:pb-6 lg:pt-0">
-        {/* ─── 1. Trust Header (sticky) ───────────────── */}
-        <div className="sticky top-0 z-30 space-y-2 border-b border-border/15 bg-background/95 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/85">
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" render={<Link to="/" />} className="shrink-0">
-              <ArrowLeftIcon className="size-3.5" />
-            </Button>
-            <h1 className="text-base font-semibold tracking-tight lg:text-lg font-headline shrink-0">
-              {data.skill_name}
-            </h1>
-            <Badge variant={trustBadge.variant} className="gap-1 shrink-0 text-[10px]">
-              {trustBadge.icon}
-              {trustBadge.label}
-            </Badge>
-            <div className="ml-auto flex items-center gap-4 shrink-0">
-              <Button variant="outline" size="sm" onClick={() => setIsGuideOpen(true)}>
-                How this works
-              </Button>
-              <div className="hidden @xl/main:flex items-center gap-3 text-xs text-muted-foreground">
-                <span className="tabular-nums">
-                  <strong className="text-foreground">
-                    {coverage?.checks ?? data.usage.total_checks}
-                  </strong>{" "}
-                  checks
-                </span>
-                <span className="text-border">|</span>
-                <span className="tabular-nums">
-                  <strong className="text-foreground">
-                    {coverage?.sessions ?? data.sessions_with_skill}
-                  </strong>{" "}
-                  sessions
-                </span>
-                <span className="text-border">|</span>
-                <span className="tabular-nums">
-                  <strong className="text-foreground">{coverage?.workspaces ?? "No data"}</strong>{" "}
-                  workspaces
-                </span>
-              </div>
-              {(coverage?.first_seen || coverage?.last_seen) && (
-                <div className="hidden @3xl/main:flex items-center gap-2 text-[10px] text-muted-foreground font-mono">
-                  {coverage.first_seen && (
-                    <span title="First seen">{timeAgo(coverage.first_seen)}</span>
-                  )}
-                  {coverage.first_seen && coverage.last_seen && <span>-</span>}
-                  {coverage.last_seen && (
-                    <span title="Last seen">{timeAgo(coverage.last_seen)}</span>
-                  )}
-                </div>
-              )}
-            </div>
+    <SkillReportScaffold
+      backLink={
+        <Button
+          variant="outline"
+          size="sm"
+          nativeButton={false}
+          render={<Link to="/" />}
+          className="shrink-0"
+        >
+          <ArrowLeftIcon className="size-3.5" />
+        </Button>
+      }
+      title={data.skill_name}
+      statusBadge={<SkillReportTrustBadge state={trustState} />}
+      toolbarMeta={
+        <>
+          <div className="hidden @xl/main:flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="tabular-nums">
+              <strong className="text-foreground">
+                {coverage?.checks ?? data.usage.total_checks}
+              </strong>{" "}
+              checks
+            </span>
+            <span className="text-border">|</span>
+            <span className="tabular-nums">
+              <strong className="text-foreground">
+                {coverage?.sessions ?? data.sessions_with_skill}
+              </strong>{" "}
+              sessions
+            </span>
+            <span className="text-border">|</span>
+            <span className="tabular-nums">
+              <strong className="text-foreground">{coverage?.workspaces ?? "No data"}</strong>{" "}
+              workspaces
+            </span>
           </div>
-          {/* Trust summary -- full-width line */}
-          {trust?.summary && (
-            <div className="space-y-1.5 text-sm leading-relaxed text-muted-foreground">
-              <div className="flex flex-wrap items-center gap-3">
-                <span>{trust.summary}</span>
-                {evolutionState?.latest_action && evolutionState?.latest_timestamp && (
-                  <span className="text-[11px] text-muted-foreground/70 font-mono">
-                    Latest: {evolutionState.latest_action} (
-                    {timeAgo(evolutionState.latest_timestamp)})
-                  </span>
-                )}
-              </div>
-              {excludedChecks > 0 && (
-                <div className="text-[12px] text-muted-foreground/80">
-                  Based on <span className="font-medium text-foreground">{operationalChecks}</span>{" "}
-                  real checks. <span className="font-medium text-foreground">{excludedChecks}</span>{" "}
-                  internal or legacy rows are excluded from trust scoring.
-                </div>
-              )}
+          {coverage?.first_seen || coverage?.last_seen ? (
+            <div className="hidden @3xl/main:flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
+              {coverage?.first_seen ? (
+                <span title="First seen">{timeAgo(coverage.first_seen)}</span>
+              ) : null}
+              {coverage?.first_seen && coverage?.last_seen ? <span>-</span> : null}
+              {coverage?.last_seen ? (
+                <span title="Last seen">{timeAgo(coverage.last_seen)}</span>
+              ) : null}
             </div>
-          )}
-        </div>
-
-        <SkillReportOnboardingBanner onOpenGuide={() => setIsGuideOpen(true)} />
-
-        <div className="space-y-4">
-          <SkillReportTopRow
-            nextAction={nextAction}
-            latestDecision={
-              hasEvolutionData && evolutionState?.latest_action
-                ? {
-                    action: evolutionState.latest_action,
-                    timestamp: evolutionState.latest_timestamp,
-                    evolutionCount: evolutionState.evolution_rows ?? evolution.length,
-                  }
-                : undefined
-            }
-          />
-
-          <SkillTrustNarrativePanel
-            trustState={trustState}
-            coverage={coverage}
-            evidenceQuality={evidenceQuality}
-            routingQuality={routingQuality}
-            evolutionState={evolutionState}
-            dataHygiene={dataHygiene}
-            fallbackChecks={data.usage.total_checks}
-            fallbackSessions={data.sessions_with_skill}
-            nextActionText={nextAction.text}
-            onOpenGuide={() => setIsGuideOpen(true)}
-          />
-
-          <TrustSignalsGrid
-            coverage={coverage}
-            evidenceQuality={evidenceQuality}
-            routingQuality={routingQuality}
-            evolutionState={evolutionState}
-            fallbackChecks={data.usage.total_checks}
-            fallbackSessions={data.sessions_with_skill}
-            fallbackEvidenceRows={data.evidence.length}
-            fallbackEvolutionRows={evolution.length}
-            fallbackLatestAction={evolution[0]?.action}
-          />
-        </div>
-        <div className="space-y-4 border-t border-border/10 pt-4">
-          <TabsList
-            variant="line"
-            className="rounded-xl border border-border/10 bg-muted/20 px-1.5 py-1"
-          >
-            {hasEvolutionData && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <TabsTrigger
-                      value="evidence"
-                      className="rounded-lg px-3 font-headline text-xs uppercase tracking-wider data-active:bg-background/70 data-active:text-foreground"
-                    />
-                  }
-                >
-                  Evidence
-                </TooltipTrigger>
-                <TooltipContent>Change history and validation results</TooltipContent>
-              </Tooltip>
-            )}
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <TabsTrigger
-                    value="invocations"
-                    className="rounded-lg px-3 font-headline text-xs uppercase tracking-wider data-active:bg-background/70 data-active:text-foreground"
-                  />
-                }
-              >
-                Invocations
-                <Badge variant="secondary" className="ml-1.5 text-[10px]">
-                  {mergedInvocations.length}
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent>
-                Real usage and repaired misses only. Internal selftune traffic and legacy residue
-                are excluded from this working set.
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <TabsTrigger
-                    value="data-quality"
-                    className="rounded-lg px-3 font-headline text-xs uppercase tracking-wider data-active:bg-background/70 data-active:text-foreground"
-                  />
-                }
-              >
-                Data Quality
-              </TooltipTrigger>
-              <TooltipContent>Evidence quality metrics and data hygiene</TooltipContent>
-            </Tooltip>
-          </TabsList>
-
-          {/* ─── Evidence Tab ─────────────────────────── */}
-          {hasEvolutionData && (
-            <TabsContent value="evidence" className="space-y-6">
-              <PromptEvidencePanel examples={examples} />
-
-              <div className="overflow-hidden rounded-2xl border border-border/15 bg-card">
-                <div className="flex flex-col @5xl/main:grid @5xl/main:grid-cols-[252px_minmax(0,1fr)] @5xl/main:items-start">
-                  {evolution.length > 0 && (
-                    <TimelineSidebar
-                      evolution={evolution}
-                      activeProposal={activeProposal}
-                      onSelect={handleSelectProposal}
-                    />
-                  )}
-
-                  <div className="min-w-0 p-4 @xl/main:p-5">
-                    {activeProposal ? (
-                      <EvidenceViewer
-                        proposalId={activeProposal}
-                        evolution={evolution}
-                        evidence={data.evidence}
-                      />
-                    ) : (
-                      <Card className="rounded-2xl">
-                        <CardContent className="py-12">
-                          <div className="flex flex-col items-center justify-center gap-3 text-center">
-                            <EyeIcon className="size-8 text-muted-foreground/40" />
-                            <p className="text-sm text-muted-foreground">
-                              This skill is being observed but has no reviewable evolution evidence
-                              yet.
-                            </p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-                  </div>
-                </div>
+          ) : null}
+        </>
+      }
+      summary={
+        trust?.summary ? (
+          <>
+            <div className="flex flex-wrap items-center gap-3">
+              <span>{trust.summary}</span>
+              {evolutionState?.latest_action && evolutionState?.latest_timestamp ? (
+                <span className="font-mono text-[11px] text-muted-foreground/70">
+                  Latest: {evolutionState.latest_action} ({timeAgo(evolutionState.latest_timestamp)}
+                  )
+                </span>
+              ) : null}
+            </div>
+            {excludedChecks > 0 ? (
+              <div className="text-[12px] text-muted-foreground/80">
+                Based on <span className="font-medium text-foreground">{operationalChecks}</span>{" "}
+                real checks. <span className="font-medium text-foreground">{excludedChecks}</span>{" "}
+                internal or legacy rows are excluded from trust scoring.
               </div>
-            </TabsContent>
-          )}
-
-          {/* ─── Invocations Tab ─────────────────────── */}
-          <TabsContent value="invocations">
-            <div className="space-y-2">
-              {excludedChecks > 0 && (
-                <div className="rounded-xl border border-border/10 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-                  Showing{" "}
-                  <span className="font-medium text-foreground">{mergedInvocations.length}</span>{" "}
-                  operational invocations.{" "}
-                  <span className="font-medium text-foreground">{excludedChecks}</span> internal or
-                  legacy rows are tracked in Data Quality instead of being mixed into this working
-                  set.
-                </div>
-              )}
-              <InvocationsPanel
+            ) : null}
+          </>
+        ) : undefined
+      }
+      showOnboardingBanner
+      guideButtonLabel="How this works"
+      nextAction={nextAction}
+      trustState={trustState}
+      coverage={coverage}
+      evidenceQuality={evidenceQuality}
+      routingQuality={routingQuality}
+      evolutionState={evolutionState}
+      dataHygiene={dataHygiene}
+      fallbackChecks={data.usage.total_checks}
+      fallbackSessions={data.sessions_with_skill}
+      fallbackEvidenceRows={data.evidence.length}
+      fallbackEvolutionRows={evolution.length}
+      fallbackLatestAction={evolution[0]?.action}
+      nextActionText={nextAction.text}
+    >
+      <SkillReportTabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as SkillReportTab)}
+        tabs={[
+          {
+            value: "evidence",
+            label: "Evidence",
+            tooltip: "Change history and validation results",
+            hidden: !hasEvolutionData,
+            contentClassName: "space-y-6",
+            content: (
+              <>
+                <SkillReportEvidenceTabContent
+                  examples={examples}
+                  evolution={evolution}
+                  activeProposal={activeProposal}
+                  onSelect={handleSelectProposal}
+                  evidence={data.evidence}
+                  viewerProposalId={activeProposal ?? ""}
+                  showViewer={Boolean(activeProposal)}
+                  emptyState={
+                    <Card className="rounded-2xl">
+                      <CardContent className="py-12">
+                        <div className="flex flex-col items-center justify-center gap-3 text-center">
+                          <EyeIcon className="size-8 text-muted-foreground/40" />
+                          <p className="text-sm text-muted-foreground">
+                            This skill is being observed but has no reviewable evolution evidence
+                            yet.
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  }
+                />
+              </>
+            ),
+          },
+          {
+            value: "invocations",
+            label: "Invocations",
+            tooltip:
+              "Real usage and repaired misses only. Internal selftune traffic and legacy residue are excluded from this working set.",
+            badge: (
+              <Badge variant="secondary" className="ml-1.5 text-[10px]">
+                {mergedInvocations.length}
+              </Badge>
+            ),
+            content: (
+              <SkillReportInvocationsSection
                 invocations={mergedInvocations}
                 sessionMetadata={data?.session_metadata ?? []}
+                callout={
+                  excludedChecks > 0 ? (
+                    <div className="rounded-xl border border-border/10 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+                      Showing{" "}
+                      <span className="font-medium text-foreground">
+                        {mergedInvocations.length}
+                      </span>{" "}
+                      operational invocations.{" "}
+                      <span className="font-medium text-foreground">{excludedChecks}</span> internal
+                      or legacy rows are tracked in Data Quality instead of being mixed into this
+                      working set.
+                    </div>
+                  ) : undefined
+                }
               />
-            </div>
-          </TabsContent>
-
-          {/* ─── Data Quality Tab ────────────────────── */}
-          <TabsContent value="data-quality">
-            <DataQualityPanel evidenceQuality={evidenceQuality} dataHygiene={dataHygiene} />
-          </TabsContent>
-        </div>
-      </div>
-    </Tabs>
+            ),
+          },
+          {
+            value: "missed",
+            label: "Missed Queries",
+            hidden: (examples?.missed.length ?? 0) === 0,
+            tooltip: "Queries that look like missed triggers from real usage.",
+            badge:
+              (examples?.missed.length ?? 0) > 0 ? (
+                <Badge variant="secondary" className="ml-1.5 text-[10px]">
+                  {examples?.missed.length ?? 0}
+                </Badge>
+              ) : undefined,
+            contentClassName: "pt-2",
+            content: (
+              <SkillReportMissedQueriesSection
+                rows={(examples?.missed ?? []).map((example, index) => ({
+                  id: `${example.session_id}:${example.timestamp ?? index}`,
+                  query: example.query_text,
+                  confidence: example.confidence,
+                  source: example.source ?? example.platform ?? null,
+                  createdAt: example.timestamp ?? "",
+                }))}
+              />
+            ),
+          },
+          {
+            value: "data-quality",
+            label: "Data Quality",
+            tooltip: "Evidence quality metrics and data hygiene",
+            content: (
+              <SkillReportDataQualityTabContent
+                evidenceQuality={evidenceQuality}
+                dataHygiene={dataHygiene}
+              />
+            ),
+          },
+        ]}
+      />
+    </SkillReportScaffold>
   );
 }
