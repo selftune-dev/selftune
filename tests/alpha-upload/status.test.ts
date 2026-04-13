@@ -262,6 +262,21 @@ describe("formatAlphaStatus", () => {
     expect(output).toContain("network timeout");
   });
 
+  test("hides last error after a newer successful upload", () => {
+    const info: AlphaStatusInfo = {
+      enrolled: true,
+      linkState: "ready",
+      stats: { pending: 0, sending: 0, sent: 101, failed: 2 },
+      lastError: { last_error: "old network timeout", updated_at: "2025-01-15T09:00:00Z" },
+      lastSuccess: { updated_at: "2025-01-15T10:00:00Z" },
+    };
+    const output = formatAlphaStatus(info);
+    expect(output).not.toContain("Last error:");
+    expect(output).not.toContain("old network timeout");
+    expect(output).toContain("Failed:");
+    expect(output).toContain("Sent:");
+  });
+
   test("shows enrolled status with no errors", () => {
     const info: AlphaStatusInfo = {
       enrolled: true,

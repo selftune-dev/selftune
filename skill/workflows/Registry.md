@@ -55,7 +55,7 @@ Manage versioned skill distribution across your team. Push skill folders to the 
 ## Prerequisites
 
 - Must be authenticated (`selftune alpha upload` to set up API key)
-- Push and rollback require Team plan and admin role
+- Push and rollback require Pro plan or higher and admin role
 - Install requires Pro plan or higher
 
 ## Output Format

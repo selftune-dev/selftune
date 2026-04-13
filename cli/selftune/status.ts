@@ -581,7 +581,13 @@ export function formatAlphaStatus(info: AlphaStatusInfo | null): string {
   lines.push(`  Failed:             ${info.stats.failed}`);
   lines.push(`  Sent:               ${info.stats.sent}`);
 
-  if (info.lastError) {
+  const lastErrorIsCurrent =
+    info.lastError &&
+    (!info.lastSuccess ||
+      new Date(info.lastError.updated_at).getTime() >
+        new Date(info.lastSuccess.updated_at).getTime());
+
+  if (lastErrorIsCurrent) {
     lines.push(`  Last error:         ${info.lastError.last_error ?? "unknown"}`);
   }
 
