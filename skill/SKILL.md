@@ -13,7 +13,7 @@ description: >
   even if they don't say "selftune" explicitly.
 metadata:
   author: selftune-dev
-  version: 0.2.22
+  version: 0.2.24
   category: developer-tools
 ---
 
@@ -75,6 +75,7 @@ deploy, or whether it is already being watched live.
 
 | Trigger keywords | Workflow | File |
 | --- | --- | --- |
+| create test deploy, creator loop, ship skill, ready to deploy, can I trust this skill, how do I know this skill works | CreateTestDeploy | workflows/CreateTestDeploy.md |
 | grade, score, evaluate, assess session, auto-grade | Grade | workflows/Grade.md |
 | evals, eval set, undertriggering, skill stats, eval generate | Evals | workflows/Evals.md |
 | evolve, improve, optimize skills, make skills better, triggers, catch more queries, apply proposal, apply contributor proposal | Evolve | workflows/Evolve.md |

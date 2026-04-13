@@ -2,6 +2,10 @@
 
 Use this when you are publishing a skill other people will install.
 
+If the user wants the operational step-by-step loop from cold start to deploy,
+route first to `workflows/CreateTestDeploy.md`. Use this reference for the
+packaging and after-ship interpretation layer around that loop.
+
 The goal is simple:
 
 1. ship a skill that routes cleanly on day one
@@ -45,6 +49,10 @@ selftune grade baseline --skill my-skill --skill-path path/to/SKILL.md
 selftune evolve --skill my-skill --skill-path path/to/SKILL.md --with-baseline
 selftune watch --skill my-skill
 ```
+
+That same sequence is now packaged as the dedicated `CreateTestDeploy`
+workflow in the shipped selftune skill, while `Evals`, `UnitTest`, `Baseline`,
+`Evolve`, and `Watch` remain the atomic workflow docs for each individual step.
 
 The dashboard overview, per-skill report, and `selftune status` all read from that loop and show
 the next missing step directly, then flip to deploy-ready and watching states once the skill is shipped.

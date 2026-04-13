@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Orchestrate lockfile** — `acquireLock()`/`releaseLock()` with PID+timestamp in `~/.claude/.orchestrate.lock`. 30-minute stale threshold prevents deadlocks from crashed runs.
 - **Signal consumption** — After an orchestrate run completes, consumed signals are marked with `consumed: true`, `consumed_at`, and `consumed_by_run` so they don't affect subsequent runs.
 
+### Changed
+
+- **Publish version ceiling now respects live npm** — export no longer reuses a stale repository `package.json` version when npm already has a newer release, so shipped OSS changes publish the next real patch version instead of colliding with the latest package on npm.
+- **GitHub releases use curated changelog entries** — OSS publish now renders release bodies from the Mintlify changelog when a matching entry exists, with `CHANGELOG.md` used as the fallback body for unmatched versions.
+- **Dedicated creator-loop workflow** — the shipped selftune skill now exposes "create, test, and deploy" as a first-class routed workflow while keeping `Evals`, `UnitTest`, `Baseline`, `Evolve`, and `Watch` as atomic workflow docs instead of demoting them to references.
+
 ## [0.2.0] — 2026-03-08
 
 ### Added

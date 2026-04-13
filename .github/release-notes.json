@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "generatedFrom": "sites/docs/changelog.mdx",
+  "docsUrl": "https://docs.selftune.dev/changelog",
+  "entries": [
+    {
+      "label": "2026-04-08",
+      "description": "v0.2.20 to v0.2.23",
+      "tags": ["OSS", "Platforms", "CLI"],
+      "rss": {
+        "title": "April 2026 — multi-platform hooks and replay validation",
+        "description": "Codex, OpenCode, and Cline support expanded, with stronger replay validation and cold-start detection for missed-trigger analysis."
+      },
+      "bullets": [
+        "Added universal hook adapters for Codex, OpenCode, and Cline so selftune can capture real-time telemetry beyond Claude Code.",
+        "Added cold-start suspicion and Claude runtime replay validation to make trigger diagnostics more trustworthy when a skill has little history.",
+        "Hardened OpenCode installation so hook setup follows current plugin and config behavior instead of relying on rejected config keys.",
+        "See the [OSS releases](https://github.com/selftune-dev/selftune/releases) for package artifacts and per-version compare links."
+      ],
+      "versionRange": {
+        "from": "0.2.20",
+        "to": "0.2.23"
+      }
+    },
+    {
+      "label": "2026-04-01",
+      "description": "v0.2.14 to v0.2.19",
+      "tags": ["OSS", "Dashboard", "Community"],
+      "rss": {
+        "title": "April 2026 — dashboard and trust model overhaul",
+        "description": "The local dashboard, creator pipeline, and autonomous improvement loop were hardened for more reliable monitoring and rollout decisions."
+      },
+      "bullets": [
+        "Overhauled dashboard, trust, and creator-facing contribution surfaces so health signals are easier to interpret during active iteration.",
+        "Tightened the autonomous evolve and audit path to close reliability gaps in proposal rollout and monitoring.",
+        "Added CLI auto-update, richer structured errors, description quality scoring, and unblock suggestions for faster operator recovery."
+      ],
+      "versionRange": {
+        "from": "0.2.14",
+        "to": "0.2.19"
+      }
+    },
+    {
+      "label": "2026-03-08",
+      "description": "v0.2.0",
+      "tags": ["OSS", "CLI", "Dashboard"],
+      "rss": {
+        "title": "March 2026 — full body evolution and synthetic evals",
+        "description": "selftune added full skill body evolution, synthetic eval generation, cheaper validation loops, and a live local dashboard server."
+      },
+      "bullets": [
+        "Added full skill body evolution so selftune can refine routing tables and larger skill bodies instead of only short descriptions.",
+        "Added synthetic eval generation to help new skills bootstrap without waiting for a large session history.",
+        "Introduced cheaper validation loops, activation rules, specialized agents, and a live local dashboard server for faster iteration.",
+        "Read more in the [evolution concept guide](/concepts/evolution) and the [dashboard command reference](/cli/dashboard)."
+      ],
+      "versionRange": {
+        "from": "0.2.0",
+        "to": "0.2.0"
+      }
+    },
+    {
+      "label": "2026-03-01",
+      "description": "v0.1.4",
+      "tags": ["OSS", "CLI", "Community"],
+      "rss": {
+        "title": "March 2026 — status surfaces and community export",
+        "description": "selftune introduced status and last summaries, a local dashboard, Claude transcript backfill, and opt-in community contribution export."
+      },
+      "bullets": [
+        "Added `selftune status` and `selftune last` so you can check skill health without opening the full dashboard.",
+        "Added a local dashboard and Claude transcript backfill to make retroactive analysis practical on existing projects.",
+        "Added opt-in community export so you can share anonymized signals back to the ecosystem."
+      ],
+      "versionRange": {
+        "from": "0.1.4",
+        "to": "0.1.4"
+      }
+    },
+    {
+      "label": "2026-02-28",
+      "description": "v0.1.0",
+      "tags": ["OSS", "CLI", "Platforms"],
+      "rss": {
+        "title": "February 2026 — initial selftune launch",
+        "description": "The first public release introduced the CLI, Claude Code hooks, session grading, trigger evaluation, evolution, and post-deploy monitoring."
+      },
+      "bullets": [
+        "Shipped the initial CLI with `init`, `grade`, `eval`, `evolve`, `watch`, `doctor`, and platform ingest commands.",
+        "Added Claude Code hooks for prompt capture, skill evaluation, and end-of-session telemetry.",
+        "Introduced the initial observe → detect → evolve → watch loop that the rest of the product builds on today."
+      ],
+      "versionRange": {
+        "from": "0.1.0",
+        "to": "0.1.0"
+      }
+    }
+  ]
+}

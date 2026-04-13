@@ -103,6 +103,13 @@ jobs:
         id: publish
         run: npm publish "${{ steps.pack.outputs.tarball }}" --provenance --access public
 
+      - name: Resolve previous tag
+        if: steps.check.outputs.should_publish == 'true' && steps.publish.outcome == 'success'
+        id: previous-tag
+        run: |
+          PREVIOUS=$(git tag --list 'v*' --sort=-version:refname | head -n1)
+          echo "tag=$PREVIOUS" >> "$GITHUB_OUTPUT"
+
       - name: Generate SBOM
         if: steps.check.outputs.should_publish == 'true' && steps.publish.outcome == 'success'
         run: |
@@ -119,13 +126,25 @@ jobs:
         with:
           subject-path: "${{ steps.pack.outputs.tarball }}"
 
+      - name: Render release notes
+        if: steps.check.outputs.should_publish == 'true' && steps.publish.outcome == 'success'
+        run: |
+          ARGS=(
+            --version "${{ steps.check.outputs.current }}"
+            --output .github/release-body.md
+          )
+          if [ -n "${{ steps.previous-tag.outputs.tag }}" ]; then
+            ARGS+=(--previous-tag "${{ steps.previous-tag.outputs.tag }}")
+          fi
+          bun run scripts/render-release-notes.ts "${ARGS[@]}"
+
       - name: Create GitHub Release
         if: steps.check.outputs.should_publish == 'true' && steps.publish.outcome == 'success'
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
         with:
           tag_name: v${{ steps.check.outputs.current }}
           name: v${{ steps.check.outputs.current }}
-          generate_release_notes: true
+          body_path: .github/release-body.md
           make_latest: true
           files: |
             ${{ steps.pack.outputs.tarball }}
