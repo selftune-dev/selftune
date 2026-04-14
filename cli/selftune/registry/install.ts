@@ -8,6 +8,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 
 import { registryRequest } from "./client.js";
+import { installFromGithubTarget, parseGithubRegistryInstallTarget } from "./github-install.js";
 
 export async function cliMain() {
   const args = process.argv.slice(2);
@@ -17,11 +18,43 @@ export async function cliMain() {
   if (!name) {
     console.error(
       JSON.stringify({
-        error: "Usage: selftune registry install <name>",
+        error: "Usage: selftune registry install <name|github:owner/repo[@ref][//path]>",
         guidance: { next_command: "selftune registry list" },
       }),
     );
     process.exit(1);
+  }
+
+  let githubTarget = null;
+  try {
+    githubTarget = parseGithubRegistryInstallTarget(name);
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Invalid GitHub install target",
+        guidance: {
+          next_command: "selftune registry install github:owner/repo//path",
+        },
+      }),
+    );
+    process.exit(1);
+  }
+
+  if (githubTarget) {
+    try {
+      await installFromGithubTarget(name, globalFlag);
+      return;
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          error: error instanceof Error ? error.message : "GitHub install failed",
+          guidance: {
+            next_command: "selftune registry install github:owner/repo//path",
+          },
+        }),
+      );
+      process.exit(1);
+    }
   }
 
   // Find entry by name
@@ -49,7 +82,12 @@ export async function cliMain() {
   // Get detail with versions
   const detailResult = await registryRequest<{
     entry: { id: string; name: string };
-    versions: Array<{ id: string; version: string; content_hash: string; is_current: boolean }>;
+    versions: Array<{
+      id: string;
+      version: string;
+      content_hash: string;
+      is_current: boolean;
+    }>;
   }>("GET", `/${entryId}`);
 
   if (!detailResult.success) {
@@ -71,7 +109,9 @@ export async function cliMain() {
       latest_content_hash: string;
     }>;
   }>("POST", "/sync", {
-    body: { installations: [{ entry_id: entryId, current_version_hash: "none" }] },
+    body: {
+      installations: [{ entry_id: entryId, current_version_hash: "none" }],
+    },
   });
 
   const downloadUrl = syncResult.data?.entries?.[0]?.download_url;
@@ -82,7 +122,9 @@ export async function cliMain() {
 
   // Download archive
   console.log(`Installing ${name} v${currentVersion.version}...`);
-  const response = await fetch(downloadUrl, { signal: AbortSignal.timeout(60_000) });
+  const response = await fetch(downloadUrl, {
+    signal: AbortSignal.timeout(60_000),
+  });
   if (!response.ok) {
     console.error(JSON.stringify({ error: `Download failed: HTTP ${response.status}` }));
     process.exit(1);
@@ -119,13 +161,22 @@ export async function cliMain() {
 
   // Update local state
   const statePath = join(process.env.HOME || "~", ".selftune", "registry-state.json");
-  let state: Array<{ entryId: string; name: string; versionHash: string; installPath: string }> =
-    [];
+  let state: Array<{
+    entryId: string;
+    name: string;
+    versionHash: string;
+    installPath: string;
+  }> = [];
   try {
     state = JSON.parse(readFileSync(statePath, "utf-8"));
   } catch {}
   state = state.filter((s) => s.entryId !== entryId);
-  state.push({ entryId, name, versionHash: currentVersion.content_hash, installPath: targetDir });
+  state.push({
+    entryId,
+    name,
+    versionHash: currentVersion.content_hash,
+    installPath: targetDir,
+  });
   await mkdir(join(process.env.HOME || "~", ".selftune"), { recursive: true });
   await writeFile(statePath, JSON.stringify(state, null, 2));
 

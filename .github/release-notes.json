@@ -5,6 +5,17 @@
   "entries": [
     {
       "label": "2026-04-14",
+      "description": "Cloud GitHub registry foundation",
+      "tags": ["Cloud", "Registry"],
+      "rss": {
+        "title": "April 2026 — GitHub-backed registry connections arrive in cloud",
+        "description": "selftune cloud can now bind GitHub App installations to an org, manage repo-backed registry connections, and receive signed GitHub webhooks as the foundation for GitHub-native skill publishing."
+      },
+      "bullets": ["Added GitHub App installation binding for cloud orgs so a team can associate"],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-14",
       "description": "sqlite creator loop artifacts",
       "tags": ["OSS", "Dashboard", "CLI"],
       "rss": {
@@ -22,7 +33,10 @@
         "title": "April 2026 — dashboard creator-loop actions write canonical artifact paths",
         "description": "selftune now makes dashboard-triggered eval generation and unit-test generation write directly to canonical config paths instead of dropping relative artifacts into the current working directory."
       },
-      "bullets": ["Updated dashboard-triggered `generate-evals` to pass the canonical"],
+      "bullets": [
+        "Updated dashboard-triggered `generate-evals` to pass the canonical",
+        "Updated dashboard-triggered"
+      ],
       "versionRange": null
     },
     {
@@ -113,13 +127,7 @@
         "title": "April 2026 — release automation repair and cleaner local dashboard flows",
         "description": "selftune repaired OSS release automation, blocked unintended dashboard indexing, and tightened the proposal review experience in the local dashboard."
       },
-      "bullets": [
-        "Repaired the OSS publish pipeline so npm releases can still generate SBOMs,",
-        "Blocked cloud dashboard indexing and added changelog coverage enforcement so",
-        "Opened registry publishing and rollback to Pro plans so solo skill creators",
-        "Tightened the local dashboard skill report around proposal deep links, kept",
-        "Unified cloud and OSS skill report styling around the shared trust status"
-      ],
+      "bullets": ["Repaired the OSS publish pipeline so npm releases can still generate SBOMs,"],
       "versionRange": {
         "from": "0.2.24",
         "to": "0.2.27"

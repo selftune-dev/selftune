@@ -4,20 +4,21 @@ Manage versioned skill distribution across your team. Push skill folders to the 
 
 ## Commands
 
-| Command | Flags | What It Does |
-|---------|-------|-------------|
-| `selftune registry push [name]` | `--version=<semver>` `--summary=<text>` | Archive current skill folder and push as a new version |
-| `selftune registry install <name>` | `--global` | Download and extract a skill from the registry |
-| `selftune registry sync` | | Check all installed entries for updates, pull latest |
-| `selftune registry status` | | Show installed entries with version drift |
-| `selftune registry rollback <name>` | `--to=<version>` `--reason=<text>` | Rollback a skill to a previous version |
-| `selftune registry history <name>` | | Show version timeline with quality data |
-| `selftune registry list` | | Show all published entries in the org |
+| Command                                                             | Flags                                   | What It Does                                                     |
+| ------------------------------------------------------------------- | --------------------------------------- | ---------------------------------------------------------------- |
+| `selftune registry push [name]`                                     | `--version=<semver>` `--summary=<text>` | Archive current skill folder and push as a new version           |
+| `selftune registry install <name\|github:owner/repo[@ref][//path]>` | `--global`                              | Download from the registry or clone/install directly from GitHub |
+| `selftune registry sync`                                            |                                         | Check all installed entries for updates, pull latest             |
+| `selftune registry status`                                          |                                         | Show installed entries with version drift                        |
+| `selftune registry rollback <name>`                                 | `--to=<version>` `--reason=<text>`      | Rollback a skill to a previous version                           |
+| `selftune registry history <name>`                                  |                                         | Show version timeline with quality data                          |
+| `selftune registry list`                                            |                                         | Show all published entries in the org                            |
 
 ## When to Use
 
 - User says "push this skill to the team" → `selftune registry push`
 - User says "install the deploy skill" → `selftune registry install deploy`
+- User says "install this GitHub skill repo" → `selftune registry install github:owner/repo`
 - User says "update my skills" or "sync registry" → `selftune registry sync`
 - User says "check for updates" → `selftune registry status`
 - User says "rollback the deploy skill" → `selftune registry rollback deploy`
@@ -34,10 +35,13 @@ Manage versioned skill distribution across your team. Push skill folders to the 
 
 ## Install Workflow
 
-1. Run `selftune registry install <name>` to pull from the registry
+1. Run `selftune registry install <name>` to pull from the registry, or
+   `selftune registry install github:owner/repo[@ref][//path]` to clone and
+   install directly from GitHub using local git credentials
 2. By default, installs to `.claude/skills/<name>/` in the current project
 3. Use `--global` to install to `~/.claude/skills/<name>/` (available everywhere)
-4. Installation is tracked — `selftune registry status` shows what's installed
+4. Registry installs are tracked by `selftune registry status`; direct GitHub
+   installs are local-only and do not participate in `registry sync`
 
 ## Sync Workflow
 
@@ -82,8 +86,10 @@ All commands output JSON for agent consumption:
 
 **User wants to install a shared skill**
 
-> Run `selftune registry install <name>`. Use `--global` if they want it
-> available across all projects.
+> Run `selftune registry install <name>` for a cloud-published skill, or
+> `selftune registry install github:owner/repo[@ref][//path]` if they want to
+> install directly from GitHub. Use `--global` if they want it available across
+> all projects.
 
 **User wants to check what's outdated**
 

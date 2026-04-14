@@ -217,7 +217,7 @@ export const DASHBOARD_ROUTE_MANIFEST: readonly DashboardRouteManifestEntry[] = 
     icon: PackageIcon,
     feature: "registry",
     discoverableFeature: "registry",
-    lockedTitle: "Cloud Registry lives in Selftune Cloud",
+    lockedTitle: "Cloud Registry lives in selftune Cloud",
     lockedBody:
       "Publish versioned skills, watch installations across projects, and roll back bad versions from a single cloud workspace.",
     lockedHighlights: [
@@ -255,7 +255,7 @@ export const DASHBOARD_ROUTE_MANIFEST: readonly DashboardRouteManifestEntry[] = 
     icon: UsersIcon,
     feature: "signals",
     discoverableFeature: "signals",
-    lockedTitle: "Contributor signals run through Selftune Cloud",
+    lockedTitle: "Contributor signals run through selftune Cloud",
     lockedBody:
       "See anonymized contributor signals, compare bundle submissions, and turn real-world usage into proposals without leaving the shared dashboard.",
     lockedHighlights: [

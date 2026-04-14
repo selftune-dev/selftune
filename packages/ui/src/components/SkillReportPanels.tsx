@@ -379,7 +379,7 @@ function narrativeObservedText({
     promptLinkRate != null
       ? ` It could link ${formatRate(promptLinkRate)} of those checks back to prompts.`
       : "";
-  return `Selftune watched ${checks} skill checks across ${sessions} sessions.${promptClause}`;
+  return `selftune watched ${checks} skill checks across ${sessions} sessions.${promptClause}`;
 }
 
 function narrativeDiagnosisText({
@@ -411,17 +411,17 @@ function narrativeDecisionText({
 }) {
   switch (trustState) {
     case "validated":
-      return `Selftune found a candidate that looks promising, but it has not been deployed yet. ${nextActionText}`;
+      return `selftune found a candidate that looks promising, but it has not been deployed yet. ${nextActionText}`;
     case "deployed":
-      return `A change has already been deployed for this skill. Selftune is now watching for regressions in real use.`;
+      return `A change has already been deployed for this skill. selftune is now watching for regressions in real use.`;
     case "rolled_back":
       return `A previous change was rolled back, so the live skill is back on the safer version while selftune keeps observing.`;
     case "watch":
-      return `Selftune sees enough signal to keep a close eye on this skill, but not enough to blindly change it. ${nextActionText}`;
+      return `selftune sees enough signal to keep a close eye on this skill, but not enough to blindly change it. ${nextActionText}`;
     case "observed":
-      return `Selftune is still learning how people use this skill before making stronger recommendations.`;
+      return `selftune is still learning how people use this skill before making stronger recommendations.`;
     case "low_sample":
-      return `There is not enough evidence yet to trust a big change here. Selftune is still collecting examples.`;
+      return `There is not enough evidence yet to trust a big change here. selftune is still collecting examples.`;
     default:
       return latestAction
         ? `The latest automated decision for this skill was ${latestAction}. ${nextActionText}`
@@ -552,7 +552,7 @@ export function SkillTrustNarrativePanel({
           />
         </div>
         <div className="rounded-xl border border-border/10 bg-muted/15 px-4 py-3 text-sm text-muted-foreground">
-          If a proposal is rejected or still pending, your live skill has not changed yet. Selftune
+          If a proposal is rejected or still pending, your live skill has not changed yet. selftune
           only earns trust by testing changes before deployment.
         </div>
       </CardContent>

@@ -24,7 +24,7 @@ Usage:
 
 Subcommands:
   push [name]          Push current skill folder as a new version
-  install <name>       Download and install a skill from the registry
+  install <name>       Download from the registry or install github:owner/repo[@ref][//path]
   sync                 Check for updates and pull latest versions
   status               Show installed entries and version drift
   rollback <name>      Rollback to a previous version
