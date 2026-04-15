@@ -19,10 +19,10 @@ For OpenClaw-specific scheduling, see `workflows/Cron.md`.
 The core selftune automation loop is one command:
 
 ```bash
-selftune orchestrate
+selftune run
 ```
 
-`selftune orchestrate` runs source-truth sync first, selects candidate skills,
+`selftune run` runs source-truth sync first, selects candidate skills,
 deploys validated low-risk description changes autonomously, and watches recent
 deployments with auto-rollback enabled.
 

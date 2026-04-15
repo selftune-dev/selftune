@@ -10,9 +10,10 @@
  *   GET  /api/v2/overview      — SQLite-backed overview payload
  *   GET  /api/v2/analytics     — Performance analytics (trends, rankings, heatmap)
  *   GET  /api/v2/skills/:name  — SQLite-backed per-skill report
- *   POST /api/actions/watch    — Trigger `selftune watch` for a skill
- *   POST /api/actions/evolve   — Trigger `selftune evolve` for a skill
- *   POST /api/actions/rollback — Trigger `selftune rollback` for a skill
+ *   POST /api/actions/create-check — Trigger `selftune create check` for a draft package
+ *   POST /api/actions/watch        — Trigger `selftune watch` for a skill
+ *   POST /api/actions/evolve       — Trigger `selftune evolve` for a skill
+ *   POST /api/actions/rollback     — Trigger `selftune rollback` for a skill
  *   POST /api/actions/watchlist — Persist creator watchlist preferences
  *   GET  /badge/:name          — Skill health badge
  *   GET  /report/:name         — Skill health report HTML
@@ -676,7 +677,7 @@ export async function startDashboardServer(options?: DashboardServerOptions): Pr
         return serveSpaShell(spaDir);
       }
 
-      // ---- POST /api/actions/{watch,evolve,rollback,watchlist} ----
+      // ---- POST /api/actions/{create-check,watch,evolve,rollback,watchlist} ----
       if (url.pathname.startsWith("/api/actions/") && req.method === "POST") {
         const trustedActionOrigins = allowedDashboardOrigins(hostname, boundPort);
         const origin = req.headers.get("origin");

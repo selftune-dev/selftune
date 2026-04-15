@@ -255,7 +255,7 @@ selftune recover --full --force
 ### 9. Autonomy Scheduling
 
 Init automatically installs OS-level scheduling (launchd on macOS, cron/systemd
-on Linux) so `selftune orchestrate` runs in the background. This is equivalent
+on Linux) so `selftune run` runs in the background. This is equivalent
 to running `selftune cron setup` manually.
 
 Skip with `--no-autonomy` if you prefer manual orchestration only.
@@ -377,9 +377,9 @@ prompt/query text in addition to skill/session/evolution metadata.
 
 ### Upload Behavior
 
-Once enrolled, `selftune orchestrate` automatically uploads new session,
+Once enrolled, `selftune run` automatically uploads new session,
 invocation, and evolution data to the cloud API at the end of each run.
-This upload step is fail-open -- errors never block the orchestrate loop.
+This upload step is fail-open -- errors never block the autonomous loop.
 Use `selftune alpha upload` for manual uploads or `selftune alpha upload --dry-run`
 to preview what would be sent.
 

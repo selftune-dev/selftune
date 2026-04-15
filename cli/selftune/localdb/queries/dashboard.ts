@@ -14,6 +14,7 @@ import type {
   SkillUsageRecord,
   TelemetryRecord,
 } from "../../dashboard-contract.js";
+import { computeCreateDashboardReadiness, isCreateSkillDraft } from "../../create/readiness.js";
 import { queryEvolutionEvidence, getPendingProposals } from "./evolution.js";
 import { safeParseJsonArray } from "./json.js";
 import { queryTrustedSkillObservationRows } from "./trust.js";
@@ -596,7 +597,29 @@ export function getSkillsList(
   const testingReadinessBySkill = new Map(
     testingReadiness.map((row) => [row.skill_name, row] as const),
   );
+  const createReadinessBySkill = new Map(
+    testingReadiness
+      .flatMap((row) => {
+        if (!row.skill_path || !isCreateSkillDraft(row.skill_path)) return [];
+        try {
+          return [
+            [
+              row.skill_name,
+              computeCreateDashboardReadiness(row.skill_path, {
+                getTestingReadiness: () => row,
+              }),
+            ] as const,
+          ];
+        } catch {
+          return [];
+        }
+      })
+      .filter(Boolean),
+  );
   const knownSkills = new Set<string>(bySkill.keys());
+  for (const skillName of createReadinessBySkill.keys()) {
+    knownSkills.add(skillName);
+  }
 
   return [...knownSkills]
     .map((skillName) => {
@@ -616,13 +639,19 @@ export function getSkillsList(
             withConfidence.length
           : null;
       const readiness = testingReadinessBySkill.get(skillName);
+      const createReadiness = createReadinessBySkill.get(skillName);
       const fallbackScope =
         readiness?.skill_path != null ? classifySkillPath(readiness.skill_path).skill_scope : null;
+      const createScope =
+        createReadiness?.skill_path != null
+          ? classifySkillPath(createReadiness.skill_path).skill_scope
+          : null;
 
       return {
         skill_name: skillName,
         skill_scope:
           scopeBySkill.get(skillName) ??
+          (createScope && createScope !== "unknown" ? createScope : null) ??
           (fallbackScope && fallbackScope !== "unknown" ? fallbackScope : null),
         total_checks: totalChecks,
         triggered_count: triggeredCount,
@@ -633,6 +662,7 @@ export function getSkillsList(
         routing_confidence: routingConfidence,
         confidence_coverage: totalChecks > 0 ? withConfidence.length / totalChecks : 0,
         testing_readiness: readiness,
+        create_readiness: createReadiness,
       };
     })
     .sort(

@@ -372,8 +372,8 @@ describe("evolve orchestrator", () => {
     expect(mockGenerateProposal.mock.calls.length).toBe(0);
   });
 
-  // 3. Low confidence -> rejected with reason
-  test("low confidence proposal is rejected", async () => {
+  // 3. Low confidence metadata does not bypass measured validation
+  test("low confidence proposal is still validated and can deploy", async () => {
     mockGenerateProposal.mockImplementation(async () => makeProposal({ confidence: 0.3 }));
 
     const opts = makeOptions({ confidenceThreshold: 0.6 });
@@ -381,17 +381,9 @@ describe("evolve orchestrator", () => {
 
     expect(result.proposal).not.toBeNull();
     expect(result.proposal?.confidence).toBe(0.3);
-    expect(result.deployed).toBe(false);
-    expect(result.reason.toLowerCase()).toContain("confidence");
-
-    // Should have a "rejected" audit entry
-    const rejectedCalls = mockAppendAuditEntry.mock.calls.filter(
-      (call: unknown[]) => (call[0] as EvolutionAuditEntry).action === "rejected",
-    );
-    expect(rejectedCalls.length).toBeGreaterThanOrEqual(1);
-
-    // validateProposal should NOT have been called
-    expect(mockValidateProposal.mock.calls.length).toBe(0);
+    expect(result.validation).not.toBeNull();
+    expect(result.deployed).toBe(true);
+    expect(mockValidateProposal.mock.calls.length).toBe(1);
   });
 
   // 4. Validation fails -> rejected with reason

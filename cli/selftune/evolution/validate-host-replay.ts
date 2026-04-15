@@ -1,5 +1,6 @@
 import {
   existsSync,
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -16,7 +17,13 @@ import {
   emitDashboardActionMetrics,
   emitDashboardActionProgress,
 } from "../dashboard-action-events.js";
-import type { EvalEntry, RoutingReplayEntryResult, RoutingReplayFixture } from "../types.js";
+import type {
+  EvalEntry,
+  ReplayStagingMode,
+  RuntimeReplayEntryMetrics,
+  RoutingReplayEntryResult,
+  RoutingReplayFixture,
+} from "../types.js";
 import type { DashboardActionMetrics } from "../dashboard-contract.js";
 import { parseFrontmatter } from "../utils/frontmatter.js";
 import {
@@ -45,6 +52,7 @@ interface ReplayWorkspace {
   skillRegistryDir: string;
   targetSkillPath: string;
   competingSkillPaths: string[];
+  allowedReadRoots: string[];
 }
 
 export type RuntimeReplayContentTarget = "routing" | "description" | "body";
@@ -65,6 +73,7 @@ export interface RuntimeReplayObservation {
   rawOutput: string;
   sessionId?: string;
   runtimeError?: string;
+  metrics?: DashboardActionMetrics;
 }
 
 export type RuntimeReplayInvoker = (
@@ -162,6 +171,7 @@ export function buildRoutingReplayFixture(options: {
   platform?: RoutingReplayFixture["platform"];
   fixtureId?: string;
   workspaceRoot?: string;
+  stagingMode?: ReplayStagingMode;
 }): RoutingReplayFixture {
   const targetSkillPath = resolveReplayPath(options.skillPath);
   const workspaceRoot =
@@ -175,6 +185,7 @@ export function buildRoutingReplayFixture(options: {
     target_skill_path: targetSkillPath,
     competing_skill_paths: listCompetingSkillPaths(targetSkillPath),
     ...(workspaceRoot ? { workspace_root: workspaceRoot } : {}),
+    ...(options.stagingMode ? { skill_staging_mode: options.stagingMode } : {}),
   };
 }
 
@@ -193,14 +204,32 @@ function buildRuntimeReplayTargetContent(
   return replaceSection(currentContent, "Workflow Routing", content.trim());
 }
 
+function copyDirectoryRecursive(sourceDir: string, destinationDir: string): void {
+  mkdirSync(destinationDir, { recursive: true });
+  for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
+    const sourcePath = join(sourceDir, entry.name);
+    const destinationPath = join(destinationDir, entry.name);
+    if (entry.isDirectory()) {
+      copyDirectoryRecursive(sourcePath, destinationPath);
+      continue;
+    }
+    copyFileSync(sourcePath, destinationPath);
+  }
+}
+
 function stageReplaySkill(
   registryDir: string,
   sourceSkillPath: string,
+  stagingMode: ReplayStagingMode,
   overrideContent?: string,
 ): string {
   const skillDirName = basename(dirname(sourceSkillPath)) || "unknown-skill";
   const destinationDir = join(registryDir, skillDirName);
-  mkdirSync(destinationDir, { recursive: true });
+  if (stagingMode === "package") {
+    copyDirectoryRecursive(dirname(sourceSkillPath), destinationDir);
+  } else {
+    mkdirSync(destinationDir, { recursive: true });
+  }
   const destinationPath = join(destinationDir, "SKILL.md");
   const content = overrideContent ?? readFileSync(sourceSkillPath, "utf8");
   writeFileSync(destinationPath, content, "utf8");
@@ -211,27 +240,43 @@ function buildRuntimeReplayWorkspace(
   fixture: RoutingReplayFixture,
   content: string,
   contentTarget: RuntimeReplayContentTarget,
+  includeTargetSkill: boolean = true,
 ): ReplayWorkspace {
   const rootDir = mkdtempSync(join(tmpdir(), "selftune-runtime-replay-"));
   try {
     const registryDir = join(rootDir, getRuntimeReplayRegistryRelativeDir(fixture.platform));
     mkdirSync(join(rootDir, ".git"), { recursive: true });
     mkdirSync(registryDir, { recursive: true });
-
-    const targetSkillPath = stageReplaySkill(
+    const stagingMode = fixture.skill_staging_mode ?? "routing";
+    const allowedReadRoots: string[] = [];
+    const targetSkillDir = join(
       registryDir,
-      fixture.target_skill_path,
-      buildRuntimeReplayTargetContent(fixture.target_skill_path, content, contentTarget),
+      basename(dirname(fixture.target_skill_path)) || "unknown-skill",
     );
+
+    const targetSkillPath = join(targetSkillDir, "SKILL.md");
+    if (includeTargetSkill) {
+      const stagedTargetSkillPath = stageReplaySkill(
+        registryDir,
+        fixture.target_skill_path,
+        stagingMode,
+        buildRuntimeReplayTargetContent(fixture.target_skill_path, content, contentTarget),
+      );
+      allowedReadRoots.push(dirname(stagedTargetSkillPath));
+    }
     const competingSkillPaths = fixture.competing_skill_paths.map((skillPath) =>
-      stageReplaySkill(registryDir, skillPath),
+      stageReplaySkill(registryDir, skillPath, stagingMode),
     );
+    for (const skillPath of competingSkillPaths) {
+      allowedReadRoots.push(dirname(skillPath));
+    }
 
     return {
       rootDir,
       skillRegistryDir: registryDir,
       targetSkillPath,
       competingSkillPaths,
+      allowedReadRoots,
     };
   } catch (error) {
     rmSync(rootDir, { recursive: true, force: true });
@@ -431,6 +476,42 @@ export function extractClaudeRuntimeReplayMetrics(line: string): DashboardAction
   }
 
   return null;
+}
+
+function mergeRuntimeReplayDashboardMetrics(
+  previous: DashboardActionMetrics | null,
+  next: DashboardActionMetrics,
+): DashboardActionMetrics {
+  if (!previous) return next;
+
+  return {
+    platform: next.platform ?? previous.platform,
+    model: next.model ?? previous.model,
+    session_id: next.session_id ?? previous.session_id,
+    input_tokens: next.input_tokens ?? previous.input_tokens,
+    output_tokens: next.output_tokens ?? previous.output_tokens,
+    cache_creation_input_tokens:
+      next.cache_creation_input_tokens ?? previous.cache_creation_input_tokens,
+    cache_read_input_tokens: next.cache_read_input_tokens ?? previous.cache_read_input_tokens,
+    total_cost_usd: next.total_cost_usd ?? previous.total_cost_usd,
+    duration_ms: next.duration_ms ?? previous.duration_ms,
+    num_turns: next.num_turns ?? previous.num_turns,
+  };
+}
+
+function buildRuntimeReplayEntryMetrics(
+  metrics: DashboardActionMetrics | undefined,
+  elapsedMs: number,
+): RuntimeReplayEntryMetrics {
+  return {
+    input_tokens: metrics?.input_tokens ?? null,
+    output_tokens: metrics?.output_tokens ?? null,
+    cache_creation_input_tokens: metrics?.cache_creation_input_tokens ?? null,
+    cache_read_input_tokens: metrics?.cache_read_input_tokens ?? null,
+    total_cost_usd: metrics?.total_cost_usd ?? null,
+    duration_ms: metrics?.duration_ms ?? elapsedMs,
+    num_turns: metrics?.num_turns ?? null,
+  };
 }
 
 async function readStreamText(
@@ -725,10 +806,14 @@ async function invokeClaudeRuntimeReplay(
   });
   const timeout = setTimeout(() => proc.kill(), CLAUDE_RUNTIME_REPLAY_TIMEOUT_MS);
 
+  let latestMetrics: DashboardActionMetrics | null = null;
   const [stdoutText, stderrText, exitCode] = await Promise.all([
     readStreamText(proc.stdout, (line) => {
       const metrics = extractClaudeRuntimeReplayMetrics(line);
-      if (metrics) emitDashboardActionMetrics(metrics);
+      if (metrics) {
+        latestMetrics = mergeRuntimeReplayDashboardMetrics(latestMetrics, metrics);
+        emitDashboardActionMetrics(latestMetrics);
+      }
     }),
     new Response(proc.stderr).text(),
     proc.exited,
@@ -746,6 +831,7 @@ async function invokeClaudeRuntimeReplay(
 
   return {
     ...observation,
+    ...(latestMetrics ? { metrics: latestMetrics } : {}),
     ...(combinedError ? { runtimeError: combinedError } : {}),
   };
 }
@@ -850,10 +936,9 @@ function evaluateRuntimeReplayObservation(
   const normalizedReadPaths = new Set(
     observation.readSkillPaths.map((path) => resolveObservedReplayPath(path, workspace.rootDir)),
   );
-  const allowedReadPaths = new Set([
-    resolveReplayPath(workspace.targetSkillPath),
-    ...workspace.competingSkillPaths.map(resolveReplayPath),
-  ]);
+  const allowedReadRoots = workspace.allowedReadRoots.map(resolveReplayPath);
+  const isAllowedReadPath = (path: string): boolean =>
+    allowedReadRoots.some((root) => path === root || path.startsWith(`${root}/`));
   const targetSkillName = fixture.target_skill_name.trim();
   const targetTriggered = observation.triggeredSkillNames.includes(targetSkillName);
   const competingTriggered = observation.triggeredSkillNames.find((skillName) =>
@@ -864,10 +949,16 @@ function evaluateRuntimeReplayObservation(
   const unrelatedTriggered = observation.triggeredSkillNames.find(
     (skillName) => skillName.trim() !== targetSkillName && skillName.trim() !== competingTriggered,
   );
-  const unrelatedReadPaths = [...normalizedReadPaths].filter((path) => !allowedReadPaths.has(path));
-  const targetRead = normalizedReadPaths.has(resolveReplayPath(workspace.targetSkillPath));
+  const unrelatedReadPaths = [...normalizedReadPaths].filter((path) => !isAllowedReadPath(path));
+  const targetReadRoot = resolveReplayPath(dirname(workspace.targetSkillPath));
+  const targetRead = [...normalizedReadPaths].some(
+    (path) => path === targetReadRoot || path.startsWith(`${targetReadRoot}/`),
+  );
   const competingRead = workspace.competingSkillPaths.find((skillPath) =>
-    normalizedReadPaths.has(resolveReplayPath(skillPath)),
+    [...normalizedReadPaths].some((path) => {
+      const root = resolveReplayPath(dirname(skillPath));
+      return path === root || path.startsWith(`${root}/`);
+    }),
   );
   const sessionPrefix = observation.sessionId
     ? `runtime replay session ${observation.sessionId}`
@@ -1126,6 +1217,7 @@ export function buildRuntimeReplayValidationOptions(options: {
   skillPath: string;
   agent: string | null | undefined;
   contentTarget?: RuntimeReplayContentTarget;
+  stagingMode?: ReplayStagingMode;
 }): ReplayValidationOptions | undefined {
   const platform = resolveRuntimeReplayPlatform(options.agent);
   if (!platform) return undefined;
@@ -1135,6 +1227,7 @@ export function buildRuntimeReplayValidationOptions(options: {
       skillName: options.skillName,
       skillPath: options.skillPath,
       platform,
+      stagingMode: options.stagingMode,
     });
 
     return {
@@ -1157,6 +1250,7 @@ export async function runHostRuntimeReplayFixture(options: {
   evalSet: EvalEntry[];
   fixture: RoutingReplayFixture;
   contentTarget?: RuntimeReplayContentTarget;
+  includeTargetSkill?: boolean;
   runtimeInvoker?: RuntimeReplayInvoker;
 }): Promise<RoutingReplayEntryResult[]> {
   const invokeRuntime =
@@ -1168,6 +1262,7 @@ export async function runHostRuntimeReplayFixture(options: {
       options.fixture,
       options.routing,
       options.contentTarget ?? "routing",
+      options.includeTargetSkill ?? true,
     );
     const results: RoutingReplayEntryResult[] = [];
     const total = options.evalSet.length;
@@ -1175,6 +1270,7 @@ export async function runHostRuntimeReplayFixture(options: {
     for (const [index, entry] of options.evalSet.entries()) {
       const current = index + 1;
       const querySnippet = truncateReplayText(entry.query, 120);
+      const startedAt = Date.now();
 
       emitDashboardActionProgress({
         current,
@@ -1200,6 +1296,10 @@ export async function runHostRuntimeReplayFixture(options: {
           options.fixture,
           observation,
           workspace,
+        );
+        result.runtime_metrics = buildRuntimeReplayEntryMetrics(
+          observation.metrics,
+          Date.now() - startedAt,
         );
         results.push(result);
 

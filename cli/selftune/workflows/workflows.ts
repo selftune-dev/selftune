@@ -8,9 +8,10 @@
  *  - cliMain()          (reads logs, discovers workflows, prints output or saves)
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
+import { writeCreateSkillDraft } from "../create/init.js";
 import { getDb } from "../localdb/db.js";
 import { querySessionTelemetry, querySkillUsageRecords } from "../localdb/queries.js";
 import type {
@@ -242,13 +243,12 @@ Options:
         );
       }
 
-      mkdirSync(draft.skill_dir, { recursive: true });
-      writeFileSync(draft.skill_path, draft.content, "utf-8");
+      writeCreateSkillDraft(draft, { force: values.force });
 
       if (values.json || !process.stdout.isTTY) {
         console.log(JSON.stringify({ ...draft, written: true }, null, 2));
       } else {
-        console.log(`Scaffolded skill "${draft.skill_name}" to ${draft.skill_path}`);
+        console.log(`Scaffolded skill package "${draft.skill_name}" to ${draft.skill_dir}`);
       }
       return;
     }

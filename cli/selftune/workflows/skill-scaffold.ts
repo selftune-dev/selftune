@@ -1,23 +1,20 @@
 /**
  * skill-scaffold.ts
  *
- * Builds draft workflow skills from repeated telemetry-discovered workflows.
- * The draft is preview-first by default so agents can review the scaffold before
- * writing it into a local skill registry.
+ * Builds draft workflow skill packages from repeated telemetry-discovered
+ * workflows. The draft is preview-first by default so agents can review the
+ * scaffold before writing it into a local skill registry.
  */
 
 import { join } from "node:path";
 
+import type { CreateSkillDraft } from "../create/templates.js";
+import { buildCreateSkillDraft } from "../create/templates.js";
 import type { DiscoveredWorkflow } from "../types.js";
 import { findGitRepositoryRoot } from "../utils/skill-discovery.js";
 
-export interface WorkflowSkillDraft {
+export interface WorkflowSkillDraft extends CreateSkillDraft {
   title: string;
-  skill_name: string;
-  description: string;
-  output_dir: string;
-  skill_dir: string;
-  skill_path: string;
   content: string;
   source_workflow: {
     workflow_id: string;
@@ -33,6 +30,7 @@ export interface WorkflowSkillDraftOptions {
   skillName?: string;
   description?: string;
   cwd?: string;
+  generatedBy?: string;
 }
 
 const STOPWORDS = new Set([
@@ -85,35 +83,16 @@ function deriveBaseLabel(workflow: DiscoveredWorkflow): string {
   return `${workflow.skills.join(" ")} workflow`;
 }
 
+export function getDefaultWorkflowSkillOutputDir(cwd: string = process.cwd()): string {
+  const repoRoot = findGitRepositoryRoot(cwd);
+  return join(repoRoot ?? cwd, ".agents", "skills");
+}
+
 function formatList(items: string[]): string {
   if (items.length === 0) return "";
   if (items.length === 1) return items[0];
   if (items.length === 2) return `${items[0]} and ${items[1]}`;
   return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
-}
-
-function wrapFoldedScalar(value: string, width = 78): string[] {
-  const words = value.split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let current = "";
-
-  for (const word of words) {
-    const candidate = current.length === 0 ? word : `${current} ${word}`;
-    if (candidate.length > width && current.length > 0) {
-      lines.push(`  ${current}`);
-      current = word;
-    } else {
-      current = candidate;
-    }
-  }
-
-  if (current.length > 0) lines.push(`  ${current}`);
-  return lines.length > 0 ? lines : ["  "];
-}
-
-export function getDefaultWorkflowSkillOutputDir(cwd: string = process.cwd()): string {
-  const repoRoot = findGitRepositoryRoot(cwd);
-  return join(repoRoot ?? cwd, ".agents", "skills");
 }
 
 export function buildWorkflowSkillDescription(
@@ -131,16 +110,15 @@ export function buildWorkflowSkillDescription(
   return `Use when the task consistently needs ${chain} in sequence.`;
 }
 
-export function buildWorkflowSkillContent(
+function buildWorkflowSkillContent(
   workflow: DiscoveredWorkflow,
   title: string,
   skillName: string,
   description: string,
+  generatedBy: string,
 ): string {
-  const workflowName = title.endsWith("Workflow") ? title : `${title} Workflow`;
   const chain = workflow.skills.join(" → ");
   const query = workflow.representative_query.trim();
-  const foldedDescription = wrapFoldedScalar(description).join("\n");
 
   const whenToUseLines =
     query.length > 0
@@ -150,47 +128,119 @@ export function buildWorkflowSkillContent(
         ]
       : [`- The request repeatedly needs this skill chain: ${chain}`];
 
-  const executionPlanLines = workflow.skills.map(
-    (skill, index) =>
-      `${index + 1}. Invoke \`${skill}\` in its established role for this workflow.`,
-  );
-
   return `---
 name: ${skillName}
 description: >
-${foldedDescription}
+  ${description}
 metadata:
   author: selftune-autogen
   version: 0.1.0
-  category: developer-tools
-  generated_by: selftune workflows scaffold
+  category: custom
+  generated_by: ${generatedBy}
   source_workflow_id: ${workflow.workflow_id}
 ---
 
 # ${title}
 
-This draft skill was scaffolded by selftune from repeated workflow telemetry.
-Review the routing language and execution notes before broad distribution.
+This draft skill package was scaffolded by selftune from repeated workflow
+telemetry. Review the routing language and package contents before broad
+distribution.
 
 ## When to Use
 
 ${whenToUseLines.join("\n")}
 
-## Execution Plan
+## Workflow Routing
 
-${executionPlanLines.join("\n")}
+| Trigger | Workflow | File |
+| --- | --- | --- |
+| Default execution path | Default | workflows/default.md |
 
-## Workflows
+## Package Resources
 
-### ${workflowName}
-- **Skills:** ${chain}
-${query.length > 0 ? `- **Trigger:** ${query}\n` : ""}- **Source:** Discovered from ${workflow.occurrence_count} sessions (synergy: ${workflow.synergy_score.toFixed(2)})
+- \`workflows/default.md\` contains the ordered execution steps for the workflow.
+- \`references/overview.md\` preserves the observed provenance and trigger
+  evidence from telemetry.
+- \`selftune.create.json\` records the package-level readiness hints for future
+  validation.
 
 ## Notes
 
-- This is a proposal scaffold, not a silently published marketplace skill.
+- This is a proposal scaffold, not a silently published skill.
+- Source workflow: ${chain}
 - Add tighter scope boundaries and richer examples before publishing.
 `;
+}
+
+function buildWorkflowDefaultContent(workflow: DiscoveredWorkflow, title: string): string {
+  const query = workflow.representative_query.trim();
+  const chain = workflow.skills.join(" → ");
+  const executionPlanLines = workflow.skills.map(
+    (skill, index) =>
+      `${index + 1}. Invoke \`${skill}\` in its established role for this workflow.`,
+  );
+
+  return `# ${title} Default Workflow
+
+## When to Use
+
+Use this after \`../SKILL.md\` has already matched the request.${query.length > 0 ? ` The representative trigger was "${query}".` : ""}
+
+## Goal
+
+Coordinate this repeated multi-skill chain without making the top-level router
+carry all of the execution detail: ${chain}.
+
+## Steps
+
+${executionPlanLines.join("\n")}
+
+## Notes
+
+- Provenance lives in \`../references/overview.md\`.
+- Replace these placeholders with concrete execution mechanics before shipping.
+`;
+}
+
+function buildWorkflowReferenceContent(workflow: DiscoveredWorkflow, title: string): string {
+  const query = workflow.representative_query.trim();
+  const chain = workflow.skills.join(" → ");
+
+  return `# ${title} Overview
+
+This package was scaffolded from observed workflow telemetry.
+
+## Provenance
+
+- Workflow ID: ${workflow.workflow_id}
+- Skills: ${chain}
+- Observed sessions: ${workflow.occurrence_count}
+- Synergy score: ${workflow.synergy_score.toFixed(2)}
+- Sequence consistency: ${Math.round(workflow.sequence_consistency * 100)}%
+- Completion rate: ${Math.round(workflow.completion_rate * 100)}%
+${query.length > 0 ? `- Representative trigger: ${query}` : "- Representative trigger: not captured"}
+
+## Authoring Notes
+
+- Keep the router lean in \`../SKILL.md\`.
+- Move detailed steps into \`../workflows/default.md\`.
+- Expand this file with examples, vocabulary, and edge cases as the skill matures.
+`;
+}
+
+function replaceDraftFile(
+  draft: CreateSkillDraft,
+  relativePath: string,
+  content: string,
+): CreateSkillDraft["files"] {
+  return draft.files.map((file) =>
+    file.relative_path === relativePath
+      ? {
+          ...file,
+          content,
+        }
+      : file,
+  );
 }
 
 export function buildWorkflowSkillDraft(
@@ -201,18 +251,38 @@ export function buildWorkflowSkillDraft(
   const skillName = slugifyWorkflowSkillName(baseLabel);
   const title = titleCase(baseLabel) || titleCase(`${workflow.skills.join(" ")} workflow`);
   const description = buildWorkflowSkillDescription(workflow, options.description);
-  const outputDir = options.outputDir?.trim() || getDefaultWorkflowSkillOutputDir(options.cwd);
-  const skillDir = join(outputDir, skillName);
-  const skillPath = join(skillDir, "SKILL.md");
+  const generatedBy = options.generatedBy?.trim() || "selftune workflows scaffold";
+  const baseDraft = buildCreateSkillDraft({
+    name: title,
+    description,
+    outputDir: options.outputDir,
+    cwd: options.cwd,
+  });
+  const skillContent = buildWorkflowSkillContent(
+    workflow,
+    title,
+    skillName,
+    description,
+    generatedBy,
+  );
+  const workflowContent = buildWorkflowDefaultContent(workflow, title);
+  const referenceContent = buildWorkflowReferenceContent(workflow, title);
+  const files = replaceDraftFile(baseDraft, "SKILL.md", skillContent).map((file) => {
+    if (file.relative_path === "workflows/default.md") {
+      return { ...file, content: workflowContent };
+    }
+    if (file.relative_path === "references/overview.md") {
+      return { ...file, content: referenceContent };
+    }
+    return file;
+  });
 
-  return {
+  const draft: WorkflowSkillDraft = {
+    ...baseDraft,
     title,
     skill_name: skillName,
-    description,
-    output_dir: outputDir,
-    skill_dir: skillDir,
-    skill_path: skillPath,
-    content: buildWorkflowSkillContent(workflow, title, skillName, description),
+    files,
+    content: "",
     source_workflow: {
       workflow_id: workflow.workflow_id,
       skills: workflow.skills,
@@ -221,6 +291,9 @@ export function buildWorkflowSkillDraft(
       representative_query: workflow.representative_query,
     },
   };
+
+  draft.content = formatWorkflowSkillDraft(draft);
+  return draft;
 }
 
 export function formatWorkflowSkillDraft(draft: WorkflowSkillDraft): string {
@@ -236,6 +309,11 @@ export function formatWorkflowSkillDraft(draft: WorkflowSkillDraft): string {
     lines.push(`Representative query: "${draft.source_workflow.representative_query.trim()}"`);
   }
 
-  lines.push("", draft.content.trimEnd());
+  lines.push("");
+  for (const file of draft.files) {
+    lines.push(`=== ${file.relative_path} ===`, file.content.trimEnd(), "");
+  }
+
+  lines.push("Empty directories:", "  - scripts/", "  - assets/");
   return lines.join("\n");
 }

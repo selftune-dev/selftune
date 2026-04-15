@@ -1,14 +1,16 @@
 import { timeAgo } from "@selftune/ui/lib";
 import { Badge, Card, CardContent, CardHeader, CardTitle } from "@selftune/ui/primitives";
-import { ActivityIcon, Loader2Icon } from "lucide-react";
+import * as Lucide from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { formatActionLabel, useLiveActionFeed } from "@/lib/live-action-feed";
+import { buildLiveRunHref } from "@/lib/live-run-link";
 
 function statusBadge(status: "running" | "success" | "error") {
   if (status === "running") {
     return (
       <Badge variant="secondary" className="gap-1">
-        <Loader2Icon className="size-3 animate-spin" />
+        <Lucide.Loader2 className="size-3 animate-spin" />
         Live
       </Badge>
     );
@@ -28,15 +30,20 @@ export function LiveActionFeed() {
       <Card className="pointer-events-auto border-border/40 bg-background/95 shadow-2xl backdrop-blur">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-sm">
-            <ActivityIcon className="size-4" />
-            Live creator loop
+            <Lucide.Activity className="size-4" />
+            Live lifecycle actions
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {entries.slice(0, 4).map((entry) => (
-            <div
+            <Link
               key={entry.id}
-              className="rounded-xl border border-border/20 bg-muted/20 px-3 py-2"
+              to={buildLiveRunHref({
+                event_id: entry.id,
+                action: entry.action,
+                skill_name: entry.skillName,
+              })}
+              className="block rounded-xl border border-border/20 bg-muted/20 px-3 py-2 transition-colors hover:border-primary/30 hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -58,7 +65,11 @@ export function LiveActionFeed() {
               {entry.error && entry.status === "error" ? (
                 <p className="mt-2 text-[11px] text-destructive line-clamp-2">{entry.error}</p>
               ) : null}
-            </div>
+              <div className="mt-2 flex items-center justify-end gap-1 text-[11px] font-medium text-primary">
+                <span>Live run</span>
+                <Lucide.ArrowRight className="size-3" />
+              </div>
+            </Link>
           ))}
         </CardContent>
       </Card>

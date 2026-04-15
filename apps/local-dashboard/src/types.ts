@@ -17,6 +17,7 @@ export type {
 // Types that remain local (only used by pages/hooks, not by shared components)
 export type {
   AnalyticsResponse,
+  CreatorOverviewStep,
   CreatorLoopNextStep,
   CreatorTestingOverview,
   AttentionCategory,
@@ -33,6 +34,11 @@ export type {
   DashboardActionName,
   DashboardActionProgress,
   DashboardActionResultSummary,
+  DashboardFrontierMember,
+  DashboardFrontierState,
+  DashboardSearchProvenance,
+  DashboardSearchRunSummary,
+  DashboardSearchRunView,
   DecisionKind,
   DoctorResult,
   ExampleRow,
@@ -61,3 +67,5 @@ export type {
   TrustState,
   TrustWatchlistEntry,
 } from "../../../cli/selftune/dashboard-contract";
+
+export type { CreateCheckReadiness, CreateCheckState } from "../../../cli/selftune/types";

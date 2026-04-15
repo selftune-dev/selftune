@@ -138,20 +138,19 @@ Report the interpretation to the user based on the lift value.
 Add `--with-baseline` to evolve commands to prevent wasting evolution
 cycles on skills that don't add value.
 
-### 4. Canonical creator loop position
+### 4. Canonical pipeline position
 
-Baseline is the last pre-deploy check in the default creator loop:
+Baseline is the last pre-deploy check in the package evaluation pipeline:
 
 ```bash
-selftune eval generate --skill <name>
-selftune eval unit-test --skill <name> --generate --skill-path <path>
-selftune evolve --skill <name> --skill-path <path> --dry-run --validation-mode replay
-selftune grade baseline --skill <name> --skill-path <path>
-selftune evolve --skill <name> --skill-path <path> --with-baseline
-selftune watch --skill <name>
+selftune verify --skill-path <path>
+selftune create baseline --skill-path <path> --mode package
+selftune verify --skill-path <path>
+selftune publish --skill-path <path>
 ```
 
-After that, the skill is ready for live deploy and then watch with much clearer trust evidence.
+For already-published skills, `grade baseline` remains the explicit value gate
+behind `evolve --with-baseline`.
 
 ## Common Patterns
 

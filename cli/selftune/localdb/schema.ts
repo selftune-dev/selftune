@@ -272,6 +272,32 @@ CREATE TABLE IF NOT EXISTS unit_test_run_results (
   result_json  TEXT NOT NULL
 )`;
 
+export const CREATE_PACKAGE_EVALUATION_REPORTS = `
+CREATE TABLE IF NOT EXISTS package_evaluation_reports (
+  skill_name    TEXT PRIMARY KEY,
+  stored_at     TEXT NOT NULL,
+  summary_json  TEXT NOT NULL
+)`;
+
+export const CREATE_PACKAGE_CANDIDATES = `
+CREATE TABLE IF NOT EXISTS package_candidates (
+  candidate_id              TEXT PRIMARY KEY,
+  skill_name                TEXT NOT NULL,
+  skill_path                TEXT NOT NULL,
+  package_fingerprint       TEXT NOT NULL,
+  parent_candidate_id       TEXT,
+  candidate_generation      INTEGER NOT NULL DEFAULT 0,
+  evaluation_count          INTEGER NOT NULL DEFAULT 0,
+  first_evaluated_at        TEXT NOT NULL,
+  last_evaluated_at         TEXT NOT NULL,
+  latest_status             TEXT NOT NULL,
+  latest_evaluation_source  TEXT,
+  latest_acceptance_decision TEXT,
+  artifact_path             TEXT,
+  summary_json              TEXT NOT NULL,
+  UNIQUE(skill_name, package_fingerprint)
+)`;
+
 // -- Improvement signal table (from signal_log.jsonl) ------------------------
 
 export const CREATE_IMPROVEMENT_SIGNALS = `
@@ -365,6 +391,21 @@ CREATE TABLE IF NOT EXISTS cron_runs (
   UNIQUE(job_name, started_at)
 )`;
 
+// -- Package search run table ------------------------------------------------
+
+export const CREATE_PACKAGE_SEARCH_RUNS = `
+CREATE TABLE IF NOT EXISTS package_search_runs (
+  search_id            TEXT PRIMARY KEY,
+  skill_name           TEXT NOT NULL,
+  parent_candidate_id  TEXT,
+  winner_candidate_id  TEXT,
+  winner_rationale     TEXT,
+  candidates_evaluated INTEGER NOT NULL,
+  provenance_json      TEXT NOT NULL,
+  started_at           TEXT NOT NULL,
+  completed_at         TEXT NOT NULL
+)`;
+
 // -- Metadata table -----------------------------------------------------------
 
 export const CREATE_META = `
@@ -419,6 +460,9 @@ export const CREATE_INDEXES = [
   `CREATE INDEX IF NOT EXISTS idx_canonical_eval_sets_stored_at ON canonical_eval_sets(stored_at)`,
   `CREATE INDEX IF NOT EXISTS idx_unit_test_files_stored_at ON unit_test_files(stored_at)`,
   `CREATE INDEX IF NOT EXISTS idx_unit_test_run_results_run_at ON unit_test_run_results(run_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_package_evaluation_reports_stored_at ON package_evaluation_reports(stored_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_package_candidates_skill_ts ON package_candidates(skill_name, last_evaluated_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_package_candidates_parent ON package_candidates(parent_candidate_id)`,
   // -- Improvement signal indexes ---------------------------------------------
   `CREATE INDEX IF NOT EXISTS idx_signals_session ON improvement_signals(session_id)`,
   `CREATE INDEX IF NOT EXISTS idx_signals_consumed ON improvement_signals(consumed)`,
@@ -447,6 +491,9 @@ export const CREATE_INDEXES = [
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_commit_dedup ON commit_tracking(session_id, commit_sha)`,
   // -- Cron run indexes -------------------------------------------------------
   `CREATE INDEX IF NOT EXISTS idx_cron_runs_job_ts ON cron_runs(job_name, started_at)`,
+  // -- Package search run indexes ---------------------------------------------
+  `CREATE INDEX IF NOT EXISTS idx_pkg_search_skill ON package_search_runs(skill_name)`,
+  `CREATE INDEX IF NOT EXISTS idx_pkg_search_ts ON package_search_runs(started_at)`,
 ];
 
 /**
@@ -512,6 +559,8 @@ export const MIGRATIONS = [
   `ALTER TABLE session_telemetry ADD COLUMN agent_summary TEXT`,
   // -- SHA256 content hashing for upload dedup --
   `ALTER TABLE canonical_upload_staging ADD COLUMN content_sha256 TEXT`,
+  // -- Package candidate measured acceptance state --
+  `ALTER TABLE package_candidates ADD COLUMN latest_acceptance_decision TEXT`,
 ];
 
 /** Indexes that depend on migration columns — must run AFTER MIGRATIONS. */
@@ -540,6 +589,8 @@ export const ALL_DDL = [
   CREATE_CANONICAL_EVAL_SETS,
   CREATE_UNIT_TEST_FILES,
   CREATE_UNIT_TEST_RUN_RESULTS,
+  CREATE_PACKAGE_EVALUATION_REPORTS,
+  CREATE_PACKAGE_CANDIDATES,
   CREATE_IMPROVEMENT_SIGNALS,
   CREATE_UPLOAD_QUEUE,
   CREATE_CREATOR_CONTRIBUTION_STAGING,
@@ -547,6 +598,7 @@ export const ALL_DDL = [
   CREATE_CANONICAL_UPLOAD_STAGING,
   CREATE_COMMIT_TRACKING,
   CREATE_CRON_RUNS,
+  CREATE_PACKAGE_SEARCH_RUNS,
   CREATE_META,
   ...CREATE_INDEXES,
 ];

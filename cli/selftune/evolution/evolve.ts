@@ -79,7 +79,7 @@ export interface EvolveOptions {
   evalSetPath?: string;
   agent: string;
   dryRun: boolean;
-  confidenceThreshold: number; // default 0.6
+  confidenceThreshold: number; // warning/review threshold, default 0.6
   maxIterations: number; // default 3
   gradingResults?: GradingResult[];
   paretoEnabled?: boolean;
@@ -713,23 +713,9 @@ export async function evolve(
       );
       llmCallCount += candidateCount;
 
-      // Filter by confidence threshold
-      const viableCandidates = candidates.filter((c) => c.confidence >= confidenceThreshold);
-
-      if (viableCandidates.length === 0) {
-        finishTui();
-        return withStats({
-          proposal: candidates[0] ?? null,
-          validation: null,
-          deployed: false,
-          auditEntries,
-          reason: `No candidates met confidence threshold ${confidenceThreshold}`,
-        });
-      }
-
       // Validate each candidate
       const paretoCandidates: ParetoCandidate[] = [];
-      for (const proposal of viableCandidates) {
+      for (const proposal of candidates) {
         recordAudit(
           proposal.proposal_id,
           "created",
@@ -855,7 +841,7 @@ export async function evolve(
       if (paretoCandidates.length === 0) {
         finishTui();
         return withStats({
-          proposal: viableCandidates[0],
+          proposal: candidates[0] ?? null,
           validation: null,
           deployed: false,
           auditEntries,
@@ -932,15 +918,12 @@ export async function evolve(
           // Re-evaluate stopping after a constitutional rejection by treating the
           // last entry in previousPassRates as the currentPassRate (or 0 on the
           // first iteration) and slicing it out of history before calling
-          // evaluateStoppingCriteria() with the current iteration/maxIterations,
-          // confidenceThreshold, and proposal.confidence.
+          // evaluateStoppingCriteria() with the current iteration/maxIterations.
           const constitutionStop = evaluateStoppingCriteria(
             previousPassRates.at(-1) ?? 0,
             previousPassRates.slice(0, -1),
             iteration + 1,
             maxIterations,
-            confidenceThreshold,
-            proposal.confidence,
           );
           recordAudit(
             proposal.proposal_id,
@@ -971,52 +954,7 @@ export async function evolve(
           continue;
         }
 
-        // Step 9: Check confidence threshold via stopping criteria
-        {
-          const preValidationStop = evaluateStoppingCriteria(
-            previousPassRates.at(-1) ?? 0,
-            previousPassRates.slice(0, -1),
-            iteration + 1,
-            maxIterations,
-            confidenceThreshold,
-            proposal.confidence,
-          );
-          if (proposal.confidence < confidenceThreshold) {
-            feedbackReason = `Confidence ${proposal.confidence} below threshold ${confidenceThreshold}`;
-            recordAudit(
-              proposal.proposal_id,
-              "rejected",
-              `${feedbackReason} (stopping: ${preValidationStop.reason})`,
-            );
-            recordEvidence({
-              timestamp: new Date().toISOString(),
-              proposal_id: proposal.proposal_id,
-              skill_name: skillName,
-              skill_path: skillPath,
-              target: "description",
-              stage: "rejected",
-              rationale: proposal.rationale,
-              confidence: proposal.confidence,
-              details: `${feedbackReason} (stopping: ${preValidationStop.reason})`,
-            });
-
-            // Use stopping criteria to decide whether to return or retry
-            if (preValidationStop.shouldStop) {
-              finishTui();
-              return withStats({
-                proposal: lastProposal,
-                validation: null,
-                deployed: false,
-                auditEntries,
-                reason: `${feedbackReason} (${preValidationStop.reason})`,
-              });
-            }
-
-            continue;
-          }
-        }
-
-        // Step 10: Validate against eval set
+        // Step 9: Validate against eval set
         const batchCount = Math.ceil(evalSet.length / TRIGGER_CHECK_BATCH_SIZE);
         tui.step(
           `Validating ${evalSet.length} entries (mode=${effectiveValidationMode}, ${batchCount} batches, ${VALIDATION_RUNS}x majority-vote)...`,
@@ -1038,7 +976,7 @@ export async function evolve(
           `Validation: ${(validation.before_pass_rate * 100).toFixed(1)}% \u2192 ${(validation.after_pass_rate * 100).toFixed(1)}% (improved: ${validation.improved})`,
         );
 
-        // Step 11: Audit "validated"
+        // Step 10: Audit "validated"
         const evalSnapshot: EvalPassRate = {
           total: evalSet.length,
           passed: Math.round(validation.after_pass_rate * evalSet.length),
@@ -1094,14 +1032,12 @@ export async function evolve(
           },
         });
 
-        // Step 12: Evaluate stopping criteria after validation
+        // Step 11: Evaluate stopping criteria after validation
         const stopping = evaluateStoppingCriteria(
           validation.after_pass_rate,
           previousPassRates,
           iteration + 1,
           maxIterations,
-          confidenceThreshold,
-          proposal.confidence,
         );
         previousPassRates.push(validation.after_pass_rate);
 
@@ -1710,7 +1646,7 @@ export async function cliMain(): Promise<void> {
       result.proposal.confidence < Number.parseFloat(values.confidence ?? "0.6")
     ) {
       console.error(
-        `  Confidence ${result.proposal.confidence.toFixed(2)} below threshold ${values.confidence ?? "0.6"}`,
+        `  Confidence ${result.proposal.confidence.toFixed(2)} below review threshold ${values.confidence ?? "0.6"} (validated anyway)`,
       );
     }
     // Targeted suggestions based on specific failure reason

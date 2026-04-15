@@ -959,7 +959,7 @@ export async function cliMain(): Promise<void> {
         level: "info",
         code: "alpha_upload_ready",
         message:
-          "Alpha enrollment complete. Uploads will run automatically during 'selftune orchestrate'. To enable scheduled background sync (includes evolve + watch + upload), run: selftune cron setup",
+          "Alpha enrollment complete. Uploads will run automatically during 'selftune run'. To enable scheduled background sync (includes evolve + watch + upload), run: selftune cron setup",
         next_command: "selftune alpha upload",
         optional_autonomy: "selftune cron setup",
       }),

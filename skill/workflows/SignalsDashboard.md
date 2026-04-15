@@ -51,9 +51,9 @@ These same thresholds gate proposal generation on the API side.
 4. If the user wants to help a skill reach threshold, route to the **Contribute** workflow
 5. If the user is the skill creator, use the Community page as the handoff into proposals and watch
 
-## Creator Loop
+## After-Ship Pipeline
 
-For a creator, the after-ship loop is:
+For a creator, the after-ship pipeline is:
 
 1. check whether the skill is low-signal or actionable
 2. inspect missed categories and grade distribution

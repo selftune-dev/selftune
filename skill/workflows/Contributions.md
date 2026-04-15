@@ -56,16 +56,16 @@ selftune contributions upload [--dry-run] [--retry-failed] [--limit <n>]
 
 ## Automatic Flush via Orchestrate
 
-When `selftune orchestrate` runs, it automatically flushes any staged
+When `selftune run` runs, it automatically flushes any staged
 creator-directed relay signals as Step 10 (after alpha upload). This means
 users who have opted in don't need to run `selftune contributions upload`
-manually — orchestrate handles it. The flush is fail-open and never blocks
-the orchestrate loop. An API key is required (alpha enrolled).
+manually — the runtime handles it. The flush is fail-open and never blocks
+the autonomous loop. An API key is required (alpha enrolled).
 
 ## Notes
 
 - This workflow now shows which installed skills are requesting creator-directed sharing via `selftune.contribute.json`.
-- Once approved, creator-directed contribution signals are staged locally during `selftune sync` / `selftune orchestrate`.
+- Once approved, creator-directed contribution signals are staged locally during `selftune sync` / `selftune run`.
 - Use `selftune contributions upload` to flush staged rows to the creator-directed relay endpoint.
 - Relay upload is separate from `selftune alpha upload` and currently reuses the local cloud API key when available.
 - Use `selftune contribute` when the user explicitly wants to export/share an anonymized community bundle.

@@ -72,7 +72,7 @@ staying stale.
 The dashboard connects to `/api/v2/events` via Server-Sent Events.
 The server watches the SQLite WAL file for changes and broadcasts an
 `update` event when new data is written. The dashboard also broadcasts
-`action` events while creator-loop commands are running so the UI can
+`action` events while lifecycle commands are running so the UI can
 show live stdout/stderr and terminal success/failure. This works for
 both dashboard-triggered actions and supported `selftune` commands run
 directly in another terminal, because the CLI writes a shared action
@@ -81,7 +81,7 @@ invalidates cached queries on updates and terminal action events (~1s
 latency for DB-backed updates).
 
 For demo or operator workflows, the skill report can open a dedicated
-live-run screen. That screen follows one active creator-loop run at a
+live-run screen. That screen follows one active lifecycle run at a
 time, keeps a larger terminal log visible, and shows parsed dry-run
 summary fields plus historical model/platform/token aggregates from the
 skill report. Replay dry-runs also attach live `metrics` events when the
@@ -105,7 +105,7 @@ See [docs/design-docs/live-dashboard-sse.md](../../docs/design-docs/live-dashboa
 Action buttons in the dashboard trigger selftune commands via POST
 requests. Each endpoint spawns a `bun run` subprocess.
 
-**Creator-loop and watch/deploy actions** request body:
+**Lifecycle and watch/deploy actions** request body:
 
 ```json
 {

@@ -43,8 +43,10 @@ import type {
   SkillUsageRecord,
 } from "../types.js";
 import { CLIError, handleCLIError } from "../utils/cli-error.js";
-import { detectLlmAgent } from "../utils/llm-call.js";
+import { MIN_LOG_READY_POSITIVES } from "../utils/eval-readiness.js";
+import { detectLlmAgent, isLlmBackedAgent } from "../utils/llm-call.js";
 import {
+  extractPositiveEvalQueryText,
   filterActionableQueryRecords,
   filterActionableSkillUsageRecords,
 } from "../utils/query-filter.js";
@@ -62,6 +64,36 @@ import { generateSyntheticEvals } from "./synthetic-evals.js";
 import { writeCanonicalEvalSet } from "../testing-readiness.js";
 
 export { classifyInvocation } from "./invocation-classifier.js";
+
+function resolveEvalGenerateAgent(requestedAgent?: string | null): string {
+  if (requestedAgent) {
+    if (!isLlmBackedAgent(requestedAgent)) {
+      throw new CLIError(
+        `Unsupported --agent value "${requestedAgent}".`,
+        "INVALID_FLAG",
+        "Use claude, codex, opencode, or pi.",
+      );
+    }
+    if (!Bun.which(requestedAgent)) {
+      throw new CLIError(
+        `Agent CLI '${requestedAgent}' not found in PATH`,
+        "AGENT_NOT_FOUND",
+        "Install it or omit --agent to use auto-detection",
+      );
+    }
+    return requestedAgent;
+  }
+
+  const detected = detectLlmAgent();
+  if (!detected) {
+    throw new CLIError(
+      "No agent CLI found (claude/codex/opencode/pi)",
+      "AGENT_NOT_FOUND",
+      "Install one of the supported agent CLIs",
+    );
+  }
+  return detected;
+}
 
 // ---------------------------------------------------------------------------
 // Query truncation
@@ -97,8 +129,8 @@ export function buildEvalSet(
   for (const r of actionableSkillRecords) {
     if (!r || typeof r.skill_name !== "string" || typeof r.query !== "string") continue;
     if (isHighConfidencePositiveSkillRecord(r, skillName)) {
-      const q = (r.query ?? "").trim();
-      if (q && q !== "(query not found)") {
+      const q = extractPositiveEvalQueryText(r.query, skillName);
+      if (q) {
         positiveQueries.add(q);
       }
     }
@@ -110,8 +142,8 @@ export function buildEvalSet(
   for (const r of actionableSkillRecords) {
     if (!r || typeof r.skill_name !== "string" || typeof r.query !== "string") continue;
     if (!isHighConfidencePositiveSkillRecord(r, skillName)) continue;
-    const q = (r.query ?? "").trim();
-    if (!q || q === "(query not found)" || seen.has(q)) continue;
+    const q = extractPositiveEvalQueryText(r.query, skillName);
+    if (!q || seen.has(q)) continue;
     seen.add(q);
     const entry: EvalEntry = {
       query: truncateQuery(q),
@@ -331,6 +363,7 @@ export function listEvalSkillReadiness(
     if (r.session_id) rawSessionCounts.get(name)?.add(r.session_id);
 
     if (!isHighConfidencePositiveSkillRecord(r, name)) continue;
+    if (!extractPositiveEvalQueryText(r.query ?? "", name)) continue;
     trustedTriggerCounts.set(name, (trustedTriggerCounts.get(name) ?? 0) + 1);
     if (!trustedSessionCounts.has(name)) trustedSessionCounts.set(name, new Set<string>());
     if (r.session_id) trustedSessionCounts.get(name)?.add(r.session_id);
@@ -354,7 +387,11 @@ export function listEvalSkillReadiness(
         installed,
         skill_path: installed ? findInstalledSkillPath(name, searchDirs) : undefined,
         readiness:
-          trustedTriggerCount > 0 ? "log_ready" : installed ? "cold_start_ready" : "telemetry_only",
+          trustedTriggerCount >= MIN_LOG_READY_POSITIVES
+            ? "log_ready"
+            : installed
+              ? "cold_start_ready"
+              : "telemetry_only",
       } satisfies EvalSkillReadiness;
     });
 }
@@ -392,9 +429,9 @@ export function listSkills(
     }
     console.log("");
     console.log("Legend:");
-    console.log("  log-ready    real triggers exist; run eval generate normally");
+    console.log("  log-ready    enough clean real triggers exist; run eval generate normally");
     console.log(
-      "  cold-start   installed locally but no trusted triggers yet; use --auto-synthetic",
+      "  cold-start   installed locally but not enough clean trusted triggers yet; use --auto-synthetic",
     );
     console.log("  telemetry-only  trigger data exists but local SKILL.md was not found");
   } else {
@@ -566,6 +603,7 @@ export async function cliMain(): Promise<void> {
       skill: { type: "string" },
       output: { type: "string" },
       out: { type: "string" },
+      agent: { type: "string" },
       max: { type: "string", default: "50" },
       seed: { type: "string", default: "42" },
       "list-skills": { type: "boolean", default: false },
@@ -607,14 +645,7 @@ export async function cliMain(): Promise<void> {
       );
     }
 
-    const agent = detectLlmAgent();
-    if (!agent) {
-      throw new CLIError(
-        "No agent CLI found (claude/codex/opencode/pi)",
-        "AGENT_NOT_FOUND",
-        "Install one of the supported agent CLIs",
-      );
-    }
+    const agent = resolveEvalGenerateAgent(values.agent);
 
     const maxPerSide = Number.parseInt(values.max ?? "50", 10);
     const effectiveMax = Number.isNaN(maxPerSide) || maxPerSide <= 0 ? 50 : maxPerSide;
@@ -781,24 +812,17 @@ export async function cliMain(): Promise<void> {
   });
 
   const positiveCount = evalSet.filter((entry) => entry.should_trigger).length;
-  if (positiveCount === 0 && values["auto-synthetic"]) {
+  if (positiveCount < MIN_LOG_READY_POSITIVES && values["auto-synthetic"]) {
     const skillPath = values["skill-path"] ?? detectedSkillPath;
     if (!skillPath) {
       throw new CLIError(
-        `No trusted triggers found for '${values.skill}', and no SKILL.md path could be resolved for synthetic fallback.`,
+        `Not enough clean trusted triggers found for '${values.skill}', and no SKILL.md path could be resolved for synthetic fallback.`,
         "FILE_NOT_FOUND",
         `Run 'selftune eval generate --list-skills' or rerun with --skill-path /path/to/SKILL.md`,
       );
     }
 
-    const agent = detectLlmAgent();
-    if (!agent) {
-      throw new CLIError(
-        "No agent CLI found (claude/codex/opencode/pi)",
-        "AGENT_NOT_FOUND",
-        "Install one of the supported agent CLIs",
-      );
-    }
+    const agent = resolveEvalGenerateAgent(values.agent);
 
     emitDashboardStepProgress({
       current: 1,
@@ -808,7 +832,7 @@ export async function cliMain(): Promise<void> {
       label: "Load skill content",
     });
     console.log(
-      `No trusted triggers found for '${values.skill}'. Falling back to synthetic cold-start eval generation...`,
+      `Only ${positiveCount} clean trusted positive eval candidate(s) found for '${values.skill}'. Falling back to synthetic cold-start eval generation...`,
     );
     const effectiveMax = Number.isNaN(maxPerSide) || maxPerSide <= 0 ? 50 : maxPerSide;
     const syntheticEvalSet = await generateSyntheticEvals(skillPath, values.skill, agent, {
@@ -860,6 +884,12 @@ export async function cliMain(): Promise<void> {
     return;
   }
 
+  if (positiveCount > 0 && positiveCount < MIN_LOG_READY_POSITIVES) {
+    console.warn(
+      `[WARN] Only ${positiveCount} clean positive eval candidate(s) were found for '${values.skill}'. The log-derived eval set may be low-confidence. Consider rerunning with --auto-synthetic or --blend.`,
+    );
+  }
+
   // --- Blend mode: merge log-based evals with synthetic gap-fillers ---
   let finalEvalSet = evalSet;
   if (values.blend) {
@@ -872,14 +902,7 @@ export async function cliMain(): Promise<void> {
       );
     }
 
-    const agent = detectLlmAgent();
-    if (!agent) {
-      throw new CLIError(
-        "No agent CLI found (claude/codex/opencode/pi)",
-        "AGENT_NOT_FOUND",
-        "Install one of the supported agent CLIs",
-      );
-    }
+    const agent = resolveEvalGenerateAgent(values.agent);
 
     // Fail fast before expensive LLM calls — blending with zero logs always produces []
     if (evalSet.length === 0) {

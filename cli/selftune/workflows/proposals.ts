@@ -129,7 +129,7 @@ export function discoverWorkflowSkillProposals(
 
     const summary = buildWorkflowProposalSummary(workflow, draft);
     const currentValue = `No dedicated workflow skill exists for ${workflow.skills.join(" -> ")}.`;
-    const proposedValue = `Create ${draft.skill_name} at ${draft.skill_path}`;
+    const proposedValue = `Create package ${draft.skill_name} at ${draft.skill_dir}`;
     const queryClause = workflow.representative_query.trim()
       ? ` Common trigger: "${workflow.representative_query.trim()}".`
       : "";

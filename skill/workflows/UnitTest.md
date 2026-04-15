@@ -146,16 +146,25 @@ selftune eval unit-test --skill Research
 Compare the new `pass_rate` against the previous run. Report whether
 the evolution improved trigger accuracy.
 
-### 5. Continue the creator loop
+### 5. Continue the pipeline
 
-After unit tests exist, the next creator step is usually:
+After unit tests exist, the next pipeline step is usually:
 
 ```bash
-selftune evolve --skill <name> --skill-path <path> --dry-run --validation-mode replay
+selftune verify --skill-path <path>
+```
+
+If `verify` still reports missing runtime proof, the next explicit supporting
+steps are usually:
+
+```bash
+selftune create replay --skill-path <path> --mode package
+selftune create baseline --skill-path <path> --mode package
+selftune verify --skill-path <path>
 ```
 
 That keeps the sequence aligned with the dashboard readiness surface:
-evals -> unit tests -> replay dry-run -> baseline -> deploy -> watch.
+evals -> unit tests -> replay/baseline proof -> publish -> watch.
 
 ## Common Patterns
 

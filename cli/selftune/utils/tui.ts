@@ -26,13 +26,96 @@ function createNoopTUI(): EvolveTUI {
   return { step() {}, done() {}, fail() {}, finish() {}, destroy() {} };
 }
 
+function createPlainTextTUI(opts: { skillName: string; model: string }): EvolveTUI {
+  const write = (s: string) => process.stderr.write(s);
+  let stepStartTime = Date.now();
+  let currentLabel = "";
+  let hasActiveStep = false;
+  let destroyed = false;
+
+  const checkMark = process.env.NO_COLOR ? "+" : "\u2713";
+  const crossMark = process.env.NO_COLOR ? "x" : "\u2717";
+
+  write(`\n  selftune evolve \u2500\u2500 ${opts.skillName} \u2500\u2500 ${opts.model}\n\n`);
+
+  function formatTime(ms: number): string {
+    return `${(ms / 1000).toFixed(1)}s`;
+  }
+
+  function writeStartedLine(label: string): void {
+    write(`  -> ${label}\n`);
+  }
+
+  function writeCompletedLine(marker: string, label: string, elapsed: number): void {
+    const time = formatTime(elapsed);
+    const padding = Math.max(1, 48 - label.length);
+    write(`  ${marker} ${label}${" ".repeat(padding)}${time}\n`);
+  }
+
+  function completeCurrentStep(marker: string, label: string): void {
+    const elapsed = Date.now() - stepStartTime;
+    hasActiveStep = false;
+    writeCompletedLine(marker, label, elapsed);
+  }
+
+  return {
+    step(label: string): void {
+      if (destroyed) return;
+      if (hasActiveStep) {
+        completeCurrentStep(checkMark, currentLabel);
+      }
+      currentLabel = label;
+      stepStartTime = Date.now();
+      hasActiveStep = true;
+      writeStartedLine(label);
+    },
+
+    done(label: string): void {
+      if (destroyed) return;
+      if (hasActiveStep) {
+        completeCurrentStep(checkMark, label);
+      } else {
+        writeCompletedLine(checkMark, label, 0);
+      }
+      currentLabel = "";
+    },
+
+    fail(label: string): void {
+      if (destroyed) return;
+      if (hasActiveStep) {
+        completeCurrentStep(crossMark, label);
+      } else {
+        writeCompletedLine(crossMark, label, 0);
+      }
+      currentLabel = "";
+    },
+
+    finish(summary: string): void {
+      if (destroyed) return;
+      if (hasActiveStep) {
+        completeCurrentStep(checkMark, currentLabel);
+      }
+      write(`\n  ${summary}\n`);
+      destroyed = true;
+    },
+
+    destroy(): void {
+      destroyed = true;
+      hasActiveStep = false;
+      currentLabel = "";
+    },
+  };
+}
+
 export function createEvolveTUI(opts: { skillName: string; model: string }): EvolveTUI {
   const noColor = !!process.env.NO_COLOR;
   const isTTY = !!process.stderr.isTTY;
+  const isTestEnvironment = process.env.BUN_ENV?.includes("test");
 
-  // If not a TTY, return no-op to avoid ANSI noise in pipes/tests
+  // Non-interactive agent runs still need durable progress lines. Keep tests
+  // silent by default unless explicitly forced.
   if (!isTTY && !process.env.SELFTUNE_TUI_FORCE) {
-    return createNoopTUI();
+    return isTestEnvironment ? createNoopTUI() : createPlainTextTUI(opts);
   }
 
   const write = (s: string) => process.stderr.write(s);

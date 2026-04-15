@@ -11,10 +11,12 @@ import {
 import {
   AlertCircleIcon,
   ArrowLeftIcon,
+  Boxes,
   EyeIcon,
   RefreshCwIcon,
   SearchIcon,
   AlertTriangleIcon,
+  ArrowDown,
   ArrowRightIcon,
   GitBranchIcon,
   FlaskConicalIcon,
@@ -38,9 +40,13 @@ import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { runDashboardAction } from "@/api";
 import { useSkillReport } from "@/hooks/useSkillReport";
+import { normalizeLifecycleCommand, normalizeLifecycleText } from "@/lib/lifecycle-surface";
 import type {
+  CreateCheckReadiness,
+  CreateCheckState,
   CreatorLoopNextStep,
   DashboardActionName,
+  DashboardFrontierState,
   EvolutionEntry,
   SkillTestingReadiness,
   TrustState,
@@ -59,9 +65,9 @@ function formatLoopStep(step: CreatorLoopNextStep): string {
     case "measure_baseline":
       return "Measure baseline";
     case "deploy_candidate":
-      return "Deploy candidate";
+      return "Ship candidate";
     case "watch_deployment":
-      return "Watch deployment";
+      return "Monitor live";
   }
 }
 
@@ -92,43 +98,150 @@ function deriveTestingAction(readiness: SkillTestingReadiness): {
     case "generate_evals":
       return {
         icon: <FlaskConicalIcon className="size-5 text-primary" />,
-        text: readiness.summary,
+        text: normalizeLifecycleText(readiness.summary),
         actionLabel: "Generate evals",
         variant: "default",
       };
     case "run_unit_tests":
       return {
         icon: <ListChecksIcon className="size-5 text-primary" />,
-        text: readiness.summary,
+        text: normalizeLifecycleText(readiness.summary),
         actionLabel: "Generate unit tests",
         variant: "default",
       };
     case "run_replay_dry_run":
       return {
         icon: <RefreshCwIcon className="size-5 text-primary" />,
-        text: readiness.summary,
+        text: normalizeLifecycleText(readiness.summary),
         actionLabel: "Run replay dry-run",
         variant: "secondary",
       };
     case "measure_baseline":
       return {
         icon: <BarChart3Icon className="size-5 text-primary" />,
-        text: readiness.summary,
+        text: normalizeLifecycleText(readiness.summary),
         actionLabel: "Measure baseline",
         variant: "secondary",
       };
     case "deploy_candidate":
       return {
         icon: <RocketIcon className="size-5 text-primary" />,
-        text: readiness.summary,
-        actionLabel: "Deploy candidate",
+        text: normalizeLifecycleText(readiness.summary),
+        actionLabel: "Ship candidate",
         variant: "outline",
       };
     case "watch_deployment":
       return {
         icon: <EyeIcon className="size-5 text-primary" />,
+        text: normalizeLifecycleText(readiness.summary),
+        actionLabel: "Monitor live",
+        variant: "outline",
+      };
+  }
+}
+
+function formatCreateState(state: CreateCheckState): string {
+  switch (state) {
+    case "blocked_spec_validation":
+      return "Verification blocked";
+    case "needs_spec_validation":
+      return "Verify draft";
+    case "needs_package_resources":
+      return "Finish package";
+    case "needs_evals":
+      return "Generate evals";
+    case "needs_unit_tests":
+      return "Generate unit tests";
+    case "needs_routing_replay":
+      return "Replay package";
+    case "needs_baseline":
+      return "Measure baseline";
+    case "ready_to_publish":
+      return "Publish draft";
+  }
+}
+
+function actionForCreateState(state: CreateCheckState): DashboardActionName | null {
+  switch (state) {
+    case "blocked_spec_validation":
+    case "needs_spec_validation":
+      return "create-check";
+    case "needs_evals":
+      return "generate-evals";
+    case "needs_unit_tests":
+      return "generate-unit-tests";
+    case "needs_routing_replay":
+      return "replay-dry-run";
+    case "needs_baseline":
+      return "measure-baseline";
+    case "ready_to_publish":
+      return "deploy-candidate";
+    default:
+      return null;
+  }
+}
+
+function deriveCreateAction(readiness: CreateCheckReadiness): {
+  icon: React.ReactNode;
+  text: string;
+  actionLabel: string;
+  variant: "default" | "secondary" | "destructive" | "outline";
+} {
+  switch (readiness.state) {
+    case "blocked_spec_validation":
+      return {
+        icon: <AlertTriangleIcon className="size-5 text-destructive" />,
+        text: normalizeLifecycleText(readiness.summary),
+        actionLabel: "Verify draft",
+        variant: "destructive",
+      };
+    case "needs_spec_validation":
+      return {
+        icon: <ShieldCheckIcon className="size-5 text-primary" />,
+        text: normalizeLifecycleText(readiness.summary),
+        actionLabel: "Verify draft",
+        variant: "secondary",
+      };
+    case "needs_package_resources":
+      return {
+        icon: <GitBranchIcon className="size-5 text-primary" />,
         text: readiness.summary,
-        actionLabel: "Watch deployment",
+        actionLabel: "Finish package",
+        variant: "secondary",
+      };
+    case "needs_evals":
+      return {
+        icon: <FlaskConicalIcon className="size-5 text-primary" />,
+        text: readiness.summary,
+        actionLabel: "Generate evals",
+        variant: "default",
+      };
+    case "needs_unit_tests":
+      return {
+        icon: <ListChecksIcon className="size-5 text-primary" />,
+        text: readiness.summary,
+        actionLabel: "Generate unit tests",
+        variant: "default",
+      };
+    case "needs_routing_replay":
+      return {
+        icon: <RefreshCwIcon className="size-5 text-primary" />,
+        text: readiness.summary,
+        actionLabel: "Replay package",
+        variant: "secondary",
+      };
+    case "needs_baseline":
+      return {
+        icon: <BarChart3Icon className="size-5 text-primary" />,
+        text: readiness.summary,
+        actionLabel: "Measure baseline",
+        variant: "secondary",
+      };
+    case "ready_to_publish":
+      return {
+        icon: <RocketIcon className="size-5 text-primary" />,
+        text: readiness.summary,
+        actionLabel: "Publish draft",
         variant: "outline",
       };
   }
@@ -153,7 +266,7 @@ function deriveProposalAction(
       return {
         icon: <ArrowRightIcon className="size-5 text-primary" />,
         text: "This proposal validated successfully. Review the evidence and deploy if it still looks right.",
-        actionLabel: "Deploy candidate",
+        actionLabel: "Ship candidate",
         variant: "default",
       };
     case "created":
@@ -167,7 +280,7 @@ function deriveProposalAction(
       return {
         icon: <EyeIcon className="size-5 text-primary" />,
         text: "This proposal has already been deployed. Review the evidence trail and keep watching live behavior.",
-        actionLabel: "Watch deployment",
+        actionLabel: "Monitor live",
         variant: "outline",
       };
     case "rolled_back":
@@ -194,14 +307,38 @@ function deriveProposalAction(
   }
 }
 
+function WatchTrustIndicator({ score }: { score: number | null | undefined }) {
+  if (score == null) return null;
+  const pct = Math.round(score * 100);
+  const color =
+    score >= 0.8 ? "text-emerald-500" : score >= 0.5 ? "text-amber-500" : "text-red-500";
+  return (
+    <div className="rounded-xl border border-border/10 bg-muted/20 px-4 py-3">
+      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+        Watch trust
+      </div>
+      <div className={`mt-2 text-sm font-medium ${color}`}>{pct}%</div>
+      <div className="mt-1 text-xs text-muted-foreground">
+        {score >= 0.8
+          ? "Stable post-deploy"
+          : score >= 0.5
+            ? "Needs more data"
+            : "Active regressions"}
+      </div>
+    </div>
+  );
+}
+
 function CreatorLoopSection({
   readiness,
   skillPath,
   skillName,
+  watchTrustScore,
 }: {
   readiness: SkillTestingReadiness | null | undefined;
   skillPath: string | null;
   skillName: string;
+  watchTrustScore?: number | null;
 }) {
   const [runningAction, setRunningAction] = useState<DashboardActionName | null>(null);
   const navigate = useNavigate();
@@ -222,8 +359,8 @@ function CreatorLoopSection({
     { action: "generate-unit-tests", label: "Generate unit tests" },
     { action: "replay-dry-run", label: "Replay dry-run" },
     { action: "measure-baseline", label: "Measure baseline" },
-    { action: "deploy-candidate", label: "Deploy candidate" },
-    { action: "watch", label: "Watch deployment" },
+    { action: "deploy-candidate", label: "Ship candidate" },
+    { action: "watch", label: "Monitor live" },
   ];
 
   function handleRunAction(action: DashboardActionName, autoSynthetic?: boolean) {
@@ -257,10 +394,10 @@ function CreatorLoopSection({
   return (
     <Card className="rounded-2xl border-border/15">
       <CardHeader className="gap-2">
-        <CardTitle className="text-base">Creator test loop</CardTitle>
+        <CardTitle className="text-base">Measured trust loop</CardTitle>
         <CardDescription>
-          Use this loop before trusting an evolution: generate evals, add unit tests, replay a
-          dry-run, measure baseline, then deploy and watch.
+          Build the evidence before you trust a change: generate evals, add unit tests, replay a
+          dry-run, measure baseline, then ship and monitor.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -269,7 +406,7 @@ function CreatorLoopSection({
           <span className="text-sm text-muted-foreground">{readiness.summary}</span>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           <div className="rounded-xl border border-border/10 bg-muted/20 px-4 py-3">
             <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
               Eval readiness
@@ -345,8 +482,11 @@ function CreatorLoopSection({
                     ? "Rolled back"
                     : "Blocked"}
             </div>
-            <div className="mt-1 text-xs text-muted-foreground">{readiness.deployment_summary}</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {normalizeLifecycleText(readiness.deployment_summary)}
+            </div>
           </div>
+          <WatchTrustIndicator score={watchTrustScore} />
         </div>
 
         <div className="rounded-xl border border-dashed border-border/30 bg-background px-4 py-3">
@@ -354,7 +494,7 @@ function CreatorLoopSection({
             Recommended command
           </div>
           <code className="mt-2 block overflow-x-auto text-[11px] text-foreground">
-            {readiness.recommended_command}
+            {normalizeLifecycleCommand(readiness.recommended_command)}
           </code>
         </div>
 
@@ -364,7 +504,7 @@ function CreatorLoopSection({
               Deploy / watch command
             </div>
             <code className="mt-2 block overflow-x-auto text-[11px] text-foreground">
-              {readiness.deployment_command}
+              {normalizeLifecycleCommand(readiness.deployment_command)}
             </code>
           </div>
         ) : null}
@@ -418,6 +558,206 @@ function CreatorLoopSection({
       </CardContent>
     </Card>
   );
+}
+
+function DraftPackageSection({
+  readiness,
+  skillName,
+}: {
+  readiness: CreateCheckReadiness;
+  skillName: string;
+}) {
+  const [runningAction, setRunningAction] = useState<DashboardActionName | null>(null);
+  const navigate = useNavigate();
+
+  const recommendedAction = actionForCreateState(readiness.state);
+  const actions = getDraftPackageActions();
+
+  function handleRunAction(action: DashboardActionName, autoSynthetic?: boolean) {
+    setRunningAction(action);
+    const params = new URLSearchParams({
+      skill: skillName,
+      action,
+    });
+    navigate(`/live-run?${params.toString()}`);
+    void runDashboardAction(action, {
+      skill: skillName,
+      skillPath: readiness.skill_path,
+      autoSynthetic,
+    })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        toast.error("Action failed to start", { description: message });
+      })
+      .finally(() => {
+        setRunningAction(null);
+      });
+  }
+
+  return (
+    <Card className="rounded-2xl border-border/15">
+      <CardHeader className="gap-2">
+        <CardTitle className="text-base">Draft skill lifecycle</CardTitle>
+        <CardDescription>
+          Finish package resources, verify the draft, then fill any missing measured checks before
+          publishing into watch.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">{formatCreateState(readiness.state)}</Badge>
+          <span className="text-sm text-muted-foreground">
+            {normalizeLifecycleText(readiness.summary)}
+          </span>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="rounded-xl border border-border/10 bg-muted/20 px-4 py-3">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+              Package
+            </div>
+            <div className="mt-2 text-sm font-medium">
+              {readiness.checks.workflow_entry ? "Workflow entry ready" : "Workflow entry missing"}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {readiness.manifest_present ? "Manifest present" : "Manifest inferred"}
+            </div>
+          </div>
+          <div className="rounded-xl border border-border/10 bg-muted/20 px-4 py-3">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+              Description
+            </div>
+            <div className="mt-2 text-sm font-medium">
+              {Math.round(readiness.description_quality.composite * 100)}% quality
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {readiness.checks.skill_md_within_line_budget
+                ? "Within SKILL.md budget"
+                : "Trim SKILL.md"}
+            </div>
+          </div>
+          <div className="rounded-xl border border-border/10 bg-muted/20 px-4 py-3">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+              Replay
+            </div>
+            <div className="mt-2 text-sm font-medium">
+              {readiness.checks.package_replay_ready
+                ? "Package replay ready"
+                : "Package replay blocked"}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {readiness.checks.routing_replay_recorded ? "Replay recorded" : "Replay not recorded"}
+            </div>
+          </div>
+          <div className="rounded-xl border border-border/10 bg-muted/20 px-4 py-3">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+              Baseline
+            </div>
+            <div className="mt-2 text-sm font-medium">
+              {readiness.checks.baseline_present ? "Baseline stored" : "Baseline missing"}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {readiness.checks.unit_tests_present
+                ? "Unit tests present"
+                : "Generate unit tests first"}
+            </div>
+          </div>
+          <div className="rounded-xl border border-border/10 bg-muted/20 px-4 py-3">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+              Publish
+            </div>
+            <div className="mt-2 text-sm font-medium">
+              {readiness.state === "ready_to_publish" ? "Ready to publish" : "Not ready yet"}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {readiness.state === "needs_spec_validation"
+                ? "Verify draft before publish"
+                : "Publish hands off into the existing improvement and watch path"}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-dashed border-border/30 bg-background px-4 py-3">
+          <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            Recommended command
+          </div>
+          <code className="mt-2 block overflow-x-auto text-[11px] text-foreground">
+            {normalizeLifecycleCommand(readiness.next_command)}
+          </code>
+        </div>
+
+        <div className="rounded-xl border border-dashed border-border/30 bg-background px-4 py-3">
+          <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            Lifecycle verify command
+          </div>
+          <code className="mt-2 block overflow-x-auto text-[11px] text-foreground">
+            {`selftune verify --skill-path ${readiness.skill_path}`}
+          </code>
+        </div>
+
+        <div className="rounded-xl border border-border/10 bg-muted/20 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                Run from dashboard
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Draft actions execute locally and stream stdout/stderr into the live dashboard feed.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">Real-time stream</Badge>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  navigate(`/live-run?${new URLSearchParams({ skill: skillName }).toString()}`)
+                }
+              >
+                Open live screen
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {actions.map(({ action, label, autoSynthetic }) => (
+              <Button
+                key={action}
+                type="button"
+                variant={action === recommendedAction ? "default" : "outline"}
+                disabled={runningAction !== null}
+                onClick={() => void handleRunAction(action, autoSynthetic)}
+              >
+                {runningAction === action ? (
+                  <RefreshCwIcon className="mr-2 size-3.5 animate-spin" />
+                ) : null}
+                {label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function getDraftPackageActions(): Array<{
+  action: DashboardActionName;
+  label: string;
+  autoSynthetic?: boolean;
+}> {
+  return [
+    { action: "create-check", label: "Verify draft" },
+    { action: "generate-evals", label: "Generate evals", autoSynthetic: true },
+    { action: "generate-unit-tests", label: "Generate unit tests" },
+    { action: "replay-dry-run", label: "Replay package" },
+    { action: "measure-baseline", label: "Measure baseline" },
+    { action: "search-run", label: "Run search" },
+    { action: "report-package", label: "Package report" },
+    { action: "deploy-candidate", label: "Publish draft" },
+    { action: "watch", label: "Publish + monitor" },
+  ];
 }
 
 /* ─── Next best action logic ──────────────────────────── */
@@ -514,6 +854,253 @@ function deriveNextAction(
   };
 }
 
+/* ─── Package frontier state ────────────────────────────── */
+
+function FrontierStateSection({
+  frontierState,
+}: {
+  frontierState: DashboardFrontierState | null | undefined;
+}) {
+  if (!frontierState || frontierState.members.length === 0) return null;
+
+  const accepted = frontierState.members.filter((m) => m.decision === "accepted");
+  const demoted = accepted.filter((m) => m.watch_demoted);
+
+  return (
+    <Card className="rounded-2xl border-border/15">
+      <CardHeader className="gap-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Boxes className="size-4" />
+          Package frontier
+        </CardTitle>
+        <CardDescription>
+          Accepted candidates ranked by measured evidence. Watch-fed demotions are flagged when live
+          observation evidence causes a previously accepted candidate to lose rank.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">{frontierState.accepted_count} accepted</Badge>
+          {frontierState.rejected_count > 0 ? (
+            <Badge variant="outline">{frontierState.rejected_count} rejected</Badge>
+          ) : null}
+          {frontierState.pending_count > 0 ? (
+            <Badge variant="outline">{frontierState.pending_count} pending</Badge>
+          ) : null}
+          {demoted.length > 0 ? (
+            <Badge variant="destructive">
+              <ArrowDown className="mr-1 size-3" />
+              {demoted.length} watch-demoted
+            </Badge>
+          ) : null}
+        </div>
+
+        {frontierState.latest_search_run ? (
+          <div className="rounded-xl border border-border/10 bg-muted/20 px-4 py-3">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+              Latest search run
+            </div>
+            <div className="mt-2 grid gap-2 text-sm md:grid-cols-4">
+              <div>
+                <span className="text-muted-foreground">Parent: </span>
+                <span className="font-mono">
+                  {frontierState.latest_search_run.parent_candidate_id?.slice(0, 12) ?? "root"}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Winner: </span>
+                <span className="font-mono">
+                  {frontierState.latest_search_run.winner_candidate_id?.slice(0, 12) ?? "none"}
+                </span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Method: </span>
+                <span>{frontierState.latest_search_run.provenance.parent_selection_method}</span>
+              </div>
+              {frontierState.latest_search_run.provenance.surface_plan ? (
+                <div>
+                  <span className="text-muted-foreground">Budget: </span>
+                  <span>
+                    R{frontierState.latest_search_run.provenance.surface_plan.routing_count}/B
+                    {frontierState.latest_search_run.provenance.surface_plan.body_count}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+            {(() => {
+              const sp = frontierState.latest_search_run.provenance.surface_plan;
+              if (!sp || sp.routing_weakness == null || sp.body_weakness == null) return null;
+              const rPct = (sp.routing_weakness * 100).toFixed(1);
+              const bPct = (sp.body_weakness * 100).toFixed(1);
+              const routingWeaker = sp.routing_weakness >= sp.body_weakness;
+              return (
+                <div className="mt-2 flex items-center gap-3 text-sm">
+                  <span className="text-muted-foreground">Weakness:</span>
+                  <span className={routingWeaker ? "text-amber-500 font-medium" : ""}>
+                    Routing {rPct}%
+                  </span>
+                  <span className="text-muted-foreground">|</span>
+                  <span className={!routingWeaker ? "text-amber-500 font-medium" : ""}>
+                    Body {bPct}%
+                  </span>
+                  <div className="flex h-2 w-24 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={routingWeaker ? "bg-amber-500" : "bg-muted-foreground/40"}
+                      style={{ width: `${rPct}%` }}
+                    />
+                    <div
+                      className={!routingWeaker ? "bg-amber-500" : "bg-muted-foreground/40"}
+                      style={{ width: `${bPct}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        ) : null}
+
+        {/* Parent vs winner comparison */}
+        {(() => {
+          const run = frontierState.latest_search_run;
+          if (!run) return null;
+          const parent = run.parent_candidate_id
+            ? frontierState.members.find((m) => m.candidate_id === run.parent_candidate_id)
+            : null;
+          const winner = run.winner_candidate_id
+            ? frontierState.members.find((m) => m.candidate_id === run.winner_candidate_id)
+            : null;
+          if (!winner && !parent) return null;
+
+          const renderMember = (label: string, member: (typeof frontierState.members)[0]) => (
+            <div className="flex-1 rounded-xl border border-border/10 bg-muted/20 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                {label}
+              </div>
+              <div className="mt-2 space-y-1 text-sm">
+                <div>
+                  <span className="text-muted-foreground">ID: </span>
+                  <span className="font-mono">{member.candidate_id.slice(0, 12)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Fingerprint: </span>
+                  <span className="font-mono">{member.fingerprint.slice(0, 16)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge
+                    variant={
+                      member.decision === "accepted"
+                        ? "secondary"
+                        : member.decision === "rejected"
+                          ? "destructive"
+                          : "outline"
+                    }
+                  >
+                    {member.decision}
+                  </Badge>
+                </div>
+                {member.measured_delta != null ? (
+                  <div
+                    className={`text-sm font-semibold tabular-nums ${member.measured_delta > 0 ? "text-green-500" : member.measured_delta < 0 ? "text-red-500" : ""}`}
+                  >
+                    {member.measured_delta > 0 ? "+" : ""}
+                    {member.measured_delta.toFixed(2)} delta
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          );
+
+          if (!parent && winner) {
+            return (
+              <div className="rounded-xl border border-border/10 bg-muted/20 px-4 py-3">
+                <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                  First candidate
+                </div>
+                <div className="mt-2 space-y-1 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">ID: </span>
+                    <span className="font-mono">{winner.candidate_id.slice(0, 12)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Fingerprint: </span>
+                    <span className="font-mono">{winner.fingerprint.slice(0, 16)}</span>
+                  </div>
+                  <Badge
+                    variant={
+                      winner.decision === "accepted"
+                        ? "secondary"
+                        : winner.decision === "rejected"
+                          ? "destructive"
+                          : "outline"
+                    }
+                  >
+                    {winner.decision}
+                  </Badge>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div className="flex gap-3">
+              {parent ? renderMember("Parent", parent) : null}
+              {winner ? renderMember("Winner", winner) : null}
+            </div>
+          );
+        })()}
+
+        <div className="space-y-2">
+          {accepted
+            .sort((a, b) => (a.evidence_rank ?? 999) - (b.evidence_rank ?? 999))
+            .map((member) => (
+              <div
+                key={member.candidate_id}
+                className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 ${
+                  member.watch_demoted
+                    ? "border-destructive/30 bg-destructive/5"
+                    : "border-border/10 bg-muted/20"
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    {member.evidence_rank != null ? (
+                      <span className="text-[11px] font-medium text-muted-foreground">
+                        #{member.evidence_rank}
+                      </span>
+                    ) : null}
+                    <span className="truncate font-mono text-sm">
+                      {member.candidate_id.slice(0, 16)}
+                    </span>
+                    {member.watch_demoted ? (
+                      <Badge variant="destructive" className="text-[10px]">
+                        <ArrowDown className="mr-0.5 size-2.5" />
+                        demoted
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 truncate text-[11px] text-muted-foreground">
+                    fingerprint: {member.fingerprint.slice(0, 20)}
+                    {member.parent_candidate_id
+                      ? ` | parent: ${member.parent_candidate_id.slice(0, 12)}`
+                      : ""}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="text-sm font-semibold tabular-nums">
+                    {member.measured_delta != null
+                      ? `${member.measured_delta > 0 ? "+" : ""}${member.measured_delta.toFixed(2)}`
+                      : "--"}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">delta</div>
+                </div>
+              </div>
+            ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 /* ═══════════════════════════════════════════════════════════
    SkillReport — trust-first skill report page
    ═══════════════════════════════════════════════════════════ */
@@ -564,10 +1151,15 @@ export function SkillReport() {
   const excludedChecks = Math.max(rawChecks - operationalChecks, 0);
   const hasEvolutionData = (evolutionState?.evolution_rows ?? evolution.length) > 0;
   const testingReadiness = data?.testing_readiness ?? null;
+  const createReadiness = data?.create_readiness ?? null;
+  const frontierState = data?.frontier_state ?? null;
   const resolvedSkillPath =
+    createReadiness?.skill_path ??
     testingReadiness?.skill_path ??
     data?.canonical_invocations.find((invocation) => invocation.skill_path)?.skill_path ??
     null;
+  const showDraftPackageSection =
+    createReadiness != null && testingReadiness?.next_step !== "watch_deployment";
   const defaultTab: SkillReportTab = hasEvolutionData ? "evidence" : "invocations";
 
   useEffect(() => {
@@ -645,7 +1237,8 @@ export function SkillReport() {
     (coverage?.checks ?? data.usage.total_checks) === 0 &&
     data.evidence.length === 0 &&
     data.evolution.length === 0 &&
-    (data.canonical_invocations?.length ?? 0) === 0;
+    (data.canonical_invocations?.length ?? 0) === 0 &&
+    createReadiness == null;
 
   if (isNotFound) {
     return (
@@ -672,12 +1265,15 @@ export function SkillReport() {
     proposalFocus && activeProposal ? deriveProposalAction(evolution, activeProposal) : null;
   const nextAction =
     proposalDrivenAction ??
-    (proposalFocus ||
-    trustState === "rolled_back" ||
-    !testingReadiness ||
-    testingReadiness.next_step === "watch_deployment"
+    (proposalFocus
       ? trustDrivenAction
-      : deriveTestingAction(testingReadiness));
+      : showDraftPackageSection && createReadiness
+        ? deriveCreateAction(createReadiness)
+        : trustState === "rolled_back" ||
+            !testingReadiness ||
+            testingReadiness.next_step === "watch_deployment"
+          ? trustDrivenAction
+          : deriveTestingAction(testingReadiness));
 
   return (
     <SkillReportScaffold
@@ -768,12 +1364,19 @@ export function SkillReport() {
       nextActionText={nextAction.text}
     >
       {!proposalFocus ? (
-        <CreatorLoopSection
-          readiness={testingReadiness}
-          skillPath={resolvedSkillPath}
-          skillName={data.skill_name}
-        />
+        showDraftPackageSection && createReadiness ? (
+          <DraftPackageSection readiness={createReadiness} skillName={data.skill_name} />
+        ) : (
+          <CreatorLoopSection
+            readiness={testingReadiness}
+            skillPath={resolvedSkillPath}
+            skillName={data.skill_name}
+            watchTrustScore={data.watch_trust_score}
+          />
+        )
       ) : null}
+
+      {!proposalFocus ? <FrontierStateSection frontierState={frontierState} /> : null}
 
       <SkillReportTabs
         value={activeTab}

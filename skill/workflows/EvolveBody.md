@@ -10,21 +10,25 @@ LLM validates them through a 3-gate pipeline.
 selftune evolve body --skill <name> --skill-path <path> --target <target> [options]
 ```
 
-## Recommended Creator Loop
+## Recommended Package Evaluation Pipeline
 
-Before mutating routing or the full body, make sure the creator trust loop is in
-place:
+Before mutating routing or the full body, make sure the package evaluation
+pipeline is in place:
 
 ```bash
+selftune verify --skill-path <path>
 selftune eval generate --skill <name> --skill-path <path>
+selftune verify --skill-path <path>
 selftune eval unit-test --skill <name> --generate --skill-path <path>
+selftune create replay --skill-path <path> --mode package
+selftune create baseline --skill-path <path> --mode package
+selftune verify --skill-path <path>
 selftune evolve body --skill <name> --skill-path <path> --target <target> --dry-run --validation-mode replay
-selftune grade baseline --skill <name> --skill-path <path>
 ```
 
 If replay validation or the baseline is still missing, prefer filling that gap
 before live deployment. Body and routing evolution are much harder to trust than
-description-only changes when the creator loop is incomplete.
+description-only changes when the package evaluation pipeline is incomplete.
 
 ## Options
 
@@ -40,6 +44,7 @@ description-only changes when the creator loop is incomplete.
 | `--eval-set <path>`          | Pre-built eval set JSON                                                               | Auto-generated from logs |
 | `--dry-run`                  | Propose and validate without deploying                                                | Off                      |
 | `--max-iterations <n>`       | Maximum refinement iterations                                                         | 3                        |
+| `--confidence <n>`           | Low-confidence review threshold (warning/escalation only)                             | 0.6                      |
 | `--task-description <text>`  | Context for the evolution goal                                                        | None                     |
 | `--validation-model <model>` | Model for trigger-check validation calls (overrides `--student-model` for validation) | None                     |
 | `--validation-mode <mode>`   | Validation strategy: `auto`, `replay`, or `judge`                                     | `auto`                   |
@@ -65,15 +70,17 @@ teacher generates a complete replacement, validated through 3 gates.
 
 Every proposal passes through three sequential gates:
 
-| Gate                          | Type        | What it checks                                                                                  | Cost     |
-| ----------------------------- | ----------- | ----------------------------------------------------------------------------------------------- | -------- |
-| **Gate 1: Structural**        | Pure code   | YAML frontmatter present, `# Title` exists, `## Workflow Routing` preserved if original had one | Free     |
-| **Gate 2: Trigger Accuracy**  | Replay or student LLM | Runtime replay when available; otherwise YES/NO trigger check per eval entry                     | Cheap    |
-| **Gate 3: Quality**           | Student LLM | Body clarity and completeness score (0.0-1.0)                                                   | Cheap    |
-| **Gate 4: Reviewer** (opt-in) | Subagent    | `evolution-reviewer` multi-turn review — reads files, checks evidence, APPROVE/REJECT verdict   | Moderate |
+| Gate                          | Type                  | What it checks                                                                                  | Cost     |
+| ----------------------------- | --------------------- | ----------------------------------------------------------------------------------------------- | -------- |
+| **Gate 1: Structural**        | Pure code             | YAML frontmatter present, `# Title` exists, `## Workflow Routing` preserved if original had one | Free     |
+| **Gate 2: Trigger Accuracy**  | Replay or student LLM | Runtime replay when available; otherwise YES/NO trigger check per eval entry                    | Cheap    |
+| **Gate 3: Quality**           | Student LLM           | Body clarity and completeness score (0.0-1.0)                                                   | Cheap    |
+| **Gate 4: Reviewer** (opt-in) | Subagent              | `evolution-reviewer` multi-turn review — reads files, checks evidence, APPROVE/REJECT verdict   | Moderate |
 
 If any gate fails, the teacher receives structured feedback and generates
 a refined proposal. This repeats up to `--max-iterations` times.
+Low confidence does not reject a proposal by itself; it is treated as review
+metadata and may justify extra scrutiny.
 
 ## Steps
 
@@ -162,11 +169,11 @@ failure details and generates a refined proposal.
 
 `evolve body` uses the same validation contract as `evolve`:
 
-| Mode     | Behavior                                                                 |
-| -------- | ------------------------------------------------------------------------ |
+| Mode     | Behavior                                                                  |
+| -------- | ------------------------------------------------------------------------- |
 | `auto`   | Try replay-backed validation first; fall back to LLM judge if unavailable |
-| `replay` | Replay engine only; error if no replay fixture or runner is available    |
-| `judge`  | LLM judge only                                                           |
+| `replay` | Replay engine only; error if no replay fixture or runner is available     |
+| `judge`  | LLM judge only                                                            |
 
 When replay is available, selftune stages the candidate skill content into a
 temporary local registry before running the real host/runtime replay. Claude

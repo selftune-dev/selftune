@@ -58,7 +58,7 @@ function commandForJob(jobName: string): string {
     case "selftune-status":
       return "selftune sync && selftune status";
     case "selftune-orchestrate":
-      return "selftune orchestrate --max-skills 3";
+      return "selftune run --max-skills 3";
     default:
       return `selftune ${jobName.replace("selftune-", "")}`;
   }
@@ -162,8 +162,8 @@ export function generateCrontab(): string {
   const lines = [
     "# selftune automation — add to your crontab with: crontab -e",
     "#",
-    "# The core loop: sync → orchestrate",
-    "# status remains a reporting job; orchestrate handles sync, candidate",
+    "# The core loop: sync → run",
+    "# status remains a reporting job; run handles sync, candidate",
     "# selection, low-risk description evolution, and watch/rollback follow-up.",
     "#",
     `PATH=${home}/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`,

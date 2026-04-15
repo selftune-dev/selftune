@@ -20,9 +20,23 @@ selftune grade baseline  --skill <name> --skill-path <path> [--eval-set <path>] 
 selftune evolve          --skill <name> --skill-path <path> [--dry-run] [--validation-mode auto|replay|judge]
 selftune evolve body     --skill <name> --skill-path <path> --target <body|routing> [--dry-run]
 selftune evolve rollback --skill <name> --skill-path <path> [--proposal-id <id>]
+selftune improve --skill <name> --skill-path <path> [--scope auto|description|routing|body|package] [--dry-run] [--validation-mode auto|replay|judge]
+
+# Create group
+selftune verify --skill-path <path> [--agent AGENT] [--eval-set PATH] [--no-auto-fix] [--json]
+selftune publish --skill-path <path> [--no-watch] [--ignore-watch-alerts] [--json]
+selftune search-run --skill-path <path> [--skill NAME] [--surface routing|body|both] [--max-candidates N] [--agent AGENT] [--eval-set PATH] [--apply-winner] [--json]
+selftune create status --skill-path <path> [--json]
+selftune create init --name <name> --description <text> [--output-dir PATH] [--force] [--json]
+selftune create scaffold --from-workflow <id|index> [--output-dir PATH] [--skill-name NAME] [--description TEXT] [--write] [--force] [--json]
+selftune create check --skill-path <path> [--json]
+selftune create replay --skill-path <path> [--mode routing|package] [--agent AGENT] [--json]
+selftune create baseline --skill-path <path> [--mode routing|package] [--agent AGENT] [--json]
+selftune create report --skill-path <path> [--agent AGENT] [--eval-set PATH] [--json]
+selftune create publish --skill-path <path> [--watch] [--ignore-watch-alerts] [--json]
 
 # Eval group
-selftune eval generate      --skill <name> [--list-skills] [--stats] [--max N] [--seed N] [--output PATH] [--blend]
+selftune eval generate      --skill <name> [--list-skills] [--stats] [--max N] [--seed N] [--output PATH] [--agent AGENT] [--blend]
 selftune eval unit-test      --skill <name> --tests <path> [--run-agent] [--generate]
 selftune eval import         --dir <path> --skill <name> --output <path> [--match-strategy exact|fuzzy]
 selftune eval composability  --skill <name> [--window N] [--telemetry-log <path>]
@@ -45,6 +59,7 @@ selftune telemetry [status|enable|disable]
 selftune export    [TABLE...] [--output/-o DIR] [--since DATE]
 
 # Autonomous loop
+selftune run [--dry-run] [--review-required] [--auto-approve] [--skill NAME] [--max-skills N] [--recent-window HOURS] [--sync-force] [--max-auto-grade N] [--loop] [--loop-interval SECS]
 selftune orchestrate [--dry-run] [--review-required] [--auto-approve] [--skill NAME] [--max-skills N] [--recent-window HOURS] [--sync-force] [--max-auto-grade N] [--loop] [--loop-interval SECS]
 selftune sync        [--since DATE] [--dry-run] [--force] [--no-claude] [--no-codex] [--no-opencode] [--no-openclaw] [--no-pi] [--no-repair] [--json]
 

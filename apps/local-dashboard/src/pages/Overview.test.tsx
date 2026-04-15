@@ -3,25 +3,32 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 // Mock heavy external dependencies to avoid import timeouts
 vi.mock("lucide-react", () => ({
+  Activity: () => null,
   AlertCircleIcon: () => null,
   AlertTriangleIcon: () => null,
+  ArrowLeft: () => null,
   BoltIcon: () => null,
+  Bot: () => null,
+  Boxes: () => null,
   CheckCircleIcon: () => null,
   ChevronDownIcon: () => null,
   CircleDotIcon: () => null,
   ClockIcon: () => null,
+  Cpu: () => null,
   EyeIcon: () => null,
   HelpCircleIcon: () => null,
   LayersIcon: () => null,
+  Loader2: () => null,
   RefreshCwIcon: () => null,
   RocketIcon: () => null,
   SparklesIcon: () => null,
+  TerminalSquare: () => null,
   XCircleIcon: () => null,
 }));
 
 vi.mock("@selftune/ui/primitives", () => ({
   Badge: () => null,
-  Button: () => null,
+  Button: ({ children }: { children?: React.ReactNode }) => <button>{children}</button>,
   Card: ({ children }: { children: unknown }) => children,
   CardAction: ({ children }: { children: unknown }) => children,
   CardContent: ({ children }: { children: unknown }) => children,
@@ -44,6 +51,10 @@ vi.mock("@/components/ui/skeleton", () => ({
   Skeleton: () => null,
 }));
 
+vi.mock("@/api", () => ({
+  runDashboardAction: vi.fn(),
+}));
+
 vi.mock("@selftune/dashboard-core/screens/overview", () => ({
   OverviewCompositionSurface: ({
     sectionsBeforeFeed,
@@ -57,6 +68,12 @@ vi.mock("react-router-dom", () => ({
   useNavigate: () => () => {},
   useParams: () => ({ name: "test-skill" }),
   useSearchParams: () => [new URLSearchParams(), () => {}],
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+  },
 }));
 
 vi.mock("../hooks/useOrchestrateRuns", () => ({
@@ -118,6 +135,8 @@ describe("Overview", () => {
               creator_testing: {
                 summary: "1 still needs evals.",
                 counts: {
+                  run_create_check: 0,
+                  finish_package: 0,
                   generate_evals: 1,
                   run_unit_tests: 0,
                   run_replay_dry_run: 0,
@@ -128,7 +147,7 @@ describe("Overview", () => {
                 priorities: [
                   {
                     skill_name: "research",
-                    next_step: "generate_evals",
+                    step: "generate_evals",
                     summary: "Trusted telemetry exists, but no canonical eval set is stored yet.",
                     recommended_command: "selftune eval generate --skill research",
                   },
@@ -144,9 +163,87 @@ describe("Overview", () => {
       />,
     );
 
-    expect(html).toContain("Creator test loop");
+    expect(html).toContain("Draft skill lifecycle");
     expect(html).toContain("Generate evals");
-    expect(html).toContain("Deploy candidate");
+    expect(html).toContain("Ship candidate");
     expect(html).toContain("selftune eval generate --skill research");
+    expect(html).toContain("Run now");
+  });
+
+  it("renders draft-package create-check priorities in the creator test loop panel", async () => {
+    const { Overview } = await import("./Overview");
+    const html = renderToStaticMarkup(
+      <Overview
+        search=""
+        statusFilter="ALL"
+        onStatusFilterChange={() => {}}
+        overviewQuery={
+          {
+            data: {
+              overview: {
+                telemetry: [],
+                skills: [],
+                evolution: [],
+                counts: {
+                  telemetry: 0,
+                  skills: 0,
+                  evolution: 0,
+                  evidence: 0,
+                  sessions: 0,
+                  prompts: 0,
+                },
+                unmatched_queries: [],
+                pending_proposals: [],
+                active_sessions: 0,
+                recent_activity: [],
+              },
+              skills: [],
+              watched_skills: [],
+              autonomy_status: {
+                level: "watching",
+                summary: "watching",
+                last_run: null,
+                skills_observed: 0,
+                pending_reviews: 0,
+                attention_required: 0,
+              },
+              attention_queue: [],
+              trust_watchlist: [],
+              recent_decisions: [],
+              creator_testing: {
+                summary: "1 need create check.",
+                counts: {
+                  run_create_check: 1,
+                  finish_package: 0,
+                  generate_evals: 0,
+                  run_unit_tests: 0,
+                  run_replay_dry_run: 0,
+                  measure_baseline: 0,
+                  deploy_candidate: 0,
+                  watch_deployment: 0,
+                },
+                priorities: [
+                  {
+                    skill_name: "draft-writer",
+                    step: "run_create_check",
+                    summary: "Run create check before publishing.",
+                    recommended_command:
+                      "selftune create check --skill-path /workspace/draft-writer/SKILL.md",
+                  },
+                ],
+              },
+            },
+            isPending: false,
+            isError: false,
+            error: null,
+            refetch: () => Promise.resolve(),
+          } as never
+        }
+      />,
+    );
+
+    expect(html).toContain("Verify draft");
+    expect(html).toContain("selftune verify --skill-path /workspace/draft-writer/SKILL.md");
+    expect(html).toContain("Run now");
   });
 });

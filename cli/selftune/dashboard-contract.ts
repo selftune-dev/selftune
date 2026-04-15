@@ -1,3 +1,17 @@
+import type {
+  CreatePackageBodySummary,
+  CreatePackageCandidateAcceptanceDecision,
+  CreateCheckReadiness,
+  CreatePackageEvaluationEfficiencySummary,
+  CreatePackageEvaluationEvidenceSummary,
+  CreatePackageEvaluationGradingSummary,
+  CreatePackageEvaluationSource,
+  CreatePackageReplaySummary,
+  CreatePackageEvaluationStatus,
+  CreatePackageEvaluationUnitTestSummary,
+  CreatePackageEvaluationWatchSummary,
+} from "./types.js";
+
 // -- Cursor-based pagination types -------------------------------------------
 
 export interface PaginationCursor {
@@ -151,6 +165,7 @@ export interface SkillSummary {
   routing_confidence: number | null;
   confidence_coverage: number;
   testing_readiness?: SkillTestingReadiness;
+  create_readiness?: CreateCheckReadiness;
 }
 
 // -- Autonomy-first overview types -------------------------------------------
@@ -346,6 +361,9 @@ export interface SkillTestingReadiness {
   baseline_sample_size: number;
   baseline_pass_rate: number | null;
   latest_baseline_at: string | null;
+  package_evaluation_status?: CreatePackageEvaluationStatus | null;
+  package_evaluation_passed?: boolean | null;
+  latest_package_evaluation_at?: string | null;
   deployment_readiness: DeploymentReadiness;
   deployment_summary: string;
   deployment_command: string | null;
@@ -354,6 +372,8 @@ export interface SkillTestingReadiness {
 }
 
 export type DashboardActionName =
+  | "create-check"
+  | "report-package"
   | "generate-evals"
   | "generate-unit-tests"
   | "replay-dry-run"
@@ -361,7 +381,8 @@ export type DashboardActionName =
   | "deploy-candidate"
   | "watch"
   | "orchestrate"
-  | "rollback";
+  | "rollback"
+  | "search-run";
 
 export type DashboardActionEventStage =
   | "started"
@@ -376,9 +397,49 @@ export interface DashboardActionResultSummary {
   improved: boolean | null;
   deployed: boolean | null;
   before_pass_rate: number | null;
+  before_label?: string | null;
   after_pass_rate: number | null;
+  after_label?: string | null;
   net_change: number | null;
+  net_change_label?: string | null;
   validation_mode: string | null;
+  validation_label?: string | null;
+  recommended_command?: string | null;
+  package_evaluation_source?: CreatePackageEvaluationSource | null;
+  package_candidate_id?: string | null;
+  package_parent_candidate_id?: string | null;
+  package_candidate_generation?: number | null;
+  package_candidate_acceptance_decision?: CreatePackageCandidateAcceptanceDecision | null;
+  package_candidate_acceptance_rationale?: string | null;
+  package_evidence?: CreatePackageEvaluationEvidenceSummary | null;
+  package_efficiency?: CreatePackageEvaluationEfficiencySummary | null;
+  package_routing?: CreatePackageReplaySummary | null;
+  package_body?: CreatePackageBodySummary | null;
+  package_grading?: CreatePackageEvaluationGradingSummary | null;
+  package_unit_tests?: CreatePackageEvaluationUnitTestSummary | null;
+  package_watch?: CreatePackageEvaluationWatchSummary | null;
+  /** Search run provenance — populated only for search-run actions. */
+  search_run?: DashboardSearchRunSummary | null;
+  /** Whether the watch gate passed for publish actions (null for non-publish actions). */
+  watch_gate_passed?: boolean | null;
+}
+
+/** Compact search run result surfaced in the action result summary. */
+export interface DashboardSearchRunSummary {
+  search_id: string;
+  parent_candidate_id: string | null;
+  winner_candidate_id: string | null;
+  winner_rationale: string | null;
+  candidates_evaluated: number;
+  frontier_size: number;
+  parent_selection_method: string;
+  surface_plan?: {
+    routing_count: number;
+    body_count: number;
+    weakness_source: string;
+    routing_weakness: number | null;
+    body_weakness: number | null;
+  } | null;
 }
 
 export interface DashboardActionMetrics {
@@ -424,9 +485,21 @@ export interface DashboardActionEvent {
   progress?: DashboardActionProgress | null;
 }
 
+export type CreatorOverviewStep =
+  | "run_create_check"
+  | "finish_package"
+  | "generate_evals"
+  | "run_unit_tests"
+  | "run_replay_dry_run"
+  | "measure_baseline"
+  | "deploy_candidate"
+  | "watch_deployment";
+
 export interface CreatorTestingOverview {
   summary: string;
   counts: {
+    run_create_check: number;
+    finish_package: number;
     generate_evals: number;
     run_unit_tests: number;
     run_replay_dry_run: number;
@@ -436,7 +509,7 @@ export interface CreatorTestingOverview {
   };
   priorities: Array<{
     skill_name: string;
-    next_step: CreatorLoopNextStep;
+    step: CreatorOverviewStep;
     summary: string;
     recommended_command: string;
   }>;
@@ -446,7 +519,7 @@ export interface CreatorTestingOverview {
 
 export interface OrchestrateRunSkillAction {
   skill: string;
-  action: "evolve" | "watch" | "skip";
+  action: "evolve" | "package-search" | "watch" | "skip";
   reason: string;
   deployed?: boolean;
   rolledBack?: boolean;
@@ -468,6 +541,8 @@ export interface OrchestrateRunReport {
   watched: number;
   skipped: number;
   auto_graded?: number;
+  package_searched?: number;
+  package_improved?: number;
   skill_actions: OrchestrateRunSkillAction[];
 }
 
@@ -556,6 +631,69 @@ export interface ReplayEntryResult {
   triggered: boolean;
   passed: boolean;
   evidence: string | null;
+}
+
+// -- Package search / frontier types (bounded package evolution) ---------------
+
+/**
+ * Dashboard-facing view of a package search run result.
+ * References `PackageSearchRunResult` from types.ts — does not redefine search
+ * semantics, only surfaces what the search runner provides.
+ */
+export interface DashboardSearchRunView {
+  search_id: string;
+  skill_name: string;
+  parent_candidate_id: string | null;
+  candidates_evaluated: number;
+  winner_candidate_id: string | null;
+  winner_rationale: string | null;
+  started_at: string;
+  completed_at: string;
+  provenance: DashboardSearchProvenance;
+}
+
+/** Provenance detail surfaced in the dashboard for a search run. */
+export interface DashboardSearchProvenance {
+  frontier_size: number;
+  parent_selection_method: string;
+  candidate_fingerprints: string[];
+  surface_plan?: {
+    routing_count: number;
+    body_count: number;
+    weakness_source: string;
+    routing_weakness: number | null;
+    body_weakness: number | null;
+  } | null;
+  evaluation_summaries: Array<{
+    candidate_id: string;
+    decision: string;
+    rationale: string;
+  }>;
+}
+
+/** A frontier member shown in the skill report's frontier state panel. */
+export interface DashboardFrontierMember {
+  candidate_id: string;
+  skill_name: string;
+  fingerprint: string;
+  decision: "accepted" | "rejected" | "pending";
+  measured_delta: number | null;
+  created_at: string;
+  parent_candidate_id: string | null;
+  /** True when this candidate was demoted by watch-fed evidence. */
+  watch_demoted?: boolean;
+  /** Evidence rank within the accepted frontier (1 = best). */
+  evidence_rank?: number | null;
+}
+
+/** Frontier state summary surfaced in the skill report. */
+export interface DashboardFrontierState {
+  skill_name: string;
+  accepted_count: number;
+  rejected_count: number;
+  pending_count: number;
+  members: DashboardFrontierMember[];
+  latest_search_run: DashboardSearchRunView | null;
 }
 
 // -- Doctor / health check types ----------------------------------------------
@@ -693,6 +831,8 @@ export interface TrustFields {
 }
 
 export interface SkillReportResponse extends SkillReportPayload, TrustFields {
+  /** Watch trust score (0-1) from the most recent watch cycle, null if never watched. */
+  watch_trust_score: number | null;
   evolution: EvolutionEntry[];
   pending_proposals: PendingProposal[];
   token_usage: {
@@ -727,4 +867,7 @@ export interface SkillReportResponse extends SkillReportPayload, TrustFields {
     };
   } | null;
   testing_readiness?: SkillTestingReadiness;
+  create_readiness?: CreateCheckReadiness;
+  /** Package frontier state — populated when bounded package evolution data exists. */
+  frontier_state?: DashboardFrontierState | null;
 }

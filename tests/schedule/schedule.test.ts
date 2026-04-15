@@ -45,7 +45,7 @@ describe("SCHEDULE_ENTRIES", () => {
 
   test("orchestrate entry runs the autonomous loop", () => {
     const orchestrate = SCHEDULE_ENTRIES.find((e) => e.name === "selftune-orchestrate");
-    expect(orchestrate?.command).toContain("selftune orchestrate");
+    expect(orchestrate?.command).toContain("selftune run");
   });
 
   test("derives from DEFAULT_CRON_JOBS (shared source of truth)", () => {
@@ -232,13 +232,13 @@ describe("install helpers", () => {
       "15 3 * * * analytics-job",
     ].join("\n");
 
-    const merged = mergeManagedCrontab(existing, "0 */6 * * * selftune orchestrate --max-skills 3");
+    const merged = mergeManagedCrontab(existing, "0 */6 * * * selftune run --max-skills 3");
 
     expect(merged).toContain("MAILTO=user@example.com");
     expect(merged).toContain("0 1 * * * backup-job");
     expect(merged).toContain("15 3 * * * analytics-job");
     expect(merged).toContain("# BEGIN SELFTUNE");
-    expect(merged).toContain("0 */6 * * * selftune orchestrate --max-skills 3");
+    expect(merged).toContain("0 */6 * * * selftune run --max-skills 3");
     expect(merged).not.toContain("old-selftune-job");
   });
 

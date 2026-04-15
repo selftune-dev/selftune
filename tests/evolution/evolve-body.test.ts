@@ -314,15 +314,15 @@ describe("evolveBody orchestrator", () => {
     expect(mockGenerateBodyProposal.mock.calls.length).toBe(0);
   });
 
-  test("low confidence proposal is rejected", async () => {
+  test("low confidence proposal is still validated and can deploy", async () => {
     mockGenerateBodyProposal.mockImplementation(async () => makeBodyProposal({ confidence: 0.3 }));
 
     const opts = makeOptions({ confidenceThreshold: 0.6, maxIterations: 1 });
     const result = await evolveBody(opts, makeDeps());
 
     expect(result.proposal).not.toBeNull();
-    expect(result.deployed).toBe(false);
-    expect(result.reason.toLowerCase()).toContain("confidence");
+    expect(result.validation).not.toBeNull();
+    expect(result.deployed).toBe(true);
   });
 
   test("validation failure leads to refinement on next iteration", async () => {

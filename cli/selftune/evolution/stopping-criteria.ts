@@ -2,7 +2,7 @@
  * stopping-criteria.ts
  *
  * Evaluates whether the evolution loop should stop based on convergence,
- * iteration limits, confidence thresholds, and plateau detection.
+ * iteration limits, and plateau detection.
  * Pure function module with no external dependencies.
  */
 
@@ -25,17 +25,14 @@ export interface StoppingDecision {
  * Checks conditions in priority order:
  *   1. Converged (pass rate >= 95%)
  *   2. Max iterations reached
- *   3. Low confidence (below threshold)
- *   4. Plateau (< 1% variation over last 3 iterations)
- *   5. Continue (none of the above)
+ *   3. Plateau (< 1% variation over last 3 iterations)
+ *   4. Continue (none of the above)
  */
 export function evaluateStoppingCriteria(
   currentPassRate: number,
   previousPassRates: number[],
   iterationCount: number,
   maxIterations: number,
-  confidenceThreshold: number,
-  proposalConfidence: number,
 ): StoppingDecision {
   // 1. Converged
   if (currentPassRate >= 0.95) {
@@ -47,12 +44,7 @@ export function evaluateStoppingCriteria(
     return { shouldStop: true, reason: "Max iterations reached" };
   }
 
-  // 3. Low confidence
-  if (proposalConfidence < confidenceThreshold) {
-    return { shouldStop: true, reason: "Confidence below threshold" };
-  }
-
-  // 4. Plateau detection: need at least 2 previous rates to form 3 data points
+  // 3. Plateau detection: need at least 2 previous rates to form 3 data points
   if (previousPassRates.length >= 2) {
     const last2Previous = previousPassRates.slice(-2);
     const window = [...last2Previous, currentPassRate];
@@ -64,6 +56,6 @@ export function evaluateStoppingCriteria(
     }
   }
 
-  // 5. Continue
+  // 4. Continue
   return { shouldStop: false, reason: "Continuing: improvement possible" };
 }

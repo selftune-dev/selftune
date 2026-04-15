@@ -1,0 +1,702 @@
+[
+  {
+    "query": "Use $SelfTuneBlog to publish this draft to selftune.dev.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Trigger SelfTuneBlog for posts/why-skill-routing-fails.md.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Please run SelfTuneBlog on this markdown post.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Can you use the SelfTuneBlog skill to add this article to selftune.dev?",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "$SelfTuneBlog publish docs/drafts/agent-evals.md",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "I need SelfTuneBlog to push this post live.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Use SelfTuneBlog and publish content/blog/false-negatives.md.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Call $SelfTuneBlog for the markdown file I just wrote.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "SelfTuneBlog: publish this new blog entry to selftune.dev.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Run the SelfTuneBlog workflow for posts/october-launch-retro.md.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Publish this blog post to selftune.dev.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Add this markdown article to the selftune blog.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Push this post live on selftune.dev.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Can you publish this draft to the SelfTune site?",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Ship this post to the blog on selftune.dev.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Take this article and make it a live blog post.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Put this write-up on the selftune blog.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "I want this markdown draft published on selftune.dev.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Make this post go live on the blog.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Post this article to selftune.dev for me.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Can you add this post to the public blog?",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Publish my draft article to the selftune site.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Push this finished post to production on selftune.dev.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Turn this markdown file into a live selftune blog entry.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Add the post I just wrote to selftune.dev.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Please put this on the selftune blog today.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Get this article published on the website.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "I need this post live on selftune.dev before lunch.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Take this draft and publish it as a blog post.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Can you push this markdown post to the site?",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Use $SelfTuneBlog to add this post to the selftune blog.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Please invoke SelfTuneBlog for blog/draft-routing-benchmarks.md.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "SelfTuneBlog should handle publishing this markdown article.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Can you fire $SelfTuneBlog on notes/blog/skill-health-checks.md?",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Use the SelfTuneBlog skill to publish my latest post.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "$SelfTuneBlog this file and make it show up on selftune.dev.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Invoke SelfTuneBlog for the post sitting in tmp/new-changelog-post.md.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Run SelfTuneBlog and publish the article I have open.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Please use $SelfTuneBlog to ship this post.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "SelfTuneBlog publish blogposts/agent-memory-v2.md to production.",
+    "should_trigger": true,
+    "invocation_type": "explicit",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Add this essay to the selftune.dev blog.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Publish the post I just finished editing.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Make this article visible on selftune.dev.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Put this markdown post on the live blog.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Send this post to the selftune blog.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Publish this piece on selftune.dev.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Can you post this draft article to the blog?",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Take this content and publish it on selftune.dev.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Make this ready-to-go article live on the site.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Push this blog draft out to selftune.dev.",
+    "should_trigger": true,
+    "invocation_type": "contextual",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Can you use agent-browser to scrape the headline and subhead from the homepage?",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Add the Agentation toolbar to this Next.js app so I can annotate the marketing site.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Install agentation in the dashboard project and wire up the visual feedback overlay.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Can you instrument this page with Agentation so we can do design critiques?",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Set up the Agentation toolbar in our local Next.js environment.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "I want Agentation enabled on the docs preview build.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Hook Agentation into the marketing site layout so reviewers can leave notes.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Put the Agentation feedback widget into `src/app/layout.tsx`.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Wire up Agentation for our preview deployment.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Critique this pricing page automatically with agentation-self-driving.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Use agentation-self-driving to mark spacing issues on our marketing site.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Spin up three specialized agents: one for docs, one for API design, one for launch messaging.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Use the Agents skill to compose a research-heavy GTM strategist.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Create a pair of specialist agents to debate our architecture choice.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Set up a small swarm of agents to split up this refactor.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Use AnnualReports to compare this year's Verizon DBIR with Google Cloud's report.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Open selftune.dev in a browser and click through the latest blog post to make sure the CTA works.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Use Playwright to log into selftune.dev and grab a screenshot of the blog homepage.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Can you automate the browser to submit the contact form on selftune.dev?",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Take a headed browser screenshot of the selftune blog article page on mobile.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Use the browser agent to test whether the selftune.dev nav menu works on Safari width.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Open the docs site, click the changelog link, and tell me what you see.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "I need a scriptable browser flow that logs into the dashboard and exports a CSV.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Navigate to selftune.dev/pricing and capture a full-page screenshot.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Please test the signup flow on selftune.dev with browser automation.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Add the annotation toolbar package to this app and make it show up in dev.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Can you install the self-driving annotation toolbar on our Next.js landing page?",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Run self-driving mode on selftune.dev and add design annotations.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Open the homepage and auto-annotate the hero section with UI feedback.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Can you review this page visually and leave autonomous annotations?",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "I want an automated design critique of the docs landing page.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Have the annotation agent inspect the signup page and comment on hierarchy problems.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Launch self-driving design review on localhost:3000.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Auto-annotate the dashboard settings page with UX concerns.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Can you let the annotation agent loose on this page and show me the findings?",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "I need a custom agent profile for migration reviews.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Can you launch a code reviewer agent and a product copy agent in parallel?",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Build me a custom agent with terse voice and deep TypeScript expertise.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "What agent traits are available if I want an infra-focused assistant?",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Compose a specialized agent for security reviews.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Can you create an agent personality that's more skeptical and detail-oriented?",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Pull the latest CrowdStrike and Mandiant reports and summarize 2025 threat trends.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Aggregate the annual security reports from major vendors for me.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Fetch the major 2026 security reports and synthesize the common themes.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "I need a year-over-year summary of ransomware trends from vendor reports.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Can you collect the latest industry threat reports and tell me what changed?",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Summarize the annual security reports from Microsoft, Palo Alto, and Mandiant.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Build me a comparison table of major cybersecurity annual reports.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Fetch security vendor reports and extract the main TTP shifts.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  },
+  {
+    "query": "Give me a synthesized overview of the 2026 threat landscape from annual reports.",
+    "should_trigger": false,
+    "invocation_type": "negative",
+    "source": "synthetic",
+    "created_at": "2026-04-15T14:06:14.054Z"
+  }
+]

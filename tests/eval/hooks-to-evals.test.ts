@@ -695,6 +695,41 @@ describe("buildEvalSet", () => {
     const positives = result.filter((e) => e.should_trigger);
     expect(positives.length).toBe(0);
   });
+
+  test("drops wrapper-fragment and skill-maintenance positives from the log-derived eval set", () => {
+    const noisySkillRecords: SkillUsageRecord[] = [
+      {
+        timestamp: "2025-01-01T00:00:00Z",
+        session_id: "s1",
+        skill_name: "SelfTuneBlog",
+        skill_path: "/skills/SelfTuneBlog",
+        query:
+          "<command-name>/context</command-name> <command-message>context</command-message> <command-args></command-args>",
+        triggered: true,
+      },
+      {
+        timestamp: "2025-01-01T00:01:00Z",
+        session_id: "s2",
+        skill_name: "SelfTuneBlog",
+        skill_path: "/skills/SelfTuneBlog",
+        query: "grade the selftune blog skill",
+        triggered: true,
+      },
+      {
+        timestamp: "2025-01-01T00:02:00Z",
+        session_id: "s3",
+        skill_name: "SelfTuneBlog",
+        skill_path: "/skills/SelfTuneBlog",
+        query: "create a selftune blog post around this",
+        triggered: true,
+      },
+    ];
+
+    const result = buildEvalSet(noisySkillRecords, [], "SelfTuneBlog", 50, false, 42, true);
+    const positives = result.filter((e) => e.should_trigger).map((e) => e.query);
+
+    expect(positives).toEqual(["create a selftune blog post around this"]);
+  });
 });
 
 describe("listEvalSkillReadiness", () => {
@@ -742,6 +777,22 @@ describe("listEvalSkillReadiness", () => {
           query: "use $pptx to make slides",
           triggered: true,
         },
+        {
+          timestamp: "2025-01-01T00:01:00Z",
+          session_id: "s2",
+          skill_name: "pptx",
+          skill_path: "/skills/pptx",
+          query: "create slides for the board meeting",
+          triggered: true,
+        },
+        {
+          timestamp: "2025-01-01T00:02:00Z",
+          session_id: "s3",
+          skill_name: "pptx",
+          skill_path: "/skills/pptx",
+          query: "prepare a presentation for investors",
+          triggered: true,
+        },
       ],
       [skillRoot],
     );
@@ -753,6 +804,40 @@ describe("listEvalSkillReadiness", () => {
     expect(coldStart?.skill_path).toContain(join("sc-search", "SKILL.md"));
     expect(coldStart?.trusted_trigger_count).toBe(0);
     expect(coldStart?.raw_trigger_count).toBe(0);
+  });
+
+  test("treats installed skills with too few clean positives as cold-start", () => {
+    const skillRoot = join(tmpDir, ".agents", "skills");
+    const installedSkillDir = join(skillRoot, "SelfTuneBlog");
+    mkdirSync(installedSkillDir, { recursive: true });
+    writeFileSync(join(tmpDir, ".git"), "");
+    writeFileSync(join(installedSkillDir, "SKILL.md"), "# SelfTuneBlog\n", { flag: "w" });
+
+    const readiness = listEvalSkillReadiness(
+      [
+        {
+          timestamp: "2025-01-01T00:00:00Z",
+          session_id: "s1",
+          skill_name: "SelfTuneBlog",
+          skill_path: "/skills/SelfTuneBlog",
+          query: "create a selftune blog post around this",
+          triggered: true,
+        },
+        {
+          timestamp: "2025-01-01T00:01:00Z",
+          session_id: "s2",
+          skill_name: "SelfTuneBlog",
+          skill_path: "/skills/SelfTuneBlog",
+          query: "grade the selftune blog skill",
+          triggered: true,
+        },
+      ],
+      [skillRoot],
+    );
+
+    const row = readiness.find((entry) => entry.name === "SelfTuneBlog");
+    expect(row?.trusted_trigger_count).toBe(1);
+    expect(row?.readiness).toBe("cold_start_ready");
   });
 
   test("treats raw-only trigger history as cold-start when no trusted positives exist", () => {
@@ -1026,5 +1111,34 @@ describe("eval generate CLI", () => {
     expect(evalSet.some((entry) => entry.query === "custom negative from jsonl")).toBe(true);
     expect(canonicalEvalSet).toEqual(evalSet);
     expect(result.stdout.toString()).toContain(`Canonical eval copy: ${canonicalOutput}`);
+  });
+
+  test("rejects unsupported --agent values before synthetic generation", () => {
+    const root = join(import.meta.dir, "../..");
+    const result = Bun.spawnSync(
+      [
+        "bun",
+        "cli/selftune/eval/hooks-to-evals.ts",
+        "--skill",
+        "SelfTuneBlog",
+        "--synthetic",
+        "--skill-path",
+        "/tmp/SelfTuneBlog/SKILL.md",
+        "--agent",
+        "not-a-real-agent",
+      ],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          SELFTUNE_NO_ANALYTICS: "1",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toString()).toContain('Unsupported --agent value "not-a-real-agent"');
   });
 });

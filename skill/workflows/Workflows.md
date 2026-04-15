@@ -63,14 +63,15 @@ discovered-source metadata with occurrence count and synergy score.
 `scaffold` turns an observed workflow into a draft local skill.
 
 - Default behavior is preview-first: the command prints the proposed skill name,
-  output path, provenance, and full `SKILL.md` content.
-- Add `--write` to create `<output-dir>/<skill-name>/SKILL.md`.
-- The generated skill is intentionally conservative: it includes provenance,
-  a description derived from the workflow trigger, an execution plan, and the
-  discovered workflow section. It does not silently publish or distribute the
-  new skill.
+  output path, provenance, and the package preview.
+- Add `--write` to create a full package under `<output-dir>/<skill-name>/`.
+- The generated skill is intentionally conservative: it includes a trigger
+  summary in `SKILL.md`, ordered execution steps in `workflows/default.md`,
+  provenance in `references/overview.md`, empty `scripts/`, empty `assets/`,
+  and a `selftune.create.json` manifest. It does not silently publish or
+  distribute the new skill.
 
-When `selftune orchestrate` sees a strong workflow pattern, it now creates a
+When `selftune run` sees a strong workflow pattern, it now creates a
 review-first `new_skill` proposal automatically. The manual `scaffold` command
 still exists for explicit previewing and local draft writes.
 
@@ -88,6 +89,10 @@ selftune workflows scaffold 1 --output-dir .agents/skills --write
 
 The number prefix (for example, `1.`) is the 1-based index you can pass to
 `selftune workflows save <index>`.
+
+When you preview a scaffold, selftune prints the package metadata followed by
+the generated file contents for `SKILL.md`, `workflows/default.md`, and
+`references/overview.md`.
 
 ```text
 Discovered Workflows (from 450 sessions):

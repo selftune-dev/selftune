@@ -585,38 +585,153 @@ describe("formatStatus", () => {
       [
         {
           skill_name: "Research",
-          eval_readiness: "log_ready",
-          next_step: "run_unit_tests",
-          summary: "Eval coverage is present (24 entries), but no unit tests are stored yet.",
-          recommended_command:
-            "selftune eval unit-test --skill Research --generate --skill-path /tmp/Research/SKILL.md",
-          skill_path: "/tmp/Research/SKILL.md",
-          trusted_trigger_count: 12,
-          trusted_session_count: 8,
-          eval_set_entries: 24,
-          latest_eval_at: "2026-04-12T10:00:00Z",
-          unit_test_cases: 0,
-          unit_test_pass_rate: null,
-          unit_test_ran_at: null,
-          replay_check_count: 0,
-          latest_validation_mode: null,
-          baseline_sample_size: 0,
-          baseline_pass_rate: null,
-          latest_baseline_at: null,
-          deployment_readiness: "blocked",
-          deployment_summary: "Finish the creator test loop before shipping this skill.",
-          deployment_command: null,
-          latest_evolution_action: null,
-          latest_evolution_at: null,
+          skill_scope: "project",
+          total_checks: 12,
+          triggered_count: 10,
+          pass_rate: 10 / 12,
+          unique_sessions: 8,
+          last_seen: "2026-04-12T10:00:00Z",
+          has_evidence: false,
+          routing_confidence: 0.82,
+          confidence_coverage: 0.9,
+          testing_readiness: {
+            skill_name: "Research",
+            eval_readiness: "log_ready",
+            next_step: "run_unit_tests",
+            summary: "Eval coverage is present (24 entries), but no unit tests are stored yet.",
+            recommended_command:
+              "selftune eval unit-test --skill Research --generate --skill-path /tmp/Research/SKILL.md",
+            skill_path: "/tmp/Research/SKILL.md",
+            trusted_trigger_count: 12,
+            trusted_session_count: 8,
+            eval_set_entries: 24,
+            latest_eval_at: "2026-04-12T10:00:00Z",
+            unit_test_cases: 0,
+            unit_test_pass_rate: null,
+            unit_test_ran_at: null,
+            replay_check_count: 0,
+            latest_validation_mode: null,
+            baseline_sample_size: 0,
+            baseline_pass_rate: null,
+            latest_baseline_at: null,
+            deployment_readiness: "blocked",
+            deployment_summary: "Finish the creator test loop before shipping this skill.",
+            deployment_command: null,
+            latest_evolution_action: null,
+            latest_evolution_at: null,
+          },
         },
       ],
     );
 
-    expect(output).toContain("Creator loop");
+    expect(output).toContain("Package pipeline");
+    expect(output).toContain("Verify: 0");
     expect(output).toContain("Generate evals: 0");
     expect(output).toContain("Unit tests: 1");
-    expect(output).toContain("Deploy: 0");
+    expect(output).toContain("Publish: 0");
     expect(output).toContain("Research: run unit tests");
+  });
+
+  test("renders draft-package creator guidance from create readiness before generic deploy steps", () => {
+    const result = {
+      skills: [],
+      unmatchedQueries: 0,
+      pendingProposals: 0,
+      lastSession: null,
+      system: { healthy: true, pass: 3, fail: 0, warn: 0 },
+    };
+
+    const output = formatStatus(
+      result,
+      [],
+      [
+        {
+          skill_name: "Research",
+          skill_scope: "project",
+          total_checks: 0,
+          triggered_count: 0,
+          pass_rate: 0,
+          unique_sessions: 0,
+          last_seen: null,
+          has_evidence: false,
+          routing_confidence: null,
+          confidence_coverage: 0,
+          testing_readiness: {
+            skill_name: "Research",
+            eval_readiness: "log_ready",
+            next_step: "deploy_candidate",
+            summary:
+              "Evals, unit tests, package replay, and a package baseline are all present. Ready to run create publish and hand the draft into watch.",
+            recommended_command: "selftune create publish --skill-path /tmp/Research/SKILL.md",
+            skill_path: "/tmp/Research/SKILL.md",
+            trusted_trigger_count: 12,
+            trusted_session_count: 8,
+            eval_set_entries: 24,
+            latest_eval_at: "2026-04-12T10:00:00Z",
+            unit_test_cases: 4,
+            unit_test_pass_rate: 1,
+            unit_test_ran_at: "2026-04-12T10:05:00Z",
+            replay_check_count: 12,
+            latest_validation_mode: "host_replay",
+            baseline_sample_size: 12,
+            baseline_pass_rate: 0.8,
+            latest_baseline_at: "2026-04-12T10:10:00Z",
+            deployment_readiness: "ready_to_deploy",
+            deployment_summary:
+              "Tests and measured package checks are in place. Run create publish so selftune can re-run package replay and baseline before handing the draft into watch.",
+            deployment_command: "selftune create publish --skill-path /tmp/Research/SKILL.md",
+            latest_evolution_action: null,
+            latest_evolution_at: null,
+          },
+          create_readiness: {
+            ok: false,
+            state: "needs_spec_validation",
+            summary:
+              "Local package checks pass, but Agent Skills spec validation has not run yet. Run create check before publishing.",
+            next_command: "selftune create check --skill-path /tmp/Research/SKILL.md",
+            skill_name: "Research",
+            skill_dir: "/tmp/Research",
+            skill_path: "/tmp/Research/SKILL.md",
+            entry_workflow: "workflows/default.md",
+            manifest_present: true,
+            description_quality: {
+              composite: 0.9,
+              criteria: {
+                length: 1,
+                trigger_context: 1,
+                vagueness: 0.8,
+                specificity: 0.8,
+                not_just_name: 0.9,
+              },
+            },
+            checks: {
+              skill_md: true,
+              frontmatter_present: true,
+              skill_name_matches_dir: true,
+              description_present: true,
+              description_within_budget: true,
+              skill_md_within_line_budget: true,
+              manifest_present: true,
+              workflow_entry: true,
+              references_present: true,
+              scripts_present: false,
+              assets_present: false,
+              evals_present: true,
+              unit_tests_present: true,
+              routing_replay_ready: true,
+              routing_replay_recorded: true,
+              package_replay_ready: true,
+              baseline_present: true,
+            },
+          },
+        },
+      ],
+    );
+
+    expect(output).toContain("Package pipeline");
+    expect(output).toContain("Verify: 1");
+    expect(output).toContain("Research: verify draft");
+    expect(output).toContain("selftune verify --skill-path /tmp/Research/SKILL.md");
   });
 });
 

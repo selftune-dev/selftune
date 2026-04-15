@@ -9,6 +9,12 @@
 import type { Database } from "bun:sqlite";
 
 import { parseCursorParam } from "../dashboard-contract.js";
+import {
+  listAcceptedPackageFrontierCandidates,
+  listPackageCandidates,
+} from "../create/package-candidate-state.js";
+import { readSearchRuns } from "../create/package-search.js";
+import { computeCreateDashboardReadiness, isCreateSkillDraft } from "../create/readiness.js";
 import { scoreDescription } from "../evolution/description-quality.js";
 import {
   getExecutionMetrics,
@@ -17,7 +23,129 @@ import {
   getSkillReportPayload,
   safeParseJson,
 } from "../localdb/queries.js";
-import { getSkillTestingReadiness } from "../testing-readiness.js";
+import { computeWatchTrustScore } from "../monitoring/watch.js";
+import type { WatchResult } from "../monitoring/watch.js";
+import {
+  getSkillTestingReadiness,
+  readCanonicalPackageEvaluationArtifact,
+} from "../testing-readiness.js";
+import type { CreatePackageEvaluationWatchSummary } from "../types.js";
+
+function readMeasuredDelta(summary: {
+  candidate_acceptance?: {
+    replay_pass_rate_delta: number | null;
+    routing_pass_rate_delta: number | null;
+    baseline_lift_delta: number | null;
+    body_quality_delta: number | null;
+    unit_test_pass_rate_delta: number | null;
+  };
+}): number | null {
+  const acceptance = summary.candidate_acceptance;
+  if (!acceptance) return null;
+
+  const deltas = [
+    acceptance.replay_pass_rate_delta,
+    acceptance.routing_pass_rate_delta,
+    acceptance.baseline_lift_delta,
+    acceptance.body_quality_delta,
+    acceptance.unit_test_pass_rate_delta,
+  ];
+  return deltas.find((delta) => delta != null) ?? null;
+}
+
+function isWatchDemoted(summary: {
+  watch?: {
+    rolled_back?: boolean | null;
+    alert?: string | null;
+    grade_regression?: boolean | null;
+    efficiency_regression?: boolean | null;
+  };
+}): boolean {
+  const watch = summary.watch;
+  return Boolean(
+    watch?.rolled_back || watch?.alert || watch?.grade_regression || watch?.efficiency_regression,
+  );
+}
+
+function buildFrontierState(db: Database, skillName: string) {
+  const candidates = listPackageCandidates(skillName, db);
+  if (candidates.length === 0) return null;
+
+  const acceptedFrontier = listAcceptedPackageFrontierCandidates(skillName, db);
+  const evidenceRanks = new Map(
+    acceptedFrontier.map((candidate, index) => [candidate.candidate_id, index + 1]),
+  );
+
+  const members = candidates.map((candidate) => ({
+    candidate_id: candidate.candidate_id,
+    skill_name: candidate.skill_name,
+    fingerprint: candidate.package_fingerprint,
+    decision:
+      candidate.latest_acceptance_decision === "root" ||
+      candidate.latest_acceptance_decision === "accepted"
+        ? "accepted"
+        : candidate.latest_acceptance_decision === "rejected"
+          ? "rejected"
+          : "pending",
+    measured_delta: readMeasuredDelta(candidate.summary),
+    created_at: candidate.first_evaluated_at,
+    parent_candidate_id: candidate.parent_candidate_id,
+    watch_demoted: isWatchDemoted(candidate.summary),
+    evidence_rank: evidenceRanks.get(candidate.candidate_id) ?? null,
+  }));
+
+  const latestSearchRun = readSearchRuns(db, skillName)[0] ?? null;
+
+  return {
+    skill_name: skillName,
+    accepted_count: members.filter((member) => member.decision === "accepted").length,
+    rejected_count: members.filter((member) => member.decision === "rejected").length,
+    pending_count: members.filter((member) => member.decision === "pending").length,
+    members,
+    latest_search_run: latestSearchRun,
+  };
+}
+
+function hydrateWatchResult(summary: CreatePackageEvaluationWatchSummary): WatchResult {
+  return {
+    snapshot: summary.snapshot,
+    alert: summary.alert,
+    rolledBack: summary.rolled_back,
+    recommendation: summary.recommendation,
+    recommended_command: summary.recommended_command,
+    gradeAlert: summary.grade_alert,
+    gradeRegression: summary.grade_regression,
+    ...(summary.efficiency_alert || summary.efficiency_regression
+      ? {
+          efficiencyAlert: summary.efficiency_alert ?? null,
+          efficiencyRegression: summary.efficiency_regression ?? null,
+        }
+      : {}),
+  };
+}
+
+function readWatchTrustScore(db: Database, skillName: string): number | null {
+  const row = db
+    .query(
+      `SELECT summary_json
+       FROM package_evaluation_reports
+       WHERE skill_name = ?`,
+    )
+    .get(skillName) as { summary_json: string } | null;
+
+  const parsedSummary = row?.summary_json ? safeParseJson(row.summary_json) : null;
+  const summaryWatch = parsedSummary?.watch as CreatePackageEvaluationWatchSummary | undefined;
+  if (summaryWatch?.snapshot) {
+    return computeWatchTrustScore(hydrateWatchResult(summaryWatch));
+  }
+
+  const artifactWatch = readCanonicalPackageEvaluationArtifact(skillName)?.summary.watch;
+  if (artifactWatch?.snapshot) {
+    return computeWatchTrustScore(hydrateWatchResult(artifactWatch));
+  }
+
+  return null;
+}
 
 export function handleSkillReport(
   db: Database,
@@ -26,6 +154,18 @@ export function handleSkillReport(
 ): Response {
   const report = getSkillReportPayload(db, skillName);
   const testing_readiness = getSkillTestingReadiness(db, skillName);
+  const frontier_state = buildFrontierState(db, skillName);
+  const watch_trust_score = readWatchTrustScore(db, skillName);
+  let create_readiness = null;
+  if (testing_readiness?.skill_path && isCreateSkillDraft(testing_readiness.skill_path)) {
+    try {
+      create_readiness = computeCreateDashboardReadiness(testing_readiness.skill_path, {
+        getTestingReadiness: () => testing_readiness,
+      });
+    } catch {
+      create_readiness = null;
+    }
+  }
 
   // 1. Evolution audit with eval_snapshot
   const evolution = db
@@ -187,7 +327,9 @@ export function handleSkillReport(
       testing_readiness?.unit_test_cases ||
       testing_readiness?.replay_check_count ||
       testing_readiness?.baseline_sample_size,
-    );
+    ) ||
+    Boolean(create_readiness) ||
+    Boolean(frontier_state);
   if (!hasData) {
     return Response.json({ error: "Skill not found" }, { status: 404 });
   }
@@ -892,5 +1034,8 @@ export function handleSkillReport(
     data_hygiene,
     examples,
     testing_readiness,
+    create_readiness,
+    watch_trust_score,
+    frontier_state,
   });
 }

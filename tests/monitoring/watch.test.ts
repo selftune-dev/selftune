@@ -20,6 +20,7 @@ import {
   writeSessionTelemetryToDb,
   writeSkillCheckToDb,
 } from "../../cli/selftune/localdb/direct-write.js";
+import { writeCanonicalPackageEvaluationArtifact } from "../../cli/selftune/testing-readiness.js";
 import type { WatchOptions, WatchResult } from "../../cli/selftune/monitoring/watch.js";
 import { computeMonitoringSnapshot } from "../../cli/selftune/monitoring/watch.js";
 import type {
@@ -114,14 +115,19 @@ function seedAudit(records: EvolutionAuditEntry[]): void {
 // ---------------------------------------------------------------------------
 
 let tmpDir: string;
+let originalConfigDir: string | undefined;
 
 beforeEach(() => {
   _setTestDb(openDb(":memory:"));
   tmpDir = mkdtempSync(join(tmpdir(), "selftune-watch-test-"));
+  originalConfigDir = process.env.SELFTUNE_CONFIG_DIR;
+  process.env.SELFTUNE_CONFIG_DIR = tmpDir;
 });
 
 afterEach(() => {
   _setTestDb(null);
+  if (originalConfigDir === undefined) delete process.env.SELFTUNE_CONFIG_DIR;
+  else process.env.SELFTUNE_CONFIG_DIR = originalConfigDir;
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
@@ -808,6 +814,9 @@ describe("watch", () => {
     } as unknown as WatchOptions);
 
     expect(result.recommendation.toLowerCase()).toContain("rollback");
+    expect(result.recommended_command).toBe(
+      "selftune rollback --skill my-skill --skill-path /tmp/skills/my-skill/SKILL.md",
+    );
   });
 
   test("recommendation says stable when no regression", async () => {
@@ -864,6 +873,7 @@ describe("watch", () => {
     } as unknown as WatchOptions);
 
     expect(result.recommendation.toLowerCase()).toContain("stable");
+    expect(result.recommended_command).toBeNull();
   });
 
   test("recommendation reports insufficient data below the minimum sample gate", async () => {
@@ -905,6 +915,7 @@ describe("watch", () => {
 
     expect(result.snapshot.regression_detected).toBe(false);
     expect(result.recommendation.toLowerCase()).toContain("need at least");
+    expect(result.recommended_command).toBeNull();
   });
 
   test("sync-first refreshes source truth before reading watch inputs", async () => {
@@ -1006,6 +1017,7 @@ describe("watch", () => {
     expect(result.exitCode).toBe(0);
     const parsed = JSON.parse(Buffer.from(result.stdout).toString("utf-8")) as WatchResult;
     expect(parsed.gradeAlert).toBeNull();
+    expect(parsed.recommended_command).toBeNull();
   });
 
   // -- Grade regression tests -------------------------------------------------
@@ -1108,6 +1120,149 @@ describe("watch", () => {
     expect(result.snapshot.regression_detected).toBe(false);
     expect(rollbackCalled).toBe(true);
     expect(result.rolledBack).toBe(true);
+  });
+
+  test("efficiency regression detected when observed sessions drift above the package baseline", async () => {
+    const sessionIds = ["sess-eff-1", "sess-eff-2", "sess-eff-3", "sess-eff-4"];
+    const skillRecords = sessionIds.map((sessionId) =>
+      makeSkillUsageRecord({
+        session_id: sessionId,
+        skill_name: "my-skill",
+        triggered: true,
+      }),
+    );
+    const queryRecords = sessionIds.map((sessionId) =>
+      makeQueryLogRecord({ session_id: sessionId }),
+    );
+    const telemetry = sessionIds.map((sessionId, index) =>
+      makeTelemetryRecord({
+        session_id: sessionId,
+        skills_triggered: ["my-skill"],
+        duration_ms: 2200 + index * 100,
+        input_tokens: 280 + index * 10,
+        output_tokens: 90 + index * 5,
+        assistant_turns: 4,
+      }),
+    );
+    const auditEntries: EvolutionAuditEntry[] = [
+      {
+        timestamp: "2026-02-28T10:00:00Z",
+        proposal_id: "evo-my-skill-001",
+        action: "deployed",
+        details: "Deployed my-skill proposal",
+        eval_snapshot: { total: 10, passed: 8, failed: 2, pass_rate: 0.8 },
+      },
+    ];
+
+    seedTelemetry(telemetry);
+    seedSkillUsage(skillRecords);
+    seedQueries(queryRecords);
+    seedAudit(auditEntries);
+
+    writeCanonicalPackageEvaluationArtifact("my-skill", {
+      summary: {
+        skill_name: "my-skill",
+        skill_path: "/tmp/skills/my-skill/SKILL.md",
+        mode: "package",
+        status: "passed",
+        evaluation_passed: true,
+        next_command: null,
+        replay: {
+          mode: "package",
+          validation_mode: "host_replay",
+          agent: "claude",
+          proposal_id: "pkg-eval-1",
+          fixture_id: "fixture-package",
+          total: 4,
+          passed: 4,
+          failed: 0,
+          pass_rate: 1,
+        },
+        baseline: {
+          mode: "package",
+          baseline_pass_rate: 0.5,
+          with_skill_pass_rate: 1,
+          lift: 0.5,
+          adds_value: true,
+          measured_at: "2026-02-28T09:30:00Z",
+        },
+        efficiency: {
+          with_skill: {
+            eval_runs: 4,
+            usage_observations: 4,
+            total_duration_ms: 4000,
+            avg_duration_ms: 1000,
+            total_input_tokens: 400,
+            total_output_tokens: 80,
+            total_cache_creation_input_tokens: 0,
+            total_cache_read_input_tokens: 0,
+            total_cost_usd: 0.04,
+            total_turns: 4,
+          },
+          without_skill: {
+            eval_runs: 4,
+            usage_observations: 4,
+            total_duration_ms: 3200,
+            avg_duration_ms: 800,
+            total_input_tokens: 320,
+            total_output_tokens: 60,
+            total_cache_creation_input_tokens: 0,
+            total_cache_read_input_tokens: 0,
+            total_cost_usd: 0.03,
+            total_turns: 4,
+          },
+        },
+      },
+      replay: {
+        skill: "my-skill",
+        skill_path: "/tmp/skills/my-skill/SKILL.md",
+        mode: "package",
+        agent: "claude",
+        proposal_id: "pkg-eval-1",
+        total: 4,
+        passed: 4,
+        failed: 0,
+        pass_rate: 1,
+        fixture_id: "fixture-package",
+        results: [],
+      },
+      baseline: {
+        skill_name: "my-skill",
+        mode: "package",
+        baseline_pass_rate: 0.5,
+        with_skill_pass_rate: 1,
+        lift: 0.5,
+        adds_value: true,
+        per_entry: [],
+        measured_at: "2026-02-28T09:30:00Z",
+      },
+    });
+
+    const auditLogPath = writeJsonl(auditEntries);
+    const { watch } = await import("../../cli/selftune/monitoring/watch.js");
+
+    const result: WatchResult = await watch({
+      skillName: "my-skill",
+      skillPath: "/tmp/skills/my-skill/SKILL.md",
+      windowSessions: 20,
+      regressionThreshold: 0.1,
+      autoRollback: false,
+      _auditLogPath: auditLogPath,
+    } as unknown as WatchOptions);
+
+    expect(result.snapshot.regression_detected).toBe(false);
+    expect(result.efficiencyAlert).not.toBeNull();
+    expect(result.efficiencyAlert).toContain("efficiency regression");
+    expect(result.alert).toContain("efficiency regression");
+    expect(result.efficiencyRegression?.sample_size).toBe(4);
+    expect(result.efficiencyRegression?.duration_delta_ratio).toBeNull();
+    expect(result.efficiencyRegression?.input_tokens_delta_ratio).toBeGreaterThan(1.5);
+    expect(result.efficiencyRegression?.output_tokens_delta_ratio).toBeGreaterThan(3);
+    expect(result.efficiencyRegression?.turns_delta_ratio).toBeGreaterThan(2);
+    expect(result.recommendation.toLowerCase()).toContain("rollback");
+    expect(result.recommended_command).toBe(
+      "selftune rollback --skill my-skill --skill-path /tmp/skills/my-skill/SKILL.md",
+    );
   });
 
   test("no grade alert when grades are stable", async () => {

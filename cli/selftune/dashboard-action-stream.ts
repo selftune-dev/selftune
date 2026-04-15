@@ -63,7 +63,79 @@ function detectDashboardAction(argv: string[]): {
     };
   }
 
+  if (command === "create" && subcommand === "replay") {
+    return {
+      action: "replay-dry-run",
+      skillName: null,
+      skillPath: readFlagValue(argv, "--skill-path"),
+    };
+  }
+
+  if (command === "create" && subcommand === "check") {
+    return {
+      action: "create-check",
+      skillName: null,
+      skillPath: readFlagValue(argv, "--skill-path"),
+    };
+  }
+
+  if (command === "create" && subcommand === "baseline") {
+    return {
+      action: "measure-baseline",
+      skillName: null,
+      skillPath: readFlagValue(argv, "--skill-path"),
+    };
+  }
+
+  if (command === "create" && subcommand === "report") {
+    return {
+      action: "report-package",
+      skillName: null,
+      skillPath: readFlagValue(argv, "--skill-path"),
+    };
+  }
+
+  if (command === "create" && subcommand === "publish") {
+    return {
+      action: hasFlag(argv, "--watch") ? "watch" : "deploy-candidate",
+      skillName: null,
+      skillPath: readFlagValue(argv, "--skill-path"),
+    };
+  }
+
+  if (command === "verify") {
+    return {
+      action: "report-package",
+      skillName: null,
+      skillPath: readFlagValue(argv, "--skill-path"),
+    };
+  }
+
+  if (command === "publish") {
+    return {
+      action: hasFlag(argv, "--no-watch") ? "deploy-candidate" : "watch",
+      skillName: null,
+      skillPath: readFlagValue(argv, "--skill-path"),
+    };
+  }
+
+  if (command === "search-run") {
+    return {
+      action: "search-run",
+      skillName: readFlagValue(argv, "--skill"),
+      skillPath: readFlagValue(argv, "--skill-path"),
+    };
+  }
+
   if (command === "orchestrate") {
+    return {
+      action: "orchestrate",
+      skillName: null,
+      skillPath: null,
+    };
+  }
+
+  if (command === "run") {
     return {
       action: "orchestrate",
       skillName: null,
@@ -80,6 +152,14 @@ function detectDashboardAction(argv: string[]): {
   }
 
   if (command === "evolve" && (!subcommand || subcommand.startsWith("--"))) {
+    return {
+      action: hasFlag(argv, "--dry-run") ? "replay-dry-run" : "deploy-candidate",
+      skillName: readFlagValue(argv, "--skill"),
+      skillPath: readFlagValue(argv, "--skill-path"),
+    };
+  }
+
+  if (command === "improve") {
     return {
       action: hasFlag(argv, "--dry-run") ? "replay-dry-run" : "deploy-candidate",
       skillName: readFlagValue(argv, "--skill"),

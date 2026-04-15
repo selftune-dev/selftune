@@ -21,8 +21,10 @@ import {
   querySkillUsageRecords,
 } from "../localdb/queries.js";
 import { updateContextAfterWatch } from "../memory/writer.js";
+import { readCanonicalPackageEvaluationArtifact } from "../testing-readiness.js";
 import type { SyncResult } from "../sync.js";
 import type {
+  CreatePackageEvaluationWatchEfficiencyRegressionSummary,
   InvocationType,
   MonitoringSnapshot,
   QueryLogRecord,
@@ -49,6 +51,10 @@ export interface WatchOptions {
   gradeRegressionThreshold?: number;
   /** Enable grade-based regression watch (default true). */
   enableGradeWatch?: boolean;
+  /** Relative regression threshold for observed efficiency (default 0.25). */
+  efficiencyRegressionThreshold?: number;
+  /** Enable efficiency-based regression watch (default true). */
+  enableEfficiencyWatch?: boolean;
   /** Injected log paths for testing (override defaults). */
   _telemetryLogPath?: string;
   _skillLogPath?: string;
@@ -71,9 +77,59 @@ export interface WatchResult {
   alert: string | null;
   rolledBack: boolean;
   recommendation: string;
+  recommended_command?: string | null;
   sync_result?: SyncResult;
   gradeAlert?: string | null;
   gradeRegression?: { before: number; after: number; delta: number } | null;
+  efficiencyAlert?: string | null;
+  efficiencyRegression?: CreatePackageEvaluationWatchEfficiencyRegressionSummary | null;
+}
+
+// ---------------------------------------------------------------------------
+// Watch trust scoring — aggregates watch signals into a 0-1 trust score
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute a trust score (0-1) from a WatchResult.
+ *
+ * A skill with no regressions and sufficient checks scores 1.0.
+ * Active alerts reduce trust proportional to severity:
+ *  - Trigger regression: -0.5
+ *  - Grade regression: -0.3 (scaled by delta magnitude)
+ *  - Insufficient data: caps at 0.5
+ */
+export function computeWatchTrustScore(watchResult: WatchResult): number {
+  const { snapshot, alert, gradeRegression } = watchResult;
+
+  // Not enough data to form a trust opinion — cap at 0.5
+  if (snapshot.skill_checks < MIN_MONITORING_SKILL_CHECKS) {
+    return 0.5;
+  }
+
+  let score = 1.0;
+
+  // Trigger pass rate regression: major trust penalty
+  if (snapshot.regression_detected) {
+    score -= 0.5;
+  }
+
+  // Grade regression: penalty scaled by delta (max 0.3)
+  if (gradeRegression) {
+    const gradePenalty = Math.min(gradeRegression.delta * 2, 0.3);
+    score -= gradePenalty;
+  }
+
+  // Any active alert without specific regression (catch-all)
+  if (alert && !snapshot.regression_detected && !gradeRegression) {
+    score -= 0.2;
+  }
+
+  // Rolled back: significant trust hit
+  if (watchResult.rolledBack) {
+    score -= 0.2;
+  }
+
+  return Math.max(0, Math.min(1, score));
 }
 
 // ---------------------------------------------------------------------------
@@ -83,7 +139,169 @@ export interface WatchResult {
 const DEFAULT_BASELINE_PASS_RATE = 0.5;
 const DEFAULT_REGRESSION_THRESHOLD = 0.1;
 const DEFAULT_GRADE_REGRESSION_THRESHOLD = 0.15;
+const DEFAULT_EFFICIENCY_REGRESSION_THRESHOLD = 0.25;
 export const MIN_MONITORING_SKILL_CHECKS = 3;
+
+type MonitoringWindow = {
+  telemetry: SessionTelemetryRecord[];
+  skillRecords: SkillUsageRecord[];
+  queryRecords: QueryLogRecord[];
+};
+
+function selectMonitoringWindow(
+  skillName: string,
+  telemetry: SessionTelemetryRecord[],
+  skillRecords: SkillUsageRecord[],
+  queryRecords: QueryLogRecord[],
+  windowSessions: number,
+): MonitoringWindow {
+  const actionableSkillRecords = filterActionableSkillUsageRecords(skillRecords);
+  const actionableQueryRecords = filterActionableQueryRecords(queryRecords);
+  const windowedTelemetry = telemetry.slice(-windowSessions);
+  const windowedSessionIds = new Set(windowedTelemetry.map((t) => t.session_id));
+
+  const skillNameFiltered = actionableSkillRecords.filter((r) => r.skill_name === skillName);
+  const hasSessionOverlap =
+    windowedSessionIds.size > 0 &&
+    (skillNameFiltered.some((r) => windowedSessionIds.has(r.session_id)) ||
+      actionableQueryRecords.some((r) => windowedSessionIds.has(r.session_id)));
+
+  return {
+    telemetry: hasSessionOverlap
+      ? windowedTelemetry.filter((record) => windowedSessionIds.has(record.session_id))
+      : telemetry,
+    skillRecords: hasSessionOverlap
+      ? skillNameFiltered.filter((r) => windowedSessionIds.has(r.session_id))
+      : skillNameFiltered,
+    queryRecords: hasSessionOverlap
+      ? actionableQueryRecords.filter((r) => windowedSessionIds.has(r.session_id))
+      : actionableQueryRecords,
+  };
+}
+
+function averageNullable(values: Array<number | null | undefined>): number | null {
+  const valid = values.filter((value): value is number => typeof value === "number");
+  if (valid.length === 0) return null;
+  return valid.reduce((sum, value) => sum + value, 0) / valid.length;
+}
+
+function divideNullable(total: number | null | undefined, count: number | null | undefined) {
+  if (typeof total !== "number" || typeof count !== "number" || count <= 0) return null;
+  return total / count;
+}
+
+function computeDeltaRatio(observed: number | null, baseline: number | null): number | null {
+  if (observed == null || baseline == null || baseline <= 0) return null;
+  return (observed - baseline) / baseline;
+}
+
+function buildEfficiencyRegression(
+  skillName: string,
+  telemetry: SessionTelemetryRecord[],
+  skillRecords: SkillUsageRecord[],
+  efficiencyRegressionThreshold: number,
+): {
+  efficiencyAlert: string | null;
+  efficiencyRegression: CreatePackageEvaluationWatchEfficiencyRegressionSummary | null;
+} {
+  const baselineEfficiency =
+    readCanonicalPackageEvaluationArtifact(skillName)?.summary.efficiency?.with_skill;
+  if (!baselineEfficiency) {
+    return {
+      efficiencyAlert: null,
+      efficiencyRegression: null,
+    };
+  }
+
+  const triggeredSessionIds = new Set(
+    skillRecords.filter((record) => record.triggered).map((record) => record.session_id),
+  );
+  if (triggeredSessionIds.size < MIN_MONITORING_SKILL_CHECKS) {
+    return {
+      efficiencyAlert: null,
+      efficiencyRegression: null,
+    };
+  }
+
+  const observedTelemetry = telemetry.filter((record) =>
+    triggeredSessionIds.has(record.session_id),
+  );
+  if (observedTelemetry.length < MIN_MONITORING_SKILL_CHECKS) {
+    return {
+      efficiencyAlert: null,
+      efficiencyRegression: null,
+    };
+  }
+
+  const efficiencyRegression: CreatePackageEvaluationWatchEfficiencyRegressionSummary = {
+    sample_size: observedTelemetry.length,
+    baseline_avg_duration_ms: baselineEfficiency.avg_duration_ms,
+    observed_avg_duration_ms: averageNullable(
+      observedTelemetry.map((record) => record.duration_ms ?? null),
+    ),
+    duration_delta_ratio: null,
+    baseline_avg_input_tokens: divideNullable(
+      baselineEfficiency.total_input_tokens,
+      baselineEfficiency.eval_runs,
+    ),
+    observed_avg_input_tokens: averageNullable(
+      observedTelemetry.map((record) => record.input_tokens ?? null),
+    ),
+    input_tokens_delta_ratio: null,
+    baseline_avg_output_tokens: divideNullable(
+      baselineEfficiency.total_output_tokens,
+      baselineEfficiency.eval_runs,
+    ),
+    observed_avg_output_tokens: averageNullable(
+      observedTelemetry.map((record) => record.output_tokens ?? null),
+    ),
+    output_tokens_delta_ratio: null,
+    baseline_avg_turns: divideNullable(
+      baselineEfficiency.total_turns,
+      baselineEfficiency.eval_runs,
+    ),
+    observed_avg_turns: averageNullable(
+      observedTelemetry.map((record) => record.assistant_turns ?? null),
+    ),
+    turns_delta_ratio: null,
+  };
+
+  efficiencyRegression.duration_delta_ratio = computeDeltaRatio(
+    efficiencyRegression.observed_avg_duration_ms,
+    efficiencyRegression.baseline_avg_duration_ms,
+  );
+  efficiencyRegression.input_tokens_delta_ratio = computeDeltaRatio(
+    efficiencyRegression.observed_avg_input_tokens,
+    efficiencyRegression.baseline_avg_input_tokens,
+  );
+  efficiencyRegression.output_tokens_delta_ratio = computeDeltaRatio(
+    efficiencyRegression.observed_avg_output_tokens,
+    efficiencyRegression.baseline_avg_output_tokens,
+  );
+  efficiencyRegression.turns_delta_ratio = computeDeltaRatio(
+    efficiencyRegression.observed_avg_turns,
+    efficiencyRegression.baseline_avg_turns,
+  );
+
+  const regressions: string[] = [];
+  const pushRegression = (label: string, ratio: number | null) => {
+    if (ratio != null && ratio > efficiencyRegressionThreshold) {
+      regressions.push(`${label} +${(ratio * 100).toFixed(1)}%`);
+    }
+  };
+  pushRegression("duration", efficiencyRegression.duration_delta_ratio);
+  pushRegression("input_tokens", efficiencyRegression.input_tokens_delta_ratio);
+  pushRegression("output_tokens", efficiencyRegression.output_tokens_delta_ratio);
+  pushRegression("turns", efficiencyRegression.turns_delta_ratio);
+
+  return {
+    efficiencyAlert:
+      regressions.length > 0
+        ? `efficiency regression detected for "${skillName}": ${regressions.join(", ")} exceeds threshold=${(efficiencyRegressionThreshold * 100).toFixed(1)}%`
+        : null,
+    efficiencyRegression,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // computeMonitoringSnapshot - pure function
@@ -114,27 +332,8 @@ export function computeMonitoringSnapshot(
   baselinePassRate: number,
   regressionThreshold: number = DEFAULT_REGRESSION_THRESHOLD,
 ): MonitoringSnapshot {
-  // 1. Window the telemetry to the last N sessions (by array order, assumed chronological)
-  const actionableSkillRecords = filterActionableSkillUsageRecords(skillRecords);
-  const actionableQueryRecords = filterActionableQueryRecords(queryRecords);
-  const windowedTelemetry = telemetry.slice(-windowSessions);
-  const windowedSessionIds = new Set(windowedTelemetry.map((t) => t.session_id));
-
-  // 2. Filter skill records by skill name first
-  const skillNameFiltered = actionableSkillRecords.filter((r) => r.skill_name === skillName);
-
-  // 3. Apply session ID windowing only if telemetry is present and overlaps
-  const hasSessionOverlap =
-    windowedSessionIds.size > 0 &&
-    (skillNameFiltered.some((r) => windowedSessionIds.has(r.session_id)) ||
-      actionableQueryRecords.some((r) => windowedSessionIds.has(r.session_id)));
-
-  const filteredSkillRecords = hasSessionOverlap
-    ? skillNameFiltered.filter((r) => windowedSessionIds.has(r.session_id))
-    : skillNameFiltered;
-  const filteredQueryRecords = hasSessionOverlap
-    ? actionableQueryRecords.filter((r) => windowedSessionIds.has(r.session_id))
-    : actionableQueryRecords;
+  const { skillRecords: filteredSkillRecords, queryRecords: filteredQueryRecords } =
+    selectMonitoringWindow(skillName, telemetry, skillRecords, queryRecords, windowSessions);
 
   // 4. Compute pass rate from explicit skill checks, not from all queries.
   const triggeredCount = filteredSkillRecords.filter((r) => r.triggered).length;
@@ -202,6 +401,8 @@ export async function watch(options: WatchOptions): Promise<WatchResult> {
     regressionThreshold = DEFAULT_REGRESSION_THRESHOLD,
     gradeRegressionThreshold = DEFAULT_GRADE_REGRESSION_THRESHOLD,
     enableGradeWatch = true,
+    efficiencyRegressionThreshold = DEFAULT_EFFICIENCY_REGRESSION_THRESHOLD,
+    enableEfficiencyWatch = true,
     autoRollback = false,
     _telemetryLogPath = TELEMETRY_LOG,
     _skillLogPath = SKILL_LOG,
@@ -245,6 +446,13 @@ export async function watch(options: WatchOptions): Promise<WatchResult> {
     windowSessions,
     baselinePassRate,
     regressionThreshold,
+  );
+  const monitoringWindow = selectMonitoringWindow(
+    skillName,
+    telemetry,
+    skillRecords,
+    queryRecords,
+    windowSessions,
   );
 
   // 4. Build trigger alert. Grade alerts are added below before rollback
@@ -296,7 +504,22 @@ export async function watch(options: WatchOptions): Promise<WatchResult> {
     }
   }
 
-  const alerts = [triggerAlert, gradeAlert].filter((value): value is string => Boolean(value));
+  let efficiencyAlert: string | null = null;
+  let efficiencyRegression: CreatePackageEvaluationWatchEfficiencyRegressionSummary | null = null;
+  if (enableEfficiencyWatch) {
+    const efficiencyResult = buildEfficiencyRegression(
+      skillName,
+      monitoringWindow.telemetry,
+      monitoringWindow.skillRecords,
+      efficiencyRegressionThreshold,
+    );
+    efficiencyAlert = efficiencyResult.efficiencyAlert;
+    efficiencyRegression = efficiencyResult.efficiencyRegression;
+  }
+
+  const alerts = [triggerAlert, gradeAlert, efficiencyAlert].filter((value): value is string =>
+    Boolean(value),
+  );
   const alert = alerts.length > 0 ? alerts.join("\n") : null;
 
   if (alert && autoRollback) {
@@ -311,10 +534,14 @@ export async function watch(options: WatchOptions): Promise<WatchResult> {
   }
 
   let recommendation: string;
+  let recommendedCommand: string | null = null;
   if (alert) {
+    recommendedCommand = rolledBack
+      ? null
+      : `selftune rollback --skill ${skillName} --skill-path ${skillPath}`;
     recommendation = rolledBack
       ? `Rolled back "${skillName}" to previous version. Monitor to confirm recovery.`
-      : `Consider running: selftune rollback --skill "${skillName}" --skill-path "${skillPath}"`;
+      : `Consider running: ${recommendedCommand}`;
   } else if (snapshot.skill_checks < MIN_MONITORING_SKILL_CHECKS) {
     recommendation =
       `Skill "${skillName}" has only ${snapshot.skill_checks} actionable check(s) in the current window. ` +
@@ -342,8 +569,15 @@ export async function watch(options: WatchOptions): Promise<WatchResult> {
     alert,
     rolledBack,
     recommendation,
+    recommended_command: recommendedCommand,
     gradeAlert,
     gradeRegression,
+    ...(efficiencyAlert || efficiencyRegression
+      ? {
+          efficiencyAlert,
+          efficiencyRegression,
+        }
+      : {}),
     ...(syncResult ? { sync_result: syncResult } : {}),
   };
 }

@@ -1,7 +1,12 @@
 import type { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { openDb } from "../../cli/selftune/localdb/db.js";
+import { persistPackageCandidateEvaluation } from "../../cli/selftune/create/package-candidate-state.js";
+import { insertSearchRun } from "../../cli/selftune/create/package-search.js";
 import {
   getExecutionMetrics,
   getSessionCommits,
@@ -152,6 +157,7 @@ function seedCommitTracking(
 
 describe("execution and commit query enrichments", () => {
   let db: Database;
+  const tempDirs: string[] = [];
 
   beforeEach(() => {
     db = openDb(":memory:");
@@ -159,6 +165,9 @@ describe("execution and commit query enrichments", () => {
 
   afterEach(() => {
     db.close();
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("aggregates enriched execution facts across skill sessions", () => {
@@ -394,5 +403,243 @@ describe("execution and commit query enrichments", () => {
         validation_evidence_ref: "evolution_evidence:prop-report-001:validated",
       },
     ]);
+  });
+
+  test("returns create readiness for a draft-only package with no telemetry", async () => {
+    const root = mkdtempSync(join(tmpdir(), "selftune-skill-report-draft-"));
+    tempDirs.push(root);
+
+    const skillDir = join(root, ".agents", "skills", "draft-writer");
+    mkdirSync(join(skillDir, "workflows"), { recursive: true });
+    mkdirSync(join(skillDir, "references"), { recursive: true });
+    writeFileSync(
+      join(skillDir, "SKILL.md"),
+      `---
+name: draft-writer
+description: >
+  Use when the user needs a draft writing package.
+---
+
+# Draft Writer
+`,
+      "utf-8",
+    );
+    writeFileSync(join(skillDir, "workflows", "default.md"), "# Default\n", "utf-8");
+    writeFileSync(join(skillDir, "references", "overview.md"), "# Overview\n", "utf-8");
+    writeFileSync(
+      join(skillDir, "selftune.create.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          entry_workflow: "workflows/default.md",
+          supports_package_replay: true,
+          expected_resources: {
+            workflows: true,
+            references: true,
+            scripts: false,
+            assets: false,
+          },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+
+    const previousCwd = process.cwd();
+    process.chdir(root);
+    try {
+      const response = handleSkillReport(db, "draft-writer");
+      const payload = (await response.json()) as Record<string, unknown>;
+
+      expect(response.status).toBe(200);
+      expect(payload.create_readiness).toMatchObject({
+        skill_name: "draft-writer",
+        state: "needs_evals",
+      });
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
+
+  test("returns watch trust score from the latest package evaluation watch summary", async () => {
+    seedSkillInvocation(db, {
+      skill_name: "Research",
+      session_id: "sess-watch-score",
+      occurred_at: "2026-04-15T10:00:00Z",
+    });
+
+    db.run(
+      `INSERT INTO package_evaluation_reports (skill_name, stored_at, summary_json)
+       VALUES (?, ?, ?)`,
+      [
+        "Research",
+        "2026-04-15T10:05:00Z",
+        JSON.stringify({
+          skill_name: "Research",
+          status: "passed",
+          evaluation_passed: true,
+          watch: {
+            snapshot: {
+              timestamp: "2026-04-15T10:05:00Z",
+              skill_name: "Research",
+              window_sessions: 20,
+              skill_checks: 10,
+              pass_rate: 0.9,
+              false_negative_rate: 0.1,
+              by_invocation_type: {
+                explicit: { passed: 5, total: 5 },
+                implicit: { passed: 3, total: 3 },
+                contextual: { passed: 1, total: 1 },
+                negative: { passed: 0, total: 1 },
+              },
+              regression_detected: false,
+              baseline_pass_rate: 0.8,
+            },
+            alert: null,
+            rolled_back: false,
+            recommendation: 'Skill "Research" is stable.',
+            recommended_command: null,
+            grade_alert: null,
+            grade_regression: null,
+          },
+        }),
+      ],
+    );
+
+    const response = handleSkillReport(db, "Research");
+    const payload = (await response.json()) as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(payload.watch_trust_score).toBe(1);
+  });
+
+  test("surfaces frontier state and latest search provenance in the skill report", async () => {
+    const skillDir = mkdtempSync(join(tmpdir(), "selftune-frontier-report-"));
+    tempDirs.push(skillDir);
+    const skillPath = join(skillDir, "SKILL.md");
+    writeFileSync(skillPath, "# Draft Writer\n", "utf-8");
+
+    persistPackageCandidateEvaluation(
+      {
+        summary: {
+          skill_name: "draft-writer",
+          skill_path: skillPath,
+          mode: "package",
+          package_fingerprint: "pkg_sha256_rootfrontier0001",
+          evaluation_source: "fresh",
+          status: "passed",
+          evaluation_passed: true,
+          next_command: null,
+          replay: {
+            mode: "package",
+            validation_mode: "host_replay",
+            agent: "claude",
+            proposal_id: "proposal-root",
+            fixture_id: "fixture-root",
+            total: 2,
+            passed: 2,
+            failed: 0,
+            pass_rate: 1,
+          },
+          routing: {
+            mode: "routing",
+            validation_mode: "host_replay",
+            agent: "claude",
+            proposal_id: "proposal-root-routing",
+            fixture_id: "fixture-root-routing",
+            total: 2,
+            passed: 2,
+            failed: 0,
+            pass_rate: 1,
+          },
+          baseline: {
+            mode: "package",
+            baseline_pass_rate: 0.4,
+            with_skill_pass_rate: 0.6,
+            lift: 0.2,
+            adds_value: true,
+            measured_at: "2026-04-15T09:00:00.000Z",
+          },
+          body: {
+            structural_valid: true,
+            structural_reason: "ok",
+            quality_score: 0.9,
+            quality_reason: "clear",
+            quality_threshold: 0.6,
+            quality_passed: true,
+            valid: true,
+          },
+          unit_tests: {
+            total: 2,
+            passed: 2,
+            failed: 0,
+            pass_rate: 1,
+            run_at: "2026-04-15T09:10:00.000Z",
+            failing_tests: [],
+          },
+        },
+        replay: {
+          skill: "draft-writer",
+          skill_path: skillPath,
+          mode: "package",
+          agent: "claude",
+          proposal_id: "proposal-root",
+          total: 2,
+          passed: 2,
+          failed: 0,
+          pass_rate: 1,
+          fixture_id: "fixture-root",
+          results: [],
+        },
+        baseline: {
+          skill_name: "draft-writer",
+          mode: "package",
+          baseline_pass_rate: 0.4,
+          with_skill_pass_rate: 0.6,
+          lift: 0.2,
+          adds_value: true,
+          per_entry: [],
+          measured_at: "2026-04-15T09:00:00.000Z",
+        },
+      },
+      db,
+    );
+
+    insertSearchRun(db, {
+      search_id: "sr-frontier-1",
+      skill_name: "draft-writer",
+      parent_candidate_id: null,
+      winner_candidate_id: null,
+      winner_rationale: null,
+      candidates_evaluated: 1,
+      started_at: "2026-04-15T09:30:00.000Z",
+      completed_at: "2026-04-15T09:31:00.000Z",
+      provenance: {
+        frontier_size: 1,
+        parent_selection_method: "none_first_run",
+        candidate_fingerprints: ["pkg_sha256_rootfrontier0001"],
+        evaluation_summaries: [],
+      },
+    });
+
+    const response = handleSkillReport(db, "draft-writer");
+    const payload = (await response.json()) as Record<string, unknown>;
+    const frontierState = payload.frontier_state as Record<string, unknown>;
+    const latestSearchRun = frontierState.latest_search_run as Record<string, unknown>;
+    const members = frontierState.members as Array<Record<string, unknown>>;
+
+    expect(response.status).toBe(200);
+    expect(frontierState.skill_name).toBe("draft-writer");
+    expect(frontierState.accepted_count).toBe(1);
+    expect(frontierState.rejected_count).toBe(0);
+    expect(frontierState.pending_count).toBe(0);
+    expect(members).toHaveLength(1);
+    expect(members[0]?.decision).toBe("accepted");
+    expect(members[0]?.evidence_rank).toBe(1);
+    expect(latestSearchRun.search_id).toBe("sr-frontier-1");
+    expect(latestSearchRun.provenance).toMatchObject({
+      parent_selection_method: "none_first_run",
+    });
   });
 });

@@ -433,37 +433,6 @@ export async function evolveBody(
         }
       }
 
-      // Check confidence threshold
-      if (proposal.confidence < confidenceThreshold) {
-        recordAudit(
-          proposal.proposal_id,
-          "rejected",
-          `Confidence ${proposal.confidence} below threshold ${confidenceThreshold}`,
-        );
-        recordEvidence({
-          timestamp: new Date().toISOString(),
-          proposal_id: proposal.proposal_id,
-          skill_name: skillName,
-          skill_path: skillPath,
-          target,
-          stage: "rejected",
-          rationale: proposal.rationale,
-          confidence: proposal.confidence,
-          details: `Confidence ${proposal.confidence} below threshold ${confidenceThreshold}`,
-        });
-
-        if (iteration === maxIterations - 1) {
-          return {
-            proposal: lastProposal,
-            validation: null,
-            deployed: false,
-            auditEntries,
-            reason: `Confidence ${proposal.confidence} below threshold ${confidenceThreshold}`,
-          };
-        }
-        continue;
-      }
-
       // Validate (validationModel overrides studentModel for validation calls)
       const validationModelFlag = options.validationModel ?? studentModel;
       let validation: BodyValidationResult;
@@ -544,6 +513,10 @@ export async function evolveBody(
       }
       lastValidation = validation;
       const validatedEvidenceRef = buildValidationEvidenceRef(proposal.proposal_id, "validated");
+      const confidenceReviewNote =
+        proposal.confidence < confidenceThreshold
+          ? ` (confidence ${proposal.confidence.toFixed(2)} below review threshold ${confidenceThreshold})`
+          : "";
 
       recordAudit(
         proposal.proposal_id,
@@ -552,7 +525,7 @@ export async function evolveBody(
           validation.validation_fallback_reason
             ? ` (replay fallback: ${validation.validation_fallback_reason})`
             : ""
-        }`,
+        }${confidenceReviewNote}`,
         {
           validation_mode: validation.validation_mode,
           validation_agent: validation.validation_agent,
@@ -573,7 +546,7 @@ export async function evolveBody(
           validation.validation_fallback_reason
             ? ` (replay fallback: ${validation.validation_fallback_reason})`
             : ""
-        }`,
+        }${confidenceReviewNote}`,
         validation: {
           improved: validation.improved,
           gates_passed: validation.gates_passed,
@@ -641,7 +614,7 @@ export async function evolveBody(
           validation.validation_fallback_reason
             ? ` (replay fallback: ${validation.validation_fallback_reason})`
             : ""
-        }`,
+        }${confidenceReviewNote}`,
         {
           validation_mode: validation.validation_mode,
           validation_agent: validation.validation_agent,
@@ -662,7 +635,7 @@ export async function evolveBody(
           validation.validation_fallback_reason
             ? ` (replay fallback: ${validation.validation_fallback_reason})`
             : ""
-        }`,
+        }${confidenceReviewNote}`,
         validation: {
           improved: validation.improved,
           gates_passed: validation.gates_passed,
@@ -886,7 +859,7 @@ Options:
   --eval-set          Path to eval set JSON
   --dry-run           Validate without deploying
   --max-iterations    Max refinement iterations (default: 3)
-  --confidence        Confidence threshold 0.0-1.0 (default: 0.6)
+  --confidence        Low-confidence review threshold 0.0-1.0 (default: 0.6)
   --task-description  Optional task description context
   --few-shot          Comma-separated paths to example skill files
   --validation-model  Model for trigger-check validation calls (overrides --student-model for validation)

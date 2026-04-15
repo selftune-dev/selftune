@@ -38,6 +38,8 @@ function appendDashboardActionEvent(event: DashboardActionEvent): void {
 
 function isDashboardActionName(value: string | undefined): value is DashboardActionName {
   return (
+    value === "create-check" ||
+    value === "report-package" ||
     value === "generate-evals" ||
     value === "generate-unit-tests" ||
     value === "replay-dry-run" ||
@@ -45,7 +47,8 @@ function isDashboardActionName(value: string | undefined): value is DashboardAct
     value === "deploy-candidate" ||
     value === "watch" ||
     value === "orchestrate" ||
-    value === "rollback"
+    value === "rollback" ||
+    value === "search-run"
   );
 }
 

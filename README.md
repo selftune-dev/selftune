@@ -101,7 +101,7 @@ selftune learned that real users say "slides", "deck", "presentation for Monday"
 
 **I use skills for non-coding work** — Marketing workflows, research pipelines, compliance checks, slide decks. You say "make me a presentation" and nothing happens. selftune learns that "slides", "deck", and "presentation for Monday" all mean the same skill — and fixes the routing automatically.
 
-## Creator Loop
+## Creator Lifecycle
 
 If you publish skills, the loop is:
 
@@ -115,25 +115,39 @@ If you publish skills, the loop is:
 
 ## How to Test a Skill
 
-The default creator loop is:
+The simplified lifecycle is:
 
 ```bash
-selftune eval generate --skill my-skill
-selftune eval unit-test --skill my-skill --generate --skill-path path/to/SKILL.md
-selftune evolve --skill my-skill --skill-path path/to/SKILL.md --dry-run --validation-mode replay
-selftune grade baseline --skill my-skill --skill-path path/to/SKILL.md
-selftune evolve --skill my-skill --skill-path path/to/SKILL.md --with-baseline
-selftune watch --skill my-skill
+selftune verify --skill-path path/to/SKILL.md
+selftune publish --skill-path path/to/SKILL.md
+selftune search-run --skill-path path/to/SKILL.md --surface both
+selftune improve --skill my-skill --skill-path path/to/SKILL.md --dry-run --validation-mode replay
+selftune run --dry-run
 ```
 
 What each step gives you:
 
-- `eval generate` builds the routing eval set and mirrors a canonical copy into `~/.selftune/eval-sets/<skill>.json`
-- `eval unit-test` creates or runs deterministic skill tests and stores the latest run summary under `~/.selftune/unit-tests/<skill>.last-run.json`
-- `evolve --dry-run --validation-mode replay` proves the candidate against replay-backed validation without deploying
-- `grade baseline` stores a no-skill comparison in SQLite so the dashboard and `selftune status` can tell whether the skill adds value
-- `evolve --with-baseline` is the live deploy step once the creator loop is complete
-- `watch` keeps the deployed skill under regression monitoring
+- `verify` runs the draft-package readiness check first, then emits the benchmark-style package report once the draft is ready. If readiness is still incomplete, it surfaces the next missing low-level step instead of guessing.
+- `publish` delegates to the draft-package publish flow and starts `watch` by default. Use `--no-watch` if you want a manual monitoring handoff.
+- `search-run` evaluates a bounded minibatch of routing/body package variants against the accepted frontier and persists the measured winner plus provenance.
+- `search-run` is currently an explicit package-improvement surface. `run` / `orchestrate` do not auto-select bounded package search yet.
+- `improve` is the intention-level alias for `evolve` and `evolve body`. Use `--scope description|routing|body` when you already know the right mutation surface.
+- `run` is the intention-level alias for `orchestrate`, so you can preview or operate the whole closed loop without remembering the internal command name.
+
+The advanced lifecycle primitives are still available when you need explicit control:
+
+```bash
+selftune create check --skill-path path/to/SKILL.md
+selftune eval generate --skill my-skill
+selftune eval unit-test --skill my-skill --generate --skill-path path/to/SKILL.md
+selftune create replay --skill-path path/to/SKILL.md --mode package
+selftune create baseline --skill-path path/to/SKILL.md --mode package
+selftune create report --skill-path path/to/SKILL.md
+selftune create publish --skill-path path/to/SKILL.md --watch
+selftune evolve --skill my-skill --skill-path path/to/SKILL.md --dry-run --validation-mode replay
+selftune grade baseline --skill my-skill --skill-path path/to/SKILL.md
+selftune watch --skill my-skill
+```
 
 The local dashboard overview, per-skill report, and `selftune status` now all read from those artifacts to show whether a skill is blocked on testing, ready to deploy, or already under watch.
 
@@ -163,7 +177,7 @@ selftune is an open-source CLI and agent skill that provides skill-level observa
 
 ### How is selftune different from LLM observability tools?
 
-LLM observability tools (Langfuse, LangSmith, Arize) trace what happens inside model calls — token usage, latency, chain failures. selftune operates at a different layer: it monitors whether the *right skill was triggered* for the *right query* in the first place. They're complementary, not competitive.
+LLM observability tools (Langfuse, LangSmith, Arize) trace what happens inside model calls — token usage, latency, chain failures. selftune operates at a different layer: it monitors whether the _right skill was triggered_ for the _right query_ in the first place. They're complementary, not competitive.
 
 ### How is this different from agents that "learn"?
 
@@ -181,41 +195,54 @@ selftune is empirical. It observes real sessions, grades execution quality, dete
 
 Your agent runs these — you just say what you want ("improve my skills", "show the dashboard").
 
-| Group      | Command                                      | What it does                                                                                |
-| ---------- | -------------------------------------------- | ------------------------------------------------------------------------------------------- |
-|            | `selftune status`                            | Get a one-line health summary plus compact attention / improving highlights                 |
-|            | `selftune last`                              | Quick insight from the most recent session                                                  |
-|            | `selftune orchestrate`                       | Run the full autonomous loop (sync → grade → evolve → watch)                                |
-|            | `selftune sync`                              | Replay source-truth transcripts/rollouts into SQLite and refresh repair state               |
-|            | `selftune dashboard`                         | Open the visual skill health dashboard                                                      |
-|            | `selftune doctor`                            | Health check: logs, hooks, config, permissions                                              |
-| **ingest** | `selftune ingest claude`                     | Backfill from Claude Code transcripts                                                       |
-|            | `selftune ingest codex`                      | Import Codex rollout logs (experimental)                                                    |
-| **grade**  | `selftune grade --skill <name>`              | Grade a skill session with evidence                                                         |
-|            | `selftune grade auto`                        | Auto-grade recent sessions for ungraded skills                                              |
-|            | `selftune grade baseline --skill <name>`     | Measure skill value vs no-skill baseline                                                    |
-| **evolve** | `selftune evolve --skill <name>`             | Propose, validate, and deploy improved descriptions                                         |
-|            | `selftune evolve body --skill <name>`        | Evolve full skill body or routing table                                                     |
-|            | `selftune evolve rollback --skill <name>`    | Rollback a previous evolution                                                               |
-| **eval**   | `selftune eval generate --skill <name>`      | Generate eval sets (`--synthetic` for cold-start)                                           |
-|            | `selftune eval unit-test --skill <name>`     | Run or generate skill-level unit tests                                                      |
-|            | `selftune eval composability --skill <name>` | Detect conflicts between co-occurring skills                                                |
-|            | `selftune eval family-overlap --prefix sc-`  | Detect sibling overlap and suggest when a skill family should be consolidated               |
-|            | `selftune eval import`                       | Import external eval corpus from [SkillsBench](https://github.com/benchflow-ai/skillsbench) |
-| **hooks**  | `selftune codex install`                     | Install selftune hooks into Codex (`--dry-run`, `--uninstall`)                              |
-|            | `selftune opencode install`                  | Install selftune hooks into OpenCode                                                        |
-|            | `selftune cline install`                     | Install selftune hooks into Cline                                                           |
-|            | `selftune pi install`                        | Install selftune hooks into Pi                                                              |
-| **auto**   | `selftune cron setup`                        | Install OS-level scheduling (cron/launchd/systemd)                                          |
-|            | `selftune watch --skill <name>`              | Monitor after deploy. Auto-rollback on regression.                                          |
-| **other**  | `selftune workflows`                         | Discover and manage multi-skill workflows                                                   |
-|            | `selftune contributions`                    | Manage creator-directed sharing preferences                                                  |
-|            | `selftune creator-contributions`            | Create or remove bundled `selftune.contribute.json` configs for skill creators              |
-|            | `selftune contribute`                       | Export an anonymized community contribution bundle                                           |
-|            | `selftune recover`                           | Recover SQLite from legacy/exported JSONL during migration or disaster recovery             |
-|            | `selftune badge --skill <name>`              | Generate a health badge for your skill's README                                             |
-|            | `selftune telemetry`                         | Manage anonymous usage analytics (status, enable, disable)                                  |
-|            | `selftune alpha upload`                      | Run a manual SQLite-backed alpha upload cycle and emit a JSON send summary                  |
+| Group      | Command                                        | What it does                                                                                |
+| ---------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
+|            | `selftune status`                              | Get a one-line health summary plus compact attention / improving highlights                 |
+|            | `selftune last`                                | Quick insight from the most recent session                                                  |
+|            | `selftune verify --skill-path <path>`          | Check draft-package readiness, then emit benchmark-style verification evidence              |
+|            | `selftune publish --skill-path <path>`         | Publish a verified draft package and start watch by default                                 |
+|            | `selftune search-run --skill-path <path>`      | Run bounded package search over routing/body variants against the measured frontier         |
+|            | `selftune improve --skill <name>`              | Route to the smallest matching evolution surface                                            |
+|            | `selftune run`                                 | Run the full autonomous loop through the simplified lifecycle alias                         |
+|            | `selftune orchestrate`                         | Advanced alias for `run`                                                                    |
+|            | `selftune sync`                                | Replay source-truth transcripts/rollouts into SQLite and refresh repair state               |
+|            | `selftune dashboard`                           | Open the visual skill health dashboard                                                      |
+|            | `selftune doctor`                              | Health check: logs, hooks, config, permissions                                              |
+| **ingest** | `selftune ingest claude`                       | Backfill from Claude Code transcripts                                                       |
+|            | `selftune ingest codex`                        | Import Codex rollout logs (experimental)                                                    |
+| **grade**  | `selftune grade --skill <name>`                | Grade a skill session with evidence                                                         |
+|            | `selftune grade auto`                          | Auto-grade recent sessions for ungraded skills                                              |
+|            | `selftune grade baseline --skill <name>`       | Measure skill value vs no-skill baseline                                                    |
+| **evolve** | `selftune evolve --skill <name>`               | Propose, validate, and deploy improved descriptions                                         |
+|            | `selftune evolve body --skill <name>`          | Evolve full skill body or routing table                                                     |
+|            | `selftune evolve rollback --skill <name>`      | Rollback a previous evolution                                                               |
+| **create** | `selftune create init --name <name>`           | Initialize a new draft skill package skeleton                                               |
+|            | `selftune create status --skill-path <path>`   | Show the current draft-package readiness                                                    |
+|            | `selftune create scaffold --from-workflow 1`   | Scaffold a draft skill package from an observed workflow                                    |
+|            | `selftune create check --skill-path <path>`    | Advanced draft-package readiness primitive behind `verify`                                  |
+|            | `selftune create replay --skill-path <path>`   | Replay-validate the current draft package                                                   |
+|            | `selftune create baseline --skill-path <path>` | Measure draft-package lift vs a no-skill baseline                                           |
+|            | `selftune create report --skill-path <path>`   | Render measured draft-package evidence as a benchmark-style report                          |
+|            | `selftune create publish --skill-path <path>`  | Advanced publish primitive behind `publish`                                                 |
+| **eval**   | `selftune eval generate --skill <name>`        | Generate eval sets (`--synthetic` for cold-start)                                           |
+|            | `selftune eval unit-test --skill <name>`       | Run or generate skill-level unit tests                                                      |
+|            | `selftune eval composability --skill <name>`   | Detect conflicts between co-occurring skills                                                |
+|            | `selftune eval family-overlap --prefix sc-`    | Detect sibling overlap and suggest when a skill family should be consolidated               |
+|            | `selftune eval import`                         | Import external eval corpus from [SkillsBench](https://github.com/benchflow-ai/skillsbench) |
+| **hooks**  | `selftune codex install`                       | Install selftune hooks into Codex (`--dry-run`, `--uninstall`)                              |
+|            | `selftune opencode install`                    | Install selftune hooks into OpenCode                                                        |
+|            | `selftune cline install`                       | Install selftune hooks into Cline                                                           |
+|            | `selftune pi install`                          | Install selftune hooks into Pi                                                              |
+| **auto**   | `selftune cron setup`                          | Install OS-level scheduling (cron/launchd/systemd)                                          |
+|            | `selftune watch --skill <name>`                | Monitor after deploy. Auto-rollback on regression.                                          |
+| **other**  | `selftune workflows`                           | Discover and manage multi-skill workflows                                                   |
+|            | `selftune contributions`                       | Manage creator-directed sharing preferences                                                 |
+|            | `selftune creator-contributions`               | Create or remove bundled `selftune.contribute.json` configs for skill creators              |
+|            | `selftune contribute`                          | Export an anonymized community contribution bundle                                          |
+|            | `selftune recover`                             | Recover SQLite from legacy/exported JSONL during migration or disaster recovery             |
+|            | `selftune badge --skill <name>`                | Generate a health badge for your skill's README                                             |
+|            | `selftune telemetry`                           | Manage anonymous usage analytics (status, enable, disable)                                  |
+|            | `selftune alpha upload`                        | Run a manual SQLite-backed alpha upload cycle and emit a JSON send summary                  |
 
 Full command reference: `selftune --help`
 
@@ -245,14 +272,14 @@ selftune is complementary to these tools, not competitive. They trace what happe
 
 ## Platforms
 
-| Platform | Support | Session capture | LLM-backed judge / evolve | Optimizer agents | Config location |
-| --- | --- | --- | --- | --- | --- |
-| **Claude Code** | Full | Automatic hooks via `selftune init` + `selftune ingest claude` | Yes | Native `claude --agent` | `~/.claude/settings.json` |
-| **Codex** | Experimental | `selftune codex install`, `selftune ingest codex`, or `selftune ingest wrap-codex` | Yes | Inlined into `codex exec` | `~/.codex/hooks.json` |
-| **OpenCode** | Experimental | `selftune opencode install` + `selftune ingest opencode` | Yes | Native `opencode run --agent` | `./opencode.json` or `~/.config/opencode/opencode.json` |
-| **Cline** | Experimental | `selftune cline install` | No | No | `~/Documents/Cline/Hooks/` |
-| **OpenClaw** | Experimental | `selftune ingest openclaw` + `selftune cron setup --platform openclaw` | No | No | — |
-| **Pi** | Experimental | `selftune pi install` + `selftune ingest pi` | Yes | Inlined into `pi -p` with system-prompt setup | `~/.pi/extensions/selftune/` |
+| Platform        | Support      | Session capture                                                                    | LLM-backed judge / evolve | Optimizer agents                              | Config location                                         |
+| --------------- | ------------ | ---------------------------------------------------------------------------------- | ------------------------- | --------------------------------------------- | ------------------------------------------------------- |
+| **Claude Code** | Full         | Automatic hooks via `selftune init` + `selftune ingest claude`                     | Yes                       | Native `claude --agent`                       | `~/.claude/settings.json`                               |
+| **Codex**       | Experimental | `selftune codex install`, `selftune ingest codex`, or `selftune ingest wrap-codex` | Yes                       | Inlined into `codex exec`                     | `~/.codex/hooks.json`                                   |
+| **OpenCode**    | Experimental | `selftune opencode install` + `selftune ingest opencode`                           | Yes                       | Native `opencode run --agent`                 | `./opencode.json` or `~/.config/opencode/opencode.json` |
+| **Cline**       | Experimental | `selftune cline install`                                                           | No                        | No                                            | `~/Documents/Cline/Hooks/`                              |
+| **OpenClaw**    | Experimental | `selftune ingest openclaw` + `selftune cron setup --platform openclaw`             | No                        | No                                            | —                                                       |
+| **Pi**          | Experimental | `selftune pi install` + `selftune ingest pi`                                       | Yes                       | Inlined into `pi -p` with system-prompt setup | `~/.pi/extensions/selftune/`                            |
 
 Codex, OpenCode, Claude Code, and Pi can run selftune's LLM-backed judge, eval, and optimizer workflows. Codex and OpenCode also participate in experimental runtime replay validation during `selftune evolve`, using `codex exec --json` and `opencode run --format json` respectively. OpenCode agents are registered in config during `selftune opencode install`; Codex still inlines bundled agent instructions into the prompt because it has no native `--agent` flag. OpenCode has weaker hook coverage than Claude Code because it lacks a prompt-submission event and cannot hard-block pre-tool writes. Pi has no native subagent flag, so selftune inlines bundled optimizer instructions into `pi -p` calls. Cline is telemetry-only today. OpenClaw remains ingest and cron only. All platforms write to the same shared log schema.
 

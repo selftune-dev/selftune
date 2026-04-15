@@ -83,22 +83,6 @@ export function buildUnblockSuggestions(result: EvolveResult, skillName: string)
     return suggestions;
   }
 
-  // --- Confidence failures (specific before general) ---
-  if (reason.includes("No candidates met confidence")) {
-    suggestions.push(`Lower the threshold: selftune evolve --skill ${skillName} --confidence 0.4`);
-    suggestions.push(
-      `Or increase candidates: selftune evolve --skill ${skillName} --pareto --candidates 5`,
-    );
-    appendQualityHints(suggestions, descText, skillName);
-    return suggestions;
-  }
-  if (reason.toLowerCase().includes("confidence") && reason.includes("threshold")) {
-    suggestions.push(`Lower the threshold: selftune evolve --skill ${skillName} --confidence 0.4`);
-    suggestions.push("Or add more eval entries so the LLM has more context for proposals");
-    appendQualityHints(suggestions, descText, skillName);
-    return suggestions;
-  }
-
   // --- Validation failures (proposals regressed) ---
   if (reason.includes("Validation failed after")) {
     suggestions.push(

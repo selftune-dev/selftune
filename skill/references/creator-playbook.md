@@ -3,8 +3,9 @@
 Use this when you are publishing a skill other people will install.
 
 If the user wants the operational step-by-step loop from cold start to deploy,
-route first to `workflows/CreateTestDeploy.md`. Use this reference for the
-packaging and after-ship interpretation layer around that loop.
+route first to `workflows/Verify.md` and `workflows/Publish.md`. Use this
+reference for the packaging and after-ship interpretation layer around that
+loop.
 
 The goal is simple:
 
@@ -39,20 +40,23 @@ Rule of thumb:
 
 ### Cold-start test and deploy the skill before publishing
 
-The default creator loop is now:
+The default package evaluation pipeline is:
 
 ```bash
+selftune verify --skill-path path/to/my-skill
 selftune eval generate --skill my-skill
+selftune verify --skill-path path/to/my-skill
 selftune eval unit-test --skill my-skill --generate --skill-path path/to/SKILL.md
-selftune evolve --skill my-skill --skill-path path/to/SKILL.md --dry-run --validation-mode replay
-selftune grade baseline --skill my-skill --skill-path path/to/SKILL.md
-selftune evolve --skill my-skill --skill-path path/to/SKILL.md --with-baseline
-selftune watch --skill my-skill
+selftune verify --skill-path path/to/my-skill
+selftune create replay --skill-path path/to/my-skill --mode package
+selftune create baseline --skill-path path/to/my-skill --mode package
+selftune verify --skill-path path/to/my-skill
+selftune publish --skill-path path/to/my-skill
 ```
 
-That same sequence is now packaged as the dedicated `CreateTestDeploy`
-workflow in the shipped selftune skill, while `Evals`, `UnitTest`, `Baseline`,
-`Evolve`, and `Watch` remain the atomic workflow docs for each individual step.
+`verify` is the front door in that sequence. Evals, unit tests, replay, and
+baseline remain the atomic supporting steps when the draft is still missing
+evidence.
 
 The dashboard overview, per-skill report, and `selftune status` all read from that loop and show
 the next missing step directly, then flip to deploy-ready and watching states once the skill is shipped.
@@ -106,11 +110,28 @@ Actionable threshold today:
 - at least `10` total signals
 - at least `3` distinct contributor cohorts
 
+### Package-level improvement
+
+When a skill has enough package evaluation evidence (accepted frontier
+candidates, canonical package evaluations), `selftune orchestrate` can
+automatically select package-level bounded search instead of description-only
+evolve. You can also trigger this manually:
+
+```bash
+selftune improve --skill my-skill --skill-path path/to/SKILL.md --scope package
+```
+
+Package search generates bounded mutations on routing and body surfaces,
+evaluates them against the accepted frontier parent through the package
+evaluator, and applies the winning candidate. Watch evidence feeds back into
+frontier selection, so post-deploy regressions inform future search runs.
+
 ### Interpret signal correctly
 
 - High missed counts with concentrated categories usually mean the **description/router** is wrong.
 - Low grades with decent trigger rate usually mean the **body/workflow/reference/tool split** is wrong.
 - Low-signal skills need more contributors before you trust a proposal.
+- When both routing and body surfaces show weakness, `selftune improve --scope package` or automatic orchestrate scope selection can address them together.
 
 ## Fast Checklist
 

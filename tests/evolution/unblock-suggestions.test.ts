@@ -87,25 +87,6 @@ describe("buildUnblockSuggestions", () => {
     expect(s.some((h) => h.includes("Description quality"))).toBe(true);
   });
 
-  // --- Confidence failures ---
-
-  test("confidence threshold suggests lowering threshold", () => {
-    const s = buildUnblockSuggestions(
-      stubResult({ reason: "Confidence 0.45 below threshold 0.6" }),
-      "my-skill",
-    );
-    expect(s[0]).toContain("--confidence 0.4");
-  });
-
-  test("no candidates met confidence suggests more candidates", () => {
-    const s = buildUnblockSuggestions(
-      stubResult({ reason: "No candidates met confidence threshold 0.6" }),
-      "my-skill",
-    );
-    expect(s[0]).toContain("--confidence 0.4");
-    expect(s[1]).toContain("--candidates");
-  });
-
   // --- Validation failures ---
 
   test("validation failed suggests verbose and pareto", () => {

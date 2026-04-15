@@ -4,17 +4,25 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { dirname, join } from "node:path";
 
 import { SELFTUNE_CONFIG_DIR } from "./constants.js";
+import type { CreatePackageEvaluationResult } from "./create/package-evaluator.js";
 import type {
+  CreatePackageEvaluationSummary,
+  CreatePackageEvaluationStatus,
+  CreatorOverviewStep,
   CreatorLoopNextStep,
   CreatorTestingOverview,
   DeploymentReadiness,
   SkillEvalReadiness,
+  SkillSummary,
   SkillTestingReadiness,
 } from "./dashboard-contract.js";
 import { getDb } from "./localdb/db.js";
 import type { EvalEntry, SkillUnitTest, UnitTestSuiteResult } from "./types.js";
+import { computeCreatePackageFingerprint } from "./create/package-fingerprint.js";
 import { queryEvolutionEvidence } from "./localdb/queries/evolution.js";
 import { queryTrustedSkillObservationRows } from "./localdb/queries/trust.js";
+import { MIN_LOG_READY_POSITIVES } from "./utils/eval-readiness.js";
+import { extractPositiveEvalQueryText } from "./utils/query-filter.js";
 import {
   findInstalledSkillNames,
   findInstalledSkillPath,
@@ -25,6 +33,7 @@ import {
 interface TrustedSkillObservationSummary {
   session_id: string;
   triggered: number;
+  query_text: string;
 }
 
 interface TestingReadinessContext {
@@ -38,6 +47,10 @@ interface TestingReadinessContext {
   baselineBySkill: Map<
     string,
     { sample_size: number; pass_rate: number | null; measured_at: string | null }
+  >;
+  packageEvaluationBySkill: Map<
+    string,
+    { summary: CreatePackageEvaluationSummary; storedAt: string | null }
   >;
   latestEvolutionBySkill: Map<string, { action: string | null; timestamp: string | null }>;
 }
@@ -54,6 +67,10 @@ function getUnitTestDir(): string {
   return join(getConfigDir(), "unit-tests");
 }
 
+function getPackageEvaluationDir(): string {
+  return join(getConfigDir(), "package-evaluations");
+}
+
 export function getCanonicalEvalSetPath(skillName: string): string {
   return join(getEvalSetDir(), `${skillName}.json`);
 }
@@ -64,6 +81,14 @@ export function getUnitTestPath(skillName: string): string {
 
 export function getUnitTestResultPath(skillName: string): string {
   return join(getUnitTestDir(), `${skillName}.last-run.json`);
+}
+
+export function getCanonicalPackageEvaluationPath(skillName: string): string {
+  return join(getPackageEvaluationDir(), `${skillName}.json`);
+}
+
+export function getCanonicalPackageEvaluationArtifactPath(skillName: string): string {
+  return join(getPackageEvaluationDir(), `${skillName}.artifact.json`);
 }
 
 function getOptionalDb(): Database | null {
@@ -81,6 +106,16 @@ function parseJsonArray(value: string | null | undefined): unknown[] {
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
+  }
+}
+
+function parseJsonObject(value: string | null | undefined): Record<string, unknown> | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
   }
 }
 
@@ -131,6 +166,21 @@ function upsertUnitTestRunResult(
       suite.pass_rate,
       JSON.stringify(suite),
     ],
+  );
+}
+
+function upsertPackageEvaluationReport(
+  db: Database,
+  skillName: string,
+  summary: CreatePackageEvaluationSummary,
+): void {
+  db.run(
+    `INSERT INTO package_evaluation_reports (skill_name, stored_at, summary_json)
+     VALUES (?, ?, ?)
+     ON CONFLICT(skill_name) DO UPDATE SET
+       stored_at = excluded.stored_at,
+       summary_json = excluded.summary_json`,
+    [skillName, new Date().toISOString(), JSON.stringify(summary)],
   );
 }
 
@@ -205,6 +255,35 @@ function readUnitTestRunResultFromDb(db: Database, skillName: string): UnitTestS
   }
 }
 
+function readPackageEvaluationFromDb(
+  db: Database,
+  skillName: string,
+): { summary: CreatePackageEvaluationSummary; storedAt: string | null } | null {
+  const row = db
+    .query(
+      `SELECT summary_json, stored_at
+       FROM package_evaluation_reports
+       WHERE skill_name = ?`,
+    )
+    .get(skillName) as { summary_json: string; stored_at: string } | null;
+  if (!row?.summary_json) return null;
+
+  const parsed = parseJsonObject(row.summary_json);
+  if (
+    !parsed ||
+    typeof parsed["skill_name"] !== "string" ||
+    typeof parsed["status"] !== "string" ||
+    typeof parsed["evaluation_passed"] !== "boolean"
+  ) {
+    return null;
+  }
+
+  return {
+    summary: parsed as unknown as CreatePackageEvaluationSummary,
+    storedAt: row.stored_at ?? null,
+  };
+}
+
 function listStoredSkillNames(db: Database, tableName: string): Set<string> {
   const rows = db.query(`SELECT skill_name FROM ${tableName}`).all() as Array<{
     skill_name: string;
@@ -252,6 +331,75 @@ export function writeUnitTestRunResult(skillName: string, suite: UnitTestSuiteRe
   const path = getUnitTestResultPath(skillName);
   writeFileSync(path, JSON.stringify(suite, null, 2), "utf-8");
   return path;
+}
+
+export function writeCanonicalPackageEvaluation(
+  skillName: string,
+  summary: CreatePackageEvaluationSummary,
+): string {
+  const path = getCanonicalPackageEvaluationPath(skillName);
+  const db = getOptionalDb();
+  if (db) {
+    upsertPackageEvaluationReport(db, skillName, summary);
+  }
+  mkdirSync(getPackageEvaluationDir(), { recursive: true });
+  writeFileSync(path, JSON.stringify(summary, null, 2), "utf-8");
+  return path;
+}
+
+export function writeCanonicalPackageEvaluationArtifact(
+  skillName: string,
+  result: CreatePackageEvaluationResult,
+): string {
+  const path = getCanonicalPackageEvaluationArtifactPath(skillName);
+  mkdirSync(getPackageEvaluationDir(), { recursive: true });
+  writeFileSync(path, JSON.stringify(result, null, 2), "utf-8");
+  return path;
+}
+
+export function readCanonicalUnitTestRunResult(
+  skillName: string,
+  db: Database | null = getOptionalDb(),
+): UnitTestSuiteResult | null {
+  const storedResult = db ? readUnitTestRunResultFromDb(db, skillName) : null;
+  if (storedResult) return storedResult;
+  return readUnitTestResult(getUnitTestResultPath(skillName));
+}
+
+export function readCanonicalPackageEvaluationArtifact(
+  skillName: string,
+): CreatePackageEvaluationResult | null {
+  try {
+    const path = getCanonicalPackageEvaluationArtifactPath(skillName);
+    if (!existsSync(path)) return null;
+    const parsed = JSON.parse(
+      readFileSync(path, "utf-8"),
+    ) as Partial<CreatePackageEvaluationResult>;
+    if (
+      typeof parsed !== "object" ||
+      parsed == null ||
+      typeof parsed.summary !== "object" ||
+      parsed.summary == null ||
+      typeof parsed.replay !== "object" ||
+      parsed.replay == null ||
+      typeof parsed.baseline !== "object" ||
+      parsed.baseline == null
+    ) {
+      return null;
+    }
+    if (
+      typeof parsed.summary.skill_name !== "string" ||
+      typeof parsed.summary.status !== "string" ||
+      typeof parsed.summary.evaluation_passed !== "boolean" ||
+      typeof parsed.replay.skill !== "string" ||
+      typeof parsed.baseline.skill_name !== "string"
+    ) {
+      return null;
+    }
+    return parsed as CreatePackageEvaluationResult;
+  } catch {
+    return null;
+  }
 }
 
 function readJsonArrayFile(path: string): unknown[] {
@@ -319,7 +467,7 @@ function deriveEvalReadiness(
   skillPath: string | null,
   trustedTriggerCount: number,
 ): SkillEvalReadiness {
-  if (trustedTriggerCount > 0) return "log_ready";
+  if (trustedTriggerCount >= MIN_LOG_READY_POSITIVES) return "log_ready";
   if (skillPath) return "cold_start_ready";
   return "telemetry_only";
 }
@@ -328,12 +476,18 @@ function formatSkillPathArg(skillPath: string | null, skillName: string): string
   return skillPath ?? `/path/to/skills/${skillName}/SKILL.md`;
 }
 
+function isDraftSkillPath(skillPath: string | null): boolean {
+  if (!skillPath) return false;
+  return existsSync(join(dirname(skillPath), "selftune.create.json"));
+}
+
 function recommendCommand(
   skillName: string,
   skillPath: string | null,
   nextStep: CreatorLoopNextStep,
 ): string {
   const pathArg = formatSkillPathArg(skillPath, skillName);
+  const draftPackage = isDraftSkillPath(skillPath);
   switch (nextStep) {
     case "generate_evals":
       return skillPath
@@ -342,25 +496,41 @@ function recommendCommand(
     case "run_unit_tests":
       return `selftune eval unit-test --skill ${skillName} --generate --skill-path ${pathArg}`;
     case "run_replay_dry_run":
-      return `selftune evolve --skill ${skillName} --skill-path ${pathArg} --dry-run --validation-mode replay`;
+      return draftPackage
+        ? `selftune create replay --skill-path ${pathArg} --mode package`
+        : `selftune evolve --skill ${skillName} --skill-path ${pathArg} --dry-run --validation-mode replay`;
     case "measure_baseline":
-      return `selftune grade baseline --skill ${skillName} --skill-path ${pathArg}`;
+      return draftPackage
+        ? `selftune create baseline --skill-path ${pathArg} --mode package`
+        : `selftune grade baseline --skill ${skillName} --skill-path ${pathArg}`;
     case "deploy_candidate":
-      return `selftune evolve --skill ${skillName} --skill-path ${pathArg} --with-baseline`;
+      return draftPackage
+        ? `selftune create publish --skill-path ${pathArg}`
+        : `selftune evolve --skill ${skillName} --skill-path ${pathArg} --with-baseline`;
     case "watch_deployment":
-      return `selftune watch --skill ${skillName}`;
+      return draftPackage
+        ? `selftune watch --skill ${skillName} --skill-path ${pathArg}`
+        : `selftune watch --skill ${skillName}`;
   }
 }
 
 function summarizeReadiness(
   nextStep: CreatorLoopNextStep,
+  draftPackage: boolean,
   evalReadiness: SkillEvalReadiness,
   evalSetEntries: number,
   unitTestCases: number,
   replayCheckCount: number,
   baselineSampleSize: number,
   unitTestPassRate: number | null,
+  packageEvaluationStatus: CreatePackageEvaluationStatus | null,
+  latestPackageEvaluationAt: string | null,
 ): string {
+  const latestPackageEvaluationText =
+    latestPackageEvaluationAt && packageEvaluationStatus
+      ? ` Latest measured package evaluation: ${packageEvaluationStatus} at ${latestPackageEvaluationAt}.`
+      : "";
+
   switch (nextStep) {
     case "generate_evals":
       if (evalReadiness === "log_ready") {
@@ -371,20 +541,36 @@ function summarizeReadiness(
       }
       return "Telemetry exists, but selftune cannot resolve a local SKILL.md yet. Point it at the skill and generate evals.";
     case "run_unit_tests":
-      return `Eval coverage is present (${evalSetEntries} entries), but no unit tests are stored yet.`;
+      return unitTestCases > 0 && unitTestPassRate != null && unitTestPassRate < 1
+        ? `Deterministic unit tests exist (${unitTestCases} cases), but the latest run only passed ${Math.round(unitTestPassRate * 100)}%. Fix the failing tests and rerun them before moving on.`
+        : `Eval coverage is present (${evalSetEntries} entries), but no unit tests are stored yet.`;
     case "run_replay_dry_run": {
       const passRateText =
         unitTestPassRate != null
           ? ` Last unit-test run passed ${Math.round(unitTestPassRate * 100)}%.`
           : "";
-      return `Unit tests are present (${unitTestCases} cases), but replay-backed dry-run validation has not been recorded yet.${passRateText}`;
+      if (draftPackage && packageEvaluationStatus === "replay_failed") {
+        return `A measured package evaluation already failed replay, so the draft is not publishable yet. Re-run package replay before publishing.${latestPackageEvaluationText}`;
+      }
+      return draftPackage
+        ? `Unit tests are present (${unitTestCases} cases), but package replay validation has not been recorded yet.${passRateText}`
+        : `Unit tests are present (${unitTestCases} cases), but replay-backed dry-run validation has not been recorded yet.${passRateText}`;
     }
     case "measure_baseline":
-      return `Replay-backed validation exists (${replayCheckCount} recorded checks), but no stored no-skill baseline exists yet.`;
+      if (draftPackage && packageEvaluationStatus === "baseline_failed") {
+        return `A measured package evaluation already failed the package baseline gate, so the draft is not publishable yet. Re-run the package baseline after improving the draft.${latestPackageEvaluationText}`;
+      }
+      return draftPackage
+        ? `Package replay validation exists (${replayCheckCount} recorded checks), but no measured package baseline exists yet.`
+        : `Replay-backed validation exists (${replayCheckCount} recorded checks), but no stored no-skill baseline exists yet.`;
     case "deploy_candidate":
-      return `Evals, unit tests, replay validation, and a baseline are all present. Ready to run a live evolve and deploy a watched candidate.${baselineSampleSize > 0 ? ` Latest baseline used ${baselineSampleSize} samples.` : ""}`;
+      return draftPackage
+        ? `Evals, unit tests, package replay, and a package baseline are all present. Ready to run create publish and hand the draft into watch.${baselineSampleSize > 0 ? ` Latest baseline used ${baselineSampleSize} samples.` : ""}`
+        : `Evals, unit tests, replay validation, and a baseline are all present. Ready to run a live evolve and deploy a watched candidate.${baselineSampleSize > 0 ? ` Latest baseline used ${baselineSampleSize} samples.` : ""}`;
     case "watch_deployment":
-      return `A candidate has already been deployed for this skill. Keep watching live traffic and baseline lift before making another mutation.${baselineSampleSize > 0 ? ` Latest baseline used ${baselineSampleSize} samples.` : ""}`;
+      return draftPackage
+        ? `This draft package has already been published. Keep watching live traffic and measured package lift before making another mutation.${baselineSampleSize > 0 ? ` Latest baseline used ${baselineSampleSize} samples.` : ""}`
+        : `A candidate has already been deployed for this skill. Keep watching live traffic and baseline lift before making another mutation.${baselineSampleSize > 0 ? ` Latest baseline used ${baselineSampleSize} samples.` : ""}`;
   }
 }
 
@@ -427,6 +613,7 @@ function summarizeDeploymentReadiness(
   skillPath: string | null,
 ): { summary: string; command: string | null } {
   const pathArg = formatSkillPathArg(skillPath, skillName);
+  const draftPackage = isDraftSkillPath(skillPath);
   switch (deploymentReadiness) {
     case "blocked":
       return {
@@ -435,21 +622,30 @@ function summarizeDeploymentReadiness(
       };
     case "ready_to_deploy":
       return {
-        summary:
-          "Tests and baseline are in place. Run a live evolve so selftune can validate and deploy the strongest candidate.",
-        command: `selftune evolve --skill ${skillName} --skill-path ${pathArg} --with-baseline`,
+        summary: draftPackage
+          ? "Tests and measured package checks are in place. Run create publish so selftune can re-run package replay and baseline before handing the draft into watch."
+          : "Tests and baseline are in place. Run a live evolve so selftune can validate and deploy the strongest candidate.",
+        command: draftPackage
+          ? `selftune create publish --skill-path ${pathArg}`
+          : `selftune evolve --skill ${skillName} --skill-path ${pathArg} --with-baseline`,
       };
     case "watching":
       return {
-        summary:
-          "A candidate is already deployed. Keep watching live trigger behavior and baseline lift before making another mutation.",
-        command: `selftune watch --skill ${skillName}`,
+        summary: draftPackage
+          ? "This draft package is already published. Keep watching live trigger behavior and measured package lift before making another mutation."
+          : "A candidate is already deployed. Keep watching live trigger behavior and baseline lift before making another mutation.",
+        command: draftPackage
+          ? `selftune watch --skill ${skillName} --skill-path ${pathArg}`
+          : `selftune watch --skill ${skillName}`,
       };
     case "rolled_back":
       return {
-        summary:
-          "The last deployment rolled back. Review the failure evidence, rerun a replay dry-run if needed, then redeploy once the candidate is trustworthy again.",
-        command: `selftune evolve --skill ${skillName} --skill-path ${pathArg} --dry-run --validation-mode replay`,
+        summary: draftPackage
+          ? "The last published draft rolled back. Review the failure evidence, rerun package replay and baseline if needed, then publish again once the package is trustworthy."
+          : "The last deployment rolled back. Review the failure evidence, rerun a replay dry-run if needed, then redeploy once the candidate is trustworthy again.",
+        command: draftPackage
+          ? `selftune create replay --skill-path ${pathArg} --mode package`
+          : `selftune evolve --skill ${skillName} --skill-path ${pathArg} --dry-run --validation-mode replay`,
       };
   }
 }
@@ -461,10 +657,10 @@ export function listSkillTestingReadiness(
   const context = buildTestingReadinessContext(db, searchDirs);
 
   return [...context.knownSkills]
-    .sort((a, b) => a.localeCompare(b))
+    .toSorted((a, b) => a.localeCompare(b))
     .map((skillName) => buildSkillTestingReadinessRow(skillName, context))
     .filter((row): row is SkillTestingReadiness => row != null)
-    .sort((a, b) => {
+    .toSorted((a, b) => {
       const priorityDiff = nextStepPriority(a.next_step) - nextStepPriority(b.next_step);
       if (priorityDiff !== 0) return priorityDiff;
       const trustedDiff = b.trusted_session_count - a.trusted_session_count;
@@ -487,7 +683,11 @@ function buildTestingReadinessContext(db: Database, searchDirs: string[]): Testi
 
   for (const row of trustedRows) {
     const existing = trustedRowsBySkill.get(row.skill_name);
-    const compact = { session_id: row.session_id, triggered: row.triggered };
+    const compact = {
+      session_id: row.session_id,
+      triggered: row.triggered,
+      query_text: row.query_text,
+    };
     if (existing) existing.push(compact);
     else trustedRowsBySkill.set(row.skill_name, [compact]);
   }
@@ -495,6 +695,7 @@ function buildTestingReadinessContext(db: Database, searchDirs: string[]): Testi
   const installedNames = findInstalledSkillNames(searchDirs);
   const unitTestDir = getUnitTestDir();
   const evalSetDir = getEvalSetDir();
+  const packageEvaluationDir = getPackageEvaluationDir();
   const unitTestNames = scanSkillNamesFromDir(unitTestDir, (entry) => {
     if (!entry.endsWith(".json") || entry.endsWith(".last-run.json")) return null;
     return entry.slice(0, -".json".length);
@@ -507,9 +708,14 @@ function buildTestingReadinessContext(db: Database, searchDirs: string[]): Testi
     if (!entry.endsWith(".json")) return null;
     return entry.slice(0, -".json".length);
   });
+  const packageEvaluationNames = scanSkillNamesFromDir(packageEvaluationDir, (entry) => {
+    if (!entry.endsWith(".json")) return null;
+    return entry.slice(0, -".json".length);
+  });
   const storedEvalNames = listStoredSkillNames(db, "canonical_eval_sets");
   const storedUnitTestNames = listStoredSkillNames(db, "unit_test_files");
   const storedUnitTestRunNames = listStoredSkillNames(db, "unit_test_run_results");
+  const storedPackageEvaluationNames = listStoredSkillNames(db, "package_evaluation_reports");
 
   const evidenceRows = queryEvolutionEvidence(db);
   const evalEvidenceBySkill = new Map<string, { count: number; latestAt: string | null }>();
@@ -580,6 +786,38 @@ function buildTestingReadinessContext(db: Database, searchDirs: string[]): Testi
     });
   }
 
+  const packageEvaluationRows = db
+    .query(
+      `SELECT skill_name, stored_at, summary_json
+       FROM package_evaluation_reports
+       ORDER BY stored_at DESC`,
+    )
+    .all() as Array<{
+    skill_name: string;
+    stored_at: string;
+    summary_json: string;
+  }>;
+  const packageEvaluationBySkill = new Map<
+    string,
+    { summary: CreatePackageEvaluationSummary; storedAt: string | null }
+  >();
+  for (const row of packageEvaluationRows) {
+    if (packageEvaluationBySkill.has(row.skill_name)) continue;
+    const parsed = parseJsonObject(row.summary_json);
+    if (
+      !parsed ||
+      typeof parsed["skill_name"] !== "string" ||
+      typeof parsed["status"] !== "string" ||
+      typeof parsed["evaluation_passed"] !== "boolean"
+    ) {
+      continue;
+    }
+    packageEvaluationBySkill.set(row.skill_name, {
+      summary: parsed as unknown as CreatePackageEvaluationSummary,
+      storedAt: row.stored_at ?? null,
+    });
+  }
+
   const latestEvolutionRows = db
     .query(
       `SELECT skill_name, action, timestamp
@@ -624,9 +862,11 @@ function buildTestingReadinessContext(db: Database, searchDirs: string[]): Testi
     ...unitTestNames,
     ...unitTestResultNames,
     ...canonicalEvalNames,
+    ...packageEvaluationNames,
     ...storedEvalNames,
     ...storedUnitTestNames,
     ...storedUnitTestRunNames,
+    ...storedPackageEvaluationNames,
     ...evalEvidenceBySkill.keys(),
     ...replayBySkill.keys(),
     ...baselineBySkill.keys(),
@@ -642,6 +882,7 @@ function buildTestingReadinessContext(db: Database, searchDirs: string[]): Testi
     fallbackSkillPathBySkill,
     replayBySkill,
     baselineBySkill,
+    packageEvaluationBySkill,
     latestEvolutionBySkill,
   };
 }
@@ -651,8 +892,11 @@ function buildSkillTestingReadinessRow(
   context: TestingReadinessContext,
 ): SkillTestingReadiness | null {
   const trustRows = context.trustedRowsBySkill.get(skillName) ?? [];
-  const trustedTriggerCount = trustRows.filter((row) => row.triggered === 1).length;
-  const trustedSessionCount = new Set(trustRows.map((row) => row.session_id)).size;
+  const trustedPositiveRows = trustRows.filter(
+    (row) => row.triggered === 1 && extractPositiveEvalQueryText(row.query_text, skillName) != null,
+  );
+  const trustedTriggerCount = trustedPositiveRows.length;
+  const trustedSessionCount = new Set(trustedPositiveRows.map((row) => row.session_id)).size;
 
   const installedSkillPath = findInstalledSkillPath(skillName, context.searchDirs) ?? null;
   if (!context.knownSkills.has(skillName) && installedSkillPath == null) {
@@ -660,6 +904,7 @@ function buildSkillTestingReadinessRow(
   }
 
   const skillPath = installedSkillPath ?? context.fallbackSkillPathBySkill.get(skillName) ?? null;
+  const draftPackage = isDraftSkillPath(skillPath);
   const evalReadiness = deriveEvalReadiness(skillPath, trustedTriggerCount);
 
   const canonicalEvalPath = getCanonicalEvalSetPath(skillName);
@@ -683,6 +928,43 @@ function buildSkillTestingReadinessRow(
   const unitTestResult =
     readUnitTestRunResultFromDb(context.db, skillName) ??
     readUnitTestResult(getUnitTestResultPath(skillName));
+  const storedPackageEvaluation =
+    context.packageEvaluationBySkill.get(skillName) ??
+    readPackageEvaluationFromDb(context.db, skillName);
+  const filePackageEvaluation =
+    storedPackageEvaluation == null && existsSync(getCanonicalPackageEvaluationPath(skillName))
+      ? (() => {
+          const parsed = parseJsonObject(
+            readFileSync(getCanonicalPackageEvaluationPath(skillName), "utf-8"),
+          );
+          if (
+            !parsed ||
+            typeof parsed["skill_name"] !== "string" ||
+            typeof parsed["status"] !== "string" ||
+            typeof parsed["evaluation_passed"] !== "boolean"
+          ) {
+            return null;
+          }
+          const stat = statSync(getCanonicalPackageEvaluationPath(skillName));
+          return {
+            summary: parsed as unknown as CreatePackageEvaluationSummary,
+            storedAt: stat.mtime.toISOString?.() ?? null,
+          };
+        })()
+      : null;
+  const packageEvaluation = storedPackageEvaluation ?? filePackageEvaluation;
+  const currentPackageFingerprint =
+    draftPackage && skillPath ? computeCreatePackageFingerprint(skillPath) : null;
+  const packageEvaluationMatchesCurrentPackage =
+    packageEvaluation?.summary.package_fingerprint != null &&
+    currentPackageFingerprint != null &&
+    packageEvaluation.summary.package_fingerprint === currentPackageFingerprint;
+  const effectivePackageEvaluation = packageEvaluationMatchesCurrentPackage
+    ? packageEvaluation
+    : null;
+  const packageEvaluationStatus = effectivePackageEvaluation?.summary.status ?? null;
+  const packageEvaluationPassed = effectivePackageEvaluation?.summary.evaluation_passed ?? null;
+  const latestPackageEvaluationAt = effectivePackageEvaluation?.storedAt ?? null;
 
   const replay = context.replayBySkill.get(skillName) ?? {
     check_count: 0,
@@ -703,9 +985,15 @@ function buildSkillTestingReadinessRow(
     nextStep = "generate_evals";
   } else if (unitTestCases === 0) {
     nextStep = "run_unit_tests";
+  } else if (unitTestResult != null && unitTestResult.pass_rate < 1) {
+    nextStep = "run_unit_tests";
   } else if (replay.check_count === 0) {
     nextStep = "run_replay_dry_run";
   } else if (baseline.sample_size === 0) {
+    nextStep = "measure_baseline";
+  } else if (draftPackage && packageEvaluationStatus === "replay_failed") {
+    nextStep = "run_replay_dry_run";
+  } else if (draftPackage && packageEvaluationStatus === "baseline_failed") {
     nextStep = "measure_baseline";
   } else if (latestEvolution.action === "deployed") {
     nextStep = "watch_deployment";
@@ -718,12 +1006,15 @@ function buildSkillTestingReadinessRow(
   const recommended_command = recommendCommand(skillName, skillPath, nextStep);
   const summary = summarizeReadiness(
     nextStep,
+    draftPackage,
     evalReadiness,
     evalSetEntries,
     unitTestCases,
     replay.check_count,
     baseline.sample_size,
     unitTestResult?.pass_rate ?? null,
+    packageEvaluationStatus,
+    latestPackageEvaluationAt,
   );
 
   return {
@@ -750,6 +1041,9 @@ function buildSkillTestingReadinessRow(
     baseline_sample_size: baseline.sample_size,
     baseline_pass_rate: baseline.pass_rate,
     latest_baseline_at: baseline.measured_at,
+    package_evaluation_status: packageEvaluationStatus,
+    package_evaluation_passed: packageEvaluationPassed,
+    latest_package_evaluation_at: latestPackageEvaluationAt,
     deployment_readiness: deploymentReadiness,
     deployment_summary: deployment.summary,
     deployment_command: deployment.command,
@@ -758,10 +1052,102 @@ function buildSkillTestingReadinessRow(
   } satisfies SkillTestingReadiness;
 }
 
-export function buildCreatorTestingOverview(
-  readinessRows: SkillTestingReadiness[],
-): CreatorTestingOverview {
+function mapCreatorLoopNextStep(step: CreatorLoopNextStep): CreatorOverviewStep {
+  switch (step) {
+    case "generate_evals":
+      return "generate_evals";
+    case "run_unit_tests":
+      return "run_unit_tests";
+    case "run_replay_dry_run":
+      return "run_replay_dry_run";
+    case "measure_baseline":
+      return "measure_baseline";
+    case "deploy_candidate":
+      return "deploy_candidate";
+    case "watch_deployment":
+      return "watch_deployment";
+  }
+}
+
+function mapCreateStateToCreatorStep(
+  createReadiness: NonNullable<SkillSummary["create_readiness"]>,
+  testingReadiness: SkillTestingReadiness | undefined,
+): CreatorOverviewStep {
+  if (
+    testingReadiness?.next_step === "watch_deployment" ||
+    testingReadiness?.latest_evolution_action === "deployed"
+  ) {
+    return "watch_deployment";
+  }
+
+  switch (createReadiness.state) {
+    case "blocked_spec_validation":
+    case "needs_spec_validation":
+      return "run_create_check";
+    case "needs_package_resources":
+      return "finish_package";
+    case "needs_evals":
+      return "generate_evals";
+    case "needs_unit_tests":
+      return "run_unit_tests";
+    case "needs_routing_replay":
+      return "run_replay_dry_run";
+    case "needs_baseline":
+      return "measure_baseline";
+    case "ready_to_publish":
+      return "deploy_candidate";
+  }
+}
+
+function deriveCreatorPriority(
+  skill: Pick<SkillSummary, "skill_name" | "testing_readiness" | "create_readiness">,
+): CreatorTestingOverview["priorities"][number] | null {
+  if (skill.create_readiness) {
+    const step = mapCreateStateToCreatorStep(skill.create_readiness, skill.testing_readiness);
+    if (step === "watch_deployment" && skill.testing_readiness) {
+      return {
+        skill_name: skill.skill_name,
+        step,
+        summary: skill.testing_readiness.summary,
+        recommended_command: skill.testing_readiness.recommended_command,
+      };
+    }
+
+    return {
+      skill_name: skill.skill_name,
+      step,
+      summary: skill.create_readiness.summary,
+      recommended_command:
+        skill.create_readiness.next_command ??
+        skill.testing_readiness?.recommended_command ??
+        `selftune create check --skill-path ${skill.create_readiness.skill_path}`,
+    };
+  }
+
+  if (!skill.testing_readiness) return null;
+  return {
+    skill_name: skill.skill_name,
+    step: mapCreatorLoopNextStep(skill.testing_readiness.next_step),
+    summary: skill.testing_readiness.summary,
+    recommended_command: skill.testing_readiness.recommended_command,
+  };
+}
+
+const CREATOR_OVERVIEW_STEP_ORDER: Record<CreatorOverviewStep, number> = {
+  run_create_check: 0,
+  finish_package: 1,
+  generate_evals: 2,
+  run_unit_tests: 3,
+  run_replay_dry_run: 4,
+  measure_baseline: 5,
+  deploy_candidate: 6,
+  watch_deployment: 7,
+};
+
+export function buildCreatorTestingOverview(skills: SkillSummary[]): CreatorTestingOverview {
   const counts = {
+    run_create_check: 0,
+    finish_package: 0,
     generate_evals: 0,
     run_unit_tests: 0,
     run_replay_dry_run: 0,
@@ -770,21 +1156,26 @@ export function buildCreatorTestingOverview(
     watch_deployment: 0,
   } satisfies CreatorTestingOverview["counts"];
 
-  for (const row of readinessRows) {
-    counts[row.next_step]++;
+  const priorities = skills
+    .map((skill) => deriveCreatorPriority(skill))
+    .filter(
+      (priority): priority is CreatorTestingOverview["priorities"][number] => priority != null,
+    );
+
+  for (const priority of priorities) {
+    counts[priority.step]++;
   }
 
-  const priorities = readinessRows
-    .filter((row) => row.next_step !== "watch_deployment")
-    .slice(0, 5)
-    .map((row) => ({
-      skill_name: row.skill_name,
-      next_step: row.next_step,
-      summary: row.summary,
-      recommended_command: row.recommended_command,
-    }));
+  const visiblePriorities = priorities
+    .filter((priority) => priority.step !== "watch_deployment")
+    .toSorted(
+      (a, b) =>
+        CREATOR_OVERVIEW_STEP_ORDER[a.step] - CREATOR_OVERVIEW_STEP_ORDER[b.step] ||
+        a.skill_name.localeCompare(b.skill_name),
+    )
+    .slice(0, 5);
 
-  const summary = `${counts.deploy_candidate} ready to deploy, ${counts.watch_deployment} already shipped and under watch, ${counts.generate_evals} still need evals, ${counts.run_unit_tests} need unit tests, ${counts.run_replay_dry_run} need replay dry-runs, ${counts.measure_baseline} need baselines.`;
+  const summary = `${counts.deploy_candidate} ready to deploy, ${counts.watch_deployment} already shipped and under watch, ${counts.run_create_check} need create check, ${counts.finish_package} need package work, ${counts.generate_evals} still need evals, ${counts.run_unit_tests} need unit tests, ${counts.run_replay_dry_run} need replay dry-runs, ${counts.measure_baseline} need baselines.`;
 
-  return { summary, counts, priorities };
+  return { summary, counts, priorities: visiblePriorities };
 }

@@ -317,6 +317,18 @@ describe("runHostReplayFixture", () => {
               readSkillPaths: [input.targetSkillPath],
               rawOutput: "",
               sessionId: "runtime-session-1",
+              metrics: {
+                platform: "claude_code",
+                model: "claude-opus-4-6",
+                session_id: "runtime-session-1",
+                input_tokens: 120,
+                output_tokens: 40,
+                cache_creation_input_tokens: 10,
+                cache_read_input_tokens: 20,
+                total_cost_usd: 0.02,
+                duration_ms: 1500,
+                num_turns: 1,
+              },
             };
           }
           return {
@@ -324,6 +336,18 @@ describe("runHostReplayFixture", () => {
             readSkillPaths: input.competingSkillPaths,
             rawOutput: "",
             sessionId: "runtime-session-2",
+            metrics: {
+              platform: "claude_code",
+              model: "claude-opus-4-6",
+              session_id: "runtime-session-2",
+              input_tokens: 80,
+              output_tokens: 30,
+              cache_creation_input_tokens: 5,
+              cache_read_input_tokens: 15,
+              total_cost_usd: 0.01,
+              duration_ms: 900,
+              num_turns: 1,
+            },
           };
         },
       });
@@ -331,9 +355,21 @@ describe("runHostReplayFixture", () => {
       expect(results[0]?.triggered).toBe(true);
       expect(results[0]?.passed).toBe(true);
       expect(results[0]?.evidence).toContain("runtime replay session runtime-session-1");
+      expect(results[0]?.runtime_metrics).toMatchObject({
+        input_tokens: 120,
+        output_tokens: 40,
+        total_cost_usd: 0.02,
+        duration_ms: 1500,
+      });
       expect(results[1]?.triggered).toBe(false);
       expect(results[1]?.passed).toBe(true);
       expect(results[1]?.evidence).toContain("competing skill");
+      expect(results[1]?.runtime_metrics).toMatchObject({
+        input_tokens: 80,
+        output_tokens: 30,
+        total_cost_usd: 0.01,
+        duration_ms: 900,
+      });
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
     }
@@ -492,6 +528,49 @@ describe("runHostReplayFixture", () => {
 
       expect(result?.passed).toBe(true);
       expect(result?.evidence).toContain("runtime replay session runtime-session-body");
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  test("allows package-mode reads under workflows/ without treating them as unrelated", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "selftune-replay-"));
+    try {
+      const targetPath = writeSkill(
+        rootDir,
+        "deck-skill",
+        "Create decks and slide presentations.",
+        ["Presentation building requests"],
+      );
+      mkdirSync(join(dirname(targetPath), "workflows"), { recursive: true });
+      writeFileSync(join(dirname(targetPath), "workflows", "default.md"), "# Default workflow\n");
+      const fixture: RoutingReplayFixture = {
+        ...makeFixture(targetPath),
+        skill_staging_mode: "package",
+      };
+
+      const [result] = await runClaudeRuntimeReplayFixture({
+        routing: [
+          "Create decks and slide presentations.",
+          "",
+          "## Workflow Routing",
+          "",
+          "| Trigger | Workflow |",
+          "| --- | --- |",
+          "| board deck | default |",
+        ].join("\n"),
+        contentTarget: "body",
+        evalSet: [{ query: "create a board deck", should_trigger: true }],
+        fixture,
+        runtimeInvoker: async (input) => ({
+          triggeredSkillNames: ["deck-skill"],
+          readSkillPaths: [join(dirname(input.targetSkillPath), "workflows", "default.md")],
+          rawOutput: "",
+          sessionId: "runtime-session-package",
+        }),
+      });
+
+      expect(result?.passed).toBe(true);
     } finally {
       rmSync(rootDir, { recursive: true, force: true });
     }

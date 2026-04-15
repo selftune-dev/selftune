@@ -20,23 +20,26 @@ Invoke this workflow when the user requests any of the following:
 selftune eval generate --skill <name> [options]
 ```
 
-## Recommended Creator Loop
+## Recommended Package Evaluation Pipeline
 
-Use eval generation as step 1 of the default creator loop:
+Use eval generation as step 1 of the package evaluation pipeline:
 
 ```bash
+selftune verify --skill-path <path>
 selftune eval generate --skill <name>
+selftune verify --skill-path <path>
 selftune eval unit-test --skill <name> --generate --skill-path <path>
-selftune evolve --skill <name> --skill-path <path> --dry-run --validation-mode replay
-selftune grade baseline --skill <name> --skill-path <path>
-selftune evolve --skill <name> --skill-path <path> --with-baseline
-selftune watch --skill <name>
+selftune verify --skill-path <path>
 ```
 
 The command still writes the requested output path, and it now also mirrors a canonical copy into
 `~/.selftune/eval-sets/<skill>.json` so the dashboard and `selftune status` can track whether eval
-coverage exists. Once the earlier steps are complete, the creator loop surfaces now flip from
+coverage exists. Once the earlier steps are complete, the pipeline surfaces now flip from
 "needs testing" to "ready to deploy" and then "watching" after ship.
+
+For already-published skills, eval generation is still a common supporting step
+before `selftune improve` / `selftune evolve` when you need fresher trigger
+evidence.
 
 ## Options
 
@@ -51,6 +54,7 @@ coverage exists. Once the earlier steps are complete, the creator loop surfaces 
 | `--no-negatives`                   | Exclude negative examples from output                 | Off                               |
 | `--no-taxonomy`                    | Skip invocation_type classification                   | Off                               |
 | `--skill-log <path>`               | Path to skill_usage_log.jsonl                         | Default log path                  |
+| `--agent <name>`                   | Agent CLI for synthetic/blended eval generation (`claude`, `codex`, `opencode`, `pi`) | Auto-detected          |
 | `--query-log <path>`               | Path to all_queries_log.jsonl                         | Default log path                  |
 | `--telemetry-log <path>`           | Path to session_telemetry_log.jsonl                   | Default log path                  |
 | `--synthetic`                      | Generate evals from SKILL.md via LLM (no logs needed) | Off                               |
@@ -184,6 +188,7 @@ queries directly from the SKILL.md content via an LLM.
 
 ```bash
 selftune eval generate --skill pptx --synthetic --skill-path /path/to/skills/pptx/SKILL.md
+selftune eval generate --skill pptx --synthetic --skill-path /path/to/skills/pptx/SKILL.md --agent opencode
 ```
 
 If the skill is installed locally but has no trusted trigger history yet, use the faster creator
@@ -191,6 +196,7 @@ onboarding path:
 
 ```bash
 selftune eval generate --skill pptx --auto-synthetic --skill-path /path/to/skills/pptx/SKILL.md
+selftune eval generate --skill pptx --auto-synthetic --skill-path /path/to/skills/pptx/SKILL.md --agent opencode
 ```
 
 `--auto-synthetic` keeps the normal log-based path when real trigger data exists, but falls back

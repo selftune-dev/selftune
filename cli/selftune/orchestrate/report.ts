@@ -123,7 +123,7 @@ export function formatOrchestrateReport(result: OrchestrateResult): string {
   const lines: string[] = [];
 
   lines.push(separator);
-  lines.push("selftune orchestrate — decision report");
+  lines.push("selftune run — decision report");
   lines.push(separator);
   lines.push("");
 

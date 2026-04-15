@@ -1,37 +1,38 @@
 # selftune Create, Test, and Deploy Workflow
 
 Use this when the user wants one guided path from a new or shaky skill to a
-safe shipped skill.
+safe shipped package.
 
 This is a composed workflow. It does not replace the atomic `Evals`,
 `UnitTest`, `Baseline`, `Evolve`, or `Watch` workflows. It decides which one
-comes next and keeps the creator trust loop in order.
+comes next and keeps the package evaluation pipeline in order.
 
 ## When to Use
 
 - The user says "create, test, and deploy"
-- The user wants the full creator loop end to end
+- The user wants the full package evaluation pipeline end to end
 - The user asks "how do I know this skill works?" before shipping
 - The user asks whether a skill is ready to deploy
 - The user wants one recommended path from cold start to live watch
 
 ## Default Path
 
-There is no single `selftune create-test-deploy` command yet. Run the loop
-step by step:
+Prefer the newer lifecycle:
 
 ```bash
-selftune eval generate --skill <name> --skill-path <path>
-selftune eval unit-test --skill <name> --generate --skill-path <path>
-selftune evolve --skill <name> --skill-path <path> --dry-run --validation-mode replay
-selftune grade baseline --skill <name> --skill-path <path>
-selftune evolve --skill <name> --skill-path <path> --with-baseline
-selftune watch --skill <name>
+# author or inspect the draft
+selftune create status --skill-path <path>
+
+# build trust evidence
+selftune verify --skill-path <path>
+
+# ship safely
+selftune publish --skill-path <path>
 ```
 
 ## How to Run It
 
-### 1. Resolve the current loop position
+### 1. Resolve the current lifecycle position
 
 Start with one of these surfaces:
 
@@ -90,11 +91,10 @@ Then continue to replay dry-run validation.
 Run:
 
 ```bash
-selftune evolve --skill <name> --skill-path <path> --dry-run --validation-mode replay
+selftune create replay --skill-path <path> --mode package
 ```
 
-This is the pre-deploy proof step. It validates against runtime-style routing
-without mutating the skill.
+This is the runtime proof step behind `verify`.
 
 Then continue to baseline.
 
@@ -103,21 +103,21 @@ Then continue to baseline.
 Run:
 
 ```bash
-selftune grade baseline --skill <name> --skill-path <path>
+selftune create baseline --skill-path <path> --mode package
 ```
 
-Then continue to live deploy.
+Then re-run `verify`.
 
 #### Ready to deploy
 
 Run:
 
 ```bash
-selftune evolve --skill <name> --skill-path <path> --with-baseline
+selftune publish --skill-path <path>
 ```
 
-This is the recommended creator ship command because it deploys only after the
-candidate clears the earlier trust gates.
+This is the recommended creator ship command because it re-runs the draft
+package validation gates and starts watch automatically.
 
 Then continue to watch.
 
@@ -134,13 +134,19 @@ another iteration.
 
 ## Which workflow to read next
 
-Load the atomic workflow that matches the next missing step:
+Prefer the newer primary workflows:
 
-- eval generation -> `workflows/Evals.md`
-- unit tests -> `workflows/UnitTest.md`
-- replay dry-run / deploy -> `workflows/Evolve.md`
-- baseline -> `workflows/Baseline.md`
-- live monitoring -> `workflows/Watch.md`
+- authoring -> `workflows/Create.md`
+- trust-building -> `workflows/Verify.md`
+- shipping -> `workflows/Publish.md`
+
+Load the lower-level workflows only when the user explicitly wants the details:
+
+- `workflows/Evals.md`
+- `workflows/UnitTest.md`
+- `workflows/Replay.md`
+- `workflows/Baseline.md`
+- `workflows/Watch.md`
 
 Use `references/creator-playbook.md` when the user is publishing a skill other
 people will install and needs before-ship versus after-ship guidance.
@@ -150,13 +156,11 @@ people will install and needs before-ship versus after-ship guidance.
 **User asks for one end-to-end shipping path**
 
 > Use this workflow. Check the current readiness surface first, then run the
-> next missing creator-loop step instead of dumping every command at once.
+> next missing pipeline step instead of dumping every command at once.
 
 **User asks whether a skill is safe to ship**
 
-> Use `selftune status` or the dashboard to confirm evals, unit tests, replay
-> validation, and baseline exist. If all four are complete, run `selftune
-> evolve --with-baseline`. Otherwise run the missing step first.
+> Use `Verify` first. If the skill is already verified, move to `Publish`.
 
 **User already shipped the skill**
 

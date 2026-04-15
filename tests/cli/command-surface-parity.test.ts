@@ -23,6 +23,76 @@ interface CommandSurfaceFixture {
 
 const COMMAND_SURFACE_FIXTURES: readonly CommandSurfaceFixture[] = [
   {
+    name: "create init",
+    modulePath: "cli/selftune/create/init.ts",
+    workflowDocPath: "skill/workflows/Create.md",
+    siteDocPath: "sites/docs/cli/create.mdx",
+    surface: PUBLIC_COMMAND_SURFACES.createInit,
+  },
+  {
+    name: "create status",
+    modulePath: "cli/selftune/create/status.ts",
+    workflowDocPath: "skill/workflows/Create.md",
+    siteDocPath: "sites/docs/cli/create.mdx",
+    surface: PUBLIC_COMMAND_SURFACES.createStatus,
+  },
+  {
+    name: "create scaffold",
+    modulePath: "cli/selftune/create/scaffold.ts",
+    workflowDocPath: "skill/workflows/Create.md",
+    siteDocPath: "sites/docs/cli/create.mdx",
+    surface: PUBLIC_COMMAND_SURFACES.createScaffold,
+  },
+  {
+    name: "create check",
+    modulePath: "cli/selftune/create/check.ts",
+    workflowDocPath: "skill/workflows/Create.md",
+    siteDocPath: "sites/docs/cli/create.mdx",
+    surface: PUBLIC_COMMAND_SURFACES.createCheck,
+  },
+  {
+    name: "create replay",
+    modulePath: "cli/selftune/create/replay.ts",
+    workflowDocPath: "skill/workflows/Create.md",
+    siteDocPath: "sites/docs/cli/create.mdx",
+    surface: PUBLIC_COMMAND_SURFACES.createReplay,
+  },
+  {
+    name: "create baseline",
+    modulePath: "cli/selftune/create/baseline.ts",
+    workflowDocPath: "skill/workflows/Create.md",
+    siteDocPath: "sites/docs/cli/create.mdx",
+    surface: PUBLIC_COMMAND_SURFACES.createBaseline,
+  },
+  {
+    name: "create report",
+    modulePath: "cli/selftune/create/report.ts",
+    workflowDocPath: "skill/workflows/Create.md",
+    siteDocPath: "sites/docs/cli/create.mdx",
+    surface: PUBLIC_COMMAND_SURFACES.createReport,
+  },
+  {
+    name: "create publish",
+    modulePath: "cli/selftune/create/publish.ts",
+    workflowDocPath: "skill/workflows/Create.md",
+    siteDocPath: "sites/docs/cli/create.mdx",
+    surface: PUBLIC_COMMAND_SURFACES.createPublish,
+  },
+  {
+    name: "verify",
+    modulePath: "cli/selftune/verify.ts",
+    workflowDocPath: "skill/workflows/Verify.md",
+    siteDocPath: "sites/docs/cli/create.mdx",
+    surface: PUBLIC_COMMAND_SURFACES.verify,
+  },
+  {
+    name: "publish",
+    modulePath: "cli/selftune/publish.ts",
+    workflowDocPath: "skill/workflows/Publish.md",
+    siteDocPath: "sites/docs/cli/create.mdx",
+    surface: PUBLIC_COMMAND_SURFACES.publish,
+  },
+  {
     name: "eval generate",
     modulePath: "cli/selftune/eval/hooks-to-evals.ts",
     workflowDocPath: "skill/workflows/Evals.md",
@@ -37,6 +107,20 @@ const COMMAND_SURFACE_FIXTURES: readonly CommandSurfaceFixture[] = [
     siteDocPath: "sites/docs/cli/evolve.mdx",
     surface: PUBLIC_COMMAND_SURFACES.evolve,
     forbiddenSitePhrases: ["auto-detected if omitted"],
+  },
+  {
+    name: "improve",
+    modulePath: "cli/selftune/improve.ts",
+    workflowDocPath: "skill/workflows/Improve.md",
+    siteDocPath: "sites/docs/cli/evolve.mdx",
+    surface: PUBLIC_COMMAND_SURFACES.improve,
+  },
+  {
+    name: "search-run",
+    modulePath: "cli/selftune/search-run.ts",
+    workflowDocPath: "skill/workflows/SearchRun.md",
+    siteDocPath: "sites/docs/cli/search-run.mdx",
+    surface: PUBLIC_COMMAND_SURFACES.searchRun,
   },
   {
     name: "watch",
@@ -54,6 +138,13 @@ const COMMAND_SURFACE_FIXTURES: readonly CommandSurfaceFixture[] = [
     siteDocPath: "sites/docs/cli/orchestrate.mdx",
     surface: PUBLIC_COMMAND_SURFACES.orchestrate,
     forbiddenSitePhrases: ["Skip review and auto-deploy approved proposals"],
+  },
+  {
+    name: "run",
+    modulePath: "cli/selftune/run.ts",
+    workflowDocPath: "skill/workflows/Run.md",
+    siteDocPath: "sites/docs/cli/orchestrate.mdx",
+    surface: PUBLIC_COMMAND_SURFACES.run,
   },
 ];
 
@@ -160,5 +251,68 @@ describe("command surface parity", () => {
     }
     expect(helpOutput).toContain("selftune evolve body");
     expect(helpOutput).toContain("selftune evolve rollback");
+  });
+
+  test("entrypoint create help includes the canonical init flags", () => {
+    const helpOutput = runEntrypointHelp("create", "init", "--help");
+    for (const flag of PUBLIC_COMMAND_SURFACES.createInit.flags) {
+      expect(helpOutput).toContain(flag.token);
+    }
+  });
+
+  test("entrypoint create check help includes the canonical flags", () => {
+    const helpOutput = runEntrypointHelp("create", "check", "--help");
+    for (const flag of PUBLIC_COMMAND_SURFACES.createCheck.flags) {
+      expect(helpOutput).toContain(flag.token);
+    }
+  });
+
+  test("entrypoint search-run help includes the canonical flags", () => {
+    const helpOutput = runEntrypointHelp("search-run", "--help");
+    for (const flag of PUBLIC_COMMAND_SURFACES.searchRun.flags) {
+      expect(helpOutput).toContain(flag.token);
+    }
+  });
+
+  test("entrypoint verify help includes the canonical flags", () => {
+    const helpOutput = runEntrypointHelp("verify", "--help");
+    for (const flag of PUBLIC_COMMAND_SURFACES.verify.flags) {
+      expect(helpOutput).toContain(flag.token);
+    }
+  });
+
+  test("entrypoint publish help includes the canonical flags", () => {
+    const helpOutput = runEntrypointHelp("publish", "--help");
+    for (const flag of PUBLIC_COMMAND_SURFACES.publish.flags) {
+      expect(helpOutput).toContain(flag.token);
+    }
+  });
+
+  test("entrypoint create replay help includes the canonical flags", () => {
+    const helpOutput = runEntrypointHelp("create", "replay", "--help");
+    for (const flag of PUBLIC_COMMAND_SURFACES.createReplay.flags) {
+      expect(helpOutput).toContain(flag.token);
+    }
+  });
+
+  test("entrypoint create report help includes the canonical flags", () => {
+    const helpOutput = runEntrypointHelp("create", "report", "--help");
+    for (const flag of PUBLIC_COMMAND_SURFACES.createReport.flags) {
+      expect(helpOutput).toContain(flag.token);
+    }
+  });
+
+  test("entrypoint improve help includes the canonical flags", () => {
+    const helpOutput = runEntrypointHelp("improve", "--help");
+    for (const flag of PUBLIC_COMMAND_SURFACES.improve.flags) {
+      expect(helpOutput).toContain(flag.token);
+    }
+  });
+
+  test("entrypoint run help includes the canonical flags", () => {
+    const helpOutput = runEntrypointHelp("run", "--help");
+    for (const flag of PUBLIC_COMMAND_SURFACES.run.flags) {
+      expect(helpOutput).toContain(flag.token);
+    }
   });
 });

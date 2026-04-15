@@ -16,12 +16,13 @@ import { getAlphaLinkState, readAlphaIdentity } from "./alpha-identity.js";
 import { getQueueStats } from "./alpha-upload/queue.js";
 import { getBaseUrl } from "./auth/device-code.js";
 import { SELFTUNE_CONFIG_PATH } from "./constants.js";
-import type { SkillTestingReadiness } from "./dashboard-contract.js";
+import type { CreatorOverviewStep, SkillSummary } from "./dashboard-contract.js";
 import { getDb } from "./localdb/db.js";
 import { writeCronRunToDb } from "./localdb/direct-write.js";
 import {
   getLastUploadError,
   getLastUploadSuccess,
+  getSkillsList,
   getSkillTrustSummaries,
   queryEvolutionAudit,
   queryQueryLog,
@@ -47,6 +48,7 @@ import {
   filterActionableQueryRecords,
   filterActionableSkillUsageRecords,
 } from "./utils/query-filter.js";
+import { normalizeLifecycleCommand, normalizeLifecycleText } from "./utils/lifecycle-surface.js";
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -316,23 +318,44 @@ function formatTrustHighlights(trustSummaries: SkillTrustSummary[] | undefined):
   return lines;
 }
 
-function formatCreatorLoopLines(readinessRows: SkillTestingReadiness[] | undefined): string[] {
-  if (!readinessRows || readinessRows.length === 0) return [];
+function formatCreatorOverviewStep(step: CreatorOverviewStep): string {
+  switch (step) {
+    case "run_create_check":
+      return "verify draft";
+    case "finish_package":
+      return "finish package";
+    case "generate_evals":
+      return "generate evals";
+    case "run_unit_tests":
+      return "run unit tests";
+    case "run_replay_dry_run":
+      return "run replay dry-run";
+    case "measure_baseline":
+      return "measure baseline";
+    case "deploy_candidate":
+      return "deploy candidate";
+    case "watch_deployment":
+      return "watch deployment";
+  }
+}
 
-  const overview = buildCreatorTestingOverview(readinessRows);
-  const lines = ["Creator loop"];
-  lines.push(`  ${overview.summary}`);
+function formatCreatorLoopLines(creatorLoopSkills: SkillSummary[] | undefined): string[] {
+  if (!creatorLoopSkills || creatorLoopSkills.length === 0) return [];
+
+  const overview = buildCreatorTestingOverview(creatorLoopSkills);
+  const lines = ["Package pipeline"];
+  lines.push(`  ${normalizeLifecycleText(overview.summary)}`);
 
   const counts = overview.counts;
   lines.push(
-    `  Generate evals: ${counts.generate_evals} | Unit tests: ${counts.run_unit_tests} | Replay dry-run: ${counts.run_replay_dry_run} | Baseline: ${counts.measure_baseline} | Deploy: ${counts.deploy_candidate} | Watching: ${counts.watch_deployment}`,
+    `  Verify: ${counts.run_create_check} | Finish package: ${counts.finish_package} | Generate evals: ${counts.generate_evals} | Unit tests: ${counts.run_unit_tests} | Replay dry-run: ${counts.run_replay_dry_run} | Baseline: ${counts.measure_baseline} | Publish: ${counts.deploy_candidate} | Monitoring: ${counts.watch_deployment}`,
   );
 
   if (overview.priorities.length > 0) {
     lines.push("  Next:");
     for (const priority of overview.priorities.slice(0, 3)) {
       lines.push(
-        `    ${priority.skill_name}: ${priority.next_step.replaceAll("_", " ")} — ${priority.recommended_command}`,
+        `    ${priority.skill_name}: ${formatCreatorOverviewStep(priority.step)} — ${normalizeLifecycleCommand(priority.recommended_command)}`,
       );
     }
   }
@@ -343,7 +366,7 @@ function formatCreatorLoopLines(readinessRows: SkillTestingReadiness[] | undefin
 export function formatStatus(
   result: StatusResult,
   trustSummaries?: SkillTrustSummary[],
-  testingReadiness?: SkillTestingReadiness[],
+  creatorLoopSkills?: SkillSummary[],
 ): string {
   const noColor = !!process.env.NO_COLOR;
 
@@ -364,7 +387,7 @@ export function formatStatus(
     lines.push("");
   }
 
-  const creatorLoopLines = formatCreatorLoopLines(testingReadiness);
+  const creatorLoopLines = formatCreatorLoopLines(creatorLoopSkills);
   if (creatorLoopLines.length > 0) {
     lines.push(...creatorLoopLines);
     lines.push("");
@@ -631,7 +654,8 @@ export async function cliMain(): Promise<void> {
     const result = computeStatus(telemetry, skillRecords, queryRecords, auditEntries, doctorResult);
     const trustSummaries = getSkillTrustSummaries(db);
     const testingReadiness = listSkillTestingReadiness(db);
-    const output = formatStatus(result, trustSummaries, testingReadiness);
+    const creatorLoopSkills = getSkillsList(db, testingReadiness);
+    const output = formatStatus(result, trustSummaries, creatorLoopSkills);
     console.log(output);
 
     // Alpha upload status section

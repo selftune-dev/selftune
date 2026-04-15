@@ -6,9 +6,15 @@
  *   selftune ingest <agent>     — Ingest agent sessions (claude, codex, opencode, openclaw, pi, wrap-codex)
  *   selftune grade [mode]       — Grade skill sessions (auto, baseline)
  *   selftune evolve [target]    — Evolve skill descriptions (body, rollback)
+ *   selftune improve            — Simplified alias for evolve / evolve body / search-run
+ *   selftune search-run         — Run bounded package search over routing/body variants
  *   selftune eval <action>      — Evaluation tools (generate, unit-test, import, composability, family-overlap)
+ *   selftune create <sub>       — Draft full skill packages
+ *   selftune verify             — Verify a draft skill package
+ *   selftune publish            — Publish a verified draft package
  *   selftune sync               — Sync source-truth telemetry across supported agents
  *   selftune orchestrate        — Run autonomous core loop (sync → status → evolve → watch)
+ *   selftune run                — Simplified alias for orchestrate
  *   selftune init               — Initialize agent identity and config
  *   selftune uninstall          — Clean removal of all selftune data and config
  *   selftune status             — Show skill health summary
@@ -52,19 +58,27 @@ if (command === "--help" || command === "-h") {
 Usage:
   selftune <command> [options]
 
-Commands:
-  ingest <agent>     Ingest agent sessions (claude, codex, opencode, openclaw, pi, wrap-codex)
-  grade [mode]       Grade skill sessions (auto, baseline)
+Primary Lifecycle:
+  status             Show skill health summary
+  verify             Verify a draft skill package
+  publish            Publish a verified draft package
+  improve            Improve skills with measured evidence
+  run                Run autonomous improvement loop
+  create <sub>       Draft full skill packages
+  dashboard          Open visual data dashboard
+
+Advanced / Stage Commands:
   evolve [target]    Evolve skill descriptions (body, rollback)
+  search-run         Run bounded package search over routing/body variants
   eval <action>      Evaluation tools (generate, unit-test, import, composability, family-overlap)
+  grade [mode]       Grade skill sessions (auto, baseline)
+  watch              Monitor post-deploy skill health
   sync               Sync source-truth telemetry across supported agents
   orchestrate        Run autonomous core loop (sync → status → evolve → watch)
+  ingest <agent>     Ingest agent sessions (claude, codex, opencode, openclaw, pi, wrap-codex)
   init               Initialize agent identity and config
   uninstall          Clean removal of all selftune data and config
-  status             Show skill health summary
-  watch              Monitor post-deploy skill health
   doctor             Run health checks
-  dashboard          Open visual data dashboard
   last               Show last session details
   cron               Scheduling & automation (setup, list, remove)
   badge              Generate skill health badges for READMEs
@@ -276,6 +290,18 @@ Run 'selftune evolve <subcommand> --help' for subcommand-specific options.`);
     break;
   }
 
+  case "improve": {
+    const { cliMain } = await import("./improve.js");
+    await cliMain();
+    break;
+  }
+
+  case "search-run": {
+    const { cliMain } = await import("./search-run.js");
+    await cliMain();
+    break;
+  }
+
   case "eval": {
     const sub = process.argv[2];
     if (!sub || sub === "--help" || sub === "-h") {
@@ -412,6 +438,91 @@ Run 'selftune eval <action> --help' for action-specific options.`);
           `Unknown eval action: ${sub}`,
           "UNKNOWN_COMMAND",
           "selftune eval --help",
+        );
+    }
+    break;
+  }
+
+  case "verify": {
+    const { cliMain } = await import("./verify.js");
+    await cliMain();
+    break;
+  }
+
+  case "publish": {
+    const { cliMain } = await import("./publish.js");
+    await cliMain();
+    break;
+  }
+
+  case "create": {
+    const sub = process.argv[2];
+    if (!sub || sub === "--help" || sub === "-h") {
+      console.log(`selftune create — Draft full skill packages
+
+Usage:
+  selftune create <subcommand> [options]
+
+Subcommands:
+  init          Initialize a new skill package scaffold
+  status        Show current draft-package readiness
+  scaffold      Scaffold a package from an observed workflow
+  check         Validate package readiness and recommend the next step
+  replay        Run replay validation for the current draft package
+  baseline      Measure with-skill vs no-skill lift for the draft package
+  report        Render a benchmark-style report for the current draft package
+  publish       Publish a validated draft package and optionally start watch
+
+Run 'selftune create <subcommand> --help' for subcommand-specific options.`);
+      process.exit(0);
+    }
+    process.argv = [process.argv[0], process.argv[1], ...process.argv.slice(3)];
+    switch (sub) {
+      case "init": {
+        const { cliMain } = await import("./create/init.js");
+        await cliMain();
+        break;
+      }
+      case "status": {
+        const { cliMain } = await import("./create/status.js");
+        await cliMain();
+        break;
+      }
+      case "scaffold": {
+        const { cliMain } = await import("./create/scaffold.js");
+        await cliMain();
+        break;
+      }
+      case "check": {
+        const { cliMain } = await import("./create/check.js");
+        await cliMain();
+        break;
+      }
+      case "replay": {
+        const { cliMain } = await import("./create/replay.js");
+        await cliMain();
+        break;
+      }
+      case "baseline": {
+        const { cliMain } = await import("./create/baseline.js");
+        await cliMain();
+        break;
+      }
+      case "report": {
+        const { cliMain } = await import("./create/report.js");
+        await cliMain();
+        break;
+      }
+      case "publish": {
+        const { cliMain } = await import("./create/publish.js");
+        await cliMain();
+        break;
+      }
+      default:
+        throw new CLIError(
+          `Unknown create subcommand: ${sub}`,
+          "UNKNOWN_COMMAND",
+          "selftune create --help",
         );
     }
     break;
@@ -656,6 +767,12 @@ Options:
   }
   case "orchestrate": {
     const { cliMain } = await import("./orchestrate.js");
+    await cliMain();
+    break;
+  }
+
+  case "run": {
+    const { cliMain } = await import("./run.js");
     await cliMain();
     break;
   }

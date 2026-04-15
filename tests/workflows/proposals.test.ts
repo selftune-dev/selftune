@@ -119,7 +119,7 @@ describe("workflow skill proposals", () => {
     expect(proposals[0].source_skill_name).toBe("Copywriting");
     expect(proposals[0].draft.skill_name).toBe("write-publish-blog-post");
     expect(proposals[0].current_value).toContain("No dedicated workflow skill exists");
-    expect(proposals[0].proposed_value).toContain("Create write-publish-blog-post");
+    expect(proposals[0].proposed_value).toContain("Create package write-publish-blog-post");
     expect(proposals[0].confidence).toBeGreaterThan(0.7);
   });
 
@@ -180,5 +180,6 @@ describe("workflow skill proposals", () => {
     expect(evidenceEntries[0].stage).toBe("proposed");
     expect(evidenceEntries[0].skill_name).toBe("Copywriting");
     expect(evidenceEntries[0].proposed_text).toBe(proposal.draft.content);
+    expect(evidenceEntries[0].proposed_text).toContain("=== workflows/default.md ===");
   });
 });

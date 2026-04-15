@@ -44,7 +44,7 @@ canonical prompt record.
 Fires when a Claude Code session ends. Reads the session transcript JSONL and
 extracts process-level telemetry (tool calls, errors, skills triggered, token
 counts). Writes one record per session to SQLite with a JSONL backup. May
-trigger a reactive `selftune orchestrate` spawn if conditions are met.
+trigger a reactive `selftune run` spawn if conditions are met.
 
 ### skill-eval
 

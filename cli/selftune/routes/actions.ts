@@ -1,5 +1,5 @@
 /**
- * Route handler: POST /api/actions/{watch,evolve,rollback,watchlist}
+ * Route handler: POST /api/actions/{create-check,report-package,search-run,watch,evolve,rollback,watchlist}
  *
  * Triggers selftune CLI commands as child processes and returns the result.
  */
@@ -13,6 +13,7 @@ import {
 } from "../dashboard-action-events.js";
 import { resolveDashboardActionOutcome } from "../dashboard-action-result.js";
 import type { DashboardActionEvent, DashboardActionName } from "../dashboard-contract.js";
+import { isCreateSkillDraft } from "../create/readiness.js";
 import { getCanonicalEvalSetPath, getUnitTestPath } from "../testing-readiness.js";
 import { saveWatchedSkills } from "../watchlist.js";
 
@@ -91,7 +92,10 @@ export async function runAction(
       stdoutPromise,
       stderrPromise,
     ]);
-    const action = command === "evolve" && args.includes("--dry-run") ? "replay-dry-run" : null;
+    const action =
+      (command === "evolve" || command === "improve") && args.includes("--dry-run")
+        ? "replay-dry-run"
+        : null;
     const outcome = action
       ? resolveDashboardActionOutcome({
           action,
@@ -136,6 +140,7 @@ function buildActionExecution(
   const skillInput = requireSkillInput(body);
   if (skillInput instanceof Response) return skillInput;
   const { skill, skillPath } = skillInput;
+  const isDraftPackage = isCreateSkillDraft(skillPath);
 
   if (action === "generate-evals") {
     const args = [
@@ -171,7 +176,24 @@ function buildActionExecution(
     };
   }
 
+  if (action === "create-check") {
+    return {
+      command: "create",
+      args: ["check", "--skill-path", skillPath],
+      skill,
+      skillPath,
+    };
+  }
+
   if (action === "replay-dry-run") {
+    if (isDraftPackage) {
+      return {
+        command: "create",
+        args: ["replay", "--skill-path", skillPath, "--mode", "package"],
+        skill,
+        skillPath,
+      };
+    }
     return {
       command: "evolve",
       args: [
@@ -190,6 +212,14 @@ function buildActionExecution(
   }
 
   if (action === "measure-baseline") {
+    if (isDraftPackage) {
+      return {
+        command: "create",
+        args: ["baseline", "--skill-path", skillPath, "--mode", "package"],
+        skill,
+        skillPath,
+      };
+    }
     return {
       command: "grade",
       args: ["baseline", "--skill", skill, "--skill-path", skillPath],
@@ -198,9 +228,35 @@ function buildActionExecution(
     };
   }
 
-  if (action === "deploy-candidate") {
+  if (action === "report-package") {
     return {
-      command: "evolve",
+      command: "create",
+      args: ["report", "--skill-path", skillPath],
+      skill,
+      skillPath,
+    };
+  }
+
+  if (action === "search-run") {
+    return {
+      command: "search-run",
+      args: ["--skill", skill, "--skill-path", skillPath],
+      skill,
+      skillPath,
+    };
+  }
+
+  if (action === "deploy-candidate") {
+    if (isDraftPackage) {
+      return {
+        command: "publish",
+        args: ["--skill-path", skillPath, "--no-watch"],
+        skill,
+        skillPath,
+      };
+    }
+    return {
+      command: "improve",
       args: ["--skill", skill, "--skill-path", skillPath, "--sync-first"],
       skill,
       skillPath,
@@ -208,6 +264,14 @@ function buildActionExecution(
   }
 
   if (action === "watch") {
+    if (isDraftPackage) {
+      return {
+        command: "publish",
+        args: ["--skill-path", skillPath],
+        skill,
+        skillPath,
+      };
+    }
     return {
       command: "watch",
       args: ["--skill", skill, "--skill-path", skillPath, "--sync-first"],
@@ -316,6 +380,12 @@ export async function handleAction(
       });
     },
   });
+  const outcome = resolveDashboardActionOutcome({
+    action: normalizedAction as DashboardActionName,
+    stdout: result.output,
+    stderr: result.error,
+    exitCode: result.exitCode ?? 0,
+  });
 
   emitEvent?.({
     event_id: eventId,
@@ -324,19 +394,15 @@ export async function handleAction(
     skill_name: executable.skill,
     skill_path: executable.skillPath,
     ts: Date.now(),
-    success: result.success,
+    success: outcome.success,
     exit_code: result.exitCode,
-    error: result.error,
-    summary:
-      executable.command === "evolve" && executable.args.includes("--dry-run")
-        ? resolveDashboardActionOutcome({
-            action: "replay-dry-run",
-            stdout: result.output,
-            stderr: result.error,
-            exitCode: result.exitCode ?? 0,
-          }).summary
-        : null,
+    error: outcome.error,
+    summary: outcome.summary,
   });
 
-  return Response.json(result);
+  return Response.json({
+    ...result,
+    success: outcome.success,
+    error: outcome.error,
+  });
 }

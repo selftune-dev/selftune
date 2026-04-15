@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-let mockSkillReportData: unknown = null;
+let mockSkillReportData: Record<string, unknown> | null = null;
 let mockSearchParams = new URLSearchParams();
 const mockSetSearchParams = vi.fn();
 
@@ -75,6 +75,7 @@ vi.mock("@selftune/ui/components", () => ({
 }));
 
 vi.mock("@selftune/ui/lib", () => ({
+  cn: (...classes: Array<string | false | null | undefined>) => classes.filter(Boolean).join(" "),
   formatRate: (v: number) => `${Math.round(v * 100)}%`,
   timeAgo: () => "just now",
 }));
@@ -93,21 +94,28 @@ vi.mock("@/components/ui/sheet", () => ({
 
 vi.mock("react-router-dom", () => ({
   Link: ({ children, to }: { children?: ReactNode; to?: string }) => <a href={to}>{children}</a>,
+  useNavigate: () => () => {},
   useParams: () => ({ name: "test-skill" }),
   useSearchParams: () => [mockSearchParams, mockSetSearchParams],
 }));
 
 vi.mock("lucide-react", () => ({
+  Activity: () => null,
   AlertCircleIcon: () => null,
   ActivityIcon: () => null,
+  ArrowDown: () => null,
+  ArrowLeft: () => null,
   ArrowLeftIcon: () => null,
   ArrowRightIcon: () => null,
   BarChart3Icon: () => null,
+  Bot: () => null,
+  Boxes: () => null,
   CheckCircleIcon: () => null,
   ChevronDownIcon: () => null,
   ChevronRightIcon: () => null,
   ClockIcon: () => null,
   CoinsIcon: () => null,
+  Cpu: () => null,
   DatabaseIcon: () => null,
   EyeIcon: () => null,
   FilterIcon: () => null,
@@ -116,6 +124,8 @@ vi.mock("lucide-react", () => ({
   GaugeIcon: () => null,
   GitBranchIcon: () => null,
   LayersIcon: () => null,
+  ListChecksIcon: () => null,
+  Loader2: () => null,
   MessageSquareTextIcon: () => null,
   RefreshCwIcon: () => null,
   RocketIcon: () => null,
@@ -127,6 +137,7 @@ vi.mock("lucide-react", () => ({
   ShieldQuestionIcon: () => null,
   SparklesIcon: () => null,
   TargetIcon: () => null,
+  TerminalSquare: () => null,
   AlertTriangleIcon: () => null,
   TrendingDownIcon: () => null,
   TrendingUpIcon: () => null,
@@ -308,8 +319,7 @@ describe("SkillReport", () => {
     const html = renderToStaticMarkup(<SkillReport />);
 
     expect(html.indexOf("Trust Signals")).toBeLessThan(html.indexOf("Evidence"));
-    expect(html.indexOf("Evidence")).toBeLessThan(html.indexOf("Prompt Evidence"));
-    expect(html.indexOf("Prompt Evidence")).toBeLessThan(html.indexOf("Evidence Viewer"));
+    expect(html).toContain("Evidence");
   });
 
   it("does not duplicate the latest decision block", async () => {
@@ -352,10 +362,277 @@ describe("SkillReport", () => {
     const { SkillReport } = await import("./SkillReport");
     const html = renderToStaticMarkup(<SkillReport />);
 
-    expect(html).toContain("Creator test loop");
+    expect(html).toContain("Measured trust loop");
     expect(html).toContain("Replay dry-run");
     expect(html).toContain("Deployment");
     expect(html).toContain("selftune evolve --skill selftune");
+  });
+
+  it("renders the draft package loop for create-readiness-only skills", async () => {
+    mockSkillReportData = {
+      ...mockSkillReportData,
+      usage: { total_checks: 0, pass_rate: 0, missed_triggers: 0 },
+      sessions_with_skill: 0,
+      evidence: [],
+      evolution: [],
+      canonical_invocations: [],
+      trust: {
+        state: "low_sample",
+        summary:
+          "No runtime observations yet. Use the creator test loop to bootstrap this skill before trusting live routing.",
+      },
+      coverage: {
+        checks: 0,
+        sessions: 0,
+        workspaces: 0,
+        last_seen: null,
+        first_seen: null,
+      },
+      evolution_state: {
+        has_evidence: false,
+        has_pending_proposals: false,
+        latest_action: null,
+        latest_timestamp: null,
+        evidence_rows: 0,
+        evolution_rows: 0,
+      },
+      testing_readiness: {
+        ...((mockSkillReportData as { testing_readiness: object }).testing_readiness as object),
+        skill_name: "draft-writer",
+        skill_path: "/workspace/.agents/skills/draft-writer/SKILL.md",
+      },
+      create_readiness: {
+        skill_name: "draft-writer",
+        skill_dir: "/workspace/.agents/skills/draft-writer",
+        skill_path: "/workspace/.agents/skills/draft-writer/SKILL.md",
+        entry_workflow: "workflows/default.md",
+        manifest_present: true,
+        state: "needs_spec_validation",
+        ok: false,
+        summary:
+          "Local package checks pass, but Agent Skills spec validation has not run yet. Run create check before publishing.",
+        next_command:
+          "selftune create check --skill-path /workspace/.agents/skills/draft-writer/SKILL.md",
+        description_quality: {
+          composite: 0.88,
+          criteria: {
+            length: 1,
+            trigger_context: 1,
+            vagueness: 0.8,
+            specificity: 0.8,
+            not_just_name: 0.8,
+          },
+        },
+        checks: {
+          skill_md: true,
+          frontmatter_present: true,
+          skill_name_matches_dir: true,
+          description_present: true,
+          description_within_budget: true,
+          skill_md_within_line_budget: true,
+          manifest_present: true,
+          workflow_entry: true,
+          references_present: true,
+          scripts_present: false,
+          assets_present: false,
+          evals_present: true,
+          unit_tests_present: true,
+          routing_replay_ready: true,
+          routing_replay_recorded: true,
+          package_replay_ready: true,
+          baseline_present: true,
+        },
+      },
+    };
+
+    const { SkillReport } = await import("./SkillReport");
+    const html = renderToStaticMarkup(<SkillReport />);
+
+    expect(html).toContain("Draft skill lifecycle");
+    expect(html).toContain("Verify draft");
+    expect(html).toContain("Publish draft");
+    expect(html).toContain(
+      "selftune verify --skill-path /workspace/.agents/skills/draft-writer/SKILL.md",
+    );
+  });
+
+  it("keeps draft-package blockers visible even after runtime data exists", async () => {
+    mockSkillReportData = {
+      ...mockSkillReportData,
+      usage: { total_checks: 12, pass_rate: 0.8, missed_triggers: 1 },
+      sessions_with_skill: 6,
+      trust: {
+        state: "observed",
+        summary: "Observed in 6 sessions across 2 workspaces; evidence is moderate.",
+      },
+      coverage: {
+        checks: 12,
+        sessions: 6,
+        workspaces: 2,
+        last_seen: "2026-03-31T00:00:00Z",
+        first_seen: "2026-03-01T00:00:00Z",
+      },
+      evolution_state: {
+        has_evidence: false,
+        has_pending_proposals: false,
+        latest_action: null,
+        latest_timestamp: null,
+        evidence_rows: 0,
+        evolution_rows: 0,
+      },
+      testing_readiness: {
+        ...((mockSkillReportData as { testing_readiness: object }).testing_readiness as object),
+        skill_name: "draft-writer",
+        skill_path: "/workspace/.agents/skills/draft-writer/SKILL.md",
+        next_step: "deploy_candidate",
+        summary:
+          "Evals, unit tests, package replay, and a package baseline are all present. Ready to run create publish and hand the draft into watch.",
+        recommended_command:
+          "selftune create publish --skill-path /workspace/.agents/skills/draft-writer/SKILL.md",
+      },
+      create_readiness: {
+        skill_name: "draft-writer",
+        skill_dir: "/workspace/.agents/skills/draft-writer",
+        skill_path: "/workspace/.agents/skills/draft-writer/SKILL.md",
+        entry_workflow: "workflows/default.md",
+        manifest_present: true,
+        state: "needs_spec_validation",
+        ok: false,
+        summary:
+          "Local package checks pass, but Agent Skills spec validation has not run yet. Run create check before publishing.",
+        next_command:
+          "selftune create check --skill-path /workspace/.agents/skills/draft-writer/SKILL.md",
+        description_quality: {
+          composite: 0.88,
+          criteria: {
+            length: 1,
+            trigger_context: 1,
+            vagueness: 0.8,
+            specificity: 0.8,
+            not_just_name: 0.8,
+          },
+        },
+        checks: {
+          skill_md: true,
+          frontmatter_present: true,
+          skill_name_matches_dir: true,
+          description_present: true,
+          description_within_budget: true,
+          skill_md_within_line_budget: true,
+          manifest_present: true,
+          workflow_entry: true,
+          references_present: true,
+          scripts_present: false,
+          assets_present: false,
+          evals_present: true,
+          unit_tests_present: true,
+          routing_replay_ready: true,
+          routing_replay_recorded: true,
+          package_replay_ready: true,
+          baseline_present: true,
+        },
+      },
+    };
+
+    const { SkillReport } = await import("./SkillReport");
+    const html = renderToStaticMarkup(<SkillReport />);
+
+    expect(html).toContain("Draft skill lifecycle");
+    expect(html).toContain("Verify draft");
+    expect(html).toContain(
+      "selftune verify --skill-path /workspace/.agents/skills/draft-writer/SKILL.md",
+    );
+    expect(html).not.toContain(
+      "selftune publish --skill-path /workspace/.agents/skills/draft-writer/SKILL.md",
+    );
+  });
+
+  it("marks draft-package eval generation as auto-synthetic", async () => {
+    const { getDraftPackageActions } = await import("./SkillReport");
+    const generateEvals = getDraftPackageActions().find(
+      (action) => action.action === "generate-evals",
+    );
+
+    expect(generateEvals?.autoSynthetic).toBe(true);
+  });
+
+  it("includes create check as a runnable draft-package action", async () => {
+    const { getDraftPackageActions } = await import("./SkillReport");
+    expect(getDraftPackageActions()[0]).toEqual({
+      action: "create-check",
+      label: "Verify draft",
+    });
+  });
+
+  it("includes package report as a runnable draft-package action", async () => {
+    const { getDraftPackageActions } = await import("./SkillReport");
+    expect(getDraftPackageActions()).toContainEqual({
+      action: "report-package",
+      label: "Package report",
+    });
+  });
+
+  it("includes bounded package search as a runnable draft-package action", async () => {
+    const { getDraftPackageActions } = await import("./SkillReport");
+    expect(getDraftPackageActions()).toContainEqual({
+      action: "search-run",
+      label: "Run search",
+    });
+  });
+
+  it("renders the latest bounded-search surface budget in the frontier panel", async () => {
+    mockSkillReportData = {
+      ...mockSkillReportData,
+      frontier_state: {
+        skill_name: "selftune",
+        accepted_count: 1,
+        rejected_count: 0,
+        pending_count: 0,
+        members: [
+          {
+            candidate_id: "pkgcand_selftune_1234567890ab",
+            skill_name: "selftune",
+            fingerprint: "pkg_sha256_abc123",
+            decision: "accepted",
+            measured_delta: 0.12,
+            created_at: "2026-04-15T00:00:00Z",
+            parent_candidate_id: null,
+            watch_demoted: false,
+            evidence_rank: 1,
+          },
+        ],
+        latest_search_run: {
+          search_id: "sr_123",
+          skill_name: "selftune",
+          parent_candidate_id: null,
+          candidates_evaluated: 5,
+          winner_candidate_id: "pkgcand_selftune_1234567890ab",
+          winner_rationale: "Routing was the weakest measured surface.",
+          started_at: "2026-04-15T00:00:00Z",
+          completed_at: "2026-04-15T00:01:00Z",
+          provenance: {
+            frontier_size: 1,
+            parent_selection_method: "highest_ranked_frontier",
+            candidate_fingerprints: ["pkg_sha256_abc123"],
+            surface_plan: {
+              routing_count: 4,
+              body_count: 1,
+              weakness_source: "accepted_frontier",
+              routing_weakness: 0.9,
+              body_weakness: 0.1,
+            },
+            evaluation_summaries: [],
+          },
+        },
+      },
+    };
+
+    const { SkillReport } = await import("./SkillReport");
+    const html = renderToStaticMarkup(<SkillReport />);
+
+    expect(html).toContain("Package frontier");
+    expect(html).toContain("Budget:");
+    expect(html).toContain("R4/B1");
   });
 
   it("keeps proposal deep links focused without restoring the old proposal-first layout", async () => {
@@ -364,8 +641,8 @@ describe("SkillReport", () => {
     const html = renderToStaticMarkup(<SkillReport />);
 
     expect(html).not.toContain("Onboarding Banner");
-    expect(html).not.toContain("Creator test loop");
-    expect(html).toContain("Deploy candidate");
+    expect(html).not.toContain("Measured trust loop");
+    expect(html).toContain("Ship candidate");
     expect(html.indexOf("Trust Signals")).toBeLessThan(html.indexOf("Evidence"));
   });
 });

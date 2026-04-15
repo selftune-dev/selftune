@@ -37,6 +37,542 @@ export function renderCommandHelp(surface: PublicCommandSurface): string {
 }
 
 export const PUBLIC_COMMAND_SURFACES = {
+  createInit: {
+    command: "selftune create init",
+    summary: "Initialize a draft skill package",
+    usage: "selftune create init --name <name> --description <text> [options]",
+    flags: [
+      {
+        token: "--name",
+        helpLabel: "--name",
+        description: "Display name for the new skill package (required)",
+      },
+      {
+        token: "--description",
+        helpLabel: "--description",
+        description: "Short routing description for the draft skill (required)",
+      },
+      {
+        token: "--output-dir",
+        helpLabel: "--output-dir",
+        description: "Parent directory for the new package (default: repo .agents/skills)",
+      },
+      {
+        token: "--force",
+        helpLabel: "--force",
+        description: "Overwrite scaffold files if the skill directory already exists",
+      },
+      {
+        token: "--json",
+        helpLabel: "--json",
+        description: "Emit the created package summary as JSON",
+      },
+      {
+        token: "--help",
+        helpLabel: "-h, --help",
+        description: "Show this help message",
+      },
+    ],
+    quickReference:
+      "selftune create init --name <name> --description <text> [--output-dir PATH] [--force] [--json]",
+    extraHelpSections: [
+      `Generated package layout:
+  <skill-name>/
+    SKILL.md
+    workflows/default.md
+    references/overview.md
+    scripts/
+    assets/
+    selftune.create.json`,
+    ],
+  },
+  createScaffold: {
+    command: "selftune create scaffold",
+    summary: "Scaffold a draft skill package from an observed workflow",
+    usage: "selftune create scaffold --from-workflow <id|index> [options]",
+    flags: [
+      {
+        token: "--from-workflow",
+        helpLabel: "--from-workflow",
+        description: "Workflow ID or 1-based index from `selftune workflows` (required)",
+      },
+      {
+        token: "--output-dir",
+        helpLabel: "--output-dir",
+        description: "Parent directory for the new package (default: repo .agents/skills)",
+      },
+      {
+        token: "--skill-name",
+        helpLabel: "--skill-name",
+        description: "Override the generated skill name",
+      },
+      {
+        token: "--description",
+        helpLabel: "--description",
+        description: "Override the generated routing description",
+      },
+      {
+        token: "--write",
+        helpLabel: "--write",
+        description: "Persist the scaffold package to disk instead of previewing it",
+      },
+      {
+        token: "--force",
+        helpLabel: "--force",
+        description: "Overwrite scaffold files if the skill directory already exists",
+      },
+      {
+        token: "--json",
+        helpLabel: "--json",
+        description: "Emit the scaffold package summary as JSON",
+      },
+      {
+        token: "--min-occurrences",
+        helpLabel: "--min-occurrences",
+        description: "Minimum workflow frequency to consider when resolving the selection",
+      },
+      {
+        token: "--skill",
+        helpLabel: "--skill",
+        description: "Restrict workflow discovery to chains containing the named skill",
+      },
+      {
+        token: "--help",
+        helpLabel: "-h, --help",
+        description: "Show this help message",
+      },
+    ],
+    quickReference:
+      "selftune create scaffold --from-workflow <id|index> [--output-dir PATH] [--skill-name NAME] [--description TEXT] [--write] [--force] [--json]",
+    extraHelpSections: [
+      `Workflow discovery:
+  This command reads the current SQLite telemetry and skill-usage records,
+  resolves a workflow by ID or list index, and then scaffolds the same package
+  shape used by \`selftune create init\`.`,
+    ],
+  },
+  createCheck: {
+    command: "selftune create check",
+    summary: "Validate a draft skill package and recommend the next creator-loop step",
+    usage: "selftune create check --skill-path <path> [options]",
+    flags: [
+      {
+        token: "--skill-path",
+        helpLabel: "--skill-path",
+        description: "Path to a skill directory or SKILL.md file (required)",
+      },
+      {
+        token: "--json",
+        helpLabel: "--json",
+        description: "Emit the readiness report as JSON",
+      },
+      {
+        token: "--help",
+        helpLabel: "-h, --help",
+        description: "Show this help message",
+      },
+    ],
+    quickReference: "selftune create check --skill-path <path> [--json]",
+    extraHelpSections: [
+      `Validation order:
+  1. Run the Agent Skills spec validator (\`skills-ref validate\`) when available
+  2. Check package structure and selftune.create.json
+  3. Check eval, unit-test, replay, and baseline readiness for the creator loop`,
+    ],
+  },
+  createReplay: {
+    command: "selftune create replay",
+    summary: "Run replay validation against the current draft package",
+    usage: "selftune create replay --skill-path <path> [options]",
+    flags: [
+      {
+        token: "--skill-path",
+        helpLabel: "--skill-path",
+        description: "Path to a skill directory or SKILL.md file (required)",
+      },
+      {
+        token: "--mode",
+        helpLabel: "--mode",
+        description: "Replay scope: routing or package (default: routing)",
+      },
+      {
+        token: "--agent",
+        helpLabel: "--agent",
+        description: "Runtime agent to use (claude, codex, opencode, pi)",
+      },
+      {
+        token: "--eval-set",
+        helpLabel: "--eval-set",
+        description: "Override the eval-set path instead of using the canonical one",
+      },
+      {
+        token: "--json",
+        helpLabel: "--json",
+        description: "Emit the replay summary as JSON",
+      },
+      {
+        token: "--help",
+        helpLabel: "-h, --help",
+        description: "Show this help message",
+      },
+    ],
+    quickReference:
+      "selftune create replay --skill-path <path> [--mode routing|package] [--agent AGENT] [--json]",
+  },
+  createBaseline: {
+    command: "selftune create baseline",
+    summary: "Measure draft-package lift against a no-skill baseline",
+    usage: "selftune create baseline --skill-path <path> [options]",
+    flags: [
+      {
+        token: "--skill-path",
+        helpLabel: "--skill-path",
+        description: "Path to a skill directory or SKILL.md file (required)",
+      },
+      {
+        token: "--mode",
+        helpLabel: "--mode",
+        description: "Baseline mode: routing or package (default: routing)",
+      },
+      {
+        token: "--agent",
+        helpLabel: "--agent",
+        description: "Agent CLI to use for the baseline run",
+      },
+      {
+        token: "--eval-set",
+        helpLabel: "--eval-set",
+        description: "Override the eval-set path instead of using the canonical one",
+      },
+      {
+        token: "--json",
+        helpLabel: "--json",
+        description: "Emit the baseline summary as JSON",
+      },
+      {
+        token: "--help",
+        helpLabel: "-h, --help",
+        description: "Show this help message",
+      },
+    ],
+    quickReference:
+      "selftune create baseline --skill-path <path> [--mode routing|package] [--agent AGENT] [--json]",
+  },
+  createReport: {
+    command: "selftune create report",
+    summary: "Render a benchmark-style package evaluation report for the current draft",
+    usage: "selftune create report --skill-path <path> [options]",
+    flags: [
+      {
+        token: "--skill-path",
+        helpLabel: "--skill-path",
+        description: "Path to a skill directory or SKILL.md file (required)",
+      },
+      {
+        token: "--agent",
+        helpLabel: "--agent",
+        description: "Runtime agent to use for package evaluation",
+      },
+      {
+        token: "--eval-set",
+        helpLabel: "--eval-set",
+        description: "Override the eval-set path instead of using the canonical one",
+      },
+      {
+        token: "--json",
+        helpLabel: "--json",
+        description: "Emit the full package evaluation payload as JSON",
+      },
+      {
+        token: "--help",
+        helpLabel: "-h, --help",
+        description: "Show this help message",
+      },
+    ],
+    quickReference:
+      "selftune create report --skill-path <path> [--agent AGENT] [--eval-set PATH] [--json]",
+    extraHelpSections: [
+      `Report output:
+  Runs the package evaluator with replay + baseline, then renders the same
+  benchmark-style report shape used for review-ready publish evidence.
+  Exit code is 0 when the package passes evaluation and 1 otherwise.`,
+    ],
+  },
+  createPublish: {
+    command: "selftune create publish",
+    summary:
+      "Re-run package replay and baseline, then hand off a validated draft package into watch",
+    usage: "selftune create publish --skill-path <path> [options]",
+    flags: [
+      {
+        token: "--skill-path",
+        helpLabel: "--skill-path",
+        description: "Path to a skill directory or SKILL.md file (required)",
+      },
+      {
+        token: "--watch",
+        helpLabel: "--watch",
+        description: "Start watch immediately after publish succeeds",
+      },
+      {
+        token: "--ignore-watch-alerts",
+        helpLabel: "--ignore-watch-alerts",
+        description: "Bypass the publish-time watch gate after watch runs",
+      },
+      {
+        token: "--json",
+        helpLabel: "--json",
+        description: "Emit the publish summary as JSON",
+      },
+      {
+        token: "--help",
+        helpLabel: "-h, --help",
+        description: "Show this help message",
+      },
+    ],
+    quickReference:
+      "selftune create publish --skill-path <path> [--watch] [--ignore-watch-alerts] [--json]",
+    extraHelpSections: [
+      `Publish flow:
+  1. Re-run \`selftune create replay --mode package\`
+  2. Re-run \`selftune create baseline --mode package\`
+  3. Return the next \`selftune watch\` command, or start watch immediately when \`--watch\` is passed
+  4. Apply a watch-trust gate after watch completes; use \`--ignore-watch-alerts\` only when you deliberately want to bypass that gate`,
+    ],
+  },
+  createStatus: {
+    command: "selftune create status",
+    summary: "Show the current draft-package readiness state",
+    usage: "selftune create status --skill-path <path> [options]",
+    flags: [
+      {
+        token: "--skill-path",
+        helpLabel: "--skill-path",
+        description: "Path to a skill directory or SKILL.md file (required)",
+      },
+      {
+        token: "--json",
+        helpLabel: "--json",
+        description: "Emit the status payload as JSON",
+      },
+      {
+        token: "--help",
+        helpLabel: "-h, --help",
+        description: "Show this help message",
+      },
+    ],
+    quickReference: "selftune create status --skill-path <path> [--json]",
+  },
+  verify: {
+    command: "selftune verify",
+    summary: "Verify a draft skill package and report whether it is ready to publish",
+    usage: "selftune verify --skill-path <path> [options]",
+    flags: [
+      {
+        token: "--skill-path",
+        helpLabel: "--skill-path",
+        description: "Path to a skill directory or SKILL.md file (required)",
+      },
+      {
+        token: "--agent",
+        helpLabel: "--agent",
+        description: "Runtime agent to use for package evaluation once readiness passes",
+      },
+      {
+        token: "--eval-set",
+        helpLabel: "--eval-set",
+        description: "Override the eval-set path instead of using the canonical one",
+      },
+      {
+        token: "--no-auto-fix",
+        helpLabel: "--no-auto-fix",
+        description: "Skip automatic evidence generation when readiness checks fail",
+      },
+      {
+        token: "--json",
+        helpLabel: "--json",
+        description: "Emit readiness plus report data as JSON",
+      },
+      {
+        token: "--help",
+        helpLabel: "-h, --help",
+        description: "Show this help message",
+      },
+    ],
+    quickReference:
+      "selftune verify --skill-path <path> [--agent AGENT] [--eval-set PATH] [--no-auto-fix] [--json]",
+    extraHelpSections: [
+      `Lifecycle behavior:
+  1. Run the same draft-package readiness checks as \`selftune create check\`
+  2. Auto-generate missing evidence (evals, unit tests, replay, baseline) unless --no-auto-fix
+  3. If the draft is ready, run the benchmark-style package report
+  4. Recommend \`selftune publish\` when verification passes`,
+    ],
+  },
+  publish: {
+    command: "selftune publish",
+    summary: "Publish a verified draft package and start watch by default",
+    usage: "selftune publish --skill-path <path> [options]",
+    flags: [
+      {
+        token: "--skill-path",
+        helpLabel: "--skill-path",
+        description: "Path to a skill directory or SKILL.md file (required)",
+      },
+      {
+        token: "--no-watch",
+        helpLabel: "--no-watch",
+        description: "Skip the default watch handoff and return the next watch command instead",
+      },
+      {
+        token: "--ignore-watch-alerts",
+        helpLabel: "--ignore-watch-alerts",
+        description: "Bypass the publish-time watch gate after watch runs",
+      },
+      {
+        token: "--json",
+        helpLabel: "--json",
+        description: "Emit the publish summary as JSON",
+      },
+      {
+        token: "--help",
+        helpLabel: "-h, --help",
+        description: "Show this help message",
+      },
+    ],
+    quickReference:
+      "selftune publish --skill-path <path> [--no-watch] [--ignore-watch-alerts] [--json]",
+    extraHelpSections: [
+      `Default behavior:
+  \`selftune publish\` delegates to the draft-package publish flow and enables
+  watch automatically. Use \`--no-watch\` when you want a manual watch handoff.`,
+    ],
+  },
+  improve: {
+    command: "selftune improve",
+    summary: "Improve a skill through the smallest matching mutation surface",
+    usage: "selftune improve --skill <name> --skill-path <path> [options]",
+    flags: [
+      {
+        token: "--scope",
+        helpLabel: "--scope",
+        description: "Improvement scope: auto|description|routing|body|package (default: auto)",
+      },
+      {
+        token: "--skill",
+        helpLabel: "--skill",
+        description: "Skill name (required)",
+      },
+      {
+        token: "--skill-path",
+        helpLabel: "--skill-path",
+        description: "Path to SKILL.md (required)",
+      },
+      {
+        token: "--agent",
+        helpLabel: "--agent",
+        description: "Agent CLI to use; for body/routing this sets both teacher and student agents",
+      },
+      {
+        token: "--eval-set",
+        helpLabel: "--eval-set",
+        description: "Path to eval set JSON (optional, builds from logs if omitted)",
+      },
+      {
+        token: "--dry-run",
+        helpLabel: "--dry-run",
+        description: "Validate candidate changes without deploying",
+      },
+      {
+        token: "--validation-mode",
+        helpLabel: "--validation-mode",
+        description: "Validation strategy: auto|replay|judge (default: auto)",
+      },
+      {
+        token: "--help",
+        helpLabel: "-h, --help",
+        description: "Show this help message",
+      },
+    ],
+    quickReference:
+      "selftune improve --skill <name> --skill-path <path> [--scope auto|description|routing|body|package] [--dry-run] [--validation-mode auto|replay|judge]",
+    extraHelpSections: [
+      `Scope mapping:
+  auto|description -> \`selftune evolve\`
+  routing          -> \`selftune evolve body --target routing\`
+  body             -> \`selftune evolve body --target body\`
+  package          -> \`selftune search-run\`
+
+Today \`auto\` defaults to description-surface evolution unless you pick a
+broader scope explicitly. Package scope runs bounded search as a measured
+review loop; without \`--dry-run\` it also promotes the winning candidate back
+into the draft package.`,
+    ],
+  },
+  searchRun: {
+    command: "selftune search-run",
+    summary: "Run a bounded package search over routing and body candidate variants",
+    usage: "selftune search-run --skill-path <path> [options]",
+    flags: [
+      {
+        token: "--skill-path",
+        helpLabel: "--skill-path",
+        description: "Path to a skill directory or SKILL.md file (required)",
+      },
+      {
+        token: "--skill",
+        helpLabel: "--skill",
+        description: "Override the inferred skill name for candidate lineage and reporting",
+      },
+      {
+        token: "--surface",
+        helpLabel: "--surface",
+        description: "Mutation surface: routing|body|both (default: both)",
+      },
+      {
+        token: "--max-candidates",
+        helpLabel: "--max-candidates",
+        description: "Cap candidate variants evaluated in this search run (default: 5)",
+      },
+      {
+        token: "--agent",
+        helpLabel: "--agent",
+        description: "Runtime agent to use for shared package evaluation",
+      },
+      {
+        token: "--eval-set",
+        helpLabel: "--eval-set",
+        description: "Override the eval-set path used for package evaluation",
+      },
+      {
+        token: "--apply-winner",
+        helpLabel: "--apply-winner",
+        description: "Promote the winning candidate back into the draft package",
+      },
+      {
+        token: "--json",
+        helpLabel: "--json",
+        description: "Emit the full search result as JSON",
+      },
+      {
+        token: "--help",
+        helpLabel: "-h, --help",
+        description: "Show this help message",
+      },
+    ],
+    quickReference:
+      "selftune search-run --skill-path <path> [--skill NAME] [--surface routing|body|both] [--max-candidates N] [--agent AGENT] [--eval-set PATH] [--apply-winner] [--json]",
+    extraHelpSections: [
+      `Search behavior:
+  1. Generate eval-informed targeted routing/body variants, then deterministic
+     fallback variants to fill the minibatch
+  2. Evaluate each variant through the shared package evaluator
+  3. Compare accepted candidates against the measured frontier
+  4. Persist the search run, winner, and provenance for dashboard review
+  5. Optionally promote the winner back into the draft package and refresh the
+     canonical package-evaluation artifact`,
+    ],
+  },
   evalGenerate: {
     command: "selftune eval generate",
     summary: "Build eval sets from logs or SKILL.md",
@@ -88,6 +624,12 @@ export const PUBLIC_COMMAND_SURFACES = {
         description: "Path to skill_usage_log.jsonl",
       },
       {
+        token: "--agent",
+        helpLabel: "--agent",
+        description:
+          "Agent CLI to use for synthetic/blended eval generation (claude, codex, opencode, pi)",
+      },
+      {
         token: "--query-log",
         helpLabel: "--query-log",
         description: "Path to all_queries_log.jsonl",
@@ -129,7 +671,7 @@ export const PUBLIC_COMMAND_SURFACES = {
       },
     ],
     quickReference:
-      "selftune eval generate      --skill <name> [--list-skills] [--stats] [--max N] [--seed N] [--output PATH] [--blend]",
+      "selftune eval generate      --skill <name> [--list-skills] [--stats] [--max N] [--seed N] [--output PATH] [--agent AGENT] [--blend]",
     extraHelpSections: [
       `Recommended creator loop:
   1. selftune eval generate --skill <name>
@@ -169,7 +711,7 @@ Generated evals are stored canonically in SQLite and mirrored into ~/.selftune/e
       {
         token: "--confidence",
         helpLabel: "--confidence",
-        description: "Confidence threshold 0.0-1.0 (default: 0.6)",
+        description: "Low-confidence review threshold 0.0-1.0 (default: 0.6)",
       },
       {
         token: "--max-iterations",
@@ -392,6 +934,75 @@ Generated evals are stored canonically in SQLite and mirrored into ~/.selftune/e
   selftune orchestrate --max-skills 3           # limit scope
   selftune orchestrate --loop                   # continuous loop (hourly)
   selftune orchestrate --loop --loop-interval 600  # every 10 minutes`,
+    ],
+  },
+  run: {
+    command: "selftune run",
+    summary: "Autonomous sync, grade, improve, and watch loop",
+    usage: "selftune run [options]",
+    flags: [
+      {
+        token: "--dry-run",
+        helpLabel: "--dry-run",
+        description: "Preview actions without mutations",
+      },
+      {
+        token: "--review-required",
+        helpLabel: "--review-required",
+        description: "Validate candidates but require human review before deploy",
+      },
+      {
+        token: "--auto-approve",
+        helpLabel: "--auto-approve",
+        description: "Deprecated alias; autonomous mode is now the default",
+      },
+      {
+        token: "--skill",
+        helpLabel: "--skill <name>",
+        description: "Scope to a single skill",
+      },
+      {
+        token: "--max-skills",
+        helpLabel: "--max-skills <n>",
+        description: "Cap skills processed per run (default: 5)",
+      },
+      {
+        token: "--recent-window",
+        helpLabel: "--recent-window <hrs>",
+        description: "Hours to look back for watch targets (default: 48)",
+      },
+      {
+        token: "--sync-force",
+        helpLabel: "--sync-force",
+        description: "Force full rescan during sync",
+      },
+      {
+        token: "--max-auto-grade",
+        helpLabel: "--max-auto-grade <n>",
+        description: "Max ungraded skills to auto-grade per run (default: 5, 0 to disable)",
+      },
+      {
+        token: "--loop",
+        helpLabel: "--loop",
+        description: "Run in continuous loop mode (never stops)",
+      },
+      {
+        token: "--loop-interval",
+        helpLabel: "--loop-interval <s>",
+        description: "Seconds between iterations (default: 3600, min: 60)",
+      },
+      {
+        token: "--help",
+        helpLabel: "-h, --help",
+        description: "Show this help message",
+      },
+    ],
+    quickReference:
+      "selftune run [--dry-run] [--review-required] [--auto-approve] [--skill NAME] [--max-skills N] [--recent-window HOURS] [--sync-force] [--max-auto-grade N] [--loop] [--loop-interval SECS]",
+    extraHelpSections: [
+      `Alias behavior:
+  \`selftune run\` is the intention-level alias for \`selftune orchestrate\`.
+  It preserves the same JSON stdout + human-readable stderr behavior.`,
     ],
   },
 } satisfies Record<string, PublicCommandSurface>;

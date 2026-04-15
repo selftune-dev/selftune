@@ -1,5 +1,5 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import {
   buildDefaultGradingOutputPath,
@@ -7,8 +7,11 @@ import {
   gradeSession,
   resolveLatestSessionForSkill,
 } from "../grading/grade-session.js";
+import { selectAcceptedPackageFrontierCandidate } from "../create/package-candidate-state.js";
 import { writeGradingResultToDb } from "../localdb/direct-write.js";
 import { createDefaultSyncOptions } from "../sync.js";
+import { getDb } from "../localdb/db.js";
+import { readCanonicalPackageEvaluationArtifact } from "../testing-readiness.js";
 import type {
   ImprovementSignalRecord,
   QueryLogRecord,
@@ -17,7 +20,7 @@ import type {
 } from "../types.js";
 import { readExcerpt } from "../utils/transcript.js";
 import type { OrchestrateOptions, SkillAction } from "../orchestrate.js";
-import { selectCandidates } from "./plan.js";
+import { MIN_CANDIDATE_EVIDENCE, selectCandidates } from "./plan.js";
 import { groupSignalsBySkill, readPendingSignals } from "./signals.js";
 import type { ResolvedOrchestrateRuntime } from "./runtime.js";
 
@@ -31,6 +34,50 @@ export interface PreparedOrchestrateRun {
   evolveCandidates: SkillAction[];
   agent: string | null;
   autoGradedCount: number;
+}
+
+export function collectPackageSearchEligibleSkills(
+  skillNames: string[],
+  options?: {
+    db?: import("bun:sqlite").Database;
+    resolveSkillPath?: (skillName: string) => string | undefined;
+  },
+): Set<string> {
+  const eligible = new Set<string>();
+
+  for (const skillName of skillNames) {
+    if (
+      selectAcceptedPackageFrontierCandidate(skillName) != null ||
+      readCanonicalPackageEvaluationArtifact(skillName) != null
+    ) {
+      eligible.add(skillName);
+      continue;
+    }
+
+    // Second tier: skills with a draft package and sufficient grading evidence
+    if (!options?.db || !options?.resolveSkillPath) continue;
+
+    const skillPath = options.resolveSkillPath(skillName);
+    if (!skillPath) continue;
+
+    const hasDraft = existsSync(join(dirname(skillPath), "selftune.create.json"));
+    if (!hasDraft) continue;
+
+    try {
+      const row = options.db
+        .query<{ count: number }, [string]>(
+          "SELECT COUNT(*) as count FROM grading_results WHERE skill_name = ?",
+        )
+        .get(skillName);
+      if (row && row.count >= MIN_CANDIDATE_EVIDENCE) {
+        eligible.add(skillName);
+      }
+    } catch {
+      // Fail-open: table may not exist yet
+    }
+  }
+
+  return eligible;
 }
 
 /**
@@ -270,6 +317,10 @@ export async function prepareOrchestrateRun(
 
   const pendingSignals = readPendingSignals(runtime.readSignals);
   const signaledSkills = groupSignalsBySkill(pendingSignals);
+  const packageFrontierSkills = collectPackageSearchEligibleSkills(
+    statusResult.skills.map((skill) => skill.name),
+    { db: getDb(), resolveSkillPath: runtime.resolveSkillPath },
+  );
   if (signaledSkills.size > 0) {
     console.error(
       `[orchestrate] Improvement signals: ${pendingSignals.length} pending for ${signaledSkills.size} skill(s)`,
@@ -281,12 +332,16 @@ export async function prepareOrchestrateRun(
     maxSkills: options.maxSkills,
     auditEntries,
     signaledSkills,
+    packageFrontierSkills,
   });
 
   const evolveCandidates = candidates.filter((candidate) => candidate.action === "evolve");
+  const packageSearchCount = candidates.filter(
+    (candidate) => candidate.action === "package-search",
+  ).length;
   const skipCount = candidates.filter((candidate) => candidate.action === "skip").length;
   console.error(
-    `[orchestrate] Candidates: ${evolveCandidates.length} to evolve, ${skipCount} skipped`,
+    `[orchestrate] Candidates: ${evolveCandidates.length} to evolve, ${packageSearchCount} to package-search, ${skipCount} skipped`,
   );
   for (const candidate of candidates) {
     console.error(

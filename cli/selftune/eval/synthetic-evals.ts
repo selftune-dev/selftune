@@ -8,9 +8,10 @@
 
 import { readFileSync } from "node:fs";
 
-import type { EvalEntry, InvocationType, SkillUsageRecord } from "../types.js";
+import type { EvalEntry, InvocationType, QueryLogRecord, SkillUsageRecord } from "../types.js";
 import { callLlm, stripMarkdownFences } from "../utils/llm-call.js";
 import type { LlmCallObserver } from "../utils/llm-call.js";
+import { extractActionableQueryText, extractPositiveEvalQueryText } from "../utils/query-filter.js";
 import { findInstalledSkillNames } from "../utils/skill-discovery.js";
 import { classifyInvocation } from "./invocation-classifier.js";
 
@@ -49,6 +50,25 @@ interface PromptFamilyTargets {
   adjacentNegativeCount: number;
   unrelatedNegativeCount: number;
 }
+
+const MAX_REAL_EXAMPLE_LENGTH = 220;
+const MAX_SYNTHETIC_SKILL_CONTENT_CHARS = 6000;
+const MAX_SYNTHETIC_SECTION_CHARS = 1200;
+const MAX_SYNTHETIC_PREAMBLE_CHARS = 800;
+const PRIORITY_SYNTHETIC_SECTION_PATTERNS = [
+  /when this skill activates/i,
+  /when to invoke/i,
+  /when to use/i,
+  /\buse when\b/i,
+  /workflow routing/i,
+  /\busage\b/i,
+  /\bexamples?\b/i,
+  /\bformat\b/i,
+  /publish workflow/i,
+  /input/i,
+  /output/i,
+  /activation/i,
+] as const;
 
 function getSyntheticSkillSearchDirs(): string[] {
   const cwd = process.cwd();
@@ -120,6 +140,115 @@ function buildPromptFamilyTargets(
 
 function normalizeEvalQuery(query: string): string {
   return query.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function truncatePromptExample(query: string): string {
+  const trimmed = query.trim();
+  if (trimmed.length <= MAX_REAL_EXAMPLE_LENGTH) return trimmed;
+  return `${trimmed.slice(0, MAX_REAL_EXAMPLE_LENGTH - 1).trimEnd()}…`;
+}
+
+function truncateSyntheticSection(text: string, limit: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= limit) return trimmed;
+  return `${trimmed.slice(0, limit - 1).trimEnd()}…`;
+}
+
+export function summarizeSkillContentForSyntheticPrompt(skillContent: string): string {
+  const trimmed = skillContent.trim();
+  if (trimmed.length <= MAX_SYNTHETIC_SKILL_CONTENT_CHARS) return trimmed;
+
+  const frontmatterMatch = trimmed.match(/^---\n[\s\S]*?\n---\n*/);
+  const frontmatter = frontmatterMatch?.[0]?.trim() ?? "";
+  const body = frontmatterMatch ? trimmed.slice(frontmatterMatch[0].length).trim() : trimmed;
+  const sectionRegex = /^#{1,6}\s+.+$/gm;
+  const headingMatches = [...body.matchAll(sectionRegex)];
+
+  if (headingMatches.length === 0) {
+    return truncateSyntheticSection(trimmed, MAX_SYNTHETIC_SKILL_CONTENT_CHARS);
+  }
+
+  const summaryParts: string[] = [];
+  let usedLength = 0;
+  const appendPart = (part: string): boolean => {
+    const normalized = part.trim();
+    if (!normalized) return false;
+    const nextLength = usedLength + normalized.length + (summaryParts.length > 0 ? 2 : 0);
+    if (nextLength > MAX_SYNTHETIC_SKILL_CONTENT_CHARS) return false;
+    summaryParts.push(normalized);
+    usedLength = nextLength;
+    return true;
+  };
+
+  if (frontmatter) {
+    appendPart(frontmatter);
+  }
+
+  const preamble = body.slice(0, headingMatches[0]?.index ?? 0).trim();
+  if (preamble) {
+    appendPart(truncateSyntheticSection(preamble, MAX_SYNTHETIC_PREAMBLE_CHARS));
+  }
+
+  const sections = headingMatches.map((match, index) => {
+    const start = match.index ?? 0;
+    const end = headingMatches[index + 1]?.index ?? body.length;
+    const content = body.slice(start, end).trim();
+    const heading = match[0].replace(/^#{1,6}\s+/, "").trim();
+    return { heading, content, index };
+  });
+
+  const selectedIndices = new Set<number>();
+  if (sections.length > 0) selectedIndices.add(0);
+  for (const section of sections) {
+    if (PRIORITY_SYNTHETIC_SECTION_PATTERNS.some((pattern) => pattern.test(section.heading))) {
+      selectedIndices.add(section.index);
+    }
+  }
+
+  for (const section of sections) {
+    if (!selectedIndices.has(section.index)) continue;
+    appendPart(truncateSyntheticSection(section.content, MAX_SYNTHETIC_SECTION_CHARS));
+  }
+
+  appendPart("[skill content summarized for synthetic eval generation]");
+  return summaryParts.join("\n\n");
+}
+
+export function buildSyntheticPromptRealExamples(
+  positiveCandidates: string[],
+  negativeCandidates: string[],
+  skillName: string,
+  limit = 5,
+): SyntheticPromptRealExamples | undefined {
+  const cleanedPositives: string[] = [];
+  const seenPositives = new Set<string>();
+  for (const candidate of positiveCandidates) {
+    const cleaned = extractPositiveEvalQueryText(candidate, skillName);
+    if (!cleaned) continue;
+    const normalized = normalizeEvalQuery(cleaned);
+    if (seenPositives.has(normalized)) continue;
+    seenPositives.add(normalized);
+    cleanedPositives.push(truncatePromptExample(cleaned));
+    if (cleanedPositives.length >= limit) break;
+  }
+
+  if (cleanedPositives.length === 0) return undefined;
+
+  const positiveSet = new Set(cleanedPositives.map((query) => normalizeEvalQuery(query)));
+  const cleanedNegatives: string[] = [];
+  const seenNegatives = new Set<string>();
+  for (const candidate of negativeCandidates) {
+    const cleaned = extractActionableQueryText(candidate);
+    if (!cleaned) continue;
+    const truncated = truncatePromptExample(cleaned);
+    const normalized = normalizeEvalQuery(truncated);
+    if (positiveSet.has(normalized) || seenNegatives.has(normalized)) continue;
+    seenNegatives.add(normalized);
+    cleanedNegatives.push(truncated);
+    if (cleanedNegatives.length >= limit) break;
+  }
+
+  return { positive: cleanedPositives, negative: cleanedNegatives };
 }
 
 function dedupeEvalEntries(entries: EvalEntry[]): EvalEntry[] {
@@ -223,6 +352,7 @@ export function buildSyntheticPrompt(
   realExamples?: SyntheticPromptRealExamples,
   siblingSkills: string[] = [],
 ): { system: string; user: string } {
+  const summarizedSkillContent = summarizeSkillContentForSyntheticPrompt(skillContent);
   const {
     explicitCount,
     implicitCount,
@@ -259,7 +389,7 @@ Output as JSON array with no surrounding text:
   let user = `Skill name: ${skillName}
 
 Skill content:
-${skillContent}
+${summarizedSkillContent}
 
 Generate exactly ${maxPositives} positive queries (should_trigger: true) and ${maxNegatives} negative queries (should_trigger: false).
 
@@ -308,6 +438,7 @@ export function buildSyntheticRefinementPrompt(
   maxNegatives: number,
   siblingSkills: string[] = [],
 ): { system: string; user: string } {
+  const summarizedSkillContent = summarizeSkillContentForSyntheticPrompt(skillContent);
   const targets = buildPromptFamilyTargets(maxPositives, maxNegatives, siblingSkills.length > 0);
   const system = `You are refining a cold-start eval benchmark for a coding agent skill.
 
@@ -325,7 +456,7 @@ Return ONLY a JSON array with the final benchmark.`;
   const user = `Skill name: ${skillName}
 
 Skill content:
-${skillContent}
+${summarizedSkillContent}
 
 Target final benchmark:
 - ${maxPositives} positives
@@ -459,25 +590,22 @@ export async function generateSyntheticEvals(
 
     // Positives: high-confidence triggered records for this skill
     const skillRecords = querySkillUsageRecords(db) as SkillUsageRecord[];
-    const positive = skillRecords
+    const positiveCandidates = skillRecords
       .filter((r) => isHighConfidencePositiveSkillRecord(r, skillName))
       .map((r) => r.query)
-      .filter((q): q is string => typeof q === "string" && q.length > 0)
-      .slice(0, 5);
+      .filter((q): q is string => typeof q === "string" && q.length > 0);
 
-    // Negatives: from all_queries, excluding known positives
-    const posSet = new Set(positive.map((q: string) => q.toLowerCase()));
-    const allQueries = queryQueryLog(db);
-    const negative = allQueries
+    // Negatives: from all_queries, excluding cleaned positives later.
+    const allQueries = queryQueryLog(db) as QueryLogRecord[];
+    const negativeCandidates = allQueries
       .map((r) => r.query)
-      .filter(
-        (q): q is string => typeof q === "string" && q.length > 0 && !posSet.has(q.toLowerCase()),
-      )
-      .slice(0, 5);
+      .filter((q): q is string => typeof q === "string" && q.length > 0);
 
-    if (positive.length > 0) {
-      realExamples = { positive, negative };
-    }
+    realExamples = buildSyntheticPromptRealExamples(
+      positiveCandidates,
+      negativeCandidates,
+      skillName,
+    );
   } catch {
     // fail-open: synthetic gen works without real examples
   }

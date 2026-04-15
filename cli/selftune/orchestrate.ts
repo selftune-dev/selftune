@@ -24,8 +24,11 @@ import {
   autoGradeFreshDeploys,
   buildReplayValidationOptions,
   runEvolutionPhase,
+  runPackageSearchPhase,
   watchRecentDeploys,
 } from "./orchestrate/execute.js";
+export { runPackageSearchPhase } from "./orchestrate/execute.js";
+export type { RunPackageSearchPhaseInput } from "./orchestrate/execute.js";
 import { finalizeOrchestrateRun } from "./orchestrate/finalize.js";
 import { acquireLock, releaseLock } from "./orchestrate/locks.js";
 import { runPostOrchestrateSideEffects } from "./orchestrate/post-run.js";
@@ -67,6 +70,7 @@ export {
   DEFAULT_COOLDOWN_HOURS,
   MIN_CANDIDATE_EVIDENCE,
   selectCandidates,
+  shouldSelectPackageSearch,
 } from "./orchestrate/plan.js";
 export { autoGradeTopUngraded, detectCrossSkillOverlap } from "./orchestrate/prepare.js";
 export { formatOrchestrateReport } from "./orchestrate/report.js";
@@ -93,12 +97,20 @@ export interface OrchestrateOptions {
   maxAutoGrade: number;
 }
 
+export interface PackageSearchResult {
+  searched: boolean;
+  winnerApplied: boolean;
+  candidateCount: number;
+  winnerCandidateId?: string;
+}
+
 export interface SkillAction {
   skill: string;
-  action: "evolve" | "watch" | "skip";
+  action: "evolve" | "package-search" | "watch" | "skip";
   reason: string;
   evolveResult?: EvolveResult;
   watchResult?: WatchResult;
+  packageSearchResult?: PackageSearchResult;
 }
 
 /** Context for candidate selection beyond simple status checks. */
@@ -110,6 +122,8 @@ export interface CandidateContext {
   cooldownHours?: number;
   /** Skill name (lowercase) to improvement signal count. */
   signaledSkills?: Map<string, number>;
+  /** Skills with an accepted package frontier candidate (eligible for package search). */
+  packageFrontierSkills?: Set<string>;
 }
 
 export interface OrchestrateResult {
@@ -127,6 +141,8 @@ export interface OrchestrateResult {
     watched: number;
     skipped: number;
     autoGraded: number;
+    packageSearched: number;
+    packageImproved: number;
     freshlyWatchedSkills: string[];
     dryRun: boolean;
     approvalMode: "auto" | "review";
@@ -240,6 +256,8 @@ export async function orchestrate(
         watched: 0,
         skipped: 0,
         autoGraded: 0,
+        packageSearched: 0,
+        packageImproved: 0,
         freshlyWatchedSkills: [],
         dryRun: options.dryRun,
         approvalMode: options.approvalMode,
@@ -286,6 +304,19 @@ export async function orchestrate(
       detectAgent: runtime.detectAgent,
       readTelemetry: runtime.readTelemetry,
       readSkillRecords: runtime.readSkillRecords,
+    });
+
+    // -------------------------------------------------------------------------
+    // Step 5c: Package search for candidates tagged with action "package-search"
+    // -------------------------------------------------------------------------
+    const packageSearchCandidates = candidates.filter(
+      (candidate) => candidate.action === "package-search",
+    );
+    const packageSearchImproved = await runPackageSearchPhase({
+      packageSearchCandidates,
+      dryRun: options.dryRun,
+      agent,
+      resolveSkillPath: runtime.resolveSkillPath,
     });
 
     // -------------------------------------------------------------------------
@@ -336,6 +367,8 @@ export async function orchestrate(
       dryRun: options.dryRun,
       approvalMode: options.approvalMode,
       autoGradedCount,
+      packageSearched: packageSearchCandidates.length,
+      packageImproved: packageSearchImproved.length,
       freshlyWatchedSkills,
       pendingSignals,
       elapsedMs: Date.now() - startTime,

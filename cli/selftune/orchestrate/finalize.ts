@@ -16,6 +16,8 @@ interface OrchestrateFinalTotals {
   watched: number;
   skipped: number;
   autoGraded: number;
+  packageSearched: number;
+  packageImproved: number;
   freshlyWatchedSkills: string[];
 }
 
@@ -27,6 +29,8 @@ export interface FinalizeOrchestrateRunInput {
   dryRun: boolean;
   approvalMode: "auto" | "review";
   autoGradedCount: number;
+  packageSearched: number;
+  packageImproved: number;
   freshlyWatchedSkills: string[];
   pendingSignals: ImprovementSignalRecord[];
   elapsedMs: number;
@@ -36,6 +40,8 @@ function buildFinalTotals(
   skills: SkillStatus[],
   candidates: SkillAction[],
   autoGradedCount: number,
+  packageSearched: number,
+  packageImproved: number,
   freshlyWatchedSkills: string[],
 ): OrchestrateFinalTotals {
   return {
@@ -50,6 +56,8 @@ function buildFinalTotals(
       freshlyWatchedSkills.length,
     skipped: candidates.filter((candidate) => candidate.action === "skip").length,
     autoGraded: autoGradedCount,
+    packageSearched,
+    packageImproved,
     freshlyWatchedSkills,
   };
 }
@@ -63,6 +71,8 @@ export function finalizeOrchestrateRun(input: FinalizeOrchestrateRunInput): Orch
     dryRun,
     approvalMode,
     autoGradedCount,
+    packageSearched,
+    packageImproved,
     freshlyWatchedSkills,
     pendingSignals,
     elapsedMs,
@@ -72,6 +82,8 @@ export function finalizeOrchestrateRun(input: FinalizeOrchestrateRunInput): Orch
     statusResult.skills,
     candidates,
     autoGradedCount,
+    packageSearched,
+    packageImproved,
     freshlyWatchedSkills,
   );
 
@@ -106,6 +118,8 @@ export function finalizeOrchestrateRun(input: FinalizeOrchestrateRunInput): Orch
     watched: finalTotals.watched,
     skipped: finalTotals.skipped,
     auto_graded: finalTotals.autoGraded,
+    package_searched: finalTotals.packageSearched,
+    package_improved: finalTotals.packageImproved,
     skill_actions: candidates.map(
       (candidate): OrchestrateRunSkillAction => ({
         skill: candidate.skill,

@@ -745,6 +745,7 @@ export interface BodyEvolutionProposal {
 export type ValidationGate = "structural" | "trigger_accuracy" | "quality";
 
 export type ValidationMode = "structural_guard" | "host_replay" | "llm_judge";
+export type ReplayStagingMode = "routing" | "package";
 
 export interface RoutingReplayFixture {
   fixture_id: string;
@@ -753,6 +754,7 @@ export interface RoutingReplayFixture {
   target_skill_path: string;
   competing_skill_paths: string[];
   workspace_root?: string;
+  skill_staging_mode?: ReplayStagingMode;
 }
 
 export interface RoutingReplayEntryResult {
@@ -761,6 +763,30 @@ export interface RoutingReplayEntryResult {
   triggered: boolean;
   passed: boolean;
   evidence?: string;
+  runtime_metrics?: RuntimeReplayEntryMetrics;
+}
+
+export interface RuntimeReplayEntryMetrics {
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_creation_input_tokens: number | null;
+  cache_read_input_tokens: number | null;
+  total_cost_usd: number | null;
+  duration_ms: number | null;
+  num_turns: number | null;
+}
+
+export interface RuntimeReplayAggregateMetrics {
+  eval_runs: number;
+  usage_observations: number;
+  total_duration_ms: number;
+  avg_duration_ms: number;
+  total_input_tokens: number | null;
+  total_output_tokens: number | null;
+  total_cache_creation_input_tokens: number | null;
+  total_cache_read_input_tokens: number | null;
+  total_cost_usd: number | null;
+  total_turns: number | null;
 }
 
 /** Result of validating a body evolution proposal. */
@@ -808,9 +834,191 @@ export interface BaselineResult {
   with_skill: boolean;
   triggered: boolean;
   pass: boolean;
+  evidence?: string;
   latency_ms?: number;
   tokens?: TokenUsageMetrics;
   measured_at: string;
+}
+
+export type CreatePackageEvaluationStatus = "passed" | "replay_failed" | "baseline_failed";
+
+export interface CreatePackageReplaySummary {
+  mode: ReplayStagingMode;
+  validation_mode: "host_replay";
+  agent: string;
+  proposal_id: string;
+  fixture_id: string;
+  total: number;
+  passed: number;
+  failed: number;
+  pass_rate: number;
+  runtime_metrics?: RuntimeReplayAggregateMetrics;
+}
+
+export interface CreatePackageBaselineSummary {
+  mode: ReplayStagingMode;
+  baseline_pass_rate: number;
+  with_skill_pass_rate: number;
+  lift: number;
+  adds_value: boolean;
+  measured_at: string;
+  sample_size?: number;
+  runtime_metrics?: {
+    with_skill: RuntimeReplayAggregateMetrics;
+    without_skill: RuntimeReplayAggregateMetrics;
+  };
+}
+
+export interface CreatePackageEvaluationEvidenceSample {
+  query: string;
+  evidence: string | null;
+}
+
+export interface CreatePackageEvaluationEvidenceSummary {
+  replay_failures: number;
+  baseline_wins: number;
+  baseline_regressions: number;
+  replay_failure_samples: CreatePackageEvaluationEvidenceSample[];
+  baseline_win_samples: CreatePackageEvaluationEvidenceSample[];
+  baseline_regression_samples: CreatePackageEvaluationEvidenceSample[];
+}
+
+export interface CreatePackageEvaluationEfficiencySummary {
+  with_skill: RuntimeReplayAggregateMetrics;
+  without_skill: RuntimeReplayAggregateMetrics;
+}
+
+export interface CreatePackageEvaluationWatchEfficiencyRegressionSummary {
+  sample_size: number;
+  baseline_avg_duration_ms: number | null;
+  observed_avg_duration_ms: number | null;
+  duration_delta_ratio: number | null;
+  baseline_avg_input_tokens: number | null;
+  observed_avg_input_tokens: number | null;
+  input_tokens_delta_ratio: number | null;
+  baseline_avg_output_tokens: number | null;
+  observed_avg_output_tokens: number | null;
+  output_tokens_delta_ratio: number | null;
+  baseline_avg_turns: number | null;
+  observed_avg_turns: number | null;
+  turns_delta_ratio: number | null;
+}
+
+export interface CreatePackageEvaluationWatchSummary {
+  snapshot: MonitoringSnapshot;
+  alert: string | null;
+  rolled_back: boolean;
+  recommendation: string;
+  recommended_command: string | null;
+  grade_alert: string | null;
+  grade_regression: { before: number; after: number; delta: number } | null;
+  efficiency_alert?: string | null;
+  efficiency_regression?: CreatePackageEvaluationWatchEfficiencyRegressionSummary | null;
+}
+
+export interface CreatePackageEvaluationGradingBaselineSummary {
+  proposal_id: string | null;
+  measured_at: string;
+  pass_rate: number;
+  mean_score: number | null;
+  sample_size: number;
+}
+
+export interface CreatePackageEvaluationGradingRecentSummary {
+  sample_size: number;
+  average_pass_rate: number | null;
+  average_mean_score: number | null;
+  newest_graded_at: string | null;
+  oldest_graded_at: string | null;
+}
+
+export interface CreatePackageEvaluationGradingSummary {
+  baseline: CreatePackageEvaluationGradingBaselineSummary | null;
+  recent: CreatePackageEvaluationGradingRecentSummary | null;
+  pass_rate_delta: number | null;
+  mean_score_delta: number | null;
+  regressed: boolean | null;
+}
+
+export interface CreatePackageEvaluationUnitTestFailureSummary {
+  test_id: string;
+  error: string | null;
+  failed_assertions: string[];
+}
+
+export interface CreatePackageEvaluationUnitTestSummary {
+  total: number;
+  passed: number;
+  failed: number;
+  pass_rate: number;
+  run_at: string;
+  failing_tests: CreatePackageEvaluationUnitTestFailureSummary[];
+}
+
+export interface CreatePackageBodySummary {
+  structural_valid: boolean;
+  structural_reason: string;
+  quality_score: number | null;
+  quality_reason: string | null;
+  quality_threshold: number;
+  quality_passed: boolean | null;
+  valid: boolean;
+}
+
+export type CreatePackageEvaluationSource = "fresh" | "artifact_cache" | "candidate_cache";
+export type CreatePackageCandidateAcceptanceDecision = "root" | "accepted" | "rejected";
+
+export interface CreatePackageCandidateAcceptanceSummary {
+  decision: CreatePackageCandidateAcceptanceDecision;
+  compared_to_candidate_id: string | null;
+  decided_at: string;
+  rationale: string;
+  replay_pass_rate_delta: number | null;
+  routing_pass_rate_delta: number | null;
+  baseline_lift_delta: number | null;
+  body_quality_delta: number | null;
+  unit_test_pass_rate_delta: number | null;
+}
+
+export interface CreatePackageEvaluationSummary {
+  skill_name: string;
+  skill_path: string;
+  mode: ReplayStagingMode;
+  package_fingerprint?: string;
+  candidate_id?: string;
+  parent_candidate_id?: string | null;
+  candidate_generation?: number | null;
+  evaluation_source?: CreatePackageEvaluationSource;
+  status: CreatePackageEvaluationStatus;
+  evaluation_passed: boolean;
+  next_command: string | null;
+  replay: CreatePackageReplaySummary;
+  routing?: CreatePackageReplaySummary;
+  baseline: CreatePackageBaselineSummary;
+  evidence?: CreatePackageEvaluationEvidenceSummary;
+  efficiency?: CreatePackageEvaluationEfficiencySummary;
+  grading?: CreatePackageEvaluationGradingSummary;
+  body?: CreatePackageBodySummary;
+  unit_tests?: CreatePackageEvaluationUnitTestSummary;
+  watch?: CreatePackageEvaluationWatchSummary;
+  candidate_acceptance?: CreatePackageCandidateAcceptanceSummary;
+}
+
+export interface CreatePackageCandidateRecord {
+  candidate_id: string;
+  skill_name: string;
+  skill_path: string;
+  package_fingerprint: string;
+  parent_candidate_id: string | null;
+  candidate_generation: number;
+  evaluation_count: number;
+  first_evaluated_at: string;
+  last_evaluated_at: string;
+  latest_status: CreatePackageEvaluationStatus;
+  latest_evaluation_source: CreatePackageEvaluationSource | null;
+  latest_acceptance_decision: CreatePackageCandidateAcceptanceDecision | null;
+  artifact_path: string | null;
+  summary: CreatePackageEvaluationSummary;
 }
 
 // ---------------------------------------------------------------------------
@@ -861,6 +1069,78 @@ export interface UnitTestSuiteResult {
   pass_rate: number;
   results: UnitTestResult[];
   run_at: string;
+}
+
+export interface AgentSkillValidationIssue {
+  level: "error" | "warning";
+  code: string;
+  message: string;
+  path?: string;
+}
+
+export interface AgentSkillValidationResult {
+  ok: boolean;
+  issues: AgentSkillValidationIssue[];
+  raw_stdout: string;
+  raw_stderr: string;
+  exit_code: number | null;
+  validator: "skills-ref";
+  command: string | null;
+}
+
+export type CreateCheckState =
+  | "blocked_spec_validation"
+  | "needs_spec_validation"
+  | "needs_package_resources"
+  | "needs_evals"
+  | "needs_unit_tests"
+  | "needs_routing_replay"
+  | "needs_baseline"
+  | "ready_to_publish";
+
+export interface CreateCheckChecks {
+  skill_md: boolean;
+  frontmatter_present: boolean;
+  skill_name_matches_dir: boolean;
+  description_present: boolean;
+  description_within_budget: boolean;
+  skill_md_within_line_budget: boolean;
+  manifest_present: boolean;
+  workflow_entry: boolean;
+  references_present: boolean;
+  scripts_present: boolean;
+  assets_present: boolean;
+  evals_present: boolean;
+  unit_tests_present: boolean;
+  routing_replay_ready: boolean;
+  routing_replay_recorded: boolean;
+  package_replay_ready: boolean;
+  baseline_present: boolean;
+}
+
+export interface CreateCheckReadiness {
+  ok: boolean;
+  state: CreateCheckState;
+  summary: string;
+  next_command: string | null;
+  checks: CreateCheckChecks;
+  skill_name: string;
+  skill_dir: string;
+  skill_path: string;
+  entry_workflow: string;
+  manifest_present: boolean;
+  description_quality: DescriptionQualityScore;
+}
+
+export interface CreateCheckResult {
+  skill: string;
+  skill_dir: string;
+  skill_path: string;
+  ok: boolean;
+  state: CreateCheckState;
+  next_command: string | null;
+  spec_validation: AgentSkillValidationResult;
+  readiness: CreateCheckReadiness;
 }
 
 // ---------------------------------------------------------------------------
@@ -1033,4 +1313,40 @@ export interface WorkflowDiscoveryReport {
   workflows: DiscoveredWorkflow[];
   total_sessions_analyzed: number;
   generated_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Package search types (bounded package evolution)
+// ---------------------------------------------------------------------------
+
+/** Provenance trail for a package search run. */
+export interface PackageSearchProvenance {
+  frontier_size: number;
+  parent_selection_method: string;
+  candidate_fingerprints: string[];
+  surface_plan?: {
+    routing_count: number;
+    body_count: number;
+    weakness_source: string;
+    routing_weakness: number | null;
+    body_weakness: number | null;
+  };
+  evaluation_summaries: Array<{
+    candidate_id: string;
+    decision: string;
+    rationale: string;
+  }>;
+}
+
+/** Result of a bounded package search run. */
+export interface PackageSearchRunResult {
+  search_id: string;
+  skill_name: string;
+  parent_candidate_id: string | null;
+  candidates_evaluated: number;
+  winner_candidate_id: string | null;
+  winner_rationale: string | null;
+  started_at: string;
+  completed_at: string;
+  provenance: PackageSearchProvenance;
 }

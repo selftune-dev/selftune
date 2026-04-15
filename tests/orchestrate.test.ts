@@ -686,7 +686,47 @@ describe("orchestrate", () => {
         output_dir: "/tmp/repo/.agents/skills",
         skill_dir: "/tmp/repo/.agents/skills/blog-publisher",
         skill_path: "/tmp/repo/.agents/skills/blog-publisher/SKILL.md",
-        content: "# Blog Publisher",
+        manifest: {
+          version: 1,
+          entry_workflow: "workflows/default.md",
+          supports_package_replay: true,
+          expected_resources: {
+            workflows: true,
+            references: false,
+            scripts: false,
+            assets: false,
+          },
+        },
+        directories: [
+          "/tmp/repo/.agents/skills/blog-publisher",
+          "/tmp/repo/.agents/skills/blog-publisher/workflows",
+          "/tmp/repo/.agents/skills/blog-publisher/references",
+          "/tmp/repo/.agents/skills/blog-publisher/scripts",
+          "/tmp/repo/.agents/skills/blog-publisher/assets",
+        ],
+        files: [
+          {
+            relative_path: "SKILL.md",
+            absolute_path: "/tmp/repo/.agents/skills/blog-publisher/SKILL.md",
+            content: "# Blog Publisher",
+          },
+          {
+            relative_path: "workflows/default.md",
+            absolute_path: "/tmp/repo/.agents/skills/blog-publisher/workflows/default.md",
+            content: "# Blog Publisher Default Workflow",
+          },
+          {
+            relative_path: "references/overview.md",
+            absolute_path: "/tmp/repo/.agents/skills/blog-publisher/references/overview.md",
+            content: "# Blog Publisher Overview",
+          },
+          {
+            relative_path: "selftune.create.json",
+            absolute_path: "/tmp/repo/.agents/skills/blog-publisher/selftune.create.json",
+            content: "{}",
+          },
+        ],
+        content: "Draft workflow skill: Blog Publisher",
         source_workflow: {
           workflow_id: "Copywriting→MarketingAutomation→SelfTuneBlog",
           skills: ["Copywriting", "MarketingAutomation", "SelfTuneBlog"],
@@ -745,7 +785,47 @@ describe("orchestrate", () => {
         output_dir: "/tmp/repo/.agents/skills",
         skill_dir: "/tmp/repo/.agents/skills/launch-copy-workflow",
         skill_path: "/tmp/repo/.agents/skills/launch-copy-workflow/SKILL.md",
-        content: "# Launch Copy Workflow",
+        manifest: {
+          version: 1,
+          entry_workflow: "workflows/default.md",
+          supports_package_replay: true,
+          expected_resources: {
+            workflows: true,
+            references: false,
+            scripts: false,
+            assets: false,
+          },
+        },
+        directories: [
+          "/tmp/repo/.agents/skills/launch-copy-workflow",
+          "/tmp/repo/.agents/skills/launch-copy-workflow/workflows",
+          "/tmp/repo/.agents/skills/launch-copy-workflow/references",
+          "/tmp/repo/.agents/skills/launch-copy-workflow/scripts",
+          "/tmp/repo/.agents/skills/launch-copy-workflow/assets",
+        ],
+        files: [
+          {
+            relative_path: "SKILL.md",
+            absolute_path: "/tmp/repo/.agents/skills/launch-copy-workflow/SKILL.md",
+            content: "# Launch Copy Workflow",
+          },
+          {
+            relative_path: "workflows/default.md",
+            absolute_path: "/tmp/repo/.agents/skills/launch-copy-workflow/workflows/default.md",
+            content: "# Launch Copy Workflow Default Workflow",
+          },
+          {
+            relative_path: "references/overview.md",
+            absolute_path: "/tmp/repo/.agents/skills/launch-copy-workflow/references/overview.md",
+            content: "# Launch Copy Workflow Overview",
+          },
+          {
+            relative_path: "selftune.create.json",
+            absolute_path: "/tmp/repo/.agents/skills/launch-copy-workflow/selftune.create.json",
+            content: "{}",
+          },
+        ],
+        content: "Draft workflow skill: Launch Copy Workflow",
         source_workflow: {
           workflow_id: "Copywriting→MarketingAutomation",
           skills: ["Copywriting", "MarketingAutomation"],

@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { toast } from "sonner";
 
 import { formatActionLabel, ingestDashboardActionEvent } from "@/lib/live-action-feed";
+import { navigateToLiveRun } from "@/lib/live-run-link";
 import type { DashboardActionEvent } from "@/types";
 
 /**
@@ -38,11 +39,18 @@ export function useSSE(): void {
 
       const label = formatActionLabel(payload.action);
       const description = payload.skill_name ?? "Dashboard action";
+      const openLiveRun = () => {
+        navigateToLiveRun(payload);
+      };
 
       if (payload.stage === "started") {
         toast.loading(label, {
           id: payload.event_id,
           description,
+          action: {
+            label: "Live run",
+            onClick: openLiveRun,
+          },
         });
         return;
       }
@@ -53,20 +61,28 @@ export function useSSE(): void {
         toast.success(label, {
           id: payload.event_id,
           description,
+          action: {
+            label: "Live run",
+            onClick: openLiveRun,
+          },
         });
       } else {
         toast.error(label, {
           id: payload.event_id,
           description: payload.error ?? description,
+          action: {
+            label: "Live run",
+            onClick: openLiveRun,
+          },
         });
       }
       queryClient.invalidateQueries();
     });
 
-    // Auto-reconnect is built into EventSource — just log for visibility
-    source.onerror = () => {
+    // Auto-reconnect is built into EventSource — nothing to do here.
+    source.addEventListener("error", () => {
       // EventSource reconnects automatically; nothing to do
-    };
+    });
 
     return () => {
       source.close();

@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  buildSyntheticPromptRealExamples,
   buildSyntheticPrompt,
   buildSyntheticRefinementPrompt,
   parseSyntheticResponse,
   selectBalancedEvalEntries,
+  summarizeSkillContentForSyntheticPrompt,
 } from "../../cli/selftune/eval/synthetic-evals.js";
 
 // ---------------------------------------------------------------------------
@@ -87,6 +89,84 @@ describe("buildSyntheticPrompt", () => {
     expect(user).toContain("- sc-resource");
     expect(user).toContain("- sc-compare");
     expect(user).toContain("negative queries should clearly belong to one of these sibling skills");
+  });
+});
+
+describe("summarizeSkillContentForSyntheticPrompt", () => {
+  test("keeps small skill content unchanged", () => {
+    const content = "# My Skill\nDoes stuff";
+    expect(summarizeSkillContentForSyntheticPrompt(content)).toBe(content);
+  });
+
+  test("summarizes oversized skill content to frontmatter, preamble, and priority sections", () => {
+    const hugeNoise = "x".repeat(7000);
+    const content = `---
+name: SelfTuneBlog
+description: Publish blog posts to selftune.dev.
+---
+
+# SelfTuneBlog
+
+Publishes markdown blog posts to selftune.dev.
+
+## Cover Image Generation
+
+${hugeNoise}
+
+## When This Skill Activates
+
+- Publish this blog post to selftune
+- Add this to the selftune blog
+
+## Publish Workflow
+
+Use the publish script to publish markdown posts.
+`;
+
+    const summary = summarizeSkillContentForSyntheticPrompt(content);
+    expect(summary).toContain("name: SelfTuneBlog");
+    expect(summary).toContain("## When This Skill Activates");
+    expect(summary).toContain("## Publish Workflow");
+    expect(summary).toContain("[skill content summarized for synthetic eval generation]");
+    expect(summary.length).toBeLessThan(content.length);
+    expect(summary.length).toBeLessThanOrEqual(6000);
+  });
+});
+
+describe("buildSyntheticPromptRealExamples", () => {
+  test("drops wrapper fragments and meta skill-maintenance prompts from real examples", () => {
+    const result = buildSyntheticPromptRealExamples(
+      [
+        "<command-message>context</command-message> <command-args></command-args>",
+        "grade the selftune blog skill",
+        "publish this blog post to selftune.dev",
+        "publish this blog post to selftune.dev",
+      ],
+      [
+        "<command-message>context</command-message> <command-args></command-args>",
+        "what is the weather?",
+        "what is the weather?",
+        "review the selftune blog workflow files",
+      ],
+      "SelfTuneBlog",
+    );
+
+    expect(result).toBeDefined();
+    expect(result?.positive).toEqual(["publish this blog post to selftune.dev"]);
+    expect(result?.negative).toEqual([
+      "what is the weather?",
+      "review the selftune blog workflow files",
+    ]);
+  });
+
+  test("returns undefined when no clean positive few-shot examples remain", () => {
+    const result = buildSyntheticPromptRealExamples(
+      ["grade the selftune blog skill", "<command-message>context</command-message>"],
+      ["what is the weather?"],
+      "SelfTuneBlog",
+    );
+
+    expect(result).toBeUndefined();
   });
 });
 

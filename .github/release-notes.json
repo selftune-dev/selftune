@@ -4,6 +4,580 @@
   "docsUrl": "https://docs.selftune.dev/changelog",
   "entries": [
     {
+      "label": "2026-04-15",
+      "description": "Non-TTY improve runs now show durable CLI progress",
+      "tags": ["OSS", "CLI", "Dashboard"],
+      "rss": {
+        "title": "April 2026 — non-TTY improve runs now emit durable terminal progress",
+        "description": "selftune improve and evolve now print plain stderr progress lines in non-interactive terminals, so agent-run CLI sessions no longer look hung while the dashboard keeps advancing."
+      },
+      "bullets": [
+        "`selftune improve` and `selftune evolve` now fall back to plain stderr",
+        "Interactive terminals keep the spinner/TUI behavior, while test runs remain"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Dashboard action toasts now deep-link into the exact live run",
+      "tags": ["OSS", "Dashboard"],
+      "rss": {
+        "title": "April 2026 — dashboard action toasts now jump straight into Live Run",
+        "description": "Local dashboard creator-loop toasts now include a Live run action that opens the exact streaming event entry instead of leaving users to find the run manually."
+      },
+      "bullets": [
+        "Local dashboard action toasts now include a `Live run` action that opens the exact `/live-run` entry for the streaming creator-loop event, including the event id, skill, and action selection state.",
+        "The floating `Live lifecycle actions` feed now uses the same deep link, so clicking a running or finished lifecycle card jumps straight into the matching `Live Run` entry instead of leaving you to find it manually."
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "eval generate can now force opencode or another agent runtime",
+      "tags": ["OSS", "CLI", "Platforms"],
+      "rss": {
+        "title": "April 2026 — eval generate can now target opencode explicitly",
+        "description": "selftune eval generate now accepts --agent for synthetic, auto-synthetic, and blend flows, and large skill prompts are summarized before cold-start eval generation."
+      },
+      "bullets": [
+        "`selftune eval generate` now accepts `--agent` for `--synthetic`,",
+        "Cold-start synthetic eval generation now reuses the same cleaned query"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Package search merge candidates no longer overwrite evaluated variants",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — package search merge candidates and publish watch bypass behavior tightened",
+        "description": "Merged package-search candidates now evaluate from their own temp snapshot, and publish respects --ignore-watch-alerts even when watch crashes before emitting structured JSON."
+      },
+      "bullets": [
+        "Bounded package search now writes merged routing/body candidates into a new",
+        "`selftune create publish --watch --ignore-watch-alerts` now also bypasses"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "OSS local dashboard CI now typechecks bounded search summaries again",
+      "tags": ["OSS", "Dashboard"],
+      "rss": {
+        "title": "April 2026 — OSS dashboard export verification restored after bounded search summary typing drift",
+        "description": "The OSS local dashboard test fixtures now use the real bounded package-search summary shape again, restoring the export pipeline typecheck for Live Run surfaces."
+      },
+      "bullets": ["The OSS local dashboard `LiveRun` test fixture now uses the real"],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Dashboard lifecycle copy now matches the CLI lifecycle surface",
+      "tags": ["OSS", "Dashboard", "CLI"],
+      "rss": {
+        "title": "April 2026 — dashboard lifecycle commands now normalize like the CLI",
+        "description": "The local dashboard now rewrites draft-package stage commands like create replay, create baseline, evolve body, and search-run into the same verify/improve/publish/run lifecycle language used by the CLI."
+      },
+      "bullets": ["The local dashboard now normalizes `selftune create replay`,"],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Package baseline now reuses fresh replay artifacts and emits phase progress",
+      "tags": ["OSS", "CLI", "Dashboard"],
+      "rss": {
+        "title": "April 2026 — package baseline is faster and visible in the local dashboard",
+        "description": "selftune create baseline now reuses a fresh with-skill replay from the canonical package artifact when possible and emits explicit replay-phase progress for the dashboard live-run view."
+      },
+      "bullets": [
+        "`selftune create baseline --mode package` now reuses the last fresh",
+        "Package baseline now emits explicit `with_skill_replay` and"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Reflective package search, merged winners, and lifecycle auto-selection",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — bounded package evolution now includes reflective search and merged candidates",
+        "description": "selftune search-run now generates reflective variants, evaluates merged routing/body candidates, and improve auto-selects package search for package-backed skills."
+      },
+      "bullets": [
+        "`selftune search-run` now prefers reflective routing/body proposals from",
+        "When routing and body both produce accepted improvements, package search now",
+        "Plain `selftune improve` now auto-selects bounded package search for skills",
+        "Added an end-to-end package lifecycle test covering `verify` auto-fix,"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Direct search-run now uses measured targeted variants",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — direct package search now matches the measured runtime path",
+        "description": "selftune search-run now consumes eval-informed targeted routing/body variants before deterministic fallback, and the shipped search/publish docs now describe the real bounded package-search and watch-gate behavior."
+      },
+      "bullets": [
+        "`selftune search-run` now uses the same measured targeted-routing/body",
+        "The public CLI docs and workflow docs now describe `search-run` as bounded",
+        "Publish/package-search lifecycle docs now describe the real blocking"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Verify auto-fix, publish watch blocking, and targeted-mutation wiring fixes",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — package evolution follow-through fixes",
+        "description": "Verify now runs the real evidence-generation commands, publish blocks on failed watch output, and targeted mutations read the real grading schema."
+      },
+      "bullets": [
+        "`selftune verify` now auto-runs the real missing-evidence commands with the",
+        "`selftune create publish --watch` now blocks publish if the watch subprocess",
+        "Eval-informed targeted mutations now read `grading_results.pass_rate`,",
+        "The shipped lifecycle docs now describe the actual concrete readiness states"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Lifecycle vocabulary normalization and restructured CLI help",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — lifecycle vocabulary normalization and CLI help restructure",
+        "description": "All guidance output uses lifecycle vocabulary. CLI help is split into Primary Lifecycle and Advanced sections."
+      },
+      "bullets": [
+        "`normalizeLifecycleCommand` now maps `create replay`, `create baseline`,",
+        "`selftune --help` now shows Primary Lifecycle commands first, with"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Auto-evidence generation in verify",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — verify auto-fix for missing evidence",
+        "description": "selftune verify now auto-generates missing evidence (evals, unit tests, replay, baseline) before reporting failure."
+      },
+      "bullets": ["`selftune verify` auto-runs missing evidence steps (up to 4 iterations)"],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Broader package search eligibility for draft packages with grading evidence",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — orchestrate package search eligibility broadened",
+        "description": "Skills with a draft package and at least 3 grading results are now eligible for package search in orchestrate, not just skills with an accepted frontier or canonical evaluation artifact."
+      },
+      "bullets": [
+        "`collectPackageSearchEligibleSkills` now includes a second eligibility",
+        "The existing frontier/artifact fast path is unchanged; the new tier is"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Docs: fix stale orchestrate claim in SearchRun.md and document watch frontier demotion",
+      "tags": ["OSS"],
+      "rss": {
+        "title": "April 2026 — SearchRun and Watch docs corrected",
+        "description": "SearchRun.md now accurately documents that orchestrate auto-selects package search for eligible skills. Watch.md adds mechanical detail on how watch evidence demotes frontier candidates via the 15-level sort."
+      },
+      "bullets": [
+        "`SearchRun.md` no longer claims orchestrate cannot auto-select package",
+        "`Watch.md` adds a \"How Watch Evidence Feeds Back to the Frontier\" section",
+        "`SKILL.md` SearchRun routing keywords now include \"optimize package\","
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Publish watch gate now blocks and mutation weakness extraction populates failure patterns",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — publish watch gate enforced, grading failure patterns extracted",
+        "description": "The publish watch gate now blocks publishing when alerts are active instead of being advisory-only. Mutation weakness extraction now populates grading failure patterns from expectation-level results."
+      },
+      "bullets": [
+        "`create publish --watch` now blocks publishing when the watch gate detects",
+        "`extractMutationWeaknesses` now populates `gradingFailurePatterns` from"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Phase 2 follow-up fixes package search and publish gate wiring",
+      "tags": ["OSS", "CLI", "Dashboard"],
+      "rss": {
+        "title": "April 2026 — orchestrate package search and publish watch gate now use the live contracts",
+        "description": "A follow-up fix wires package search into orchestrate using real frontier eligibility, activates targeted mutations in the runtime search path, and surfaces the advisory watch gate directly from create publish results."
+      },
+      "bullets": [
+        "Orchestrate now marks skills package-search-eligible from the real accepted",
+        "The orchestrate package-search phase now uses the current mutation and",
+        "`create publish --watch` now surfaces `watch_gate_passed`,",
+        "Skill reports now populate `watch_trust_score` from the latest stored",
+        "Fixed the `selftune orchestrate` CLI docs page so Mintlify renders it as a",
+        "Dashboard skill report and live run now display routing and body weakness"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Orchestrate gains automatic package search selection",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — orchestrate can now select package search from evidence",
+        "description": "selftune orchestrate (and the `run` alias) now automatically selects between description-level evolve and package-level bounded search based on evidence. Skills with an accepted package frontier or canonical package evaluation showing room for improvement are routed to package search. Watch trust scoring feeds back into scope selection and frontier demotion."
+      },
+      "bullets": ["Added evidence-driven scope selection to orchestrate so it automatically"],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Bounded mutation strategies for package evolution",
+      "tags": ["CLI", "OSS"],
+      "rss": {
+        "title": "April 2026 — Eval-informed bounded mutations",
+        "description": "The evolution pipeline now generates targeted SKILL.md variants using replay failure samples and grading trends, focusing mutations on the specific patterns that failed."
+      },
+      "bullets": ["Added deterministic routing mutations (synonym expansion, granularity split,"],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Watch trust scoring and publish gate",
+      "tags": ["OSS", "CLI", "Dashboard"],
+      "rss": {
+        "title": "April 2026 — Watch trust scoring gates publish decisions",
+        "description": "Post-deploy watch now computes a 0-1 trust score from trigger stability, grade stability, and rollback history. A new advisory publish gate warns before deploying skills with active watch alerts. The dashboard surfaces watch trust scores on skill reports and watch gate status on live run screens."
+      },
+      "bullets": [
+        "Added `computeWatchTrustScore` to the watch module, producing a 0-1 trust",
+        "Added an advisory publish watch gate that warns when active alerts or low",
+        "Extended the dashboard contract with `watch_trust_score` on skill reports",
+        "Updated the live run screen to display watch gate pass/alert badges when",
+        "Added a watch trust indicator to the skill report creator loop section."
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-14",
+      "description": "Cloud GitHub registry foundation",
+      "tags": ["Cloud", "Registry"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Package search phase in orchestrate loop",
+      "tags": ["CLI", "OSS"],
+      "rss": {
+        "title": "April 2026 — Bounded package search wired into orchestrate",
+        "description": "The orchestrate loop now routes eligible skills through a bounded package search phase instead of standard evolution when a package frontier candidate exists."
+      },
+      "bullets": ["Added a package-search candidate action to the orchestrate loop so skills"],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "search-run no longer over-biases body mutations on missing quality scores",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — search-run treats missing body quality as neutral instead of maximally weak",
+        "description": "Bounded package search now treats a valid body with no quality score as a neutral weakness signal, preventing the minibatch planner from wasting most candidates on body-only mutations."
+      },
+      "bullets": [
+        "`search-run` now treats `body.quality_score: null` as a neutral weakness",
+        "This prevents `--surface both` from over-allocating routing/body search"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "bounded search now biases the minibatch toward weaker measured surfaces",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — search-run now allocates more candidates to the weaker measured surface",
+        "description": "When search-run explores both routing and body, it now biases the candidate budget toward the weaker measured surface from the accepted frontier or canonical package evaluation instead of splitting evenly by default."
+      },
+      "bullets": [
+        "`search-run --surface both` now reads the accepted frontier first and falls",
+        "This replaces the old fixed half-routing half-body split with a weakness",
+        "The chosen surface budget is now persisted into search provenance and shown"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "package search can now promote the winning draft candidate",
+      "tags": ["OSS", "CLI", "Dashboard"],
+      "rss": {
+        "title": "April 2026 — bounded package search can now apply the winning candidate",
+        "description": "search-run can now promote its winning candidate back into the draft package, and improve --scope package applies that winner automatically unless dry-run is requested."
+      },
+      "bullets": [
+        "Added `search-run --apply-winner`, which copies the winning candidate back",
+        "`selftune improve --scope package` now adds winner promotion by default and",
+        "Search-run dashboard summaries now carry the resulting next command and"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "package search is now part of the main improve lifecycle",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — selftune improve can now run bounded package search",
+        "description": "selftune improve now supports --scope package, routing the primary lifecycle alias into bounded package search with eval-set passthrough and replay-backed validation semantics."
+      },
+      "bullets": [
+        "Added `selftune improve --scope package`, which routes the primary",
+        "Package scope now preserves `--eval-set`, strips redundant `--dry-run`,",
+        "Updated command help, workflow docs, SKILL routing guidance, and CLI docs"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "bounded package search is now executable end to end",
+      "tags": ["OSS", "CLI", "Dashboard"],
+      "rss": {
+        "title": "April 2026 — bounded package search is now a real selftune command",
+        "description": "selftune now ships a real search-run command for bounded package evolution, with dashboard action routing, live streaming, and skill-report frontier state backed by measured search data."
+      },
+      "bullets": [
+        "Added `selftune search-run` as a real top-level CLI command that generates",
+        "Wired `search-run` through dashboard actions, child-process event",
+        "The skill report backend now returns real package frontier state and the",
+        "Package search evaluations now normalize temp candidate variants back onto",
+        "Updated command help, workflow docs, SKILL routing, and the CLI quick"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Package evaluation pipeline terminology",
+      "tags": ["CLI", "OSS"],
+      "rss": {
+        "title": "April 2026 — Status and docs now reference the package evaluation pipeline",
+        "description": "The status command, SKILL.md, and workflow docs now use package evaluation pipeline terminology instead of the older description-first and creator-loop language."
+      },
+      "bullets": [
+        "Updated `selftune status` output to label the readiness section \"Package",
+        "Updated Evolve, EvolveBody, Watch, and CreateTestDeploy workflow docs to use",
+        "Normalized Baseline, Evals, UnitTest, SignalsDashboard workflow docs and"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Package frontier observability in dashboard",
+      "tags": ["OSS", "Dashboard", "CLI"],
+      "rss": {
+        "title": "April 2026 — Package frontier state and search provenance surface in dashboard",
+        "description": "The local dashboard now displays package frontier state on the skill report and search run provenance on the live run screen, giving visibility into bounded package evolution progress."
+      },
+      "bullets": ["Added package frontier panel to skill report showing accepted candidates"],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Bounded mutation primitives for package search",
+      "tags": ["CLI", "OSS"],
+      "rss": {
+        "title": "April 2026 — Bounded mutation primitives for evolution package search",
+        "description": "The evolution pipeline now exposes deterministic mutation generators that produce evaluator-compatible skill variants for package search without requiring LLM calls."
+      },
+      "bullets": ["Added `generateRoutingMutations()` and `generateBodyMutations()` in the"],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "Bounded package search runner",
+      "tags": ["CLI", "OSS"],
+      "rss": {
+        "title": "April 2026 — Bounded package search for skill evolution",
+        "description": "Added the core search runner for bounded package evolution, enabling minibatch candidate evaluation against an accepted frontier with full provenance tracking."
+      },
+      "bullets": ["Added bounded package search runner that evaluates candidate skill variants"],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "watch now flags package efficiency regressions",
+      "tags": ["OSS", "CLI", "Dashboard"],
+      "rss": {
+        "title": "April 2026 — watch now uses package baselines to detect efficiency regressions",
+        "description": "selftune watch now compares observed post-deploy session efficiency against the stored draft-package evaluation baseline, so rollback recommendations can be triggered by token, output, or turn inflation even when trigger pass rate stays stable."
+      },
+      "bullets": [
+        "`selftune watch` now reads the current package-evaluation artifact when one",
+        "Efficiency watch is grounded in measured package baselines already produced",
+        "Efficiency regressions now flow through the structured watch result and the",
+        "The local dashboard watch parser now preserves those efficiency-regression"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "package candidate history now records measured acceptance",
+      "tags": ["OSS", "CLI", "Dashboard"],
+      "rss": {
+        "title": "April 2026 — draft package candidates now carry measured acceptance state",
+        "description": "selftune now records whether each fingerprinted draft package candidate was accepted, rejected, or treated as the root baseline, based on measured replay, routing, baseline, body, and unit-test deltas."
+      },
+      "bullets": [
+        "Durable draft package candidates now carry a measured acceptance decision in",
+        "Acceptance is computed from package-evaluator evidence rather than model",
+        "Re-evaluating the same draft fingerprint preserves the original parent",
+        "Fresh candidates now compare their measured acceptance against the latest",
+        "When the current draft matches an already accepted frontier member, package",
+        "Accepted-frontier selection is now ranked by measured package outcomes",
+        "`create publish --watch` now writes structured watch results back into the",
+        "Cached package-evaluation reuse now also requires acceptance metadata in the",
+        "Benchmark reports, `create publish` summaries, and the local dashboard"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-15",
+      "description": "package evaluation now registers candidate lineage",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — draft package evaluation now registers candidate lineage",
+        "description": "selftune now records durable package candidates keyed by package fingerprint, links new drafts to the previously evaluated candidate for that skill, and archives candidate-specific evaluation artifacts for later measured search."
+      },
+      "bullets": [
+        "Fresh draft package evaluations now register a durable package candidate per",
+        "New candidate records carry parent linkage to the previously evaluated draft",
+        "Cached package-evaluation reuse now requires candidate metadata in the saved",
+        "Benchmark reports, publish summaries, and the local dashboard live-run view"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-14",
+      "description": "selftune skill now teaches a simpler lifecycle",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — selftune skill now routes around a simpler lifecycle",
+        "description": "The shipped selftune skill now teaches Create, Verify, Publish, Improve, and Run as the primary lifecycle, while keeping lower-level eval, replay, baseline, watch, and evolve workflows available as advanced surfaces."
+      },
+      "bullets": [
+        "Repositioned the shipped `selftune` skill around a smaller lifecycle:",
+        "Added new primary workflow docs for `Verify`, `Publish`, `Improve`, and",
+        "Updated `SKILL.md`, routing keywords, and lifecycle-state guidance so",
+        "Reframed `Create` as draft authoring only, marked the older",
+        "The local dashboard action stream and dashboard-triggered publish/evolve",
+        "The local dashboard overview, skill report, live action feed, and CLI docs",
+        "`selftune status`, dashboard recommended commands, live-run next-command",
+        "Scheduled automation surfaces now teach `selftune run` as the default",
+        "Fixed the `selftune create` CLI page after a broken MDX wrapper landed, and",
+        "Normalized the secondary advanced workflow docs and README so `eval`,",
+        "Cleaned up the remaining lifecycle wording in `status`, `eval`, and",
+        "Corrected the package-search docs so `search-run` and"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-14",
+      "description": "package evaluation now reuses fresh measured artifacts",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — draft package evaluation now reuses fresh measured artifacts",
+        "description": "selftune now persists a full draft package evaluation artifact and reuses it when the package fingerprint still matches, avoiding duplicate replay, routing, baseline, and body-validation work for unchanged drafts."
+      },
+      "bullets": [
+        "Added a canonical full-evaluation artifact beside the stored package",
+        "Package-evaluation reuse is guarded by the bounded package fingerprint and",
+        "Cache hits only apply when the saved package artifact already includes the",
+        "Benchmark reports and publish output now label whether the package",
+        "The local dashboard live-run summary now surfaces that same fresh-vs-cached"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-14",
+      "description": "package evaluation now includes routing and body validation",
+      "tags": ["OSS", "CLI", "Dashboard"],
+      "rss": {
+        "title": "April 2026 — draft package evaluation now includes routing and body validation",
+        "description": "selftune now attaches current routing replay validation and current body validation to the shared draft package evaluator, so report and publish flows can review one measured package summary instead of separate checks."
+      },
+      "bullets": [
+        "Extended the shared draft package evaluator so `create report` and `create",
+        "Updated the benchmark-style package report format so routing replay and body",
+        "Updated the active bounded package-evolution plan to reflect that"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-14",
+      "description": "draft package benchmark report helper",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — draft package evaluation now has a benchmark report command",
+        "description": "selftune now includes `create report`, a benchmark-style draft package evaluation command that surfaces replay failures, with-vs-without-skill lift, and next-step guidance in one deterministic artifact."
+      },
+      "bullets": [
+        "Added `selftune create report --skill-path <path>` as a no-side-effect",
+        "Added the same report shape as a reusable helper in the shared draft",
+        "Updated the selftune skill workflow docs, quick reference,"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-14",
+      "description": "package-first create publish handoff",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — create publish now gates on package replay and baseline",
+        "description": "selftune now re-runs package replay and package baseline during `create publish` before handing a draft skill into watch, instead of routing that handoff straight into description-only evolve."
+      },
+      "bullets": [
+        "Updated `selftune create publish` so draft-package publishing now re-runs",
+        "The live-run screen now surfaces those measured package-evaluation artifacts",
+        "Added `report-package` as a first-class dashboard action for draft skills,",
+        "`create publish --watch` now attaches a structured watch summary to that",
+        "Clarified the public CLI docs and shipped `Create` workflow so agents can",
+        "`selftune evolve` and `selftune evolve body` no longer reject proposals",
+        "The shared package-evaluation payload now also includes grading baseline",
+        "The local dashboard now parses and renders that same",
+        "The latest package-evaluation summary is now stored canonically in SQLite",
+        "Draft-package readiness and `create check` now honor the latest stored",
+        "The shared package-evaluation payload now also carries deterministic unit",
+        "Draft-package readiness and `create check` now also honor the latest failed",
+        "Stored package-evaluation artifacts now include a bounded package",
+        "Fixed dashboard child-process action context for `report-package`, so"
+      ],
+      "versionRange": null
+    },
+    {
+      "label": "2026-04-14",
+      "description": "create skill packages and workflow scaffolds",
+      "tags": ["OSS", "CLI"],
+      "rss": {
+        "title": "April 2026 — selftune now supports the full create-skill draft lifecycle",
+        "description": "Added the package-oriented create flow with scaffolding, readiness checks, runtime replay, baseline measurement, and publish handoff so draft skills can be validated end to end as full packages instead of only a single SKILL.md file."
+      },
+      "bullets": [
+        "Added `selftune create init` as the clean-slate authoring path for new",
+        "Added `selftune create check` to run Agent Skills spec validation first and"
+      ],
+      "versionRange": null
+    },
+    {
       "label": "2026-04-14",
       "description": "Cloud GitHub registry foundation",
       "tags": ["Cloud", "Registry"],

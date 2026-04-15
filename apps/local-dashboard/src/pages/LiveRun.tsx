@@ -7,15 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@selftune/ui/primitives";
-import {
-  ActivityIcon,
-  ArrowLeftIcon,
-  BotIcon,
-  BoxesIcon,
-  CpuIcon,
-  Loader2Icon,
-  TerminalSquareIcon,
-} from "lucide-react";
+import * as Lucide from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { useSkillReport } from "@/hooks/useSkillReport";
@@ -24,13 +16,19 @@ import {
   useLiveActionFeed,
   useSelectedLiveActionEntry,
 } from "@/lib/live-action-feed";
-import type { DashboardActionName, SessionMeta } from "@/types";
+import { normalizeLifecycleCommand } from "@/lib/lifecycle-surface";
+import type {
+  DashboardActionName,
+  DashboardActionResultSummary,
+  DashboardSearchRunSummary,
+  SessionMeta,
+} from "@/types";
 
 function statusBadge(status: "running" | "success" | "error") {
   if (status === "running") {
     return (
       <Badge variant="secondary" className="gap-1">
-        <Loader2Icon className="size-3 animate-spin" />
+        <Lucide.Loader2 className="size-3 animate-spin" />
         Running
       </Badge>
     );
@@ -50,7 +48,7 @@ function countValues(
   }
   return [...counts.entries()]
     .map(([label, count]) => ({ label, count }))
-    .sort((left, right) => right.count - left.count)
+    .toSorted((left, right) => right.count - left.count)
     .slice(0, 5);
 }
 
@@ -60,6 +58,18 @@ function formatPercent(value: number | null): string {
 
 function formatDelta(value: number | null): string {
   return value == null ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(2)}`;
+}
+
+function formatSummaryMode(value: string | null): string {
+  if (!value) return "Dry-run";
+  return value.replaceAll("_", " ").replaceAll("+", " + ");
+}
+
+function formatTitleCase(value: string): string {
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function formatInteger(value: number | null): string {
@@ -125,6 +135,301 @@ function progressSubjectLabel(
   return "Current item";
 }
 
+function formatSampleHeading(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function EvidenceSampleList({
+  title,
+  emptyState,
+  samples,
+}: {
+  title: string;
+  emptyState: string;
+  samples: Array<{ query: string; evidence: string | null }>;
+}) {
+  return (
+    <div className="space-y-2 rounded-xl border border-border/15 bg-background px-4 py-3">
+      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{title}</div>
+      {samples.length === 0 ? (
+        <div className="text-sm text-muted-foreground">{emptyState}</div>
+      ) : (
+        <div className="space-y-2">
+          {samples.map((sample) => (
+            <div
+              key={`${title}:${sample.query}`}
+              className="rounded-lg border border-border/10 px-3 py-2"
+            >
+              <div className="text-sm font-medium text-foreground">{sample.query}</div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                {sample.evidence ?? "No captured evidence text."}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EfficiencyMetricsCard({
+  title,
+  metrics,
+}: {
+  title: string;
+  metrics: NonNullable<DashboardActionResultSummary["package_efficiency"]>["with_skill"];
+}) {
+  return (
+    <div className="rounded-xl border border-border/15 bg-background px-4 py-3">
+      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{title}</div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            Duration
+          </div>
+          <div className="mt-1 text-sm font-semibold text-foreground">
+            {formatDurationMs(metrics.total_duration_ms)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            Eval runs
+          </div>
+          <div className="mt-1 text-sm font-semibold text-foreground">
+            {formatInteger(metrics.eval_runs)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            Input tokens
+          </div>
+          <div className="mt-1 text-sm font-semibold text-foreground">
+            {formatInteger(metrics.total_input_tokens)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            Output tokens
+          </div>
+          <div className="mt-1 text-sm font-semibold text-foreground">
+            {formatInteger(metrics.total_output_tokens)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Cost</div>
+          <div className="mt-1 text-sm font-semibold text-foreground">
+            {formatCurrency(metrics.total_cost_usd)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">Turns</div>
+          <div className="mt-1 text-sm font-semibold text-foreground">
+            {formatInteger(metrics.total_turns)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PackageWatchCard({
+  watch,
+}: {
+  watch: NonNullable<DashboardActionResultSummary["package_watch"]>;
+}) {
+  return (
+    <div className="space-y-4 rounded-xl border border-border/15 bg-background px-4 py-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            Window sessions
+          </div>
+          <div className="mt-1 text-sm font-semibold text-foreground">
+            {formatInteger(watch.snapshot.window_sessions)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            Skill checks
+          </div>
+          <div className="mt-1 text-sm font-semibold text-foreground">
+            {formatInteger(watch.snapshot.skill_checks)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            Observed pass rate
+          </div>
+          <div className="mt-1 text-sm font-semibold text-foreground">
+            {formatPercent(watch.snapshot.pass_rate)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            False negatives
+          </div>
+          <div className="mt-1 text-sm font-semibold text-foreground">
+            {formatPercent(watch.snapshot.false_negative_rate)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            Regression
+          </div>
+          <div className="mt-1 text-sm font-semibold text-foreground">
+            {watch.snapshot.regression_detected ? "Detected" : "Clear"}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            Rolled back
+          </div>
+          <div className="mt-1 text-sm font-semibold text-foreground">
+            {watch.rolled_back ? "Yes" : "No"}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+          Invocation signal
+        </div>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          {Object.entries(watch.snapshot.by_invocation_type).map(([label, totals]) => (
+            <div key={label} className="rounded-lg border border-border/10 px-3 py-2">
+              <div className="text-sm font-medium text-foreground">{formatTitleCase(label)}</div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                {totals.passed}/{totals.total} passed
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {watch.grade_regression ? (
+        <div className="rounded-lg border border-border/10 px-3 py-2">
+          <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+            Grade regression
+          </div>
+          <div className="mt-1 text-sm text-foreground">
+            Baseline {formatPercent(watch.grade_regression.before)} / Recent{" "}
+            {formatPercent(watch.grade_regression.after)} / Delta{" "}
+            {formatDelta(-watch.grade_regression.delta)}
+          </div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            {watch.grade_alert ?? "Grade watch signal detected."}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="rounded-lg border border-border/10 px-3 py-2">
+        <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+          Recommendation
+        </div>
+        <div className="mt-1 text-sm text-foreground">{watch.recommendation}</div>
+      </div>
+    </div>
+  );
+}
+
+function SearchRunPanel({ searchRun }: { searchRun: DashboardSearchRunSummary }) {
+  return (
+    <Card className="border-border/20">
+      <CardHeader className="pb-4">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Lucide.Boxes className="size-4" />
+          Package search run
+        </CardTitle>
+        <CardDescription>
+          Bounded package search result showing selected parent, candidates evaluated, and winner
+          determination.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+              Selected parent
+            </div>
+            <div className="mt-2 truncate text-sm font-semibold font-mono">
+              {searchRun.parent_candidate_id
+                ? searchRun.parent_candidate_id.slice(0, 12)
+                : "None (root)"}
+            </div>
+          </div>
+          <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+              Candidates evaluated
+            </div>
+            <div className="mt-2 text-lg font-semibold">{searchRun.candidates_evaluated}</div>
+          </div>
+          <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+              Winner
+            </div>
+            <div className="mt-2 truncate text-sm font-semibold font-mono">
+              {searchRun.winner_candidate_id
+                ? searchRun.winner_candidate_id.slice(0, 12)
+                : "No winner"}
+            </div>
+          </div>
+          <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+              Frontier size
+            </div>
+            <div className="mt-2 text-lg font-semibold">{searchRun.frontier_size}</div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="rounded-xl border border-border/15 bg-background px-4 py-3 text-sm">
+            <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+              Parent selection method
+            </div>
+            <div className="text-foreground">{searchRun.parent_selection_method}</div>
+          </div>
+          <div className="rounded-xl border border-border/15 bg-background px-4 py-3 text-sm">
+            <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+              Search ID
+            </div>
+            <div className="truncate font-mono text-foreground">{searchRun.search_id}</div>
+          </div>
+          {searchRun.surface_plan ? (
+            <div className="rounded-xl border border-border/15 bg-background px-4 py-3 text-sm">
+              <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                Surface budget
+              </div>
+              <div className="text-foreground">
+                Routing {searchRun.surface_plan.routing_count}, body{" "}
+                {searchRun.surface_plan.body_count}
+              </div>
+              {searchRun.surface_plan.routing_weakness != null &&
+              searchRun.surface_plan.body_weakness != null ? (
+                <div className="mt-1 text-xs text-foreground">
+                  Weakness: routing {(searchRun.surface_plan.routing_weakness * 100).toFixed(1)}%,
+                  body {(searchRun.surface_plan.body_weakness * 100).toFixed(1)}%
+                </div>
+              ) : null}
+              <div className="mt-1 text-xs text-muted-foreground">
+                {searchRun.surface_plan.weakness_source}
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {searchRun.winner_rationale ? (
+          <div className="mt-4 rounded-xl border border-border/15 bg-background px-4 py-3 text-sm text-muted-foreground">
+            <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+              Winner rationale
+            </div>
+            <div className="text-foreground">{searchRun.winner_rationale}</div>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function LiveRun() {
   const [searchParams, setSearchParams] = useSearchParams();
   const eventId = searchParams.get("event") || undefined;
@@ -149,6 +454,55 @@ export function LiveRun() {
     if (skillName && entry.skillName !== skillName) return false;
     return true;
   });
+  const packageEvaluationSource = selectedEntry?.summary?.package_evaluation_source ?? null;
+  const packageCandidateId = selectedEntry?.summary?.package_candidate_id ?? null;
+  const packageParentCandidateId = selectedEntry?.summary?.package_parent_candidate_id ?? null;
+  const packageCandidateGeneration = selectedEntry?.summary?.package_candidate_generation ?? null;
+  const packageCandidateAcceptanceDecision =
+    selectedEntry?.summary?.package_candidate_acceptance_decision ?? null;
+  const packageCandidateAcceptanceRationale =
+    selectedEntry?.summary?.package_candidate_acceptance_rationale ?? null;
+  const packageEvidence = selectedEntry?.summary?.package_evidence ?? null;
+  const packageEfficiency = selectedEntry?.summary?.package_efficiency ?? null;
+  const packageRouting = selectedEntry?.summary?.package_routing ?? null;
+  const packageBody = selectedEntry?.summary?.package_body ?? null;
+  const packageGrading = selectedEntry?.summary?.package_grading ?? null;
+  const packageUnitTests = selectedEntry?.summary?.package_unit_tests ?? null;
+  const packageWatch = selectedEntry?.summary?.package_watch ?? null;
+  const recommendedCommand = normalizeLifecycleCommand(
+    selectedEntry?.summary?.recommended_command ?? null,
+  );
+  const evidenceGroups = packageEvidence
+    ? [
+        {
+          title: formatSampleHeading(
+            packageEvidence.replay_failures,
+            "replay failure",
+            "replay failures",
+          ),
+          emptyState: "No failed replay examples were captured.",
+          samples: packageEvidence.replay_failure_samples,
+        },
+        {
+          title: formatSampleHeading(
+            packageEvidence.baseline_wins,
+            "baseline win",
+            "baseline wins",
+          ),
+          emptyState: "No with-skill wins were captured.",
+          samples: packageEvidence.baseline_win_samples,
+        },
+        {
+          title: formatSampleHeading(
+            packageEvidence.baseline_regressions,
+            "baseline regression",
+            "baseline regressions",
+          ),
+          emptyState: "No with-skill regressions were captured.",
+          samples: packageEvidence.baseline_regression_samples,
+        },
+      ]
+    : [];
 
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-6 py-6 lg:px-8">
@@ -161,7 +515,7 @@ export function LiveRun() {
               }
               className="inline-flex items-center gap-1 hover:text-foreground"
             >
-              <ArrowLeftIcon className="size-3" />
+              <Lucide.ArrowLeft className="size-3" />
               Back to skill
             </Link>
             <span>/</span>
@@ -169,15 +523,15 @@ export function LiveRun() {
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <h1 className="text-3xl font-semibold tracking-tight">
-              {selectedEntry ? formatActionLabel(selectedEntry.action) : "Creator loop live run"}
+              {selectedEntry ? formatActionLabel(selectedEntry.action) : "Lifecycle live run"}
             </h1>
             {selectedEntry ? statusBadge(selectedEntry.status) : null}
             {selectedSkillName ? <Badge variant="outline">{selectedSkillName}</Badge> : null}
           </div>
           <p className="mt-3 max-w-3xl text-sm text-muted-foreground">
-            Dedicated streaming view for creator-loop actions. This screen shows the live terminal
-            output, parsed dry-run result, and historical platform/model/token aggregates for the
-            selected skill.
+            Dedicated streaming view for lifecycle actions. This screen shows the live terminal
+            output, parsed measured action result, and historical platform/model/token aggregates
+            for the selected skill.
           </p>
         </div>
 
@@ -201,11 +555,11 @@ export function LiveRun() {
           <Card className="border-border/20">
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2 text-base">
-                <ActivityIcon className="size-4" />
+                <Lucide.Activity className="size-4" />
                 Run summary
               </CardTitle>
               <CardDescription>
-                Structured dry-run result when the evolution command emits machine-readable output.
+                Structured action result when creator-loop commands emit machine-readable output.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -213,7 +567,7 @@ export function LiveRun() {
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
                     <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                      Before
+                      {selectedEntry.summary.before_label ?? "Before"}
                     </div>
                     <div className="mt-2 text-lg font-semibold">
                       {formatPercent(selectedEntry.summary.before_pass_rate)}
@@ -221,7 +575,7 @@ export function LiveRun() {
                   </div>
                   <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
                     <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                      After
+                      {selectedEntry.summary.after_label ?? "After"}
                     </div>
                     <div className="mt-2 text-lg font-semibold">
                       {formatPercent(selectedEntry.summary.after_pass_rate)}
@@ -229,7 +583,7 @@ export function LiveRun() {
                   </div>
                   <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
                     <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                      Net change
+                      {selectedEntry.summary.net_change_label ?? "Net change"}
                     </div>
                     <div className="mt-2 text-lg font-semibold">
                       {formatDelta(selectedEntry.summary.net_change)}
@@ -237,17 +591,17 @@ export function LiveRun() {
                   </div>
                   <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
                     <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                      Validation
+                      {selectedEntry.summary.validation_label ?? "Validation"}
                     </div>
                     <div className="mt-2 text-lg font-semibold">
-                      {selectedEntry.summary.validation_mode ?? "Dry-run"}
+                      {formatSummaryMode(selectedEntry.summary.validation_mode)}
                     </div>
                   </div>
                 </div>
               ) : (
                 <div className="rounded-xl border border-dashed border-border/20 px-4 py-8 text-sm text-muted-foreground">
-                  No structured summary yet. Start a replay dry-run from the skill report to watch
-                  its output stream into this screen.
+                  No structured summary yet. Start a create check, replay dry-run, publish, or watch
+                  flow from the skill report to stream measured results into this screen.
                 </div>
               )}
 
@@ -256,19 +610,406 @@ export function LiveRun() {
                   {selectedEntry.summary.reason}
                 </div>
               ) : null}
+
+              {recommendedCommand ? (
+                <div className="mt-4 rounded-xl border border-border/15 bg-background px-4 py-3">
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Recommended next command
+                  </div>
+                  <div className="mt-2 font-mono text-sm text-foreground">{recommendedCommand}</div>
+                </div>
+              ) : null}
+
+              {packageEvidence ? (
+                <div className="mt-4 space-y-4">
+                  {packageEvaluationSource || packageCandidateId ? (
+                    <div className="grid gap-3 md:grid-cols-4">
+                      <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                        <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                          Evaluation source
+                        </div>
+                        <div className="mt-2 text-lg font-semibold">
+                          {packageEvaluationSource === "artifact_cache"
+                            ? "Cached artifact"
+                            : packageEvaluationSource === "candidate_cache"
+                              ? "Accepted candidate cache"
+                              : "Fresh"}
+                        </div>
+                      </div>
+                      {packageCandidateId ? (
+                        <>
+                          <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                            <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                              Candidate
+                            </div>
+                            <div className="mt-2 text-sm font-semibold text-foreground">
+                              {packageCandidateId}
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                            <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                              Parent / generation
+                            </div>
+                            <div className="mt-2 text-sm font-semibold text-foreground">
+                              {packageParentCandidateId ?? "root"} /{" "}
+                              {packageCandidateGeneration ?? 0}
+                            </div>
+                          </div>
+                        </>
+                      ) : null}
+                      {packageCandidateAcceptanceDecision ? (
+                        <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                          <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                            Candidate acceptance
+                          </div>
+                          <div className="mt-2 text-sm font-semibold text-foreground">
+                            {packageCandidateAcceptanceDecision}
+                          </div>
+                          {packageCandidateAcceptanceRationale ? (
+                            <div className="mt-2 text-xs text-muted-foreground">
+                              {packageCandidateAcceptanceRationale}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Measured package evidence
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Replay failures
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">
+                        {formatInteger(packageEvidence.replay_failures)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Baseline wins
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">
+                        {formatInteger(packageEvidence.baseline_wins)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Baseline regressions
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">
+                        {formatInteger(packageEvidence.baseline_regressions)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 xl:grid-cols-3">
+                    {evidenceGroups.map((group) => (
+                      <EvidenceSampleList
+                        key={group.title}
+                        title={group.title}
+                        emptyState={group.emptyState}
+                        samples={group.samples}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {packageEfficiency ? (
+                <div className="mt-4 space-y-4">
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Measured efficiency
+                  </div>
+                  <div className="grid gap-3 xl:grid-cols-2">
+                    <EfficiencyMetricsCard
+                      title="With skill"
+                      metrics={packageEfficiency.with_skill}
+                    />
+                    <EfficiencyMetricsCard
+                      title="Without skill"
+                      metrics={packageEfficiency.without_skill}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {packageRouting ? (
+                <div className="mt-4 space-y-4">
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Routing validation
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-4">
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Pass rate
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">
+                        {formatPercent(packageRouting.pass_rate)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Passed
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">
+                        {packageRouting.passed}/{packageRouting.total}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Fixture
+                      </div>
+                      <div className="mt-2 text-sm font-semibold text-foreground">
+                        {packageRouting.fixture_id}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Runtime
+                      </div>
+                      <div className="mt-2 text-sm font-semibold text-foreground">
+                        {formatDurationMs(
+                          packageRouting.runtime_metrics?.total_duration_ms ?? null,
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {packageBody ? (
+                <div className="mt-4 space-y-4">
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Body validation
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-4">
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Structural
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">
+                        {packageBody.structural_valid ? "Pass" : "Fail"}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Quality
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">
+                        {packageBody.quality_score == null
+                          ? "--"
+                          : packageBody.quality_score.toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Threshold
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">
+                        {packageBody.quality_threshold.toFixed(2)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Valid
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">
+                        {packageBody.valid ? "Yes" : "No"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 xl:grid-cols-2">
+                    <div className="rounded-xl border border-border/15 bg-background px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Structural reason
+                      </div>
+                      <div className="mt-2 text-sm text-foreground">
+                        {packageBody.structural_reason}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/15 bg-background px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Quality rationale
+                      </div>
+                      <div className="mt-2 text-sm text-foreground">
+                        {packageBody.quality_reason ?? "No body-quality rationale captured."}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {packageGrading ? (
+                <div className="mt-4 space-y-4">
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Measured grading context
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Baseline grade
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">
+                        {formatPercent(packageGrading.baseline?.pass_rate ?? null)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {packageGrading.baseline
+                          ? `${formatInteger(packageGrading.baseline.sample_size)} graded sessions`
+                          : "No grading baseline"}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Recent average
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">
+                        {formatPercent(packageGrading.recent?.average_pass_rate ?? null)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {packageGrading.recent
+                          ? `${formatInteger(packageGrading.recent.sample_size)} recent grading runs`
+                          : "No recent grading runs"}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Grade delta
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">
+                        {formatDelta(packageGrading.pass_rate_delta)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {packageGrading.regressed == null
+                          ? "Regression unknown"
+                          : packageGrading.regressed
+                            ? "Recent grading is below baseline"
+                            : "Recent grading is at or above baseline"}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Mean score delta
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">
+                        {formatDelta(packageGrading.mean_score_delta)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {packageGrading.baseline?.mean_score != null &&
+                        packageGrading.recent?.average_mean_score != null
+                          ? `Baseline ${packageGrading.baseline.mean_score.toFixed(2)} / Recent ${packageGrading.recent.average_mean_score.toFixed(2)}`
+                          : "Mean score unavailable"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {packageUnitTests ? (
+                <div className="mt-4 space-y-4">
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Deterministic unit tests
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Pass rate
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">
+                        {formatPercent(packageUnitTests.pass_rate)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {packageUnitTests.passed}/{packageUnitTests.total} passing
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Failing tests
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">
+                        {formatInteger(packageUnitTests.failed)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        Latest run {packageUnitTests.run_at}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border/15 bg-muted/20 px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                        Failure samples
+                      </div>
+                      <div className="mt-2 text-lg font-semibold">
+                        {formatInteger(packageUnitTests.failing_tests.length)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        Representative deterministic failures
+                      </div>
+                    </div>
+                  </div>
+                  {packageUnitTests.failing_tests.length > 0 ? (
+                    <div className="grid gap-3 xl:grid-cols-3">
+                      {packageUnitTests.failing_tests.map((failure) => (
+                        <div
+                          key={failure.test_id}
+                          className="rounded-xl border border-border/15 bg-background px-4 py-3"
+                        >
+                          <div className="text-sm font-medium text-foreground">
+                            {failure.test_id}
+                          </div>
+                          <div className="mt-2 text-sm text-muted-foreground">
+                            {failure.error ?? "Assertions failed without an explicit error."}
+                          </div>
+                          {failure.failed_assertions.length > 0 ? (
+                            <div className="mt-2 text-xs text-muted-foreground">
+                              {failure.failed_assertions.join(" | ")}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {packageWatch ? (
+                <div className="mt-4 space-y-4">
+                  <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                    Measured watch signal
+                  </div>
+                  <PackageWatchCard watch={packageWatch} />
+                </div>
+              ) : null}
+
+              {selectedEntry?.summary?.watch_gate_passed != null ? (
+                <div className="mt-4 flex items-center gap-2">
+                  <Badge
+                    variant={selectedEntry.summary.watch_gate_passed ? "default" : "destructive"}
+                  >
+                    Watch gate: {selectedEntry.summary.watch_gate_passed ? "Passed" : "Alert"}
+                  </Badge>
+                  {!selectedEntry.summary.watch_gate_passed ? (
+                    <span className="text-xs text-muted-foreground">
+                      Active watch alerts detected. Review before proceeding.
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
+
+          {selectedEntry?.summary?.search_run ? (
+            <SearchRunPanel searchRun={selectedEntry.summary.search_run} />
+          ) : null}
 
           <Card className="border-border/20">
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2 text-base">
-                <ActivityIcon className="size-4" />
+                <Lucide.Activity className="size-4" />
                 Live action progress
               </CardTitle>
               <CardDescription>
-                Structured progress updates from the active creator-loop action. Replay emits
-                per-eval progress, while eval generation and unit-test generation emit step and
-                LLM-call progress through the same contract.
+                Structured progress updates from the active creator-loop action. Create check emits
+                draft-validation steps, replay emits per-eval progress, and eval generation plus
+                unit-test generation emit step and LLM-call progress through the same contract.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -348,7 +1089,7 @@ export function LiveRun() {
           <Card className="border-border/20">
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2 text-base">
-                <CpuIcon className="size-4" />
+                <Lucide.Cpu className="size-4" />
                 Live runtime metrics
               </CardTitle>
               <CardDescription>
@@ -435,7 +1176,7 @@ export function LiveRun() {
           <Card className="border-border/20">
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2 text-base">
-                <TerminalSquareIcon className="size-4" />
+                <Lucide.TerminalSquare className="size-4" />
                 Streaming output
               </CardTitle>
               <CardDescription>
@@ -482,7 +1223,7 @@ export function LiveRun() {
           <Card className="border-border/20">
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-2 text-base">
-                <CpuIcon className="size-4" />
+                <Lucide.Cpu className="size-4" />
                 Skill telemetry context
               </CardTitle>
               <CardDescription>
@@ -512,7 +1253,7 @@ export function LiveRun() {
 
               <div>
                 <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                  <BoxesIcon className="size-3.5" />
+                  <Lucide.Boxes className="size-3.5" />
                   Platforms
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -530,7 +1271,7 @@ export function LiveRun() {
 
               <div>
                 <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                  <BotIcon className="size-3.5" />
+                  <Lucide.Bot className="size-3.5" />
                   Models
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -548,7 +1289,7 @@ export function LiveRun() {
 
               <div>
                 <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                  <CpuIcon className="size-3.5" />
+                  <Lucide.Cpu className="size-3.5" />
                   Agent CLIs
                 </div>
                 <div className="flex flex-wrap gap-2">

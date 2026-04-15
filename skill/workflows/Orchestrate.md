@@ -2,10 +2,17 @@
 
 Run the autonomy-first selftune loop in one command.
 
-`selftune orchestrate` is the primary closed-loop entrypoint. It runs
+This remains the underlying runtime, but the simplified product surface should
+teach it as `Run`.
+
+`selftune orchestrate` is the current closed-loop entrypoint. It runs
 source-truth sync, computes current skill health, selects candidates,
 deploys validated low-risk description changes autonomously, and watches
 recent changes with auto-rollback enabled.
+
+If the user asks to "run selftune", "run the loop", or "operate autonomously",
+route through `workflows/Run.md` first and use this file for the exact
+underlying behavior and flags.
 
 ## When to Use
 
@@ -17,6 +24,7 @@ recent changes with auto-rollback enabled.
 ## Default Command
 
 ```bash
+selftune run
 selftune orchestrate
 ```
 
@@ -57,6 +65,7 @@ proposalModel = haiku
 - Sync source-truth telemetry first
 - Auto-grade up to 5 ungraded skills that have session data (enables evolution on first run after ingest)
 - Prioritize critical/warning/ungraded skills with real missed-query signal
+- Select package-level search for skills with package evaluation evidence; fall back to description-level evolve otherwise
 - Deploy validated low-risk description changes automatically
 - Auto-grade and write grading baselines for freshly deployed skills
 - Generate review-first new skill proposals from strong workflow patterns
@@ -71,27 +80,27 @@ Use `--review-required` only when you want a stricter policy for a specific run.
 
 **User asks to improve skills or run the full loop**
 
-> Run `selftune orchestrate`. Parse the JSON output from stdout and the
+> Run `selftune run`. Parse the JSON output from stdout and the
 > phased report from stderr. Report the summary to the user.
 
 **User wants to preview changes before deploying**
 
-> Run `selftune orchestrate --dry-run`. Report the planned actions without
+> Run `selftune run --dry-run`. Report the planned actions without
 > making any changes.
 
 **User wants to focus on a single skill**
 
-> Run `selftune orchestrate --skill <name>`. This limits the loop to the
+> Run `selftune run --skill <name>`. This limits the loop to the
 > specified skill only.
 
 **User wants manual review before deployment**
 
-> Run `selftune orchestrate --review-required`. Validated changes stay in
+> Run `selftune run --review-required`. Validated changes stay in
 > review mode instead of auto-deploying.
 
 **Agent needs fresh source data before orchestrating**
 
-> Run `selftune orchestrate --sync-force`. This forces a full source replay
+> Run `selftune run --sync-force`. This forces a full source replay
 > before candidate selection.
 
 ## Output
@@ -168,12 +177,40 @@ In autonomous mode, orchestrate calls sub-workflows in this fixed order:
 1. **Sync** — refresh source-truth telemetry across all supported agents (`selftune sync`)
 2. **Status** — compute skill health using existing grade results (reads `grading.json` outputs from previous sessions)
 3. **Auto-grade** — grade up to `--max-auto-grade` (default 5) ungraded skills that have session data but no grades yet. Skipped during `--dry-run` (grading makes LLM calls). After grading, status is recomputed so candidate selection sees updated grades. Fail-open: individual grading errors are logged but never block the loop.
-4. **Evolve** — run evolution on selected candidates (pre-flight is skipped; Pareto mode uses 3 candidates; cheap-loop uses `haiku` for proposal + validation and `sonnet` for the final gate; adaptive gate escalation promotes risky proposals to `opus` + `high` effort; baseline and token-efficiency stay off)
-5. **Post-deploy grade + baseline** — for each freshly deployed skill, grade the most recent session and write a grading baseline to SQLite (`grading_baselines` table). The baseline records the measured pass rate and sample size, anchoring future grade regression detection. Fail-open: individual grading errors are logged but never block the loop.
-6. **Watch** — monitor recently evolved skills (auto-rollback enabled by default, `--recent-window` hours lookback). Skills freshly deployed in this run are included in the watch set immediately, so they are monitored in the same orchestrate cycle rather than waiting for the next run. These appear in `freshlyWatchedSkills` in the output. Grade watch (`enableGradeWatch: true`) runs alongside trigger regression for all watched skills.
-7. **Workflow proposals** — discover repeated multi-skill patterns and create review-first `new_skill` proposals when a workflow is strong enough to merit codification. These are never auto-deployed; they are surfaced as proposals for review.
-8. **Alpha Upload** — if enrolled in the alpha program (`config.alpha.enrolled === true`) and an API key is configured, stage new canonical records (sessions, invocations, evolution evidence, orchestrate runs) into `canonical_upload_staging`, build V2 push payloads, and flush to the cloud API (`POST /api/v1/push`) with Bearer auth. Fail-open: upload errors never block the orchestrate loop. Respects `--dry-run`.
-9. **Contribution relay flush** — if an API key is configured, flush any staged creator-directed contribution signals for opted-in skills. Fail-open: relay errors never block the orchestrate loop. Respects `--dry-run`.
+4. **Scope selection** — for each candidate, orchestrate decides whether to run description-level evolve or package-level search. The decision is evidence-driven: when an accepted package frontier exists or the canonical package evaluation shows room for improvement (weak replay, low baseline lift, or body/routing regressions), orchestrate prefers package search. Skills without package evaluation evidence fall back to description-level evolve. This selection happens automatically; there is no flag to force it.
+5. **Evolve or Package Search** — description-level candidates run the existing evolve path (pre-flight skipped; Pareto mode uses 3 candidates; cheap-loop uses `haiku` for proposal + validation and `sonnet` for the final gate; adaptive gate escalation promotes risky proposals to `opus` + `high` effort; baseline and token-efficiency stay off). Package-level candidates run bounded search: generate bounded mutations on routing and body surfaces, fingerprint each variant, evaluate through the package evaluator against the accepted frontier parent, and apply the winning candidate back into the draft package.
+6. **Post-deploy grade + baseline** — for each freshly deployed skill, grade the most recent session and write a grading baseline to SQLite (`grading_baselines` table). The baseline records the measured pass rate and sample size, anchoring future grade regression detection. Fail-open: individual grading errors are logged but never block the loop.
+7. **Watch** — monitor recently evolved skills (auto-rollback enabled by default, `--recent-window` hours lookback). Skills freshly deployed in this run are included in the watch set immediately, so they are monitored in the same orchestrate cycle rather than waiting for the next run. These appear in `freshlyWatchedSkills` in the output. Grade watch (`enableGradeWatch: true`) runs alongside trigger regression for all watched skills. Watch trust scoring feeds back into scope selection: observed regressions can demote accepted frontier candidates, influencing whether future runs prefer package search or description evolve for that skill.
+8. **Workflow proposals** — discover repeated multi-skill patterns and create review-first `new_skill` proposals when a workflow is strong enough to merit codification. These are never auto-deployed; they are surfaced as proposals for review.
+9. **Alpha Upload** — if enrolled in the alpha program (`config.alpha.enrolled === true`) and an API key is configured, stage new canonical records (sessions, invocations, evolution evidence, orchestrate runs) into `canonical_upload_staging`, build V2 push payloads, and flush to the cloud API (`POST /api/v1/push`) with Bearer auth. Fail-open: upload errors never block the orchestrate loop. Respects `--dry-run`.
+10. **Contribution relay flush** — if an API key is configured, flush any staged creator-directed contribution signals for opted-in skills. Fail-open: relay errors never block the orchestrate loop. Respects `--dry-run`.
+
+### Package Search in Orchestrate
+
+When orchestrate selects a candidate for package-level improvement, it
+delegates to the same bounded search flow available through
+`selftune improve --scope package` or `selftune search-run`. The flow is:
+
+1. **Generate bounded mutations** on routing and body surfaces using
+   eval-informed targeted variants first, then deterministic fallback
+   transforms, biasing the candidate budget toward the weaker measured surface
+   from the accepted frontier or canonical package evaluation.
+2. **Fingerprint** each variant to skip duplicates already in the candidate
+   registry.
+3. **Evaluate** each variant through the package evaluator against the
+   accepted frontier parent, comparing replay, baseline lift, routing
+   validation, body validation, and unit-test results.
+4. **Select winner** based on the highest positive measured delta across the
+   full evaluator contract (not replay-only).
+5. **Apply winner** back into the draft package and refresh the canonical
+   package-evaluation artifact from the accepted candidate cache.
+6. **Continue** to the watch phase, where post-deploy evidence can demote
+   the accepted frontier candidate if regressions are observed.
+
+Package search does not replace description evolve. It is selected
+automatically when the evidence points to package-level improvement
+opportunity. Skills without package evaluation history continue through
+description-level evolve as before.
 
 When orchestrate invokes evolve for a selected candidate, it always passes
 `confidenceThreshold: 0.6` and `maxIterations: 3`, plus the autonomous evolve

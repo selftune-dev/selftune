@@ -355,6 +355,10 @@ export function useSelectedLiveActionEntry(selection: LiveActionSelection): Live
 
 export function formatActionLabel(action: DashboardActionName): string {
   switch (action) {
+    case "create-check":
+      return "Verify draft";
+    case "report-package":
+      return "Package report";
     case "generate-evals":
       return "Generate evals";
     case "generate-unit-tests":
@@ -364,11 +368,13 @@ export function formatActionLabel(action: DashboardActionName): string {
     case "measure-baseline":
       return "Measure baseline";
     case "deploy-candidate":
-      return "Deploy candidate";
+      return "Ship candidate";
     case "watch":
-      return "Watch deployment";
+      return "Monitor live";
+    case "search-run":
+      return "Run search";
     case "orchestrate":
-      return "Orchestrate";
+      return "Run loop";
     case "rollback":
       return "Rollback";
   }

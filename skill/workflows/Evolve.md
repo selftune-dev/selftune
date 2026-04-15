@@ -1,8 +1,10 @@
 # selftune Evolve Workflow
 
-Improve a skill's description based on real usage signal. Analyzes failure
-patterns from eval sets and proposes description changes that catch more
-natural-language queries without breaking existing triggers.
+Improve a skill's description as part of the package evaluation pipeline.
+Analyzes failure patterns from eval sets and proposes description changes
+that catch more natural-language queries without breaking existing triggers.
+Each proposal is evaluated through replay, baseline, and grading before
+acceptance into the measured frontier.
 
 ## When to Invoke
 
@@ -19,19 +21,31 @@ Invoke this workflow when the user requests any of the following:
 selftune evolve --skill <name> --skill-path <path> [options]
 ```
 
-## Recommended Creator Loop
+## Recommended Package Evaluation Pipeline
 
 Do not treat `evolve` as the first step when a creator asks whether a skill is
-ready. The default loop is:
+ready. The default package evaluation pipeline is:
 
 ```bash
+selftune create status --skill-path <path>
+selftune verify --skill-path <path>
 selftune eval generate --skill <name> --skill-path <path>
 selftune eval unit-test --skill <name> --generate --skill-path <path>
-selftune evolve --skill <name> --skill-path <path> --dry-run --validation-mode replay
-selftune grade baseline --skill <name> --skill-path <path>
+selftune create replay --skill-path <path> --mode package
+selftune create baseline --skill-path <path> --mode package
+selftune verify --skill-path <path>
+selftune publish --skill-path <path>
 ```
 
-Then move to a live `selftune evolve ...` or `selftune watch ...` run.
+For already-published skills, this workflow is the right mutation surface. The
+lifecycle alias is `selftune improve`; use `selftune evolve` directly when you
+need exact advanced flags:
+
+```bash
+selftune improve --skill <name> --skill-path <path> --dry-run --validation-mode replay
+selftune evolve --skill <name> --skill-path <path>
+selftune watch --skill <name>
+```
 
 If canonical evals or stored unit-test results already exist, reuse them rather
 than regenerating everything.
@@ -45,7 +59,7 @@ than regenerating everything.
 | `--eval-set <path>`          | Pre-built eval set JSON                                                 | Auto-generated from logs       |
 | `--agent <name>`             | Agent CLI to use (claude, codex, opencode, pi)                          | Auto-detected                  |
 | `--dry-run`                  | Propose and validate without deploying                                  | Off                            |
-| `--confidence <n>`           | Minimum confidence threshold (0-1)                                      | 0.6                            |
+| `--confidence <n>`           | Low-confidence review threshold (0-1)                                   | 0.6                            |
 | `--max-iterations <n>`       | Maximum retry iterations                                                | 3                              |
 | `--validation-model <model>` | Model for trigger-check validation LLM calls                            | `haiku`                        |
 | `--pareto`                   | Generate multiple candidates per iteration                              | On                             |
@@ -56,7 +70,7 @@ than regenerating everything.
 | `--full-model`               | Use full-cost model throughout (disables cheap-loop)                    | Off                            |
 | `--verbose`                  | Print detailed progress during evolution                                | Off                            |
 | `--gate-model <model>`       | Model for final gate validation                                         | `sonnet` (when `--cheap-loop`) |
-| `--gate-effort <level>`      | Thinking effort for the final gate (`low|medium|high|max`)              | None                           |
+| `--gate-effort <level>`      | Thinking effort for the final gate (`low\|medium\|high\|max`)           | None                           |
 | `--adaptive-gate`            | Escalate risky gate checks to `opus` + `high` effort                    | Off                            |
 | `--proposal-model <model>`   | Model for proposal generation LLM calls                                 | None                           |
 | `--validation-mode <mode>`   | Validation strategy: `auto`, `replay`, or `judge`                       | `auto`                         |
@@ -300,7 +314,8 @@ The candidate is tested against the full eval set:
 
 - Must improve overall pass rate
 - Must not regress more than 5% on previously-passing entries
-- Must exceed the `--confidence` threshold
+- May still deploy when confidence is low if measured validation is strong;
+  `--confidence` only controls warning/review sensitivity
 
 If validation fails, the command retries up to `--max-iterations` times
 with adjusted proposals.
@@ -385,18 +400,18 @@ Proposals are scored on heuristic quality criteria (no LLM required). The compos
 
 The evolution loop uses a modular stopping criteria evaluator
 (`evolution/stopping-criteria.ts`) that checks conditions in priority order
-after each validation pass. The evaluator receives the current pass rate,
-historical pass rates from previous iterations, and proposal confidence to
-make a unified stop/continue decision. The stopping reason is recorded in
-audit entries for traceability.
+after each validation pass. The evaluator receives the current pass rate and
+historical pass rates from previous iterations to make a unified
+stop/continue decision. Confidence is still recorded as metadata and may
+raise warnings or gate-review risk, but it is not a standalone stop reason.
+The stopping reason is recorded in audit entries for traceability.
 
-| #   | Condition          | Meaning                                                        |
-| --- | ------------------ | -------------------------------------------------------------- |
-| 1   | **Converged**      | Pass rate >= 0.95                                              |
-| 2   | **Max iterations** | Reached `--max-iterations` limit                               |
-| 3   | **Low confidence** | Proposal confidence below `--confidence` threshold             |
-| 4   | **Plateau**        | < 1% pass rate variation across 3 consecutive iterations       |
-| 5   | **Continue**       | None of the above -- keep iterating                            |
+| #   | Condition          | Meaning                                                  |
+| --- | ------------------ | -------------------------------------------------------- |
+| 1   | **Converged**      | Pass rate >= 0.95                                        |
+| 2   | **Max iterations** | Reached `--max-iterations` limit                         |
+| 3   | **Plateau**        | < 1% pass rate variation across 3 consecutive iterations |
+| 4   | **Continue**       | None of the above -- keep iterating                      |
 
 ## Cheap Loop Mode
 
@@ -447,11 +462,11 @@ selftune evolve apply-proposal --id <proposal-id> --skill-path <path> [--dry-run
 
 ### Apply-Proposal Options
 
-| Flag              | Description                                     | Default  |
-| ----------------- | ----------------------------------------------- | -------- |
-| `--id <uuid>`     | Proposal UUID from the dashboard                | Required |
-| `--skill-path`    | Path to the target SKILL.md                     | Required |
-| `--dry-run`       | Preview the proposal without writing to disk    | Off      |
+| Flag           | Description                                  | Default  |
+| -------------- | -------------------------------------------- | -------- |
+| `--id <uuid>`  | Proposal UUID from the dashboard             | Required |
+| `--skill-path` | Path to the target SKILL.md                  | Required |
+| `--dry-run`    | Preview the proposal without writing to disk | Off      |
 
 ### Apply-Proposal Flow
 
@@ -482,8 +497,8 @@ Check the eval set quality. Missing contextual examples limit
 what evolution can learn. Generate a richer eval set first using the Evals workflow.
 
 **Evolution keeps failing validation:**
-Lower `--confidence` slightly or increase `--max-iterations`.
-Also check if the eval set has contradictory expectations.
+Increase `--max-iterations` or improve the eval set.
+Lower `--confidence` only if you want fewer low-confidence review warnings.
 
 **Agent CLI override needed:**
 The evolve command auto-detects the installed agent CLI.
@@ -497,10 +512,35 @@ This is especially valuable when the skill has a history of regressions,
 the evolution touches many trigger phrases, or the confidence score is near
 the threshold.
 
+## Scope: Description vs Package
+
+The `evolve` command operates on description-level triggers and phrasing. For
+package-level improvement (routing tables, body content, and the full skill
+package), use `selftune improve --scope package` or `selftune search-run`,
+which delegates to the bounded package search flow. That search path now uses
+reflective proposals first, then measured targeted routing/body variants, then
+deterministic fallback. It also evaluates a merged routing/body candidate when
+both surfaces produce accepted improvements.
+
+When `selftune orchestrate` (or `selftune run`) selects candidates
+automatically, it chooses between description-level evolve and package-level
+search based on evidence:
+
+- Plain `selftune improve` also auto-selects package search for package-shaped
+  skills with draft manifests or package-frontier evidence.
+
+- Skills with an accepted package frontier or canonical package evaluation
+  showing room for improvement are routed to package search.
+- Skills without package evaluation history continue through description-level
+  evolve.
+
+This means `evolve` remains the right tool for description and trigger
+coverage, while package-level mutations are handled by the search pipeline.
+
 ## Autonomous Mode
 
-When called by `selftune orchestrate` (via cron or --loop), evolution runs
-without user interaction:
+When called by `selftune orchestrate` (via cron or --loop), description-level
+evolution runs without user interaction:
 
 - Pre-flight is skipped entirely — defaults are used
 - The orchestrator selects candidate skills based on health scores
@@ -511,3 +551,6 @@ without user interaction:
 
 No user confirmation is needed. The safety controls (regression threshold,
 auto-rollback via watch, SKILL.md backup) provide the guardrails.
+
+For package-level candidates, orchestrate delegates to bounded search instead
+of evolve. See `workflows/Orchestrate.md` for the full scope-selection logic.

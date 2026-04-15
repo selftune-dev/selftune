@@ -1,5 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { openDb } from "../../cli/selftune/localdb/db.js";
 import {
@@ -708,6 +711,7 @@ describe("getSkillReportPayload", () => {
 
 describe("getSkillsList", () => {
   let db: Database;
+  const tempDirs: string[] = [];
 
   beforeEach(() => {
     db = openDb(":memory:");
@@ -715,6 +719,9 @@ describe("getSkillsList", () => {
 
   afterEach(() => {
     db.close();
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("returns aggregated stats per skill with has_evidence flag", () => {
@@ -755,6 +762,85 @@ describe("getSkillsList", () => {
     expect(browser).toBeDefined();
     expect(browser?.total_checks).toBe(1);
     expect(browser?.has_evidence).toBe(false);
+  });
+
+  it("includes draft packages with create readiness even before telemetry exists", () => {
+    const root = mkdtempSync(join(tmpdir(), "selftune-draft-skill-"));
+    tempDirs.push(root);
+    const skillDir = join(root, ".agents", "skills", "draft-writer");
+    mkdirSync(join(skillDir, "workflows"), { recursive: true });
+    mkdirSync(join(skillDir, "references"), { recursive: true });
+    writeFileSync(
+      join(skillDir, "SKILL.md"),
+      `---
+name: draft-writer
+description: >
+  Use when the user needs a draft writing package.
+---
+
+# Draft Writer
+`,
+      "utf-8",
+    );
+    writeFileSync(join(skillDir, "workflows", "default.md"), "# Default\n", "utf-8");
+    writeFileSync(join(skillDir, "references", "overview.md"), "# Overview\n", "utf-8");
+    writeFileSync(
+      join(skillDir, "selftune.create.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          entry_workflow: "workflows/default.md",
+          supports_package_replay: true,
+          expected_resources: {
+            workflows: true,
+            references: true,
+            scripts: false,
+            assets: false,
+          },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+
+    const list = getSkillsList(db, [
+      {
+        skill_name: "draft-writer",
+        eval_readiness: "cold_start_ready",
+        next_step: "generate_evals",
+        summary: "Generate evals",
+        recommended_command:
+          "selftune eval generate --skill draft-writer --auto-synthetic --skill-path /tmp/draft-writer/SKILL.md",
+        skill_path: join(skillDir, "SKILL.md"),
+        trusted_trigger_count: 0,
+        trusted_session_count: 0,
+        eval_set_entries: 0,
+        latest_eval_at: null,
+        unit_test_cases: 0,
+        unit_test_pass_rate: null,
+        unit_test_ran_at: null,
+        replay_check_count: 0,
+        latest_validation_mode: null,
+        baseline_sample_size: 0,
+        baseline_pass_rate: null,
+        latest_baseline_at: null,
+        deployment_readiness: "blocked",
+        deployment_summary: "blocked",
+        deployment_command: null,
+        latest_evolution_action: null,
+        latest_evolution_at: null,
+      },
+    ]);
+
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({
+      skill_name: "draft-writer",
+      total_checks: 0,
+      create_readiness: {
+        state: "needs_evals",
+      },
+    });
   });
 });
 

@@ -546,6 +546,96 @@ describe("dashboard-server", () => {
       expect(data.success).toBe(true);
     });
 
+    it("marks watch wrapper responses failed when the measured watch result regresses", async () => {
+      const server = await startDashboardServer({
+        port: 0,
+        host: "127.0.0.1",
+        spaDir: testSpaDir,
+        openBrowser: false,
+        overviewLoader: () => ({
+          ...overviewFixture,
+          watched_skills: loadWatchedSkills(),
+        }),
+        skillReportLoader: (skillName) => (skillName === "test-skill" ? skillReportFixture : null),
+        statusLoader: () => ({
+          skills: [],
+          unmatchedQueries: 0,
+          pendingProposals: 0,
+          lastSession: null,
+          system: { healthy: true, pass: 1, fail: 0, warn: 0 },
+        }),
+        evidenceLoader: () => [],
+        actionRunner: async () => ({
+          success: true,
+          output: JSON.stringify({
+            skill: "test-skill",
+            published: true,
+            watch_started: false,
+            package_evaluation: {
+              status: "passed",
+              evaluation_passed: true,
+              replay: { validation_mode: "host_replay" },
+              baseline: {
+                baseline_pass_rate: 0.5,
+                with_skill_pass_rate: 0.9,
+                lift: 0.4,
+              },
+            },
+            watch_result: {
+              snapshot: {
+                timestamp: "2026-04-14T12:30:00.000Z",
+                skill_name: "test-skill",
+                window_sessions: 20,
+                skill_checks: 6,
+                pass_rate: 0.62,
+                false_negative_rate: 0.38,
+                by_invocation_type: {
+                  explicit: { passed: 2, total: 2 },
+                  implicit: { passed: 1, total: 3 },
+                  contextual: { passed: 0, total: 1 },
+                  negative: { passed: 0, total: 0 },
+                },
+                regression_detected: true,
+                baseline_pass_rate: 0.8,
+              },
+              alert:
+                'regression detected for "test-skill": pass_rate=0.62 below baseline=0.80 minus threshold=0.10',
+              rolledBack: false,
+              recommendation:
+                "Consider running: selftune rollback --skill test-skill --skill-path /tmp/test-skill/SKILL.md",
+              recommended_command:
+                "selftune rollback --skill test-skill --skill-path /tmp/test-skill/SKILL.md",
+              gradeAlert: null,
+              gradeRegression: null,
+            },
+          }),
+          error: null,
+          exitCode: 0,
+        }),
+      });
+
+      try {
+        const res = await fetch(`http://127.0.0.1:${server.port}/api/actions/watch`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: `http://127.0.0.1:${server.port}`,
+          },
+          body: JSON.stringify({
+            skill: "test-skill",
+            skillPath: "/tmp/test-skill/SKILL.md",
+          }),
+        });
+
+        expect(res.status).toBe(200);
+        const data = await res.json();
+        expect(data.success).toBe(false);
+        expect(data.error).toContain("regression detected");
+      } finally {
+        server.stop();
+      }
+    });
+
     it("generate-evals writes to the canonical eval-set path instead of repo cwd", async () => {
       let capturedCommand: string | null = null;
       let capturedArgs: string[] = [];
@@ -671,7 +761,175 @@ describe("dashboard-server", () => {
       }
     });
 
-    it("evolve returns JSON response", async () => {
+    it("create-check routes draft validation through selftune create check", async () => {
+      let capturedCommand: string | null = null;
+      let capturedArgs: string[] = [];
+      const server = await startDashboardServer({
+        port: 0,
+        host: "127.0.0.1",
+        spaDir: testSpaDir,
+        openBrowser: false,
+        overviewLoader: () => ({
+          ...overviewFixture,
+          watched_skills: loadWatchedSkills(),
+        }),
+        skillReportLoader: (skillName) => (skillName === "test-skill" ? skillReportFixture : null),
+        statusLoader: () => ({
+          skills: [],
+          unmatchedQueries: 0,
+          pendingProposals: 0,
+          lastSession: null,
+          system: { healthy: true, pass: 1, fail: 0, warn: 0 },
+        }),
+        evidenceLoader: () => [],
+        actionRunner: async (command, args) => {
+          capturedCommand = command;
+          capturedArgs = args;
+          return {
+            success: false,
+            output: "ok",
+            error: "Exit code 1",
+            exitCode: 1,
+          };
+        },
+      });
+
+      try {
+        const res = await fetch(`http://127.0.0.1:${server.port}/api/actions/create-check`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: `http://127.0.0.1:${server.port}`,
+          },
+          body: JSON.stringify({
+            skill: "test-skill",
+            skillPath: "/tmp/test-skill/SKILL.md",
+          }),
+        });
+
+        expect(res.status).toBe(200);
+        expect(capturedCommand).toBe("create");
+        expect(capturedArgs).toEqual(["check", "--skill-path", "/tmp/test-skill/SKILL.md"]);
+      } finally {
+        server.stop();
+      }
+    });
+
+    it("report-package routes draft benchmark reporting through selftune create report", async () => {
+      let capturedCommand: string | null = null;
+      let capturedArgs: string[] = [];
+      const server = await startDashboardServer({
+        port: 0,
+        host: "127.0.0.1",
+        spaDir: testSpaDir,
+        openBrowser: false,
+        overviewLoader: () => ({
+          ...overviewFixture,
+          watched_skills: loadWatchedSkills(),
+        }),
+        skillReportLoader: (skillName) => (skillName === "test-skill" ? skillReportFixture : null),
+        statusLoader: () => ({
+          skills: [],
+          unmatchedQueries: 0,
+          pendingProposals: 0,
+          lastSession: null,
+          system: { healthy: true, pass: 1, fail: 0, warn: 0 },
+        }),
+        evidenceLoader: () => [],
+        actionRunner: async (command, args) => {
+          capturedCommand = command;
+          capturedArgs = args;
+          return {
+            success: true,
+            output: "ok",
+            error: null,
+            exitCode: 0,
+          };
+        },
+      });
+
+      try {
+        const res = await fetch(`http://127.0.0.1:${server.port}/api/actions/report-package`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: `http://127.0.0.1:${server.port}`,
+          },
+          body: JSON.stringify({
+            skill: "test-skill",
+            skillPath: "/tmp/test-skill/SKILL.md",
+          }),
+        });
+
+        expect(res.status).toBe(200);
+        expect(capturedCommand).toBe("create");
+        expect(capturedArgs).toEqual(["report", "--skill-path", "/tmp/test-skill/SKILL.md"]);
+      } finally {
+        server.stop();
+      }
+    });
+
+    it("search-run routes bounded package search through selftune search-run", async () => {
+      let capturedCommand: string | null = null;
+      let capturedArgs: string[] = [];
+      const server = await startDashboardServer({
+        port: 0,
+        host: "127.0.0.1",
+        spaDir: testSpaDir,
+        openBrowser: false,
+        overviewLoader: () => ({
+          ...overviewFixture,
+          watched_skills: loadWatchedSkills(),
+        }),
+        skillReportLoader: (skillName) => (skillName === "test-skill" ? skillReportFixture : null),
+        statusLoader: () => ({
+          skills: [],
+          unmatchedQueries: 0,
+          pendingProposals: 0,
+          lastSession: null,
+          system: { healthy: true, pass: 1, fail: 0, warn: 0 },
+        }),
+        evidenceLoader: () => [],
+        actionRunner: async (command, args) => {
+          capturedCommand = command;
+          capturedArgs = args;
+          return {
+            success: true,
+            output: "ok",
+            error: null,
+            exitCode: 0,
+          };
+        },
+      });
+
+      try {
+        const res = await fetch(`http://127.0.0.1:${server.port}/api/actions/search-run`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: `http://127.0.0.1:${server.port}`,
+          },
+          body: JSON.stringify({
+            skill: "test-skill",
+            skillPath: "/tmp/test-skill/SKILL.md",
+          }),
+        });
+
+        expect(res.status).toBe(200);
+        expect(capturedCommand).toBe("search-run");
+        expect(capturedArgs).toEqual([
+          "--skill",
+          "test-skill",
+          "--skill-path",
+          "/tmp/test-skill/SKILL.md",
+        ]);
+      } finally {
+        server.stop();
+      }
+    });
+
+    it("evolve routes live deploys through selftune improve", async () => {
+      lastActionInvocation = null;
       const server = await getServer();
       const res = await fetch(`http://127.0.0.1:${server.port}/api/actions/evolve`, {
         method: "POST",
@@ -687,6 +945,73 @@ describe("dashboard-server", () => {
       expect(res.status).toBe(200);
       const data = await res.json();
       expect(data.success).toBe(true);
+      expect(lastActionInvocation).toEqual({
+        command: "improve",
+        args: ["--skill", "test-skill", "--skill-path", "/tmp/test-skill", "--sync-first"],
+      });
+    });
+
+    it("watch routes draft-package publish/watch through selftune publish", async () => {
+      let capturedCommand: string | null = null;
+      let capturedArgs: string[] = [];
+      const server = await startDashboardServer({
+        port: 0,
+        host: "127.0.0.1",
+        spaDir: testSpaDir,
+        openBrowser: false,
+        overviewLoader: () => ({
+          ...overviewFixture,
+          watched_skills: loadWatchedSkills(),
+        }),
+        skillReportLoader: (skillName) => (skillName === "test-skill" ? skillReportFixture : null),
+        statusLoader: () => ({
+          skills: [],
+          unmatchedQueries: 0,
+          pendingProposals: 0,
+          lastSession: null,
+          system: { healthy: true, pass: 1, fail: 0, warn: 0 },
+        }),
+        evidenceLoader: () => [],
+        actionRunner: async (command, args) => {
+          capturedCommand = command;
+          capturedArgs = args;
+          return {
+            success: true,
+            output: "ok",
+            error: null,
+            exitCode: 0,
+          };
+        },
+      });
+
+      const draftDir = mkdtempSync(join(tmpdir(), "selftune-dashboard-draft-"));
+      writeFileSync(join(draftDir, "SKILL.md"), "# Draft\n", "utf-8");
+      writeFileSync(
+        join(draftDir, "selftune.create.json"),
+        JSON.stringify({ version: 1 }),
+        "utf-8",
+      );
+
+      try {
+        const res = await fetch(`http://127.0.0.1:${server.port}/api/actions/watch`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: `http://127.0.0.1:${server.port}`,
+          },
+          body: JSON.stringify({
+            skill: "test-skill",
+            skillPath: join(draftDir, "SKILL.md"),
+          }),
+        });
+
+        expect(res.status).toBe(200);
+        expect(capturedCommand).toBe("publish");
+        expect(capturedArgs).toEqual(["--skill-path", join(draftDir, "SKILL.md")]);
+      } finally {
+        rmSync(draftDir, { recursive: true, force: true });
+        server.stop();
+      }
     });
 
     it("rollback validates proposalId", async () => {

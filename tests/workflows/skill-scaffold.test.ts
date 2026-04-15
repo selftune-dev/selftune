@@ -5,7 +5,6 @@ import {
   buildWorkflowSkillDescription,
   buildWorkflowSkillDraft,
   formatWorkflowSkillDraft,
-  getDefaultWorkflowSkillOutputDir,
   slugifyWorkflowSkillName,
 } from "../../cli/selftune/workflows/skill-scaffold.js";
 
@@ -39,26 +38,28 @@ describe("workflow skill scaffolding", () => {
     expect(description).toContain("Copywriting, MarketingAutomation, and SelfTuneBlog");
   });
 
-  it("uses the repository skill registry root by default", () => {
-    const outputDir = getDefaultWorkflowSkillOutputDir("/tmp/example-repo");
-    expect(outputDir).toBe("/tmp/example-repo/.agents/skills");
-  });
-
-  it("builds a draft with provenance and a SKILL.md path", () => {
+  it("builds a package draft with provenance and package files", () => {
     const draft = buildWorkflowSkillDraft(makeWorkflow(), {
       outputDir: "/tmp/repo/.agents/skills",
     });
 
     expect(draft.skill_name).toBe("write-publish-blog-post");
     expect(draft.skill_path).toBe("/tmp/repo/.agents/skills/write-publish-blog-post/SKILL.md");
+    expect(draft.files.map((file) => file.relative_path)).toEqual([
+      "SKILL.md",
+      "workflows/default.md",
+      "references/overview.md",
+      "selftune.create.json",
+    ]);
+    expect(draft.content).toContain("=== SKILL.md ===");
     expect(draft.content).toContain("generated_by: selftune workflows scaffold");
     expect(draft.content).toContain(
       "source_workflow_id: Copywriting→MarketingAutomation→SelfTuneBlog",
     );
+    expect(draft.content).toContain("Workflow ID: Copywriting→MarketingAutomation→SelfTuneBlog");
     expect(draft.content).toContain(
-      "- **Skills:** Copywriting → MarketingAutomation → SelfTuneBlog",
+      "Invoke `Copywriting` in its established role for this workflow.",
     );
-    expect(draft.content).toContain("- **Source:** Discovered from 12 sessions (synergy: 0.72)");
   });
 
   it("respects explicit skill name and description overrides", () => {
@@ -84,6 +85,7 @@ describe("workflow skill scaffolding", () => {
     expect(formatted).toContain("Draft workflow skill: Write Publish Blog Post");
     expect(formatted).toContain("Source workflow: Copywriting→MarketingAutomation→SelfTuneBlog");
     expect(formatted).toContain('Representative query: "write and publish a blog post"');
-    expect(formatted).toContain("## Execution Plan");
+    expect(formatted).toContain("=== workflows/default.md ===");
+    expect(formatted).toContain("Empty directories:");
   });
 });

@@ -53,6 +53,42 @@ const LEADING_WRAPPED_QUERY_TAGS = [
   "local-command-stdout",
   "local-command-stderr",
   "command-name",
+  "command-message",
+  "command-args",
+] as const;
+
+const SKILL_MAINTENANCE_VERBS = [
+  "grade",
+  "review",
+  "audit",
+  "inspect",
+  "analyze",
+  "analyse",
+  "understand",
+  "explain",
+  "find",
+  "locate",
+  "update",
+  "fix",
+  "repair",
+  "improve",
+  "debug",
+  "document",
+  "publish api",
+] as const;
+
+const SKILL_MAINTENANCE_NOUNS = [
+  "skill",
+  "skills",
+  "readme",
+  "docs",
+  "documentation",
+  "workflow",
+  "workflows",
+  "reference",
+  "references",
+  "files",
+  "format",
 ] as const;
 
 function stripLeadingWrappedQueryText(query: string): string {
@@ -81,7 +117,7 @@ export function extractActionableQueryText(query: string): string | null {
   const trimmed = query.trim();
   if (!trimmed || trimmed === "-" || trimmed === "(query not found)") return null;
 
-  const candidate = stripLeadingWrappedQueryText(trimmed) || trimmed;
+  const candidate = stripLeadingWrappedQueryText(trimmed);
   if (!candidate || candidate === "-" || candidate === "(query not found)") return null;
 
   const isBlocked =
@@ -90,6 +126,51 @@ export function extractActionableQueryText(query: string): string | null {
     NON_USER_QUERY_PATTERNS.some((pattern) => pattern.test(candidate));
 
   return isBlocked ? null : candidate;
+}
+
+function normalizeSkillNameVariants(skillName: string): string[] {
+  const trimmed = skillName.trim();
+  if (!trimmed) return [];
+
+  const variants = new Set<string>();
+  const lower = trimmed.toLowerCase();
+  variants.add(lower);
+  variants.add(lower.replace(/[-_]+/g, " "));
+  variants.add(lower.replace(/[-_\s]+/g, ""));
+  variants.add(
+    trimmed
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .replace(/[-_]+/g, " ")
+      .toLowerCase(),
+  );
+
+  return [...variants].filter(Boolean);
+}
+
+export function isLikelySkillMaintenanceQuery(query: string, skillName?: string): boolean {
+  const candidate = extractActionableQueryText(query);
+  if (!candidate) return false;
+
+  const lowered = candidate.toLowerCase().replace(/\s+/g, " ").trim();
+  const mentionsMaintenanceVerb = SKILL_MAINTENANCE_VERBS.some((verb) => lowered.includes(verb));
+  const mentionsMaintenanceNoun = SKILL_MAINTENANCE_NOUNS.some((noun) => lowered.includes(noun));
+  const mentionsHowItWorks = /\bhow\b[\s\S]{0,80}\bworks?\b/.test(lowered);
+  const mentionsSkillName = skillName
+    ? normalizeSkillNameVariants(skillName).some(
+        (variant) => variant.length > 0 && lowered.includes(variant),
+      )
+    : false;
+
+  if (mentionsHowItWorks && mentionsSkillName) return true;
+  if (mentionsMaintenanceVerb && mentionsMaintenanceNoun) return true;
+  if (mentionsMaintenanceVerb && mentionsSkillName) return true;
+  return false;
+}
+
+export function extractPositiveEvalQueryText(query: string, skillName?: string): string | null {
+  const candidate = extractActionableQueryText(query);
+  if (!candidate) return null;
+  return isLikelySkillMaintenanceQuery(candidate, skillName) ? null : candidate;
 }
 
 export function isActionableQueryText(query: string): boolean {

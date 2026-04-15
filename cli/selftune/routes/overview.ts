@@ -42,7 +42,7 @@ export function handleOverview(
   const pendingReviews = attentionQueue.filter((a) => a.category === "needs_review").length;
 
   const trustWatchlist = buildTrustWatchlist(trustSummaries);
-  const creatorTesting = buildCreatorTestingOverview(testingReadiness);
+  const creatorTesting = buildCreatorTestingOverview(skills);
   const autonomyStatus = buildAutonomyStatus(
     db,
     attentionQueue,

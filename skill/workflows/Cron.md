@@ -94,7 +94,7 @@ no token cost for routine runs.
 OS scheduler fires (cron/launchd/systemd)
     |
     v
-selftune orchestrate --max-skills 3   (CLI runs directly, no agent)
+selftune run --max-skills 3           (CLI runs directly, no agent)
     |
     v
 sync → candidate selection → evolve → validate → deploy → watch
@@ -107,7 +107,7 @@ Next interactive agent session uses updated description
 ```
 
 This is distinct from interactive mode where the user says "improve my skills"
-and the agent runs orchestrate. Automated mode is for routine maintenance;
+and the agent runs `selftune run`. Automated mode is for routine maintenance;
 interactive mode is for user-directed improvements.
 
 ## Safety Controls

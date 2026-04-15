@@ -2,6 +2,22 @@ import type { CandidateContext, SkillAction } from "../orchestrate.js";
 import type { SkillStatus } from "../status.js";
 import type { EvolutionAuditEntry } from "../types.js";
 
+/**
+ * Determines whether a skill should use package search instead of standard
+ * evolution. Returns true when the skill has package-level evidence:
+ * a frontier candidate exists or a canonical evaluation record is present.
+ *
+ * This gates the package-search path so only skills with sufficient
+ * package-level signal enter the bounded search flow.
+ */
+export function shouldSelectPackageSearch(skill: SkillStatus, context: CandidateContext): boolean {
+  // Package search requires that the candidate context carries a
+  // packageFrontierSkills set (populated from package-candidate-state).
+  // When present and the skill is listed, we route through package search.
+  if (!context.packageFrontierSkills) return false;
+  return context.packageFrontierSkills.has(skill.name);
+}
+
 /** Candidate selection criteria. */
 const CANDIDATE_STATUSES = new Set(["CRITICAL", "WARNING", "UNGRADED"]);
 
@@ -109,18 +125,19 @@ export function selectCandidates(skills: SkillStatus[], options: CandidateContex
       continue;
     }
 
+    const action = shouldSelectPackageSearch(skill, options) ? "package-search" : "evolve";
     actions.push({
       skill: skill.name,
-      action: "evolve",
+      action,
       reason: `status=${skill.status}, passRate=${skill.passRate !== null ? `${(skill.passRate * 100).toFixed(0)}%` : "—"}, missed=${skill.missedQueries}, trend=${skill.trend}`,
     });
   }
 
-  let evolveCount = 0;
+  let activeCount = 0;
   for (const action of actions) {
-    if (action.action === "evolve") {
-      evolveCount++;
-      if (evolveCount > options.maxSkills) {
+    if (action.action === "evolve" || action.action === "package-search") {
+      activeCount++;
+      if (activeCount > options.maxSkills) {
         action.action = "skip";
         action.reason = `capped by --max-skills ${options.maxSkills}`;
       }
