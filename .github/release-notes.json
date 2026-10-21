@@ -4,6 +4,17 @@
   "docsUrl": "https://docs.selftune.dev/changelog",
   "entries": [
     {
+      "label": "2026-10-21",
+      "description": "Desktop update runtime",
+      "tags": ["Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
       "label": "2026-10-20",
       "description": "macOS desktop loading",
       "tags": ["Desktop"],

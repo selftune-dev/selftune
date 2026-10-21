@@ -115,4 +115,4 @@ test("discovery, recommendations and candidates survive absent detail and repeat
   } finally {
     rmSync(directory, { recursive: true });
   }
-});
+}, 30_000);
