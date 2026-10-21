@@ -33,7 +33,7 @@ export const AdjacentInstructionActivation = Schema.Literals([
 ]);
 export type AdjacentInstructionActivation = typeof AdjacentInstructionActivation.Type;
 
-export class AdjacentInstructionError extends Schema.TaggedErrorClass<AdjacentInstructionError>()(
+export class AdjacentInstructionError extends Schema.TaggedError<AdjacentInstructionError>()(
   "AdjacentInstructionError",
   { code: Schema.String, message: Schema.String },
 ) {}

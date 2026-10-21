@@ -95,7 +95,20 @@ const ShareReceipt = Schema.Struct({
   expires_at: Schema.Number,
 });
 
-function cloudRequestError(operation: string, response: Response) {
+function cloudRequestError(
+  operation: string,
+  response: Response,
+  requiredPlan: "pro" | "team" = "pro",
+) {
+  if (response.status === 402) {
+    return new CLIError(
+      requiredPlan === "team"
+        ? "An active Team subscription is required to publish Skill Sets to a workspace."
+        : "An active Pro or Team subscription is required for Cloud sync and sharing.",
+      "API_ERROR",
+      "Your account is connected. Open Settings > Billing to manage your plan.",
+    );
+  }
   return new CLIError(
     `${operation} failed (${response.status}).`,
     "API_ERROR",
@@ -481,7 +494,8 @@ export function makeHostedStateOperations(
         body: JSON.stringify(intentBody),
       },
     );
-    if (!intentResponse.ok) throw cloudRequestError("Release publish intent", intentResponse);
+    if (!intentResponse.ok)
+      throw cloudRequestError("Release publish intent", intentResponse, "team");
     const intent = Schema.decodeUnknownSync(HostedSkillSetPublishIntentReceipt)(
       await intentResponse.json(),
     );
@@ -506,7 +520,8 @@ export function makeHostedStateOperations(
         body: JSON.stringify(finalizeBody),
       },
     );
-    if (!finalizeResponse.ok) throw cloudRequestError("Release finalization", finalizeResponse);
+    if (!finalizeResponse.ok)
+      throw cloudRequestError("Release finalization", finalizeResponse, "team");
     const release = Schema.decodeUnknownSync(HostedSkillSetReleaseReceipt)(
       await finalizeResponse.json(),
     );

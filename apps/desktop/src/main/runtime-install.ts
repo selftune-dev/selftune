@@ -13,7 +13,7 @@ import {
   verifyRuntimeDirectory,
 } from "./runtime-integrity";
 
-export class RuntimeInstallFailure extends Schema.TaggedErrorClass<RuntimeInstallFailure>()(
+export class RuntimeInstallFailure extends Schema.TaggedError<RuntimeInstallFailure>()(
   "RuntimeInstallFailure",
   { message: Schema.String },
 ) {}

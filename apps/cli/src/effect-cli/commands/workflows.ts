@@ -122,7 +122,7 @@ function decodeNumber(value: Option.Option<string>): number | undefined {
   return decoded === undefined ? undefined : Number(decoded);
 }
 
-const optionalString = (name: string) => Flag.string(name).pipe(Flag.optional);
+const optionalString = (name: string) => Flag.String(name).pipe(Flag.optional);
 
 export function makeWorkflowsCommand(action: WorkflowsAction = makeLiveWorkflowsAction()) {
   const discover = Command.make(
@@ -131,7 +131,7 @@ export function makeWorkflowsCommand(action: WorkflowsAction = makeLiveWorkflows
       minOccurrences: optionalString("min-occurrences"),
       window: optionalString("window"),
       skill: optionalString("skill"),
-      json: Flag.boolean("json"),
+      json: Flag.Boolean("json").pipe(Flag.withDefault(false)),
     },
     (input) =>
       action(
@@ -176,9 +176,9 @@ export function makeWorkflowsCommand(action: WorkflowsAction = makeLiveWorkflows
       outputDir: optionalString("output-dir"),
       skillName: optionalString("skill-name"),
       description: optionalString("description"),
-      write: Flag.boolean("write"),
-      force: Flag.boolean("force"),
-      json: Flag.boolean("json"),
+      write: Flag.Boolean("write").pipe(Flag.withDefault(false)),
+      force: Flag.Boolean("force").pipe(Flag.withDefault(false)),
+      json: Flag.Boolean("json").pipe(Flag.withDefault(false)),
     },
     (input) =>
       action(
@@ -200,7 +200,9 @@ export function makeWorkflowsCommand(action: WorkflowsAction = makeLiveWorkflows
 
   return Command.make(
     "workflows",
-    { internalHelp: Flag.boolean(WORKFLOWS_INTERNAL_PARENT_HELP_FLAG) },
+    {
+      internalHelp: Flag.Boolean(WORKFLOWS_INTERNAL_PARENT_HELP_FLAG).pipe(Flag.withDefault(false)),
+    },
     ({ internalHelp }) => (internalHelp ? Console.log(WORKFLOWS_HELP) : Effect.void),
   ).pipe(
     Command.withSubcommands([discover, save, scaffold]),

@@ -64,7 +64,7 @@ function appBundledExecutable(bundleIdentifier: string): string {
 }
 
 describe("launchd service backend", () => {
-  it("preserves the launchd plist byte format", () => {
+  it("keeps the dashboard LaunchAgent interactive and preserves the plist format", () => {
     expect(
       generateLaunchdPlist({
         environment: { KEY: '<&"' },
@@ -95,7 +95,7 @@ describe("launchd service backend", () => {
   <key>KeepAlive</key>
   <dict><key>SuccessfulExit</key><false/></dict>
   <key>ProcessType</key>
-  <string>Background</string>
+  <string>Interactive</string>
   <key>WorkingDirectory</key>
   <string>/tmp/selftune</string>
   <key>StandardOutPath</key>

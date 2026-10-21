@@ -134,6 +134,20 @@
       "when": 1786088000000,
       "tag": "0018_drop_legacy_evaluation_draft_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1788856253727,
+      "tag": "0019_narrow_magma",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1792529694837,
+      "tag": "0020_numerous_apocalypse",
+      "breakpoints": true
     }
   ]
 }

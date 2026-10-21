@@ -1,4 +1,5 @@
 export type {
+  ReplayWorkspace,
   RuntimeReplayContentTarget,
   RuntimeReplayInvoker,
   RuntimeReplayInvokerInput,
@@ -23,6 +24,7 @@ export {
 } from "./validate-host-replay/parsers.js";
 export {
   buildRuntimeReplayValidationOptions,
+  evaluateRuntimeReplayObservation,
   runClaudeRuntimeReplayFixture,
   runHostReplayFixture,
   runHostRuntimeReplayFixture,

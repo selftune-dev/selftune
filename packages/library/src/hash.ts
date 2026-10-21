@@ -15,6 +15,19 @@ function isPackageMetadataPath(relativePath: string): boolean {
   );
 }
 
+export function computePortableSkillVersionHash(
+  files: ReadonlyArray<{ path: string; content: Uint8Array }>,
+): string {
+  const manifest = files
+    .filter((file) => !isPackageMetadataPath(file.path))
+    .map((file) => ({
+      path: file.path,
+      hash: createHash("sha256").update(file.content).digest("hex"),
+      size: file.content.byteLength,
+    }));
+  return createHash("sha256").update(canonicalizeSkillPackageManifest(manifest)).digest("hex");
+}
+
 function buildSkillPackageManifest(
   rootDir: string,
   base = "",

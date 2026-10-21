@@ -88,20 +88,20 @@ describe("publish dependency protocol", () => {
       [
         "apps/cli/package.json",
         {
-          "@effect/platform-bun": "4.0.0-beta.66",
-          "@effect/platform-node-shared": "4.0.0-beta.66",
-          effect: "4.0.0-beta.66",
+          "@effect/platform-bun": "4.0.0-rc.115",
+          "@effect/platform-node-shared": "4.0.0-rc.115",
+          effect: "4.0.0-rc.115",
         },
       ],
-      ["apps/local/package.json", { "@xmldom/xmldom": "^0.8.13", effect: "4.0.0-beta.66" }],
-      ["packages/config/package.json", { effect: "4.0.0-beta.66" }],
-      ["packages/control-plane/package.json", { effect: "4.0.0-beta.66" }],
+      ["apps/local/package.json", { "@xmldom/xmldom": "^0.8.13", effect: "4.0.0-rc.115" }],
+      ["packages/config/package.json", { effect: "4.0.0-rc.115" }],
+      ["packages/control-plane/package.json", { effect: "4.0.0-rc.115" }],
       [
         "packages/observability/package.json",
-        { "@duckdb/node-api": "1.4.5-r.1", effect: "4.0.0-beta.66" },
+        { "@duckdb/node-api": "1.4.5-r.1", effect: "4.0.0-rc.115" },
       ],
-      ["packages/orchestration/package.json", { effect: "4.0.0-beta.66" }],
-      ["packages/runtime/package.json", { "drizzle-orm": "^0.45.0", effect: "4.0.0-beta.66" }],
+      ["packages/orchestration/package.json", { effect: "4.0.0-rc.115" }],
+      ["packages/runtime/package.json", { "drizzle-orm": "^0.45.0", effect: "4.0.0-rc.115" }],
       ["packages/telemetry-contract/package.json", { zod: "^4.3.6" }],
     ]);
 

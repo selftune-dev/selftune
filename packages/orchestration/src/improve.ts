@@ -17,6 +17,8 @@ export interface ImproveDeps {
     readonly skill: string;
     readonly skillPath: string;
     readonly agent?: string;
+    readonly budgetRemainingUsd: number;
+    readonly estimatedCostUsd: number;
   }) => Promise<{ readonly handled: boolean; readonly result?: unknown }>;
 }
 
@@ -55,6 +57,40 @@ function stripOption(args: readonly string[], flag: string): string[] {
 
 function hasOption(args: readonly string[], flag: string): boolean {
   return args.includes(flag) || args.some((arg) => arg.startsWith(`${flag}=`));
+}
+
+function readRequiredUsdAmount(args: readonly string[], flag: string): number {
+  const values: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === flag) {
+      const next = args[index + 1];
+      if (next === undefined) {
+        throw new CLIError(`${flag} requires a non-negative USD amount.`, "MISSING_FLAG");
+      }
+      values.push(next);
+      index += 1;
+    } else if (arg.startsWith(`${flag}=`)) {
+      values.push(arg.slice(flag.length + 1));
+    }
+  }
+
+  if (values.length === 0 || values[0] === "") {
+    throw new CLIError(`${flag} requires a non-negative USD amount.`, "MISSING_FLAG");
+  }
+  if (values.length > 1) {
+    throw new CLIError(`${flag} can only be provided once.`, "INVALID_FLAG");
+  }
+
+  const [rawValue] = values;
+  if (rawValue === undefined || !/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(rawValue)) {
+    throw new CLIError(`${flag} must be a finite, non-negative USD amount.`, "INVALID_FLAG");
+  }
+  const value = Number(rawValue);
+  if (!Number.isFinite(value)) {
+    throw new CLIError(`${flag} must be a finite, non-negative USD amount.`, "INVALID_FLAG");
+  }
+  return value;
 }
 
 function replaceOption(args: readonly string[], sourceFlag: string, targetFlag: string): string[] {
@@ -138,14 +174,50 @@ export async function runImprove(
     );
   }
 
-  if (effectiveScope === "auto" && hasOption(delegatedArgs, "--dry-run") && historicalImprove) {
+  const historicalBudgetFlags = ["--budget-remaining-usd", "--estimated-cost-usd"];
+  const hasHistoricalBudgetInput = historicalBudgetFlags.some((flag) =>
+    hasOption(delegatedArgs, flag),
+  );
+  const isHistoricalReplayDryRun =
+    effectiveScope === "auto" && hasOption(delegatedArgs, "--dry-run");
+  if (hasHistoricalBudgetInput && (!isHistoricalReplayDryRun || !historicalImprove)) {
+    throw new CLIError(
+      "Spend estimates are only used by the historical replay dry-run.",
+      "INVALID_FLAG",
+      "Pass both spend flags with --scope auto --dry-run, --skill, and --skill-path.",
+    );
+  }
+
+  if (isHistoricalReplayDryRun && historicalImprove) {
     const skill = readOptionValue(delegatedArgs, "--skill");
     const skillPath = readOptionValue(delegatedArgs, "--skill-path");
+    if (hasHistoricalBudgetInput && (!skill || !skillPath)) {
+      throw new CLIError(
+        "Caller spend inputs require both --skill and --skill-path.",
+        "MISSING_FLAG",
+        "Pass --skill <name> and --skill-path <path> with both spend flags.",
+      );
+    }
     if (skill && skillPath) {
+      const budgetRemainingUsd = readRequiredUsdAmount(delegatedArgs, "--budget-remaining-usd");
+      const estimatedCostUsd = readRequiredUsdAmount(delegatedArgs, "--estimated-cost-usd");
+      if (estimatedCostUsd > budgetRemainingUsd) {
+        throw new CLIError(
+          `Historical replay was not started: estimated total run cost ($${estimatedCostUsd}) exceeds caller-reported remaining spend ($${budgetRemainingUsd}).`,
+          "GUARD_BLOCKED",
+          "Review the total-run estimate and the remaining amount, then rerun with current caller-provided values.",
+        );
+      }
+      delegatedArgs = historicalBudgetFlags.reduce(
+        (args, flag) => stripOption(args, flag),
+        delegatedArgs,
+      );
       const historical = await historicalImprove({
         skill,
         skillPath,
         agent: readOptionValue(delegatedArgs, "--agent"),
+        budgetRemainingUsd,
+        estimatedCostUsd,
       });
       if (historical.handled) {
         console.log(JSON.stringify(historical.result, null, 2));

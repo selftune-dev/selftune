@@ -119,7 +119,7 @@ export function makeLiveRegistryAction(
   return (input) => runRegistryActionWithDependencies(input, dependencies);
 }
 
-const optionalString = (name: string) => Flag.string(name).pipe(Flag.optional);
+const optionalString = (name: string) => Flag.String(name).pipe(Flag.optional);
 
 function decode(value: Option.Option<string>): string | undefined {
   return decodeRegistryInternalValue(Option.getOrUndefined(value));
@@ -144,7 +144,10 @@ export function makeRegistryCommand(action: RegistryAction = makeLiveRegistryAct
 
   const install = Command.make(
     "install",
-    { target: optionalString("target"), global: Flag.boolean("global") },
+    {
+      target: optionalString("target"),
+      global: Flag.Boolean("global").pipe(Flag.withDefault(false)),
+    },
     (input) => action({ operation: "install", target: decode(input.target), global: input.global }),
   ).pipe(Command.withDescription("Install a skill from the registry or GitHub"));
 
@@ -164,8 +167,10 @@ export function makeRegistryCommand(action: RegistryAction = makeLiveRegistryAct
       }),
   ).pipe(Command.withDescription("Submit local skill changes to the workspace creator"));
 
-  const sync = Command.make("sync", { automaticOnly: Flag.boolean("automatic-only") }, (input) =>
-    action({ operation: "sync", automaticOnly: input.automaticOnly }),
+  const sync = Command.make(
+    "sync",
+    { automaticOnly: Flag.Boolean("automatic-only").pipe(Flag.withDefault(false)) },
+    (input) => action({ operation: "sync", automaticOnly: input.automaticOnly }),
   ).pipe(Command.withDescription("Pull the latest versions of installed skills"));
   const status = Command.make("status", {}, () => action({ operation: "status" })).pipe(
     Command.withDescription("Show installed skills and version drift"),
@@ -194,7 +199,9 @@ export function makeRegistryCommand(action: RegistryAction = makeLiveRegistryAct
 
   return Command.make(
     "registry",
-    { internalHelp: Flag.boolean(REGISTRY_INTERNAL_PARENT_HELP_FLAG) },
+    {
+      internalHelp: Flag.Boolean(REGISTRY_INTERNAL_PARENT_HELP_FLAG).pipe(Flag.withDefault(false)),
+    },
     () => Console.log(REGISTRY_HELP),
   ).pipe(
     Command.withSubcommands([push, suggest, install, sync, status, rollback, history, list]),

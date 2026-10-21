@@ -264,6 +264,17 @@ Each entry includes: `timestamp`, `proposal_id`, `action`, `details`, optional `
 
 Extends evolution beyond descriptions to routing tables and complete skill bodies. Uses a teacher-student model where a stronger LLM generates proposals and a cheaper LLM validates them.
 
+### Historical Routing Verifier Qualification
+
+The historical replay path uses routing verifier v2. Qualification runs
+synthetic runtime observations through the same decision predicate used by live
+host replay, including known-good, known-failure, boundary, and adversarial
+cases. It covers repeated and multiple skill selections, no selection,
+misleading output text, and reads outside the staged skill paths. Off-path reads
+fail even when the target skill was also selected. These controls qualify the
+predicate's decision mapping; they do not establish host harness or provider
+integration behavior.
+
 ### Evolution Targets
 
 | Target          | What changes                    | Generator                | Validator              |

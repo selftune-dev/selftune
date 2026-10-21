@@ -8,6 +8,7 @@
 
 import { sql } from "drizzle-orm";
 import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+export { skill_local_revisions } from "./skill-revision-schema.js";
 
 export {
   correction_episodes,
@@ -22,24 +23,28 @@ export {
   correction_candidate_evaluations,
 } from "./correction-study-schema.js";
 
-export const sessions = sqliteTable("sessions", {
-  session_id: text().primaryKey(),
-  started_at: text(),
-  ended_at: text(),
-  platform: text(),
-  model: text(),
-  completion_status: text(),
-  source_session_kind: text(),
-  agent_cli: text(),
-  workspace_path: text(),
-  repo_remote: text(),
-  branch: text(),
-  schema_version: text(),
-  normalized_at: text(),
-  normalizer_version: text(),
-  capture_mode: text(),
-  raw_source_ref: text(),
-});
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    session_id: text().primaryKey(),
+    started_at: text(),
+    ended_at: text(),
+    platform: text(),
+    model: text(),
+    completion_status: text(),
+    source_session_kind: text(),
+    agent_cli: text(),
+    workspace_path: text(),
+    repo_remote: text(),
+    branch: text(),
+    schema_version: text(),
+    normalized_at: text(),
+    normalizer_version: text(),
+    capture_mode: text(),
+    raw_source_ref: text(),
+  },
+  (table) => [index("idx_sessions_workspace_path").on(table.workspace_path)],
+);
 
 export const prompts = sqliteTable(
   "prompts",
@@ -256,7 +261,10 @@ export const session_telemetry = sqliteTable(
     session_type: text(),
     agent_summary: text(),
   },
-  (table) => [index("idx_session_tel_ts").on(table.timestamp)],
+  (table) => [
+    index("idx_session_tel_ts").on(table.timestamp),
+    index("idx_session_tel_cwd").on(table.cwd),
+  ],
 );
 
 export const skill_usage = sqliteTable(

@@ -120,7 +120,7 @@ export const SkillSetDependencyErrorReason = Schema.Literals([
 ]);
 export type SkillSetDependencyErrorReason = typeof SkillSetDependencyErrorReason.Type;
 
-export class SkillSetDependencyError extends Schema.TaggedErrorClass<SkillSetDependencyError>()(
+export class SkillSetDependencyError extends Schema.TaggedError<SkillSetDependencyError>()(
   "SkillSetDependencyError",
   {
     reason: SkillSetDependencyErrorReason,

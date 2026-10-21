@@ -54,6 +54,18 @@ describe("historical host replay executor", () => {
     ).toBe(false);
   });
 
+  test("qualifies historical routing with executed live-predicate controls", () => {
+    const qualification = historicalRoutingVerifierQualification();
+    expect(qualification.status).toBe("qualified");
+    expect(qualification.instrument.version).toBe("v2");
+    expect(qualification.control_counts).toEqual({
+      known_failure: 1,
+      known_good: 1,
+      boundary: 4,
+      adversarial: 6,
+    });
+  });
+
   test("runs the execution-quality arms with Luna max and records bounded outputs", async () => {
     const calls: Array<{
       body: string;
@@ -302,7 +314,7 @@ describe("historical host replay executor", () => {
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
       expect(String(result.cause)).toContain(
-        "requires verifier selftune.skill-routing-selection@v1",
+        "requires verifier selftune.skill-routing-selection@v2",
       );
     }
   });

@@ -9,7 +9,7 @@ Use this when the user wants to make a skill better based on measured evidence.
 The lifecycle entrypoint is:
 
 ```bash
-selftune improve --skill <name> --skill-path <path> [--scope auto|description|routing|body|package] [--agent AGENT] [--eval-set PATH] [--dry-run] [--validation-mode auto|replay|judge]
+selftune improve --skill <name> --skill-path <path> [--scope auto|description|routing|body|package] [--agent AGENT] [--eval-set PATH] [--dry-run] [--budget-remaining-usd AMOUNT --estimated-cost-usd AMOUNT] [--validation-mode auto|replay|judge]
 ```
 
 ## Options
@@ -22,6 +22,8 @@ selftune improve --skill <name> --skill-path <path> [--scope auto|description|ro
 | `--agent`           | Agent CLI to use; for body/routing this sets both teacher and student agents |
 | `--eval-set`        | Override the eval set JSON path                                              |
 | `--dry-run`         | Validate candidate changes without deploying                                 |
+| `--budget-remaining-usd <amount>` | Caller-reported remaining spend for historical replay preflight |
+| `--estimated-cost-usd <amount>` | Caller estimate for the full historical replay run |
 | `--validation-mode` | Validation strategy: `auto`, `replay`, or `judge`                            |
 | `--help`            | Show command help                                                            |
 
@@ -54,8 +56,18 @@ If those are missing, route to `Verify` first.
 Use:
 
 ```bash
-selftune improve --skill <name> --skill-path <path> --scope auto --dry-run --agent codex
+selftune improve --skill <name> --skill-path <path> --scope auto --dry-run --agent codex --budget-remaining-usd <remaining> --estimated-cost-usd <total-estimate>
 ```
+
+Both amounts are required when attempting historical replay. The estimate must
+cover the whole run, including candidate generation and replay. SelfTune
+compares it with the caller-reported remaining amount before starting that
+work, and reports the result as an estimate-only preflight. It does not read
+subscription usage, measure provider spend, or enforce an actual-dollar
+ceiling. The remaining amount is not tracked or decremented across separate
+invocations, so refresh it before rerunning. The request uses five search
+candidates, requires three scored repetitions, and allows at most three
+attempts per arm; these count bounds do not guarantee a dollar ceiling.
 
 SelfTune first looks for invocation-local failed traces plus a successful
 counterexample for the same installed skill revision. Session-level error totals

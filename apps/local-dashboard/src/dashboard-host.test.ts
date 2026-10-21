@@ -444,6 +444,23 @@ describe("localDashboardModules", () => {
       },
     });
     expect(mapped.skills[0]?.sources).toHaveLength(1);
+    const firstQuarantine = portfolio.quarantined[0];
+    const firstAudit = portfolio.audit.skills[0];
+    if (!firstQuarantine || !firstAudit) throw new Error("Expected portfolio fixture rows");
+    const duplicates = mapLocalLibraryInventory(
+      snapshot,
+      intelligence,
+      {
+        ...portfolio,
+        quarantined: [...portfolio.quarantined, { ...firstQuarantine, quarantine_id: "later" }],
+        audit: {
+          ...portfolio.audit,
+          skills: [...portfolio.audit.skills, { ...firstAudit, reason: "later" }],
+        },
+      },
+      mergeHarnesses,
+    );
+    expect(duplicates).toEqual(mapped);
 
     const analyticsWithoutObservations: AnalyticsResponse = {
       pass_rate_trend: [],

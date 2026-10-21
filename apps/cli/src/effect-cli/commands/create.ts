@@ -34,7 +34,11 @@ export function makeCreateCommand(actions: CreateCommandActions = liveCreateComm
 
   return Command.make(
     "create",
-    { internalParentHelp: Flag.boolean(CREATE_INTERNAL_PARENT_HELP_FLAG) },
+    {
+      internalParentHelp: Flag.Boolean(CREATE_INTERNAL_PARENT_HELP_FLAG).pipe(
+        Flag.withDefault(false),
+      ),
+    },
     () => Console.log(CREATE_HELP),
   ).pipe(
     Command.withSubcommands([

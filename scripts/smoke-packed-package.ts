@@ -14,13 +14,10 @@ import { basename, join, relative, resolve, sep } from "node:path";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-class PackageSmokeFailure extends Schema.TaggedErrorClass<PackageSmokeFailure>()(
-  "PackageSmokeFailure",
-  {
-    operation: Schema.String,
-    message: Schema.String,
-  },
-) {}
+class PackageSmokeFailure extends Schema.TaggedError<PackageSmokeFailure>()("PackageSmokeFailure", {
+  operation: Schema.String,
+  message: Schema.String,
+}) {}
 
 const PackageManifest = Schema.Struct({
   name: Schema.String,

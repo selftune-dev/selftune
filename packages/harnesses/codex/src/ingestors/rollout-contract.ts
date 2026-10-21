@@ -34,6 +34,8 @@ const Payload = Schema.Struct({
   token_count: optionalEvidence(Tokens),
   name: Text,
   arguments: Text,
+  call_id: Text,
+  output: Text,
   input: Text,
   role: Text,
   content: optionalEvidence(Schema.Array(ContentPart)),

@@ -94,7 +94,7 @@ function decode(value: Option.Option<string>): string | undefined {
   return decodeLibraryInternalValue(Option.getOrUndefined(value));
 }
 
-const optionalString = (name: string) => Flag.string(name).pipe(Flag.optional);
+const optionalString = (name: string) => Flag.String(name).pipe(Flag.optional);
 
 export function makeLibraryCommand(action: LibraryAction = makeLiveLibraryAction()) {
   const list = Command.make("list", {}, () => action({ operation: "list" }));
@@ -171,7 +171,7 @@ export function makeLibraryCommand(action: LibraryAction = makeLiveLibraryAction
 
   return Command.make(
     "library",
-    { internalHelp: Flag.boolean(LIBRARY_INTERNAL_PARENT_HELP_FLAG) },
+    { internalHelp: Flag.Boolean(LIBRARY_INTERNAL_PARENT_HELP_FLAG).pipe(Flag.withDefault(false)) },
     ({ internalHelp }) => (internalHelp ? Console.log(LIBRARY_HELP) : Effect.void),
   ).pipe(
     Command.withSubcommands([

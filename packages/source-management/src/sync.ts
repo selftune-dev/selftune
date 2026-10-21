@@ -45,7 +45,7 @@ export interface SourceSyncRequest {
   dryRun?: boolean;
 }
 
-export class SourceSyncUnavailable extends Schema.TaggedErrorClass<SourceSyncUnavailable>()(
+export class SourceSyncUnavailable extends Schema.TaggedError<SourceSyncUnavailable>()(
   "SourceSyncUnavailable",
   {
     operation: Schema.String,

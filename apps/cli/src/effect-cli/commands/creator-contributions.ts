@@ -150,8 +150,10 @@ export function makeCreatorContributionsCommand(
   const status = Command.make(
     "status",
     {
-      internalHelp: Flag.boolean(CREATOR_CONTRIBUTIONS_INTERNAL_STATUS_HELP_FLAG),
-      skill: Flag.string("skill").pipe(Flag.optional),
+      internalHelp: Flag.Boolean(CREATOR_CONTRIBUTIONS_INTERNAL_STATUS_HELP_FLAG).pipe(
+        Flag.withDefault(false),
+      ),
+      skill: Flag.String("skill").pipe(Flag.optional),
     },
     (input) =>
       input.internalHelp
@@ -161,17 +163,19 @@ export function makeCreatorContributionsCommand(
   const enable = Command.make(
     "enable",
     {
-      internalHelp: Flag.boolean(CREATOR_CONTRIBUTIONS_INTERNAL_ENABLE_HELP_FLAG),
-      skill: Flag.string("skill").pipe(Flag.optional),
-      all: Flag.boolean("all"),
-      prefix: Flag.string("prefix").pipe(Flag.optional),
-      skillPath: Flag.string("skill-path").pipe(Flag.optional),
-      creatorId: Flag.string("creator-id").pipe(Flag.optional),
-      signals: Flag.string("signals").pipe(Flag.optional),
-      message: Flag.string("message").pipe(Flag.optional),
-      privacyUrl: Flag.string("privacy-url").pipe(Flag.optional),
-      feedbackEndpoint: Flag.string("feedback-endpoint").pipe(Flag.optional),
-      noHelper: Flag.boolean("no-helper"),
+      internalHelp: Flag.Boolean(CREATOR_CONTRIBUTIONS_INTERNAL_ENABLE_HELP_FLAG).pipe(
+        Flag.withDefault(false),
+      ),
+      skill: Flag.String("skill").pipe(Flag.optional),
+      all: Flag.Boolean("all").pipe(Flag.withDefault(false)),
+      prefix: Flag.String("prefix").pipe(Flag.optional),
+      skillPath: Flag.String("skill-path").pipe(Flag.optional),
+      creatorId: Flag.String("creator-id").pipe(Flag.optional),
+      signals: Flag.String("signals").pipe(Flag.optional),
+      message: Flag.String("message").pipe(Flag.optional),
+      privacyUrl: Flag.String("privacy-url").pipe(Flag.optional),
+      feedbackEndpoint: Flag.String("feedback-endpoint").pipe(Flag.optional),
+      noHelper: Flag.Boolean("no-helper").pipe(Flag.withDefault(false)),
     },
     (input) =>
       input.internalHelp
@@ -192,9 +196,11 @@ export function makeCreatorContributionsCommand(
   const disable = Command.make(
     "disable",
     {
-      internalHelp: Flag.boolean(CREATOR_CONTRIBUTIONS_INTERNAL_DISABLE_HELP_FLAG),
-      skill: Flag.string("skill").pipe(Flag.optional),
-      skillPath: Flag.string("skill-path").pipe(Flag.optional),
+      internalHelp: Flag.Boolean(CREATOR_CONTRIBUTIONS_INTERNAL_DISABLE_HELP_FLAG).pipe(
+        Flag.withDefault(false),
+      ),
+      skill: Flag.String("skill").pipe(Flag.optional),
+      skillPath: Flag.String("skill-path").pipe(Flag.optional),
     },
     (input) =>
       input.internalHelp
@@ -204,7 +210,11 @@ export function makeCreatorContributionsCommand(
 
   return Command.make(
     "creator-contributions",
-    { internalHelp: Flag.boolean(CREATOR_CONTRIBUTIONS_INTERNAL_PARENT_HELP_FLAG) },
+    {
+      internalHelp: Flag.Boolean(CREATOR_CONTRIBUTIONS_INTERNAL_PARENT_HELP_FLAG).pipe(
+        Flag.withDefault(false),
+      ),
+    },
     ({ internalHelp }) => (internalHelp ? Console.log(CREATOR_CONTRIBUTIONS_HELP) : Effect.void),
   ).pipe(
     Command.withSubcommands([status, enable, disable]),

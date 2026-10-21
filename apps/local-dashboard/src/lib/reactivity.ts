@@ -28,7 +28,7 @@ export {
 /** React Query knowledge stays at the dashboard boundary, not in the resource contract. */
 export const dashboardQueryKeys = {
   [DashboardResource.libraryInventory]: [["library"], ["portfolio"]],
-  [DashboardResource.libraryDetail]: [["skill-report"]],
+  [DashboardResource.libraryDetail]: [["skill-report"], ["skill-history"]],
   [DashboardResource.skillIntelligence]: [["skill-intelligence"]],
   [DashboardResource.overview]: [["overview"]],
   [DashboardResource.sourceUpdate]: [["source-update"]],

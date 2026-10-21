@@ -1,6 +1,8 @@
-import { timeAgo } from "@selftune/ui/lib";
 import {
   Badge,
+  Alert,
+  AlertTitle,
+  AlertDescription,
   Button,
   Card,
   CardContent,
@@ -8,37 +10,21 @@ import {
   CardHeader,
   CardTitle,
 } from "@selftune/ui/primitives";
-import {
-  AlertCircleIcon,
-  ArrowLeftIcon,
-  Boxes,
-  EyeIcon,
-  RefreshCwIcon,
-  SearchIcon,
-  AlertTriangleIcon,
-  ArrowDown,
-  ArrowRightIcon,
-  GitBranchIcon,
-  FlaskConicalIcon,
-  BarChart3Icon,
-  RocketIcon,
-  ShieldCheckIcon,
-  ListChecksIcon,
-} from "lucide-react";
+import { AlertCircleIcon, ArrowLeftIcon, Boxes, RefreshCwIcon, ArrowDown } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   SkillReportDataQualityTabContent,
   SkillReportEvidenceTabContent,
-  SkillReportInvocationsSection,
+  SkillReportRecentActivity,
   SkillReportMissedQueriesSection,
-  SkillReportScaffold,
-  SkillReportTabs,
-  SkillReportTrustBadge,
-  type SkillReportNextAction,
+  LocalSkillReport,
 } from "@selftune/dashboard-core/screens/skill-report";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SkillHistory } from "@/components/SkillHistory";
+import { SkillEvaluations } from "@/components/SkillEvaluations";
+import { SkillPackageInspector } from "@/components/SkillPackageInspector";
 import { runDashboardAction } from "@/api";
 import { useSkillReport } from "@/hooks/useSkillReport";
 import { normalizeLifecycleCommand, normalizeLifecycleText } from "@/lib/lifecycle-surface";
@@ -48,12 +34,8 @@ import type {
   CreatorLoopNextStep,
   DashboardActionName,
   DashboardFrontierState,
-  EvolutionEntry,
   SkillTestingReadiness,
-  TrustState,
 } from "@/types";
-
-type SkillReportTab = "evidence" | "missed" | "invocations" | "data-quality";
 
 function formatLoopStep(step: CreatorLoopNextStep): string {
   switch (step) {
@@ -86,53 +68,6 @@ function actionForLoopStep(step: CreatorLoopNextStep): DashboardActionName {
       return "deploy-candidate";
     case "watch_deployment":
       return "watch";
-  }
-}
-
-function deriveTestingAction(readiness: SkillTestingReadiness): SkillReportNextAction {
-  switch (readiness.next_step) {
-    case "generate_evals":
-      return {
-        icon: <FlaskConicalIcon className="size-5 text-primary" />,
-        text: normalizeLifecycleText(readiness.summary),
-        actionLabel: "Generate evals",
-        variant: "default",
-      };
-    case "run_unit_tests":
-      return {
-        icon: <ListChecksIcon className="size-5 text-primary" />,
-        text: normalizeLifecycleText(readiness.summary),
-        actionLabel: "Generate unit tests",
-        variant: "default",
-      };
-    case "run_replay_dry_run":
-      return {
-        icon: <RefreshCwIcon className="size-5 text-primary" />,
-        text: normalizeLifecycleText(readiness.summary),
-        actionLabel: "Run replay dry-run",
-        variant: "secondary",
-      };
-    case "measure_baseline":
-      return {
-        icon: <BarChart3Icon className="size-5 text-primary" />,
-        text: normalizeLifecycleText(readiness.summary),
-        actionLabel: "Measure baseline",
-        variant: "secondary",
-      };
-    case "deploy_candidate":
-      return {
-        icon: <RocketIcon className="size-5 text-primary" />,
-        text: normalizeLifecycleText(readiness.summary),
-        actionLabel: "Ship candidate",
-        variant: "outline",
-      };
-    case "watch_deployment":
-      return {
-        icon: <EyeIcon className="size-5 text-primary" />,
-        text: normalizeLifecycleText(readiness.summary),
-        actionLabel: "Monitor live",
-        variant: "outline",
-      };
   }
 }
 
@@ -174,122 +109,6 @@ function actionForCreateState(state: CreateCheckState): DashboardActionName | nu
       return "deploy-candidate";
     default:
       return null;
-  }
-}
-
-function deriveCreateAction(readiness: CreateCheckReadiness): SkillReportNextAction {
-  switch (readiness.state) {
-    case "blocked_spec_validation":
-      return {
-        icon: <AlertTriangleIcon className="size-5 text-destructive" />,
-        text: normalizeLifecycleText(readiness.summary),
-        actionLabel: "Verify draft",
-        variant: "destructive",
-      };
-    case "needs_spec_validation":
-      return {
-        icon: <ShieldCheckIcon className="size-5 text-primary" />,
-        text: normalizeLifecycleText(readiness.summary),
-        actionLabel: "Verify draft",
-        variant: "secondary",
-      };
-    case "needs_package_resources":
-      return {
-        icon: <GitBranchIcon className="size-5 text-primary" />,
-        text: readiness.summary,
-        actionLabel: "Finish package",
-        variant: "secondary",
-      };
-    case "needs_evals":
-      return {
-        icon: <FlaskConicalIcon className="size-5 text-primary" />,
-        text: readiness.summary,
-        actionLabel: "Generate evals",
-        variant: "default",
-      };
-    case "needs_unit_tests":
-      return {
-        icon: <ListChecksIcon className="size-5 text-primary" />,
-        text: readiness.summary,
-        actionLabel: "Generate unit tests",
-        variant: "default",
-      };
-    case "needs_routing_replay":
-      return {
-        icon: <RefreshCwIcon className="size-5 text-primary" />,
-        text: readiness.summary,
-        actionLabel: "Replay package",
-        variant: "secondary",
-      };
-    case "needs_baseline":
-      return {
-        icon: <BarChart3Icon className="size-5 text-primary" />,
-        text: readiness.summary,
-        actionLabel: "Measure baseline",
-        variant: "secondary",
-      };
-    case "ready_to_publish":
-      return {
-        icon: <RocketIcon className="size-5 text-primary" />,
-        text: readiness.summary,
-        actionLabel: "Publish draft",
-        variant: "outline",
-      };
-  }
-}
-
-function deriveProposalAction(
-  evolution: EvolutionEntry[],
-  proposalId: string,
-): SkillReportNextAction {
-  const proposalEntries = evolution
-    .filter((entry) => entry.proposal_id === proposalId)
-    .sort((a, b) => (a.timestamp ?? "").localeCompare(b.timestamp ?? ""));
-  const latest = proposalEntries.at(-1);
-
-  switch (latest?.action) {
-    case "validated":
-      return {
-        icon: <ArrowRightIcon className="size-5 text-primary" />,
-        text: "This proposal validated successfully. Review the evidence and deploy if it still looks right.",
-        actionLabel: "Ship candidate",
-        variant: "default",
-      };
-    case "created":
-      return {
-        icon: <GitBranchIcon className="size-5 text-primary" />,
-        text: "This proposal has been generated and is ready for review. Inspect the evidence before deploying anything.",
-        actionLabel: "Review proposal",
-        variant: "default",
-      };
-    case "deployed":
-      return {
-        icon: <EyeIcon className="size-5 text-primary" />,
-        text: "This proposal has already been deployed. Review the evidence trail and keep watching live behavior.",
-        actionLabel: "Monitor live",
-        variant: "outline",
-      };
-    case "rolled_back":
-      return {
-        icon: <AlertTriangleIcon className="size-5 text-destructive" />,
-        text: "This proposal was rolled back. Review the evidence trail before trying another change.",
-        actionLabel: "Inspect rollback",
-        variant: "destructive",
-      };
-    case "rejected":
-      return {
-        icon: <AlertTriangleIcon className="size-5 text-destructive" />,
-        text: "This proposal was rejected by validation. Review the failure evidence before retrying.",
-        actionLabel: "Review rejection",
-        variant: "destructive",
-      };
-    default:
-      return {
-        icon: <GitBranchIcon className="size-5 text-primary" />,
-        text: "Review the selected proposal and its evidence trail.",
-        actionLabel: "Review proposal",
-        variant: "default",
-      };
   }
 }
 
@@ -746,95 +565,6 @@ export function getDraftPackageActions(): Array<{
   ];
 }
 
-/* ─── Next best action logic ──────────────────────────── */
-
-function deriveNextAction(
-  trustState: TrustState,
-  missRate: number | null | undefined,
-  systemLikeRate: number | null | undefined,
-  hasPendingProposals: boolean,
-  _hasEvolution: boolean,
-): SkillReportNextAction {
-  if (trustState === "low_sample") {
-    return {
-      icon: <EyeIcon className="size-5" />,
-      text: "Keep observing. This skill needs more sessions before trust can be assessed.",
-      actionLabel: "Keep observing",
-      variant: "secondary",
-    };
-  }
-  if (trustState === "rolled_back") {
-    return {
-      icon: <AlertTriangleIcon className="size-5 text-destructive" />,
-      text: "Inspect rollback evidence before re-deploying.",
-      actionLabel: "Inspect rollback",
-      variant: "destructive",
-    };
-  }
-  if (trustState === "watch" && (systemLikeRate ?? 0) > 0.05) {
-    return {
-      icon: <AlertTriangleIcon className="size-5 text-warning" />,
-      text: "Clean source-truth data or routing data before trusting this report.",
-      actionLabel: "Clean data",
-      variant: "secondary",
-    };
-  }
-  if (trustState === "watch" && (missRate ?? 0) > 0) {
-    return {
-      icon: <SearchIcon className="size-5 text-warning" />,
-      text: "Generate evals to investigate missed triggers.",
-      actionLabel: "Generate evals",
-      variant: "secondary",
-    };
-  }
-  if (trustState === "watch") {
-    return {
-      icon: <EyeIcon className="size-5 text-warning" />,
-      text: "This skill is under active observation. Review recent invocations to verify routing accuracy.",
-      actionLabel: "Review invocations",
-      variant: "secondary",
-    };
-  }
-  if (hasPendingProposals) {
-    return {
-      icon: <GitBranchIcon className="size-5 text-primary" />,
-      text: "Review pending proposal.",
-      actionLabel: "Review proposal",
-      variant: "default",
-    };
-  }
-  if (trustState === "validated") {
-    return {
-      icon: <ArrowRightIcon className="size-5 text-primary" />,
-      text: "Deploy the validated candidate.",
-      actionLabel: "Deploy candidate",
-      variant: "default",
-    };
-  }
-  if (trustState === "deployed") {
-    return {
-      icon: <ShieldCheckIcon className="size-5 text-primary" />,
-      text: "No action needed. Skill is healthy and being monitored.",
-      actionLabel: "Healthy",
-      variant: "outline",
-    };
-  }
-  if (trustState === "observed") {
-    return {
-      icon: <EyeIcon className="size-5 text-muted-foreground" />,
-      text: "No action needed. Selftune is still observing this skill and building confidence from real usage.",
-      actionLabel: "Observed",
-      variant: "outline",
-    };
-  }
-  return {
-    icon: <EyeIcon className="size-5" />,
-    text: "Continue monitoring this skill.",
-    actionLabel: "Monitor",
-    variant: "outline",
-  };
-}
-
 /* ─── Package frontier state ────────────────────────────── */
 
 function FrontierStateSection({
@@ -1084,14 +814,13 @@ function FrontierStateSection({
 }
 
 /* ═══════════════════════════════════════════════════════════
-   SkillReport — trust-first skill report page
+   SkillReport — local activity, files, and installations
    ═══════════════════════════════════════════════════════════ */
 
 export function SkillReport() {
   const { name } = useParams<{ name: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data, isPending, isError, error, refetch } = useSkillReport(name);
-  const [activeTab, setActiveTab] = useState<SkillReportTab>("invocations");
 
   // Derive proposal state from data (safe to compute even when data is null)
   const evolution = data?.evolution ?? [];
@@ -1120,18 +849,14 @@ export function SkillReport() {
   };
 
   // Trust fields from extended SkillReportResponse
-  const trust = data?.trust;
   const coverage = data?.coverage;
   const evidenceQuality = data?.evidence_quality;
-  const routingQuality = data?.routing_quality;
-  const evolutionState = data?.evolution_state;
   const dataHygiene = data?.data_hygiene;
   const examples = data?.examples;
   const rawChecks = dataHygiene?.raw_checks ?? coverage?.checks ?? data?.usage.total_checks ?? 0;
   const operationalChecks =
     dataHygiene?.operational_checks ?? coverage?.checks ?? data?.usage.total_checks ?? 0;
   const excludedChecks = Math.max(rawChecks - operationalChecks, 0);
-  const hasEvolutionData = (evolutionState?.evolution_rows ?? evolution.length) > 0;
   const testingReadiness = data?.testing_readiness ?? null;
   const createReadiness = data?.create_readiness ?? null;
   const frontierState = data?.frontier_state ?? null;
@@ -1142,11 +867,6 @@ export function SkillReport() {
     null;
   const showDraftPackageSection =
     createReadiness != null && testingReadiness?.next_step !== "watch_deployment";
-  const defaultTab: SkillReportTab = hasEvolutionData ? "evidence" : "invocations";
-
-  useEffect(() => {
-    setActiveTab(defaultTab);
-  }, [defaultTab]);
 
   // Filtered invocations for the invocations tab
   const mergedInvocations = useMemo(() => {
@@ -1194,15 +914,35 @@ export function SkillReport() {
 
   if (isError) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 py-16">
-        <AlertCircleIcon className="size-10 text-destructive" />
-        <p className="text-sm font-medium text-destructive">
-          {error instanceof Error ? error.message : "Unknown error"}
-        </p>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCwIcon className="mr-2 size-3.5" />
-          Retry
-        </Button>
+      <div className="@container/main flex flex-1 flex-col gap-5 p-4 lg:p-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            nativeButton={false}
+            role="link"
+            render={<Link to="/skills" />}
+          >
+            <ArrowLeftIcon data-icon="inline-start" />
+            Back to Skills
+          </Button>
+          <h1 className="font-headline text-lg font-semibold">{name}</h1>
+        </div>
+        <Alert>
+          <AlertCircleIcon />
+          <AlertTitle>Report unavailable</AlertTitle>
+          <AlertDescription>
+            <p>
+              We couldn’t load this skill’s report. Retry, or return to Skills to check its
+              installation.
+            </p>
+            <p>{error instanceof Error ? error.message : "The report request failed."}</p>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              <RefreshCwIcon data-icon="inline-start" />
+              Retry report
+            </Button>
+          </AlertDescription>
+        </Alert>
       </div>
     );
   }
@@ -1215,265 +955,102 @@ export function SkillReport() {
     );
   }
 
-  const isNotFound =
-    (coverage?.checks ?? data.usage.total_checks) === 0 &&
-    data.evidence.length === 0 &&
-    data.evolution.length === 0 &&
-    (data.canonical_invocations?.length ?? 0) === 0 &&
-    createReadiness == null;
-
-  if (isNotFound) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 py-16">
-        <p className="text-sm text-muted-foreground">No data found for skill "{name}".</p>
-        <Button variant="outline" size="sm" nativeButton={false} render={<Link to="/" />}>
-          <ArrowLeftIcon className="mr-2 size-3.5" />
-          Back to Overview
-        </Button>
-      </div>
-    );
-  }
-
-  const trustState = trust?.state ?? "low_sample";
-
-  const trustDrivenAction = deriveNextAction(
-    trustState,
-    routingQuality?.miss_rate,
-    evidenceQuality?.system_like_rate,
-    evolutionState?.has_pending_proposals ?? data.pending_proposals.length > 0,
-    hasEvolutionData,
-  );
-  const proposalDrivenAction =
-    proposalFocus && activeProposal ? deriveProposalAction(evolution, activeProposal) : null;
-  const nextAction =
-    proposalDrivenAction ??
-    (proposalFocus
-      ? trustDrivenAction
-      : showDraftPackageSection && createReadiness
-        ? deriveCreateAction(createReadiness)
-        : trustState === "rolled_back" ||
-            !testingReadiness ||
-            testingReadiness.next_step === "watch_deployment"
-          ? trustDrivenAction
-          : deriveTestingAction(testingReadiness));
-
   return (
-    <SkillReportScaffold
+    <LocalSkillReport
+      key={name}
+      name={data.skill_name}
       backLink={
-        <Button
-          variant="outline"
-          size="sm"
-          nativeButton={false}
-          render={<Link to="/" />}
-          className="shrink-0"
-        >
-          <ArrowLeftIcon className="size-3.5" />
-        </Button>
+        <Link to="/skills" className="flex w-fit items-center gap-2 text-sm text-muted-foreground">
+          <ArrowLeftIcon className="size-4" />
+          Skills
+        </Link>
       }
-      title={data.skill_name}
-      statusBadge={<SkillReportTrustBadge state={trustState} />}
-      toolbarMeta={
+      checks={operationalChecks}
+      sessions={coverage?.sessions ?? data.sessions_with_skill}
+      workspaces={coverage?.workspaces}
+      lastSeen={coverage?.last_seen}
+      initialTab={proposalFocus ? "history" : "overview"}
+      activity={(skill) => (
+        <SkillReportRecentActivity
+          locations={skill?.locations}
+          invocations={mergedInvocations}
+          sessionMetadata={data.session_metadata ?? []}
+          callout={
+            <p className="text-sm text-muted-foreground">
+              Recorded skill use is not a measure of task success.{" "}
+              {excludedChecks > 0 ? `${excludedChecks} internal or legacy rows are excluded.` : ""}
+            </p>
+          }
+        />
+      )}
+      files={
+        resolvedSkillPath ? (
+          <SkillPackageInspector key={resolvedSkillPath} skillPath={resolvedSkillPath} />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No local package path is available for this skill.
+          </p>
+        )
+      }
+      history={
         <>
-          <div className="hidden @xl/main:flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="tabular-nums">
-              <strong className="text-foreground">
-                {coverage?.checks ?? data.usage.total_checks}
-              </strong>{" "}
-              checks
-            </span>
-            <span className="text-border">|</span>
-            <span className="tabular-nums">
-              <strong className="text-foreground">
-                {coverage?.sessions ?? data.sessions_with_skill}
-              </strong>{" "}
-              sessions
-            </span>
-            <span className="text-border">|</span>
-            <span className="tabular-nums">
-              <strong className="text-foreground">{coverage?.workspaces ?? "No data"}</strong>{" "}
-              workspaces
-            </span>
-          </div>
-          {coverage?.first_seen || coverage?.last_seen ? (
-            <div className="hidden @3xl/main:flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
-              {coverage?.first_seen ? (
-                <span title="First seen">{timeAgo(coverage.first_seen)}</span>
-              ) : null}
-              {coverage?.first_seen && coverage?.last_seen ? <span>-</span> : null}
-              {coverage?.last_seen ? (
-                <span title="Last seen">{timeAgo(coverage.last_seen)}</span>
-              ) : null}
-            </div>
-          ) : null}
+          {resolvedSkillPath && (
+            <SkillHistory key={resolvedSkillPath} skillPath={resolvedSkillPath} />
+          )}
+          <SkillReportEvidenceTabContent
+            examples={examples}
+            evolution={evolution}
+            activeProposal={activeProposal}
+            onSelect={handleSelectProposal}
+            evidence={data.evidence}
+            viewerProposalId={activeProposal ?? ""}
+            showViewer={Boolean(activeProposal)}
+            emptyState={
+              <p className="text-sm text-muted-foreground">
+                No reviewable improvement evidence recorded.
+              </p>
+            }
+          />
         </>
       }
-      summary={
-        trust?.summary ? (
-          <>
-            <div className="flex flex-wrap items-center gap-3">
-              <span>{trust.summary}</span>
-              {evolutionState?.latest_action && evolutionState?.latest_timestamp ? (
-                <span className="font-mono text-[11px] text-muted-foreground/70">
-                  Latest: {evolutionState.latest_action} ({timeAgo(evolutionState.latest_timestamp)}
-                  )
-                </span>
-              ) : null}
-            </div>
-            {excludedChecks > 0 ? (
-              <div className="text-[12px] text-muted-foreground/80">
-                Based on <span className="font-medium text-foreground">{operationalChecks}</span>{" "}
-                real checks. <span className="font-medium text-foreground">{excludedChecks}</span>{" "}
-                internal or legacy rows are excluded from trust scoring.
-              </div>
-            ) : null}
-          </>
-        ) : undefined
-      }
-      showOnboardingBanner={!proposalFocus}
-      guideButtonLabel="How this works"
-      nextAction={nextAction}
-      trustState={trustState}
-      coverage={coverage}
-      evidenceQuality={evidenceQuality}
-      routingQuality={routingQuality}
-      evolutionState={evolutionState}
-      dataHygiene={dataHygiene}
-      fallbackChecks={data.usage.total_checks}
-      fallbackSessions={data.sessions_with_skill}
-      fallbackEvidenceRows={data.evidence.length}
-      fallbackEvolutionRows={evolution.length}
-      fallbackLatestAction={evolution[0]?.action}
-      nextActionText={nextAction.text}
-    >
-      {!proposalFocus ? (
-        showDraftPackageSection && createReadiness ? (
-          <DraftPackageSection readiness={createReadiness} skillName={data.skill_name} />
-        ) : (
-          <CreatorLoopSection
-            readiness={testingReadiness}
-            skillPath={resolvedSkillPath}
-            skillName={data.skill_name}
-            watchTrustScore={data.watch_trust_score}
-          />
-        )
-      ) : null}
-
-      {!proposalFocus ? <FrontierStateSection frontierState={frontierState} /> : null}
-
-      <SkillReportTabs
-        value={activeTab}
-        onValueChange={(value) => {
-          if (
-            value === "evidence" ||
-            value === "missed" ||
-            value === "invocations" ||
-            value === "data-quality"
-          ) {
-            setActiveTab(value);
-          }
-        }}
-        tabs={[
-          {
-            value: "evidence",
-            label: "Evidence",
-            tooltip: "Change history and validation results",
-            hidden: !hasEvolutionData,
-            contentClassName: "space-y-6",
-            content: (
-              <>
-                <SkillReportEvidenceTabContent
-                  examples={examples}
-                  evolution={evolution}
-                  activeProposal={activeProposal}
-                  onSelect={handleSelectProposal}
-                  evidence={data.evidence}
-                  viewerProposalId={activeProposal ?? ""}
-                  showViewer={Boolean(activeProposal)}
-                  emptyState={
-                    <Card className="rounded-2xl">
-                      <CardContent className="py-12">
-                        <div className="flex flex-col items-center justify-center gap-3 text-center">
-                          <EyeIcon className="size-8 text-muted-foreground/40" />
-                          <p className="text-sm text-muted-foreground">
-                            This skill is being observed but has no reviewable evolution evidence
-                            yet.
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  }
+      testing={
+        <>
+          <SkillEvaluations skillName={data.skill_name} />
+          <details className="rounded-lg border p-4">
+            <summary className="cursor-pointer font-medium">Test setup and actions</summary>
+            <div className="pt-4">
+              {showDraftPackageSection && createReadiness ? (
+                <DraftPackageSection readiness={createReadiness} skillName={data.skill_name} />
+              ) : (
+                <CreatorLoopSection
+                  readiness={testingReadiness}
+                  skillPath={resolvedSkillPath}
+                  skillName={data.skill_name}
+                  watchTrustScore={data.watch_trust_score}
                 />
-              </>
-            ),
-          },
-          {
-            value: "invocations",
-            label: "Invocations",
-            tooltip:
-              "Real usage and repaired misses only. Internal selftune traffic and legacy residue are excluded from this working set.",
-            badge: (
-              <Badge variant="secondary" className="ml-1.5 text-[10px]">
-                {mergedInvocations.length}
-              </Badge>
-            ),
-            content: (
-              <SkillReportInvocationsSection
-                invocations={mergedInvocations}
-                sessionMetadata={data?.session_metadata ?? []}
-                callout={
-                  excludedChecks > 0 ? (
-                    <div className="rounded-xl border border-border/10 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-                      Showing{" "}
-                      <span className="font-medium text-foreground">
-                        {mergedInvocations.length}
-                      </span>{" "}
-                      operational invocations.{" "}
-                      <span className="font-medium text-foreground">{excludedChecks}</span> internal
-                      or legacy rows are tracked in Data Quality instead of being mixed into this
-                      working set.
-                    </div>
-                  ) : undefined
-                }
-              />
-            ),
-          },
-          {
-            value: "missed",
-            label: "Missed Queries",
-            hidden: (examples?.missed.length ?? 0) === 0,
-            tooltip: "Queries that look like missed triggers from real usage.",
-            badge:
-              (examples?.missed.length ?? 0) > 0 ? (
-                <Badge variant="secondary" className="ml-1.5 text-[10px]">
-                  {examples?.missed.length ?? 0}
-                </Badge>
-              ) : undefined,
-            contentClassName: "pt-2",
-            content: (
-              <SkillReportMissedQueriesSection
-                rows={(examples?.missed ?? []).map((example, index) => ({
-                  id: `${example.session_id}:${example.timestamp ?? index}`,
-                  query: example.query_text,
-                  confidence: example.confidence,
-                  source: example.source ?? example.platform ?? null,
-                  createdAt: example.timestamp ?? "",
-                }))}
-              />
-            ),
-          },
-          {
-            value: "data-quality",
-            label: "Data Quality",
-            tooltip: "Evidence quality metrics and data hygiene",
-            content: (
-              <SkillReportDataQualityTabContent
-                evidenceQuality={evidenceQuality}
-                dataHygiene={dataHygiene}
-              />
-            ),
-          },
-        ]}
-      />
-    </SkillReportScaffold>
+              )}
+              <FrontierStateSection frontierState={frontierState} />
+            </div>
+          </details>
+        </>
+      }
+      diagnostics={
+        <>
+          <SkillReportDataQualityTabContent
+            evidenceQuality={evidenceQuality}
+            dataHygiene={dataHygiene}
+          />
+          <SkillReportMissedQueriesSection
+            rows={(examples?.missed ?? []).map((example, index) => ({
+              id: `${example.session_id}:${example.timestamp ?? index}`,
+              query: example.query_text,
+              confidence: example.confidence,
+              source: example.source ?? example.platform ?? null,
+              createdAt: example.timestamp ?? "",
+            }))}
+          />
+        </>
+      }
+    />
   );
 }

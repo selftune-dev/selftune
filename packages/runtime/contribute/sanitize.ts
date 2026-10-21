@@ -19,7 +19,7 @@ import {
   SECRET_PATTERNS,
 } from "../constants.js";
 import { ContributionBundle } from "../types.js";
-import { Schema } from "effect";
+import { preservingDecoder } from "../utils/preserving-schema.js";
 
 // UUID v4 pattern for session ID redaction
 const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
@@ -206,9 +206,7 @@ export function sanitizeBundle(
   }
 
   // Defense-in-depth: recursively redact any secrets that slipped through field-level sanitization
-  return Schema.decodeUnknownSync(ContributionBundle)(redactSecretsDeep(fieldSanitized), {
-    onExcessProperty: "preserve",
-  });
+  return preservingDecoder(ContributionBundle)(redactSecretsDeep(fieldSanitized));
 }
 
 // ---------------------------------------------------------------------------

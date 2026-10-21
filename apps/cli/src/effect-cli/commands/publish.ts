@@ -104,11 +104,11 @@ export function makePublishCommand(action: PublishAction = runPublishAction) {
   return Command.make(
     "publish",
     {
-      internalHelp: Flag.boolean(PUBLISH_INTERNAL_HELP_FLAG),
-      internalWatch: Flag.boolean(PUBLISH_INTERNAL_WATCH_FLAG),
-      skillPath: Flag.string("skill-path").pipe(Flag.optional),
-      ignoreWatchAlerts: Flag.boolean("ignore-watch-alerts"),
-      json: Flag.boolean("json"),
+      internalHelp: Flag.Boolean(PUBLISH_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false)),
+      internalWatch: Flag.Boolean(PUBLISH_INTERNAL_WATCH_FLAG).pipe(Flag.withDefault(false)),
+      skillPath: Flag.String("skill-path").pipe(Flag.optional),
+      ignoreWatchAlerts: Flag.Boolean("ignore-watch-alerts").pipe(Flag.withDefault(false)),
+      json: Flag.Boolean("json").pipe(Flag.withDefault(false)),
     },
     (input) => {
       if (input.internalHelp) return Console.log(PUBLISH_HELP);

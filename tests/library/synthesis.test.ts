@@ -238,6 +238,9 @@ describe("local synthesis lifecycle", () => {
       const evals = Schema.decodeUnknownSync(
         Schema.fromJsonString(Schema.Array(GeneratedEvalCase)),
       )(readFileSync(join(skillDir, "evals", "generated.json"), "utf8"));
+      expect(evals.every((item) => item.kind === "positive" || item.kind === "execution")).toBe(
+        true,
+      );
       expect(
         evals
           .filter((item) => item.expectedSkillNames.length > 0)
@@ -257,6 +260,7 @@ describe("local synthesis lifecycle", () => {
         ),
       )(readFileSync(join(skillDir, "evals", "release.json"), "utf8"));
       expect(releaseEvals.some((item) => item.selftune_provenance.held_out)).toBe(true);
+      expect(releaseEvals.every((item) => item.selftune_provenance.held_out)).toBe(true);
       expect(
         releaseEvals
           .flatMap((item) => item.selftune_provenance.source_session_ids)

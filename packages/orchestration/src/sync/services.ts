@@ -10,7 +10,7 @@ import type {
   SyncResult,
 } from "./model.js";
 
-export class SyncInternalFailure extends Schema.TaggedErrorClass<SyncInternalFailure>()(
+export class SyncInternalFailure extends Schema.TaggedError<SyncInternalFailure>()(
   "SyncInternalFailure",
   {
     operation: Schema.String,

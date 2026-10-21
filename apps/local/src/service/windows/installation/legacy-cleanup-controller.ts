@@ -37,7 +37,7 @@ export type WindowsServiceLegacyCleanupInspection =
       readonly task: { readonly registered: boolean; readonly running: boolean };
     };
 
-export class WindowsServiceLegacyCleanupControllerError extends Schema.TaggedErrorClass<WindowsServiceLegacyCleanupControllerError>()(
+export class WindowsServiceLegacyCleanupControllerError extends Schema.TaggedError<WindowsServiceLegacyCleanupControllerError>()(
   "WindowsServiceLegacyCleanupControllerError",
   {
     message: Schema.String,

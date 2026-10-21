@@ -76,33 +76,37 @@ export function makeRecoverCommand(action: RecoverAction = runRecoverAction) {
   return Command.make(
     "recover",
     {
-      internalHelp: Flag.boolean(RECOVER_INTERNAL_HELP_FLAG),
-      full: Flag.boolean("full").pipe(Flag.withDescription("Rebuild SQLite tables from scratch")),
-      force: Flag.boolean("force").pipe(
-        Flag.withDescription("Skip the preflight guard for SQLite-only rows"),
-      ),
-      since: Flag.string("since").pipe(
+      internalHelp: Flag.Boolean(RECOVER_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false)),
+      full: Flag.Boolean("full")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Rebuild SQLite tables from scratch")),
+      force: Flag.Boolean("force")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Skip the preflight guard for SQLite-only rows")),
+      since: Flag.String("since").pipe(
         Flag.withDescription("Incrementally materialize records on or after this date"),
         Flag.optional,
       ),
-      json: Flag.boolean("json").pipe(Flag.withDescription("Output a JSON summary")),
-      canonicalLog: Flag.string("canonical-log").pipe(
+      json: Flag.Boolean("json")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Output a JSON summary")),
+      canonicalLog: Flag.String("canonical-log").pipe(
         Flag.withDescription("Canonical JSONL path"),
         Flag.withDefault(CANONICAL_LOG),
       ),
-      telemetryLog: Flag.string("telemetry-log").pipe(
+      telemetryLog: Flag.String("telemetry-log").pipe(
         Flag.withDescription("Session telemetry JSONL path"),
         Flag.withDefault(TELEMETRY_LOG),
       ),
-      evolutionAuditLog: Flag.string("evolution-audit-log").pipe(
+      evolutionAuditLog: Flag.String("evolution-audit-log").pipe(
         Flag.withDescription("Evolution audit JSONL path"),
         Flag.withDefault(EVOLUTION_AUDIT_LOG),
       ),
-      evolutionEvidenceLog: Flag.string("evolution-evidence-log").pipe(
+      evolutionEvidenceLog: Flag.String("evolution-evidence-log").pipe(
         Flag.withDescription("Evolution evidence JSONL path"),
         Flag.withDefault(EVOLUTION_EVIDENCE_LOG),
       ),
-      orchestrateRunLog: Flag.string("orchestrate-run-log").pipe(
+      orchestrateRunLog: Flag.String("orchestrate-run-log").pipe(
         Flag.withDescription("Orchestrate runs JSONL path"),
         Flag.withDefault(ORCHESTRATE_RUN_LOG),
       ),

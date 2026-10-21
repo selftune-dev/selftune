@@ -98,7 +98,7 @@ export class WindowsRuntimeRecoveryProvider extends Context.Service<
   WindowsRuntimeRecovery
 >()("SelfTune/WindowsRuntimeRecovery") {}
 
-export class ServiceFailure extends Schema.TaggedErrorClass<ServiceFailure>()("ServiceFailure", {
+export class ServiceFailure extends Schema.TaggedError<ServiceFailure>()("ServiceFailure", {
   operation: Schema.String,
   message: Schema.String,
 }) {}

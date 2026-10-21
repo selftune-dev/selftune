@@ -14,6 +14,7 @@
   "exports": {
     ".": "./index.ts",
     "./host": "./src/host/index.ts",
+    "./host/capabilities": "./src/host/capabilities.ts",
     "./models": "./src/models/index.ts",
     "./routes": "./src/routes/index.ts",
     "./chrome": "./src/chrome/index.ts",

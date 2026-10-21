@@ -6,6 +6,7 @@ import {
   applySkillSourceUpdate,
   backupLibrarySkill,
   fetchLibrary,
+  fetchLibraryIndex,
   installLibrarySkill,
   shareLibrarySkill,
   prepareSkillSourceMerge,
@@ -19,11 +20,23 @@ import {
   useSSEConnected,
 } from "../lib/reactivity";
 
-export function useLibrary() {
+export function useLibrary(options: { enabled?: boolean } = {}) {
   const sseConnected = useSSEConnected();
   return useQuery({
-    queryKey: ["library"],
-    queryFn: fetchLibrary,
+    queryKey: ["library", "full"],
+    queryFn: () => fetchLibrary(),
+    enabled: options.enabled,
+    staleTime: 10_000,
+    refetchInterval: sseConnected ? false : 60_000,
+  });
+}
+
+export function useLibraryIndex(search: string, enabled: boolean) {
+  const sseConnected = useSSEConnected();
+  return useQuery({
+    queryKey: ["library", "index", search],
+    queryFn: ({ signal }) => fetchLibraryIndex(search, signal),
+    enabled,
     staleTime: 10_000,
     refetchInterval: sseConnected ? false : 60_000,
   });

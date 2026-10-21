@@ -5,7 +5,7 @@
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { Database } from "bun:sqlite";
+import { Database } from "bun:sqlite";
 
 import { openDb } from "@selftune/local-store";
 import * as Schema from "effect/Schema";
@@ -23,6 +23,38 @@ async function computeReport(
   db: Database,
 ) {
   const storagePaths = options.storagePaths;
+  if (report === "analytics") {
+    const { handleAnalytics } = await import("./routes/analytics.js");
+    const response = handleAnalytics(db);
+    return { status: response.status, body: await response.text() };
+  }
+  if (report === "shell") {
+    if (!options.shell) throw new Error("Shell worker requires a version");
+    const { handleDashboardShell } = await import("./routes/overview.js");
+    const response = handleDashboardShell(db, options.shell.version);
+    return { status: response.status, body: await response.text() };
+  }
+  if (report === "skill-report") {
+    if (!options.skillReport) throw new Error("Skill report worker requires a selected skill");
+    const { handleSkillReport } = await import("./routes/skill-report.js");
+    const response = handleSkillReport(
+      db,
+      options.skillReport.skillName,
+      new URLSearchParams(options.skillReport.search),
+    );
+    return { status: response.status, body: await response.text() };
+  }
+  if (report === "overview") {
+    if (!options.overview)
+      throw new Error("Overview worker requires version and pagination options");
+    const { handleOverview } = await import("./routes/overview.js");
+    const response = handleOverview(
+      db,
+      options.overview.version,
+      new URLSearchParams(options.overview.search),
+    );
+    return { status: response.status, body: await response.text() };
+  }
   const workerOptions = {
     ...options,
     configRoot: storagePaths.configRoot,
@@ -79,7 +111,13 @@ async function main(): Promise<void> {
   const options = Schema.decodeUnknownSync(
     Schema.fromJsonString(ResolvedReportComputeOptionsSchema),
   )(optionsJson);
-  const db = openDb(options.storagePaths.localDatabasePath);
+  const db =
+    report === "overview" ||
+    report === "skill-report" ||
+    report === "shell" ||
+    report === "analytics"
+      ? new Database(options.storagePaths.localDatabasePath, { readonly: true })
+      : openDb(options.storagePaths.localDatabasePath);
   try {
     const result = await computeReport(report, options, db);
     mkdirSync(dirname(outPath), { recursive: true });

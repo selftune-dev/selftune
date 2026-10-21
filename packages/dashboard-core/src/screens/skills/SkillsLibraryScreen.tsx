@@ -1,6 +1,9 @@
 "use client";
+import { isInteractiveTableTarget } from "./table-interaction";
+import { useLibraryPage } from "./LibraryPagination";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useLibraryRows } from "./SkillsLibraryRows";
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
@@ -28,6 +31,8 @@ import type {
   LibraryUpdateStatus,
 } from "../../models";
 import { SkillDetail } from "./SkillDetail";
+import { InstalledSkillHistory } from "./InstalledSkillHistory";
+import { InstalledSkillPackage } from "./InstalledSkillPackage";
 import { CorrectionStudyReviewPanel } from "./CorrectionStudyReviewPanel";
 import { LibrarySourceControl } from "./LibrarySourceControl";
 import { ShareSkillDialog } from "./ShareSkillDialog";
@@ -52,7 +57,6 @@ import {
 import { initialReviewFilter, type ReviewFilter } from "./SkillsLibraryRecommendationFilter";
 import {
   SortableTableHead,
-  sortSkills,
   sourceLabel,
   type SortColumn,
   type SortState,
@@ -109,13 +113,6 @@ const UPDATE_LABELS = {
   untracked: "Not tracked",
 } satisfies Record<LibraryUpdateStatus, string>;
 
-function isInteractiveTableTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof Element &&
-    target.closest("a, button, input, textarea, select, [role=combobox], [role=menuitem]") !== null
-  );
-}
-
 function AvailableSkillsLibrary({
   library,
   consolidationRollback,
@@ -129,21 +126,22 @@ function AvailableSkillsLibrary({
   decisionsHref: string;
   host: DashboardHostKind;
 }) {
-  const inventory = library.useInventory();
+  const [search, setSearch] = useState("");
+  const [review, setReview] = useState<ReviewFilter>(initialReviewFilter);
+  const inventory = library.useInventory({ search, full: review !== "all" });
   const actions = library.useActions();
   const updateCategoryAction = actions.updateCategory;
   const restoreAction = actions.restore;
   const removeAction = actions.remove;
   const archiveAction = actions.archive;
   const consolidateAction = actions.consolidate;
-  const [search, setSearch] = useState("");
   const [lifecycle, setLifecycle] = useState<InventoryFilter>(initialInventoryFilter);
-  const [review, setReview] = useState<ReviewFilter>(initialReviewFilter);
   const [reviewSelectionApplied, setReviewSelectionApplied] = useState(false);
   const [category, setCategory] = useState("all");
   const [source, setSource] = useState<SourceFilter>("all");
   const [connection, setConnection] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<LibrarySkillModel | null>(null);
   const [sort, setSort] = useState<SortState | null>(null);
   const [sourceUpdate, setSourceUpdate] = useState<LibrarySourceUpdateModel | null>(null);
   const [updateReceipt, setUpdateReceipt] = useState<LibraryUpdateReceiptModel | null>(null);
@@ -166,39 +164,20 @@ function AvailableSkillsLibrary({
     }
   };
 
-  const skills = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    const filtered = (inventory.data?.skills ?? []).filter((skill) => {
-      if (review === "archive" && !skill.archiveRecommendation) return false;
-      if (review === "consolidate" && !skill.consolidationRecommendation) return false;
-      if (lifecycle !== "all" && skill.lifecycle !== lifecycle) return false;
-      if (category !== "all" && skill.category?.id !== category) return false;
-      if (source !== "all" && !skill.sources.some((item) => item.kind === source)) return false;
-      if (
-        connection !== "all" &&
-        !skill.locations.some((location) => location.connection === connection)
-      ) {
-        return false;
-      }
-      if (!query) return true;
-      return [
-        skill.name,
-        skill.category?.label ?? "",
-        ...(skill.category?.matchedTerms ?? []),
-        skill.status,
-        ...skill.sources.map((item) => item.label),
-        ...skill.locations.flatMap((location) => [
-          location.label,
-          location.path,
-          location.connection ?? "",
-        ]),
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(query);
-    });
-    return sort ? sortSkills(filtered, sort) : filtered;
-  }, [category, connection, inventory.data, lifecycle, review, search, sort, source]);
+  const { skills, connections, consolidationSkills, archiveRecommendationCount } = useLibraryRows({
+    inventory,
+    search,
+    category,
+    connection,
+    lifecycle,
+    review,
+    sort,
+    source,
+  });
+  const { visibleSkills, pagination } = useLibraryPage(
+    skills,
+    JSON.stringify([category, connection, lifecycle, review, search, sort, source]),
+  );
 
   const toggleSort = (column: SortColumn) => {
     setSort((current) =>
@@ -208,29 +187,13 @@ function AvailableSkillsLibrary({
     );
   };
 
-  const connections = useMemo(
-    () =>
-      [
-        ...new Set(
-          (inventory.data?.skills ?? []).flatMap((skill) =>
-            skill.locations.flatMap((location) =>
-              location.connection ? [location.connection] : [],
-            ),
-          ),
-        ),
-      ].toSorted(),
-    [inventory.data],
-  );
-  const consolidationSkills = useMemo(
-    () => (inventory.data?.skills ?? []).filter((skill) => skill.consolidationRecommendation),
-    [inventory.data],
-  );
-  const archiveRecommendationCount = useMemo(
-    () => (inventory.data?.skills ?? []).filter((skill) => skill.archiveRecommendation).length,
-    [inventory.data],
-  );
-
-  const selected = inventory.data?.skills.find((skill) => skill.id === selectedId) ?? null;
+  const currentSelection = inventory.data?.skills.find((skill) => skill.id === selectedId);
+  const selected =
+    selectedId === null
+      ? null
+      : currentSelection?.detailsLoaded === false || !currentSelection
+        ? selectedDetail
+        : currentSelection;
   const hasCategories = Boolean(inventory.data?.categoryOptions.length);
   const blockedCount = (inventory.data?.skills ?? []).filter(
     (skill) => skill.primaryAction?.kind === "fix",
@@ -246,21 +209,40 @@ function AvailableSkillsLibrary({
       setActionError(error instanceof Error ? error.message : String(error));
     }
   };
-  const openSkill = (skill: LibrarySkillModel, previewUpdate = false) => {
-    setSelectedId(skill.id);
-    setSourceUpdate(null);
-    setUpdateReceipt(null);
-    setMerge(null);
+  const hydrate = async (skill: LibrarySkillModel) =>
+    inventory.loadDetails ? inventory.loadDetails(skill.id) : skill;
+  const reviewSkill = async (
+    skill: LibrarySkillModel,
+    show: (skill: LibrarySkillModel) => void,
+  ) => {
     setActionError(null);
-    setRemovalDecision(null);
-    if (previewUpdate && actions.previewSourceUpdate.access === "available") {
-      void run(actions.previewSourceUpdate.execute(skill.id), setSourceUpdate);
+    if (skill.detailsLoaded !== false) {
+      show(skill);
+      return;
+    }
+    try {
+      show(await hydrate(skill));
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
     }
   };
+  const openSkill = (skill: LibrarySkillModel, previewUpdate = false) =>
+    void reviewSkill(skill, (detail) => {
+      setSelectedDetail(detail);
+      setSelectedId(skill.id);
+      setSourceUpdate(null);
+      setUpdateReceipt(null);
+      setMerge(null);
+      setActionError(null);
+      setRemovalDecision(null);
+      if (previewUpdate && actions.previewSourceUpdate.access === "available") {
+        void run(actions.previewSourceUpdate.execute(skill.id), setSourceUpdate);
+      }
+    });
   const bulk = useSkillsLibraryBulkActions({
     actions,
     allSkills: inventory.data?.skills ?? [],
-    visibleSkills: skills,
+    visibleSkills,
     refresh: inventory.refresh,
     onError: setActionError,
   });
@@ -275,6 +257,18 @@ function AvailableSkillsLibrary({
     bulk.clear();
     setReview(next);
     setReviewSelectionApplied(next !== "archive");
+  };
+  const selectSkill = (skill: LibrarySkillModel, checked: boolean) => {
+    if (!checked) bulk.setSkillSelected(skill.id, false);
+    else void reviewSkill(skill, () => bulk.setSkillSelected(skill.id, true));
+  };
+  const selectVisible = async (checked: boolean) => {
+    try {
+      if (checked && inventory.loadAll) await inventory.loadAll();
+      bulk.setVisibleSkillsSelected(checked);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
+    }
   };
 
   if (inventory.isLoading) return <SkillsLibrarySkeleton />;
@@ -296,6 +290,7 @@ function AvailableSkillsLibrary({
                 skills={inventory.data?.skills ?? []}
                 actions={actions}
                 refresh={inventory.refresh}
+                loadSkills={inventory.loadAll}
               />
             ) : null}
             {actions.primary.map((action) => (
@@ -355,7 +350,7 @@ function AvailableSkillsLibrary({
                   <Checkbox
                     checked={bulk.allVisibleSelected}
                     indeterminate={bulk.someVisibleSelected && !bulk.allVisibleSelected}
-                    onCheckedChange={(checked) => bulk.setVisibleSkillsSelected(Boolean(checked))}
+                    onCheckedChange={(checked) => void selectVisible(Boolean(checked))}
                     aria-label="Select all visible skills"
                   />
                 </TableHead>
@@ -404,7 +399,7 @@ function AvailableSkillsLibrary({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {skills.map((skill) => (
+              {visibleSkills.map((skill) => (
                 <TableRow
                   key={skill.id}
                   data-state={selectedId === skill.id ? "selected" : undefined}
@@ -425,9 +420,7 @@ function AvailableSkillsLibrary({
                     <Checkbox
                       checked={bulk.selectedSkillIds.has(skill.id)}
                       onClick={(event) => event.stopPropagation()}
-                      onCheckedChange={(checked) =>
-                        bulk.setSkillSelected(skill.id, Boolean(checked))
-                      }
+                      onCheckedChange={(checked) => selectSkill(skill, Boolean(checked))}
                       aria-label={`Select ${skill.name}`}
                     />
                   </TableCell>
@@ -531,12 +524,12 @@ function AvailableSkillsLibrary({
                   ) : null}
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
-                      {skill.consolidationRecommendation &&
+                      {(skill.consolidationRecommendation || skill.consolidationAvailable) &&
                       consolidateAction?.access === "available" ? (
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setConsolidationReview(skill)}
+                          onClick={() => void reviewSkill(skill, setConsolidationReview)}
                         >
                           Consolidate
                         </Button>
@@ -597,14 +590,19 @@ function AvailableSkillsLibrary({
                                 <ArchiveRestoreIcon /> Restore skill
                               </DropdownMenuItem>
                             ) : null}
-                            {skill.archiveRecommendation && archiveAction.access === "available" ? (
-                              <DropdownMenuItem onClick={() => setArchiveReview(skill)}>
+                            {(skill.archiveRecommendation || skill.archiveAvailable) &&
+                            archiveAction.access === "available" ? (
+                              <DropdownMenuItem
+                                onClick={() => void reviewSkill(skill, setArchiveReview)}
+                              >
                                 <ArchiveIcon /> Review archive
                               </DropdownMenuItem>
                             ) : null}
-                            {skill.consolidationRecommendation &&
+                            {(skill.consolidationRecommendation || skill.consolidationAvailable) &&
                             consolidateAction?.access === "available" ? (
-                              <DropdownMenuItem onClick={() => setConsolidationReview(skill)}>
+                              <DropdownMenuItem
+                                onClick={() => void reviewSkill(skill, setConsolidationReview)}
+                              >
                                 <LinkIcon /> Review consolidation
                               </DropdownMenuItem>
                             ) : null}
@@ -635,6 +633,7 @@ function AvailableSkillsLibrary({
             </TableBody>
           </Table>
         </div>
+        {pagination}
 
         {blockedCount > 0 ? (
           <p className="text-sm text-muted-foreground">
@@ -791,6 +790,8 @@ function AvailableSkillsLibrary({
                 }
               }}
             />
+            <InstalledSkillPackage skill={selected} />
+            <InstalledSkillHistory skill={selected} />
           </DialogContent>
         ) : null}
       </Dialog>

@@ -102,7 +102,7 @@ export function parseFrontmatter(content: string): SkillFrontmatter {
       inMetadata = false;
       const afterKey = trimmed.slice("description:".length).trim();
 
-      if (afterKey === ">" || afterKey === "|") {
+      if (/^[>|][+-]?$/.test(afterKey)) {
         // Folded/literal scalar: collect indented continuation lines
         const descParts: string[] = [];
         let j = i + 1;

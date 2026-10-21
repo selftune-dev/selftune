@@ -17,7 +17,7 @@ export interface PortablePluginProjection {
   readonly files: ReadonlyArray<PortablePluginExportFile>;
 }
 
-export class PortablePluginExportError extends Schema.TaggedErrorClass<PortablePluginExportError>()(
+export class PortablePluginExportError extends Schema.TaggedError<PortablePluginExportError>()(
   "PortablePluginExportError",
   { message: Schema.String },
 ) {}

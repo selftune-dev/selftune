@@ -38,7 +38,7 @@ export class NormalizedOtlpExport extends Schema.Class<NormalizedOtlpExport>(
 }) {}
 
 /** Typed failures at the OTLP transport and normalization boundary. */
-export class OtlpDecodeFailure extends Schema.TaggedErrorClass<OtlpDecodeFailure>()(
+export class OtlpDecodeFailure extends Schema.TaggedError<OtlpDecodeFailure>()(
   "OtlpDecodeFailure",
   {
     reason: Schema.Literals([

@@ -31,32 +31,32 @@ const SkillsShWireDownload = Schema.Struct({
   files: Schema.NullOr(Schema.Array(SkillsShWireFile)),
 });
 
-export class SkillsShCatalogFetchError extends Schema.TaggedErrorClass<SkillsShCatalogFetchError>()(
+export class SkillsShCatalogFetchError extends Schema.TaggedError<SkillsShCatalogFetchError>()(
   "SkillsShCatalogFetchError",
   { message: Schema.String },
 ) {}
 
-export class SkillsShCatalogDownloadHttpError extends Schema.TaggedErrorClass<SkillsShCatalogDownloadHttpError>()(
+export class SkillsShCatalogDownloadHttpError extends Schema.TaggedError<SkillsShCatalogDownloadHttpError>()(
   "SkillsShCatalogDownloadHttpError",
   { status: Schema.Number, message: Schema.String },
 ) {}
 
-export class SkillsShCatalogDownloadDecodeError extends Schema.TaggedErrorClass<SkillsShCatalogDownloadDecodeError>()(
+export class SkillsShCatalogDownloadDecodeError extends Schema.TaggedError<SkillsShCatalogDownloadDecodeError>()(
   "SkillsShCatalogDownloadDecodeError",
   { message: Schema.String },
 ) {}
 
-export class SkillsShCatalogIntegrityError extends Schema.TaggedErrorClass<SkillsShCatalogIntegrityError>()(
+export class SkillsShCatalogIntegrityError extends Schema.TaggedError<SkillsShCatalogIntegrityError>()(
   "SkillsShCatalogIntegrityError",
   { message: Schema.String },
 ) {}
 
-export class SkillsShCatalogPathError extends Schema.TaggedErrorClass<SkillsShCatalogPathError>()(
+export class SkillsShCatalogPathError extends Schema.TaggedError<SkillsShCatalogPathError>()(
   "SkillsShCatalogPathError",
   { path: Schema.String, message: Schema.String },
 ) {}
 
-export class SkillsShCatalogStorageError extends Schema.TaggedErrorClass<SkillsShCatalogStorageError>()(
+export class SkillsShCatalogStorageError extends Schema.TaggedError<SkillsShCatalogStorageError>()(
   "SkillsShCatalogStorageError",
   { path: Schema.String, message: Schema.String },
 ) {}

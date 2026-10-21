@@ -55,6 +55,7 @@ describe("Desktop sidebar Cloud account actions", () => {
       state: "linked",
       connect: vi.fn(async () => {}),
       manage: vi.fn(),
+      openWorkspace: vi.fn(),
       openDashboard: vi.fn(async () => {}),
     };
 
@@ -63,6 +64,12 @@ describe("Desktop sidebar Cloud account actions", () => {
     fireEvent.click(screen.getByRole("button", { name: /This Mac/ }));
     fireEvent.click(await screen.findByText("SelfTune Cloud"));
 
+    expect(connection.openWorkspace).toHaveBeenCalledOnce();
+    expect(connection.manage).not.toHaveBeenCalled();
+    expect(select).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /This Mac/ }));
+    fireEvent.click(await screen.findByText("Manage connection"));
     expect(connection.manage).toHaveBeenCalledOnce();
     expect(select).not.toHaveBeenCalled();
 

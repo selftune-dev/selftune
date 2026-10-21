@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { handleEvaluations } from "./evaluations.js";
 import { Schema } from "effect";
 
 import type {
@@ -56,6 +57,11 @@ export interface DashboardCoreRoutes {
 }
 
 interface DashboardCoreRouteOptions extends DashboardCoreRouteOverrides {
+  readonly evaluationConfigRoot?: string;
+  readonly overviewResponse?: (version: string, search: URLSearchParams) => Promise<Response>;
+  readonly shellResponse?: (version: string) => Promise<Response>;
+  readonly analyticsResponse?: () => Promise<Response>;
+  readonly skillReportResponse?: (skillName: string, search: URLSearchParams) => Promise<Response>;
   readonly database?: Database;
   readonly onActionEvent: (event: DashboardActionEvent) => void;
   readonly version: () => string;
@@ -138,6 +144,12 @@ export function createDashboardCoreRoutes(options: DashboardCoreRouteOptions): D
     url: URL,
     allowedOrigins: ReadonlySet<string>,
   ): Promise<Response | null> => {
+    if (url.pathname === "/api/v2/evaluations") {
+      const origin = request.headers.get("origin");
+      if (request.method === "POST" && origin && !allowedOrigins.has(origin))
+        return Response.json({ error: "Origin not allowed" }, { status: 403 });
+      return withDashboardCors(await handleEvaluations(request, url, options.evaluationConfigRoot));
+    }
     if (url.pathname === "/api/v2/doctor" && request.method === "GET") {
       return withDashboardCors(await handleDoctor());
     }
@@ -217,6 +229,8 @@ export function createDashboardCoreRoutes(options: DashboardCoreRouteOptions): D
           headers: dashboardCorsHeaders(),
         });
       }
+      if (options.shellResponse)
+        return withDashboardCors(await options.shellResponse(options.version()));
       return database
         ? withDashboardCors(handleDashboardShell(database, options.version()))
         : unavailableResponse();
@@ -225,6 +239,11 @@ export function createDashboardCoreRoutes(options: DashboardCoreRouteOptions): D
     if (url.pathname === "/api/v2/overview" && request.method === "GET") {
       if (options.overviewLoader) {
         return Response.json(options.overviewLoader(), { headers: dashboardCorsHeaders() });
+      }
+      if (options.overviewResponse) {
+        return withDashboardCors(
+          await options.overviewResponse(options.version(), url.searchParams),
+        );
       }
       return database
         ? withDashboardCors(handleOverview(database, options.version(), url.searchParams))
@@ -255,6 +274,7 @@ export function createDashboardCoreRoutes(options: DashboardCoreRouteOptions): D
     }
 
     if (url.pathname === "/api/v2/analytics" && request.method === "GET") {
+      if (options.analyticsResponse) return withDashboardCors(await options.analyticsResponse());
       return database ? withDashboardCors(handleAnalytics(database)) : unavailableResponse();
     }
 
@@ -275,6 +295,8 @@ export function createDashboardCoreRoutes(options: DashboardCoreRouteOptions): D
               { status: 404, headers: dashboardCorsHeaders() },
             );
       }
+      if (options.skillReportResponse)
+        return withDashboardCors(await options.skillReportResponse(skillName, url.searchParams));
       return database
         ? withDashboardCors(handleSkillReport(database, skillName, url.searchParams))
         : unavailableResponse();

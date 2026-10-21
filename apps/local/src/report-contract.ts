@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import { preservingJsonDecoder } from "@selftune/runtime/utils/preserving-schema";
 import { LibrarySnapshot } from "@selftune/control-plane";
 import {
   InsightsResponseSchema,
@@ -11,8 +12,16 @@ export const DashboardReportNameSchema = Schema.Literals([
   "skill-intelligence",
   "insights",
   "library",
+  "overview",
+  "skill-report",
+  "shell",
+  "analytics",
 ]);
 export type DashboardReportName = typeof DashboardReportNameSchema.Type;
+export type CachedDashboardReportName = Exclude<
+  DashboardReportName,
+  "overview" | "skill-report" | "shell" | "analytics"
+>;
 
 export const ReportComputeStoragePathsSchema = Schema.Struct({
   configRoot: Schema.NonEmptyString,
@@ -26,6 +35,11 @@ export const ReportComputeOptionsSchema = Schema.Struct({
   searchDirs: Schema.optionalKey(Schema.mutable(Schema.Array(Schema.String))),
   quarantineRoot: Schema.optionalKey(Schema.String),
   storagePaths: Schema.optionalKey(ReportComputeStoragePathsSchema),
+  overview: Schema.optionalKey(Schema.Struct({ version: Schema.String, search: Schema.String })),
+  shell: Schema.optionalKey(Schema.Struct({ version: Schema.String })),
+  skillReport: Schema.optionalKey(
+    Schema.Struct({ skillName: Schema.String, search: Schema.String }),
+  ),
 });
 export type ReportComputeOptions = typeof ReportComputeOptionsSchema.Type;
 
@@ -41,20 +55,25 @@ export const ReportWorkerArgumentsSchema = Schema.Tuple([
   Schema.NonEmptyString,
 ]);
 
+const SerializedReportResponse = Schema.Struct({
+  status: Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 100, maximum: 599 })),
+  body: Schema.String,
+});
 export const reportPayloadSchemas = {
   "portfolio-audit": PortfolioAuditResultSchema,
   "skill-intelligence": SkillIntelligenceReportSchema,
   insights: InsightsResponseSchema,
   library: LibrarySnapshot,
+  overview: SerializedReportResponse,
+  "skill-report": SerializedReportResponse,
+  shell: SerializedReportResponse,
+  analytics: SerializedReportResponse,
 };
 export type DashboardReportPayloads = {
   [Name in DashboardReportName]: (typeof reportPayloadSchemas)[Name]["Type"];
 };
 
-function reportDecoder<A>(schema: Schema.Codec<A>) {
-  const decode = Schema.decodeUnknownSync(Schema.fromJsonString(schema));
-  return (text: string): A => decode(text, { onExcessProperty: "preserve" });
-}
+const reportDecoder = preservingJsonDecoder;
 
 type DashboardReportDecoders = {
   [Name in DashboardReportName]: (text: string) => DashboardReportPayloads[Name];
@@ -64,6 +83,10 @@ const reportDecoders: DashboardReportDecoders = {
   "skill-intelligence": reportDecoder(reportPayloadSchemas["skill-intelligence"]),
   insights: reportDecoder(reportPayloadSchemas.insights),
   library: reportDecoder(reportPayloadSchemas.library),
+  overview: reportDecoder(reportPayloadSchemas.overview),
+  "skill-report": reportDecoder(reportPayloadSchemas["skill-report"]),
+  shell: reportDecoder(reportPayloadSchemas.shell),
+  analytics: reportDecoder(reportPayloadSchemas.analytics),
 };
 
 export function decodeReportOutput<Name extends DashboardReportName>(
@@ -73,13 +96,13 @@ export function decodeReportOutput<Name extends DashboardReportName>(
   return reportDecoders[report](text);
 }
 
-export class ReportComputeError extends Schema.TaggedErrorClass<ReportComputeError>()(
+export class ReportComputeError extends Schema.TaggedError<ReportComputeError>()(
   "ReportComputeError",
   {
     report: DashboardReportNameSchema,
     message: Schema.String,
     exitCode: Schema.optionalKey(Schema.Number),
-    cause: Schema.optionalKey(Schema.Defect),
+    cause: Schema.optionalKey(Schema.Defect()),
   },
 ) {
   static fromCause(report: DashboardReportName, cause: unknown) {

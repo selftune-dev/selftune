@@ -35,6 +35,26 @@ const billingStatus = {
 };
 
 describe("Cloud billing sidecar transport", () => {
+  test("does not mistake internal Team access for a Stripe customer", async () => {
+    const billing = makeCloudBillingOperations("/unused", {
+      fetch: async () =>
+        Response.json({
+          workspaceId: "internal",
+          plan: "team",
+          status: "active",
+          currentPeriodEnd: null,
+          hasStripeCustomer: false,
+          seatCount: 3,
+        }),
+      loadRemoteLibraryConfig: () => cloudConfig(),
+    });
+    expect(await billing.status()).toMatchObject({
+      plan: "team",
+      subscriptionStatus: "active",
+      hasStripeCustomer: false,
+      seatCount: 3,
+    });
+  });
   test("presents Team checkout as three included members", async () => {
     const billing = makeCloudBillingOperations("/unused", {
       fetch: async () =>
@@ -72,7 +92,7 @@ describe("Cloud billing sidecar transport", () => {
 
     await billing.status();
     await expect(billing.checkout({ plan: "team", seats: 3 })).resolves.toEqual({
-      url: "https://cloud.selftune.dev/?billing=team",
+      url: "https://cloud.selftune.dev/?billing=team&seats=3",
     });
     await expect(billing.portal()).resolves.toEqual({
       url: "https://cloud.selftune.dev/?billing=portal",

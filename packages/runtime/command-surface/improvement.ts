@@ -122,6 +122,16 @@ export const IMPROVEMENT_COMMAND_SURFACES = {
         description: "Validate candidate changes without deploying",
       },
       {
+        flag: "--budget-remaining-usd",
+        helpLabel: "--budget-remaining-usd <amount>",
+        description: "Caller-reported remaining spend for historical replay preflight",
+      },
+      {
+        flag: "--estimated-cost-usd",
+        helpLabel: "--estimated-cost-usd <amount>",
+        description: "Caller estimate for the full historical replay run",
+      },
+      {
         flag: "--validation-mode",
         helpLabel: "--validation-mode",
         description: "Validation strategy: auto|replay|judge (default: auto)",
@@ -133,7 +143,7 @@ export const IMPROVEMENT_COMMAND_SURFACES = {
       },
     ],
     quickReference:
-      "selftune improve --skill <name> --skill-path <path> [--scope auto|description|routing|body|package] [--dry-run] [--validation-mode auto|replay|judge]",
+      "selftune improve --skill <name> --skill-path <path> [--scope auto|description|routing|body|package] [--dry-run] [--budget-remaining-usd <amount> --estimated-cost-usd <amount>] [--validation-mode auto|replay|judge]",
     extraHelpSections: [
       `Scope mapping:
   auto             -> historical DuckDB replay with \`--dry-run\` when eligible,
@@ -143,7 +153,16 @@ export const IMPROVEMENT_COMMAND_SURFACES = {
   body             -> \`selftune evolve body --target body\`
   package          -> \`selftune search-run\`
 
-With \`--scope auto --dry-run\`, SelfTune first looks for historical skill/task
+With \`--scope auto --dry-run\`, pass both \`--budget-remaining-usd\` and
+\`--estimated-cost-usd\` to allow an eligible historical replay attempt. The
+preflight compares the total-run estimate with the caller-reported remaining
+amount before candidate generation starts. The result reports this as an
+estimate-only check; it does not read subscription usage, meter provider spend,
+or cap actual spend. The caller must refresh the remaining amount before a
+separate rerun. The replay request uses five search candidates, requires three
+scored repetitions, and allows at most three attempts per arm.
+
+SelfTune first looks for historical skill/task
 provenance in local DuckDB. Invocation-local outcomes may form a contrastive
 cohort; otherwise exact explicit tasks form a neutral quality cohort and session
 errors are ignored. Candidate generation sees calibration only. Codex execution

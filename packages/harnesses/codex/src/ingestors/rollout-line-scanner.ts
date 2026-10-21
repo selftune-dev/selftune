@@ -83,6 +83,30 @@ function openRollout(filePath: string): number | null {
   }
 }
 
+/** Uses the identical line rules on already bounded, verified source bytes. */
+export function scanRolloutText(text: string, onLine: (line: string) => void): RolloutLineScan {
+  const consumer = makeLineConsumer(onLine);
+  consumer.consume(text);
+  return consumer.finish();
+}
+
+export async function scanRolloutTextAsync(
+  text: string,
+  onLine: (line: string) => void,
+  signal: AbortSignal,
+): Promise<RolloutLineScan> {
+  const consumer = makeLineConsumer(onLine);
+  const chunkChars = 1024 * 1024;
+  for (let offset = 0; offset < text.length; offset += chunkChars) {
+    signal.throwIfAborted();
+    consumer.consume(text.slice(offset, offset + chunkChars));
+    // oxlint-disable-next-line no-await-in-loop -- preserve cooperative parsing for bounded in-memory replay.
+    await yieldToEventLoop();
+  }
+  signal.throwIfAborted();
+  return consumer.finish();
+}
+
 /** Synchronous compatibility scanner used by the standalone Codex ingestor. */
 export function scanRolloutLines(
   filePath: string,

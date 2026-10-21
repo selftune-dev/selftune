@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { copyFile, lstat, mkdir, rename } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import * as Schema from "effect/Schema";
 
 import {
   makeDuckDbAnalyticalStoreLive,
@@ -11,6 +12,12 @@ import {
   type DuckDbInstanceFactory,
 } from "./duckdb-store.js";
 import { resolvePackagedDuckDbModule } from "./duckdb-module-resolution.js";
+import {
+  ANALYTICAL_RECOVERY_RESERVE_BYTES,
+  availableStorageBytes,
+  inspectAnalyticalStorageFiles,
+  requireStorageCapacity,
+} from "./storage-capacity.js";
 
 const packagedDuckDbModule = resolvePackagedDuckDbModule({
   desktopResourceDirectory: process.env.SELFTUNE_DESKTOP_RESOURCE_DIR,
@@ -30,11 +37,13 @@ const { DuckDBInstance, DuckDBTimestampValue } = duckDbModule as typeof import("
 export const DUCKDB_LOCAL_MEMORY_LIMIT = "512MB";
 
 interface DuckDbWalRecoveryFileStat {
+  readonly size: bigint;
   readonly isFile: () => boolean;
   readonly isSymbolicLink: () => boolean;
 }
 
 export interface DuckDbWalRecoveryDependencies<A> {
+  readonly availableBytes: (directory: string) => Promise<bigint>;
   readonly copyFile: (source: string, destination: string, mode?: number) => Promise<void>;
   readonly lstat: (path: string) => Promise<DuckDbWalRecoveryFileStat>;
   readonly mkdir: (
@@ -110,6 +119,12 @@ export async function openDuckDbWithWalRecovery<A>(
   }
   assertRegularNonSymlinkFile(walPath, walStat);
 
+  const reserve = ANALYTICAL_RECOVERY_RESERVE_BYTES + walStat.size;
+  requireStorageCapacity(
+    await dependencies.availableBytes(dirname(databasePath)),
+    databaseStat.size + reserve,
+  );
+
   const backupRoot = join(dirname(databasePath), "backups");
   await dependencies.mkdir(backupRoot, { recursive: true, mode: 0o700 });
   const backupDirectory = join(
@@ -122,6 +137,8 @@ export async function openDuckDbWithWalRecovery<A>(
     join(backupDirectory, basename(databasePath)),
     constants.COPYFILE_EXCL,
   );
+
+  requireStorageCapacity(await dependencies.availableBytes(dirname(databasePath)), reserve);
 
   try {
     await dependencies.rename(walPath, join(backupDirectory, basename(walPath)));
@@ -139,8 +156,9 @@ export async function openDuckDbWithWalRecovery<A>(
 const liveWalRecoveryDependencies = <A>(
   open: (databasePath: string) => Promise<A>,
 ): DuckDbWalRecoveryDependencies<A> => ({
+  availableBytes: availableStorageBytes,
   copyFile,
-  lstat,
+  lstat: (path) => lstat(path, { bigint: true }),
   mkdir,
   now: () => new Date(),
   open,
@@ -175,7 +193,9 @@ function appendScalar(
  * behind the analytical-store contract so callers cannot acquire arbitrary
  * DuckDB connections or couple operational code to the driver.
  */
-const duckDbNodeApiFactory: DuckDbInstanceFactory = {
+const makeDuckDbNodeApiFactory = (
+  readAvailableBytes: (directory: string) => Promise<bigint>,
+): DuckDbInstanceFactory => ({
   open: async (databasePath) => {
     const instance = await openDuckDbWithWalRecovery(
       databasePath,
@@ -206,15 +226,120 @@ const duckDbNodeApiFactory: DuckDbInstanceFactory = {
             }
           },
           closeSync: () => nativeConnection.closeSync(),
-          run: (sql, parameters) => nativeConnection.run(sql, parameters),
+          run: async (sql, parameters) => {
+            if (databasePath !== ":memory:" && sql === "BEGIN TRANSACTION") {
+              requireStorageCapacity(
+                await readAvailableBytes(dirname(databasePath)),
+                ANALYTICAL_RECOVERY_RESERVE_BYTES,
+              );
+            }
+            return nativeConnection.run(sql, parameters);
+          },
         };
         return connection;
       },
     };
   },
-};
+});
 
-export const makeDuckDbNodeApiAnalyticalStoreLive = (databasePath?: string) =>
-  makeDuckDbAnalyticalStoreLive(duckDbNodeApiFactory, databasePath);
+export const makeDuckDbNodeApiAnalyticalStoreLive = (
+  databasePath?: string,
+  readAvailableBytes: (directory: string) => Promise<bigint> = availableStorageBytes,
+) => makeDuckDbAnalyticalStoreLive(makeDuckDbNodeApiFactory(readAvailableBytes), databasePath);
 
 export const DuckDbAnalyticalStoreLive = makeDuckDbNodeApiAnalyticalStoreLive();
+
+const StorageCatalogTable = Schema.Struct({
+  table_name: Schema.String,
+  estimated_rows: Schema.String,
+  index_count: Schema.String,
+});
+const StorageBlocks = Schema.Struct({
+  block_size: Schema.String,
+  total_blocks: Schema.String,
+  used_blocks: Schema.String,
+  free_blocks: Schema.String,
+  wal_size: Schema.String,
+});
+const EngineVersion = Schema.Struct({ engine_version: Schema.String });
+const MigrationLedgerPresence = Schema.Struct({ present: Schema.Boolean });
+const StoredSchemaVersion = Schema.Struct({ version: Schema.String });
+
+/** Explicit diagnostics, outside the mutating live-store acquisition/migration path. */
+export async function inspectAnalyticalStorage(databasePath: string) {
+  const files = await inspectAnalyticalStorageFiles(databasePath);
+  if (files.database.state !== "present") {
+    return { files, catalog: { state: "unavailable", reason: files.database.state } };
+  }
+  const instance = await DuckDBInstance.create(databasePath, {
+    access_mode: "READ_ONLY",
+    memory_limit: "128MB",
+    max_temp_directory_size: "0B",
+    threads: "1",
+  });
+  try {
+    const connection = await instance.connect();
+    try {
+      const version = await connection.run("SELECT version() AS engine_version");
+      const engine = Schema.decodeUnknownSync(Schema.Array(EngineVersion))(
+        await version.getRowObjects(),
+      );
+      const sizes = await connection.run(`SELECT
+        CAST(block_size AS VARCHAR) AS block_size,
+        CAST(total_blocks AS VARCHAR) AS total_blocks,
+        CAST(used_blocks AS VARCHAR) AS used_blocks,
+        CAST(free_blocks AS VARCHAR) AS free_blocks,
+        wal_size
+        FROM pragma_database_size()`);
+      const blocks = Schema.decodeUnknownSync(Schema.Array(StorageBlocks))(
+        await sizes.getRowObjects(),
+      );
+      const tables = await connection.run(`SELECT table_name,
+        CAST(estimated_size AS VARCHAR) AS estimated_rows,
+        CAST(index_count AS VARCHAR) AS index_count
+        FROM duckdb_tables()
+        WHERE schema_name = 'main' AND starts_with(table_name, 'observability_')
+        ORDER BY table_name LIMIT 64`);
+      const catalog = Schema.decodeUnknownSync(Schema.Array(StorageCatalogTable))(
+        await tables.getRowObjects(),
+      );
+      const ledgerPresence = await connection.run(`SELECT EXISTS (
+        SELECT 1 FROM duckdb_tables()
+        WHERE schema_name = 'main' AND table_name = 'observability_schema_migrations'
+      ) AS present`);
+      const [ledger] = Schema.decodeUnknownSync(Schema.Array(MigrationLedgerPresence))(
+        await ledgerPresence.getRowObjects(),
+      );
+      const schemaVersion = ledger?.present
+        ? Schema.decodeUnknownSync(Schema.Array(StoredSchemaVersion))(
+            await (
+              await connection.run(`SELECT CAST(version AS VARCHAR) AS version
+                FROM main.observability_schema_migrations ORDER BY version DESC LIMIT 1`)
+            ).getRowObjects(),
+          )[0]?.version
+        : undefined;
+      return {
+        files,
+        catalog: {
+          state: "available",
+          engine,
+          stored_schema:
+            schemaVersion === undefined
+              ? {
+                  state: "unavailable",
+                  reason: ledger?.present ? "empty_ledger" : "missing_ledger",
+                }
+              : { state: "available", version: schemaVersion },
+          blocks,
+          tables: catalog,
+          row_counts: "estimates_not_exact",
+          table_limit: 64,
+        },
+      };
+    } finally {
+      connection.closeSync();
+    }
+  } finally {
+    instance.closeSync();
+  }
+}

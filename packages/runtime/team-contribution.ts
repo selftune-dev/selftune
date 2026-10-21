@@ -159,7 +159,9 @@ function stateStore(configRoot: string) {
   let queue: Promise<void> = Promise.resolve();
   const load = async (): Promise<StoredState> => {
     try {
-      const state = Schema.decodeUnknownSync(StoredState)(JSON.parse(await readFile(path, "utf8")));
+      const state = Schema.decodeUnknownSync(StoredState, { onExcessProperty: "error" })(
+        JSON.parse(await readFile(path, "utf8")),
+      );
       for (const [requestId, upload] of Object.entries(state.outbox)) {
         if (
           upload.request.request_id !== requestId ||

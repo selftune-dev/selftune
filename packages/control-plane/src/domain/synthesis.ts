@@ -85,12 +85,12 @@ export const CandidateSnapshot = Schema.Struct({
 });
 export type CandidateSnapshot = typeof CandidateSnapshot.Type;
 
-export class CandidateNotFound extends Schema.TaggedErrorClass<CandidateNotFound>()(
+export class CandidateNotFound extends Schema.TaggedError<CandidateNotFound>()(
   "CandidateNotFound",
   { candidateId: Schema.String },
 ) {}
 
-export class CandidateStoreUnavailable extends Schema.TaggedErrorClass<CandidateStoreUnavailable>()(
+export class CandidateStoreUnavailable extends Schema.TaggedError<CandidateStoreUnavailable>()(
   "CandidateStoreUnavailable",
   { operation: Schema.String, message: Schema.String },
 ) {}

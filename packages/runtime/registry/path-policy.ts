@@ -6,7 +6,7 @@ const MAX_IDENTIFIER_LENGTH = 128;
 const SKILL_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9.+_-]*$/;
 
-export class RegistryIdentifierValidationError extends Schema.TaggedErrorClass<RegistryIdentifierValidationError>()(
+export class RegistryIdentifierValidationError extends Schema.TaggedError<RegistryIdentifierValidationError>()(
   "RegistryIdentifierValidationError",
   {
     identifierType: Schema.Literals(["skill-name", "version"]),
@@ -15,7 +15,7 @@ export class RegistryIdentifierValidationError extends Schema.TaggedErrorClass<R
   },
 ) {}
 
-export class RegistryPathConfinementError extends Schema.TaggedErrorClass<RegistryPathConfinementError>()(
+export class RegistryPathConfinementError extends Schema.TaggedError<RegistryPathConfinementError>()(
   "RegistryPathConfinementError",
   {
     root: Schema.String,

@@ -3,13 +3,10 @@ import { join, resolve } from "node:path";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-class PackageBuildFailure extends Schema.TaggedErrorClass<PackageBuildFailure>()(
-  "PackageBuildFailure",
-  {
-    operation: Schema.String,
-    message: Schema.String,
-  },
-) {}
+class PackageBuildFailure extends Schema.TaggedError<PackageBuildFailure>()("PackageBuildFailure", {
+  operation: Schema.String,
+  message: Schema.String,
+}) {}
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 type InterruptSignal = "SIGINT" | "SIGTERM";

@@ -21,7 +21,7 @@ export interface ManagedConnectionReplacementResult<Connection> {
   readonly connection: Connection;
 }
 
-export class ManagedConnectionTransitionFailure extends Schema.TaggedErrorClass<ManagedConnectionTransitionFailure>()(
+export class ManagedConnectionTransitionFailure extends Schema.TaggedError<ManagedConnectionTransitionFailure>()(
   "ManagedConnectionTransitionFailure",
   {
     attempt: Schema.Number,

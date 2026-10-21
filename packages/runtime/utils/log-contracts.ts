@@ -1,4 +1,6 @@
 import * as Schema from "effect/Schema";
+import * as Option from "effect/Option";
+import { preservingDecoder } from "./preserving-schema.js";
 import { OrchestrateRunReport } from "@selftune/control-plane/orchestration";
 import { isCanonicalRecord } from "@selftune/telemetry-contract";
 import { EvalEntry } from "../types/evaluation.js";
@@ -180,11 +182,17 @@ export const decodeQueryLogLine = jsonlDecoder(QueryLog);
 export const decodeSkillUsageLine = jsonlDecoder(SkillUsageLog);
 export const decodeSessionTelemetryLine = jsonlDecoder(SessionTelemetryLog);
 export const decodeImprovementSignalLine = jsonlDecoder(ImprovementSignalLog);
-export const decodeImprovementSignalRecord = Schema.decodeUnknownOption(ImprovementSignalLog);
+export const decodeImprovementSignalRecord = Option.liftThrowable(
+  preservingDecoder(ImprovementSignalLog),
+);
 export const decodeEvolutionAuditLine = jsonlDecoder(EvolutionAuditLog);
 export const decodeEvolutionEvidenceLine = jsonlDecoder(EvolutionEvidenceLog);
-export const decodeEvolutionAuditRecord = Schema.decodeUnknownOption(EvolutionAuditLog);
-export const decodeEvolutionEvidenceRecord = Schema.decodeUnknownOption(EvolutionEvidenceLog);
+export const decodeEvolutionAuditRecord = Option.liftThrowable(
+  preservingDecoder(EvolutionAuditLog),
+);
+export const decodeEvolutionEvidenceRecord = Option.liftThrowable(
+  preservingDecoder(EvolutionEvidenceLog),
+);
 export const decodeOrchestrateRunLine = jsonlDecoder(OrchestrateRunReport);
 export const decodeLogTimestampLine = Schema.decodeUnknownSync(
   Schema.fromJsonString(Schema.Struct({ timestamp: Schema.String })),

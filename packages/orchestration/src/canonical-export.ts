@@ -107,7 +107,7 @@ export function cliMain(): void {
         buildPushPayloadV2(
           records,
           queryEvolutionEvidence(getDb()).flatMap((row) => {
-            const decoded = decodeEvolutionEvidenceRecord(row, { onExcessProperty: "preserve" });
+            const decoded = decodeEvolutionEvidenceRecord(row);
             return Option.isSome(decoded) ? [decoded.value] : [];
           }),
         ),

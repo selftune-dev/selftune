@@ -1,6 +1,6 @@
 {
   "name": "selftune",
-  "version": "0.4.12",
+  "version": "0.5.1",
   "description": "Skill-level observability and self-improvement for AI agents — monitors skill routing, detects missed triggers, and evolves descriptions automatically",
   "keywords": [
     "agent",
@@ -109,8 +109,8 @@
   },
   "dependencies": {
     "@duckdb/node-api": "1.4.5-r.1",
-    "@effect/platform-bun": "4.0.0-beta.66",
-    "@effect/platform-node-shared": "4.0.0-beta.66",
+    "@effect/platform-bun": "4.0.0-rc.115",
+    "@effect/platform-node-shared": "4.0.0-rc.115",
     "@selftune/config": "workspace:*",
     "@selftune/control-plane": "workspace:*",
     "@selftune/dashboard-core": "workspace:*",
@@ -134,7 +134,7 @@
     "@selftune/ui": "workspace:*",
     "@xmldom/xmldom": "^0.8.13",
     "drizzle-orm": "^0.45.0",
-    "effect": "4.0.0-beta.66",
+    "effect": "4.0.0-rc.115",
     "react-markdown": "^10.1.0",
     "sonner": "^2.0.7",
     "zod": "^4.3.6"
@@ -142,8 +142,7 @@
   "devDependencies": {
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.30.0",
-    "@effect/tsgo": "^0.24.1",
-    "@effect/vitest": "4.0.0-beta.66",
+    "@effect/tsgo": "0.45.0",
     "@evilmartians/lefthook": "^1.13.6",
     "@oxlint/plugins": "1.78.0",
     "@types/bun": "^1.3.11",
@@ -159,7 +158,7 @@
     "react-dom": "^19.1.0",
     "turbo": "^2.5.6",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
+    "vitest": "4.1.10"
   },
   "bundledDependencies": [
     "@selftune/config",

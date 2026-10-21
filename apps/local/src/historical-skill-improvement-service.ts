@@ -114,7 +114,7 @@ export interface HistoricalSkillImprovementResponse {
   } | null;
 }
 
-export class HistoricalSkillImprovementFailure extends Schema.TaggedErrorClass<HistoricalSkillImprovementFailure>()(
+export class HistoricalSkillImprovementFailure extends Schema.TaggedError<HistoricalSkillImprovementFailure>()(
   "HistoricalSkillImprovementFailure",
   {
     code: Schema.Literals([

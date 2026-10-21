@@ -75,7 +75,7 @@ describe("local project and Library sharing capabilities", () => {
         },
       });
     }
-    expect(result.current.library.backup?.access).toBe("unavailable");
+    expect(result.current.library.backup?.access).toBe("available");
     expect(result.current.projects.publishRelease).toMatchObject({
       preview: { access: "available" },
       execute: { access: "available" },

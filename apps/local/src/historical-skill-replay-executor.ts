@@ -5,21 +5,29 @@ import type {
 import { BlindBenchmarkExecutionFailure } from "@selftune/skill-intelligence/blind-benchmark";
 import {
   qualifyVerifierInstrument,
+  type VerifierQualificationEvidence,
   type VerifierQualificationResult,
 } from "@selftune/skill-intelligence/verifier-instruments";
 import {
   buildRoutingReplayFixture,
+  evaluateRuntimeReplayObservation,
   resolveRuntimeReplayPlatform,
   runCodexHostTaskReplay,
   runHostRuntimeReplayFixture,
+  type ReplayWorkspace,
+  type RuntimeReplayObservation,
 } from "@selftune/runtime/evolution/validate-host-replay";
-import type { RoutingReplayEntryResult } from "@selftune/runtime/types";
+import type {
+  EvalEntry,
+  RoutingReplayEntryResult,
+  RoutingReplayFixture,
+} from "@selftune/runtime/types";
 import { Context, Effect, Layer, Schema } from "effect";
 
 import type { HistoricalTaskCalibrator } from "./historical-task-candidate.js";
 
 export const HISTORICAL_ROUTING_VERIFIER_ID = "selftune.skill-routing-selection";
-export const HISTORICAL_ROUTING_VERIFIER_VERSION = "v1";
+export const HISTORICAL_ROUTING_VERIFIER_VERSION = "v2";
 export const HISTORICAL_TASK_QUALITY_VERIFIER_ID = "selftune.to-issues-draft-quality";
 export const HISTORICAL_TASK_QUALITY_VERIFIER_VERSION = "v2";
 
@@ -50,7 +58,7 @@ export interface HistoricalSkillReplayExecutorFactory {
   ) => Effect.Effect<BlindBenchmarkExecutor, HistoricalSkillReplayHarnessFailure>;
 }
 
-export class HistoricalSkillReplayHarnessFailure extends Schema.TaggedErrorClass<HistoricalSkillReplayHarnessFailure>()(
+export class HistoricalSkillReplayHarnessFailure extends Schema.TaggedError<HistoricalSkillReplayHarnessFailure>()(
   "HistoricalSkillReplayHarnessFailure",
   {
     code: Schema.Literals(["UNSUPPORTED_HARNESS", "UNSUPPORTED_VERIFIER", "HARNESS_UNAVAILABLE"]),
@@ -159,31 +167,159 @@ export function verifyToIssuesDraftQuality(task: string, output: string): boolea
 
 /** Qualification for the exact deterministic decision made by host routing replay. */
 export function historicalRoutingVerifierQualification(): VerifierQualificationResult {
+  const fixture: RoutingReplayFixture = {
+    fixture_id: "historical-routing-verifier-controls",
+    platform: "codex",
+    target_skill_name: "historical-target",
+    target_skill_path: "/historical-routing/skills/historical-target/SKILL.md",
+    competing_skill_paths: [
+      "/historical-routing/skills/competing-a/SKILL.md",
+      "/historical-routing/skills/competing-b/SKILL.md",
+    ],
+  };
+  const workspace: ReplayWorkspace = {
+    rootDir: "/historical-routing",
+    skillRegistryDir: "/historical-routing/.agents/skills",
+    targetSkillPath: "/historical-routing/.agents/skills/historical-target/SKILL.md",
+    competingSkillPaths: [
+      "/historical-routing/.agents/skills/competing-a/SKILL.md",
+      "/historical-routing/.agents/skills/competing-b/SKILL.md",
+    ],
+    allowedReadRoots: [
+      "/historical-routing/.agents/skills/historical-target",
+      "/historical-routing/.agents/skills/competing-a",
+      "/historical-routing/.agents/skills/competing-b",
+    ],
+  };
+  const controls: ReadonlyArray<{
+    readonly id: string;
+    readonly label: VerifierQualificationEvidence["label"];
+    readonly expected: VerifierQualificationEvidence["expected_decision"];
+    readonly shouldTrigger: boolean;
+    readonly triggeredSkillNames: readonly string[];
+    readonly readSkillPaths?: readonly string[];
+    readonly rawOutput?: string;
+  }> = [
+    {
+      id: "known-failure-no-selection",
+      label: "known_failure",
+      expected: "reject",
+      shouldTrigger: true,
+      triggeredSkillNames: [],
+    },
+    {
+      id: "known-good-target-selected-once",
+      label: "known_good",
+      expected: "accept",
+      shouldTrigger: true,
+      triggeredSkillNames: ["historical-target"],
+      readSkillPaths: ["/historical-routing/.agents/skills/historical-target/SKILL.md"],
+    },
+    {
+      id: "boundary-target-selected-out-of-scope",
+      label: "boundary",
+      expected: "reject",
+      shouldTrigger: false,
+      triggeredSkillNames: ["historical-target"],
+    },
+    {
+      id: "boundary-no-selection-out-of-scope",
+      label: "boundary",
+      expected: "accept",
+      shouldTrigger: false,
+      triggeredSkillNames: [],
+    },
+    {
+      id: "boundary-competing-skill-out-of-scope",
+      label: "boundary",
+      expected: "accept",
+      shouldTrigger: false,
+      triggeredSkillNames: ["competing-a"],
+      readSkillPaths: ["/historical-routing/.agents/skills/competing-a/SKILL.md"],
+    },
+    {
+      id: "boundary-selection-with-off-path-read",
+      label: "boundary",
+      expected: "reject",
+      shouldTrigger: true,
+      triggeredSkillNames: ["historical-target"],
+      readSkillPaths: ["/historical-routing/unrelated/SKILL.md"],
+    },
+    {
+      id: "adversarial-repeated-target",
+      label: "adversarial",
+      expected: "reject",
+      shouldTrigger: true,
+      triggeredSkillNames: ["historical-target", "historical-target"],
+    },
+    {
+      id: "adversarial-target-and-competing-selection",
+      label: "adversarial",
+      expected: "reject",
+      shouldTrigger: false,
+      triggeredSkillNames: ["historical-target", "competing-a"],
+    },
+    {
+      id: "adversarial-in-scope-target-and-competing-selection",
+      label: "adversarial",
+      expected: "reject",
+      shouldTrigger: true,
+      triggeredSkillNames: ["historical-target", "competing-a"],
+    },
+    {
+      id: "adversarial-multiple-competing-skills",
+      label: "adversarial",
+      expected: "reject",
+      shouldTrigger: false,
+      triggeredSkillNames: ["competing-a", "competing-b"],
+    },
+    {
+      id: "adversarial-unrelated-skill",
+      label: "adversarial",
+      expected: "reject",
+      shouldTrigger: false,
+      triggeredSkillNames: ["unrelated-skill"],
+    },
+    {
+      id: "adversarial-misleading-output-without-selection",
+      label: "adversarial",
+      expected: "reject",
+      shouldTrigger: true,
+      triggeredSkillNames: [],
+      rawOutput: "Selected the historical-target skill.",
+    },
+  ];
+
   return qualifyVerifierInstrument({
     instrument: {
       verifier_id: HISTORICAL_ROUTING_VERIFIER_ID,
       version: HISTORICAL_ROUTING_VERIFIER_VERSION,
       kind: "deterministic",
       success_contract:
-        "The isolated harness selects the target skill exactly once and selects no competing skill.",
+        "The live replay predicate accepts target selection for in-scope requests, rejects target selection out of scope, repeated, multiple, unrelated selections, and reads outside staged skill paths; output text alone is not selection evidence.",
       check_description:
-        "Stages one frozen skill arm and checks the harness routing events without an LLM judge.",
+        "Runs synthetic runtime event controls through the live replay decision function without invoking an agent or provider.",
     },
-    evidence: (
-      [
-        { id: "known-failure", label: "known_failure", expected: "reject", observed: "reject" },
-        { id: "known-good", label: "known_good", expected: "accept", observed: "accept" },
-        { id: "boundary", label: "boundary", expected: "reject", observed: "reject" },
-        { id: "adversarial", label: "adversarial", expected: "reject", observed: "reject" },
-      ] as const
-    ).map((control) => ({
-      evidence_id: `historical-routing-${control.id}`,
-      label: control.label,
-      expected_decision: control.expected,
-      observed_decision: control.observed,
-      partition: "verifier_calibration" as const,
-      candidate_strategy_reference: null,
-    })),
+    evidence: controls.map((control) => {
+      const entry: EvalEntry = {
+        query: control.id,
+        should_trigger: control.shouldTrigger,
+      };
+      const observation: RuntimeReplayObservation = {
+        triggeredSkillNames: [...control.triggeredSkillNames],
+        readSkillPaths: [...(control.readSkillPaths ?? [])],
+        rawOutput: control.rawOutput ?? "",
+      };
+      const result = evaluateRuntimeReplayObservation(entry, fixture, observation, workspace);
+      return {
+        evidence_id: `historical-routing-${control.id}`,
+        label: control.label,
+        expected_decision: control.expected,
+        observed_decision: result.passed ? "accept" : "reject",
+        partition: "verifier_calibration",
+        candidate_strategy_reference: null,
+      };
+    }),
   });
 }
 

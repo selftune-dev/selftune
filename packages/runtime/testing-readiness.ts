@@ -1,4 +1,6 @@
 import type { Database } from "bun:sqlite";
+import { SELFTUNE_CONFIG_DIR } from "./constants.js";
+import { queryKnownWorkspacePaths } from "./localdb/queries.js";
 
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -7,6 +9,7 @@ import type {
   grading_baselines,
   package_evaluation_reports,
   evolution_audit,
+  evolution_evidence,
   skill_invocations,
 } from "@selftune/local-store/schema";
 
@@ -21,15 +24,16 @@ import type {
 } from "./dashboard-contract.js";
 import type { CreatePackageEvaluationStatus, CreatePackageEvaluationSummary } from "./types.js";
 import { computeCreatePackageFingerprint } from "./create/package-fingerprint.js";
-import { queryEvolutionEvidence } from "./localdb/queries/evolution.js";
+import { safeParseJsonObjectArray } from "./localdb/queries/json.js";
 import { queryTrustedSkillObservationRows } from "./localdb/queries/trust.js";
 import { MIN_LOG_READY_POSITIVES } from "./utils/eval-readiness.js";
 import { extractPositiveEvalQueryText } from "./utils/query-filter.js";
 import {
   findInstalledSkillNames,
   findInstalledSkillPath,
-  findRepositoryClaudeSkillDirs,
-  findRepositorySkillDirs,
+  findInstalledSkillPaths,
+  getDefaultSkillSearchDirs,
+  extendSkillSearchDirsForWorkspaces,
 } from "./utils/skill-discovery.js";
 import {
   getCanonicalEvalSetPath,
@@ -79,7 +83,7 @@ interface TrustedSkillObservationSummary {
 interface TestingReadinessContext {
   db: Database;
   knownSkills: Set<string>;
-  searchDirs: string[];
+  installedSkillPaths: Map<string, string>;
   trustedRowsBySkill: Map<string, TrustedSkillObservationSummary[]>;
   evalEvidenceBySkill: Map<string, { count: number; latestAt: string | null }>;
   fallbackSkillPathBySkill: Map<string, string>;
@@ -95,17 +99,14 @@ interface TestingReadinessContext {
   latestEvolutionBySkill: Map<string, { action: string | null; timestamp: string | null }>;
 }
 
-function getSkillSearchDirs(): string[] {
-  const cwd = process.cwd();
-  const homeDir = process.env.HOME ?? "";
-  const codexHome = process.env.CODEX_HOME ?? `${homeDir}/.codex`;
-  return [
-    ...findRepositorySkillDirs(cwd),
-    ...findRepositoryClaudeSkillDirs(cwd),
-    `${homeDir}/.agents/skills`,
-    `${homeDir}/.claude/skills`,
-    `${codexHome}/skills`,
-  ];
+function getSkillSearchDirs(db: Database): string[] {
+  return extendSkillSearchDirsForWorkspaces(
+    [
+      ...getDefaultSkillSearchDirs(),
+      join(process.env.SELFTUNE_CONFIG_DIR || SELFTUNE_CONFIG_DIR, "library", "packages"),
+    ],
+    queryKnownWorkspacePaths(db),
+  );
 }
 
 function scanSkillNamesFromDir(
@@ -319,7 +320,7 @@ function summarizeDeploymentReadiness(
 
 export function listSkillTestingReadiness(
   db: Database,
-  searchDirs: string[] = getSkillSearchDirs(),
+  searchDirs: string[] = getSkillSearchDirs(db),
 ): SkillTestingReadiness[] {
   const context = buildTestingReadinessContext(db, searchDirs);
 
@@ -339,12 +340,19 @@ export function listSkillTestingReadiness(
 export function getSkillTestingReadiness(
   db: Database,
   skillName: string,
-  searchDirs: string[] = getSkillSearchDirs(),
+  searchDirs: string[] = getSkillSearchDirs(db),
 ): SkillTestingReadiness | null {
-  return buildSkillTestingReadinessRow(skillName, buildTestingReadinessContext(db, searchDirs));
+  return buildSkillTestingReadinessRow(
+    skillName,
+    buildTestingReadinessContext(db, searchDirs, skillName),
+  );
 }
 
-function buildTestingReadinessContext(db: Database, searchDirs: string[]): TestingReadinessContext {
+function buildTestingReadinessContext(
+  db: Database,
+  searchDirs: string[],
+  skillName?: string,
+): TestingReadinessContext {
   const trustedRows = queryTrustedSkillObservationRows(db);
   const trustedRowsBySkill = new Map<string, TrustedSkillObservationSummary[]>();
 
@@ -384,15 +392,23 @@ function buildTestingReadinessContext(db: Database, searchDirs: string[]): Testi
   const storedUnitTestRunNames = listStoredSkillNames(db, "unit_test_run_results");
   const storedPackageEvaluationNames = listStoredSkillNames(db, "package_evaluation_reports");
 
-  const evidenceRows = queryEvolutionEvidence(db);
+  const evidenceRows = db.query<
+    Pick<
+      typeof evolution_evidence.$inferSelect,
+      "skill_name" | "skill_path" | "timestamp" | "eval_set_json"
+    >,
+    string[]
+  >(
+    skillName === undefined
+      ? "SELECT skill_name, skill_path, timestamp, eval_set_json FROM evolution_evidence ORDER BY timestamp DESC"
+      : "SELECT skill_name, skill_path, timestamp, eval_set_json FROM evolution_evidence WHERE skill_name = ? ORDER BY timestamp DESC",
+  );
   const evalEvidenceBySkill = new Map<string, { count: number; latestAt: string | null }>();
   const fallbackSkillPathBySkill = new Map<string, string>();
-  for (const row of evidenceRows) {
-    if (row.eval_set && row.eval_set.length > 0 && !evalEvidenceBySkill.has(row.skill_name)) {
-      evalEvidenceBySkill.set(row.skill_name, {
-        count: row.eval_set.length,
-        latestAt: row.timestamp,
-      });
+  for (const row of evidenceRows.iterate(...(skillName === undefined ? [] : [skillName]))) {
+    if (!evalEvidenceBySkill.has(row.skill_name)) {
+      const count = safeParseJsonObjectArray(row.eval_set_json).length;
+      if (count > 0) evalEvidenceBySkill.set(row.skill_name, { count, latestAt: row.timestamp });
     }
     if (row.skill_path && !fallbackSkillPathBySkill.has(row.skill_name)) {
       fallbackSkillPathBySkill.set(row.skill_name, row.skill_path);
@@ -535,10 +551,18 @@ function buildTestingReadinessContext(db: Database, searchDirs: string[]): Testi
     ...fallbackSkillPathBySkill.keys(),
   ]);
 
+  const installedSkillPaths = new Map<string, string>();
+  if (skillName !== undefined) {
+    const path = findInstalledSkillPath(skillName, searchDirs);
+    if (path) installedSkillPaths.set(skillName.trim(), path);
+  }
   return {
     db,
     knownSkills,
-    searchDirs,
+    installedSkillPaths:
+      skillName === undefined
+        ? findInstalledSkillPaths(searchDirs, knownSkills)
+        : installedSkillPaths,
     trustedRowsBySkill,
     evalEvidenceBySkill,
     fallbackSkillPathBySkill,
@@ -560,7 +584,7 @@ function buildSkillTestingReadinessRow(
   const trustedTriggerCount = trustedPositiveRows.length;
   const trustedSessionCount = new Set(trustedPositiveRows.map((row) => row.session_id)).size;
 
-  const installedSkillPath = findInstalledSkillPath(skillName, context.searchDirs) ?? null;
+  const installedSkillPath = context.installedSkillPaths.get(skillName.trim()) ?? null;
   if (!context.knownSkills.has(skillName) && installedSkillPath == null) {
     return null;
   }

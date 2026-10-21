@@ -1,11 +1,20 @@
 import { decodeJsonLine } from "../../packages/runtime/utils/jsonl.js";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  utimesSync,
+  renameSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
   fingerprintIngestionFile,
+  fileIngestionRevision,
   isFileIngestionCurrent,
   loadFileIngestionMarker,
   loadMarker,
@@ -68,6 +77,41 @@ describe("loadMarker / saveMarker", () => {
 });
 
 describe("append-aware file ingestion markers", () => {
+  test("invalidates same-size rewrites and replacement files with preserved modification time", () => {
+    const path = join(tmpDir, "same-size.jsonl");
+    const replacement = join(tmpDir, "replacement.jsonl");
+    const fixedTime = 1_700_000_000;
+    writeFileSync(path, "first");
+    utimesSync(path, fixedTime, fixedTime);
+    const original = fingerprintIngestionFile(path, "v1");
+    const marker = new Map([[path, original]]);
+    writeFileSync(path, "other");
+    utimesSync(path, fixedTime, fixedTime);
+    const rewritten = fingerprintIngestionFile(path, "v1");
+    expect(rewritten.size).toBe(original.size);
+    expect(rewritten.mtime_ms).toBe(original.mtime_ms);
+    expect(isFileIngestionCurrent(marker, path, rewritten)).toBe(false);
+    expect(fileIngestionRevision(rewritten)).not.toBe(fileIngestionRevision(original));
+    marker.set(path, rewritten);
+    writeFileSync(replacement, "final");
+    utimesSync(replacement, fixedTime, fixedTime);
+    renameSync(replacement, path);
+    const replaced = fingerprintIngestionFile(path, "v1");
+    expect(replaced.size).toBe(rewritten.size);
+    expect(replaced.mtime_ms).toBe(rewritten.mtime_ms);
+    expect(replaced.file_identity).not.toBe(rewritten.file_identity);
+    expect(isFileIngestionCurrent(marker, path, replaced)).toBe(false);
+  });
+  test("refreshes legacy fingerprints once, then accepts unchanged stat-only state", () => {
+    const path = join(tmpDir, "legacy-fingerprint.jsonl");
+    writeFileSync(path, "unchanged");
+    const fingerprint = fingerprintIngestionFile(path, "v1");
+    const { ctime_ns: _ctime, file_identity: _identity, ...legacy } = fingerprint;
+    const marker = new Map([[path, legacy]]);
+    expect(isFileIngestionCurrent(marker, path, fingerprint)).toBe(false);
+    marker.set(path, fingerprint);
+    expect(isFileIngestionCurrent(marker, path, fingerprintIngestionFile(path, "v1"))).toBe(true);
+  });
   test("round-trips deterministic file fingerprints", () => {
     const markerPath = join(tmpDir, "marker.json");
     const sourcePath = join(tmpDir, "session.jsonl");

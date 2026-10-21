@@ -60,7 +60,22 @@ export function summarizeTrayStatus(
   return { autonomy_status: response.autonomy_status };
 }
 
+const shellCache = new WeakMap<
+  Database,
+  { databaseVersion: string; version: string; json: string }
+>();
+
 export function handleDashboardShell(db: Database, version: string): Response {
+  const changes = db
+    .query<{ changes: number; data_version: number }, []>(
+      "SELECT total_changes() AS changes, data_version FROM pragma_data_version",
+    )
+    .get();
+  const databaseVersion = `${changes?.changes}:${changes?.data_version}`;
+  const cached = shellCache.get(db);
+  if (cached?.databaseVersion === databaseVersion && cached.version === version) {
+    return new Response(cached.json, { headers: { "Content-Type": "application/json" } });
+  }
   const skills = getSkillsList(db, []);
   const latestEvolutions = db
     .query<{ skill_name: string; timestamp: string }, []>(
@@ -78,7 +93,9 @@ export function handleDashboardShell(db: Database, version: string): Response {
     latest_evolutions: latestEvolutions,
     pending_proposals: pendingProposals,
   };
-  return Response.json(response);
+  const json = JSON.stringify(response);
+  shellCache.set(db, { databaseVersion, version, json });
+  return new Response(json, { headers: { "Content-Type": "application/json" } });
 }
 
 export function handleOverview(
@@ -87,9 +104,9 @@ export function handleOverview(
   searchParams?: URLSearchParams,
 ): Response {
   // -- Autonomy-first enrichment fields ----------------------------------------
-  const attentionQueue = getAttentionQueue(db);
-  const recentDecisions = getRecentDecisions(db);
   const trustSummaries = getSkillTrustSummaries(db);
+  const attentionQueue = getAttentionQueue(db, trustSummaries);
+  const recentDecisions = getRecentDecisions(db);
   const testingReadiness = listSkillTestingReadiness(db);
   const skills = getSkillsList(db, testingReadiness);
   const pendingReviews = attentionQueue.filter((a) => a.category === "needs_review").length;

@@ -40,7 +40,7 @@ const releaseInput = (overrides: Partial<typeof ReleaseGateInput.Type> = {}) =>
   });
 
 describe("scientific release gate", () => {
-  it("generates positive, negative, boundary, and execution evals with provenance", () => {
+  it("generates only observed support and held-out eval cases", () => {
     const sourceQueries = new Map([
       ["one", "Prepare release notes."],
       ["two", "prepare release notes!"],
@@ -63,7 +63,7 @@ describe("scientific release gate", () => {
     const evals = generateCandidateEvals(snapshot.snapshotId, candidate);
     assert.deepStrictEqual(
       new Set(evals.map((item) => item.kind)),
-      new Set(["positive", "negative", "boundary", "execution"]),
+      new Set(["positive", "execution"]),
     );
     assert.ok(evals.every((item) => item.evidenceSnapshotId === snapshot.snapshotId));
     const positiveCases = evals.filter((item) => item.kind === "positive");
@@ -97,6 +97,29 @@ describe("scientific release gate", () => {
     );
     assert.strictEqual(result.recommended, false);
     assert.ok(result.blockers.some((blocker) => blocker.includes("outcome lift")));
+  });
+
+  it("blocks recommendation when any evaluation arm has no measured cases", () => {
+    const emptyCaseBlocker = "Every evaluation arm must include at least one measured case.";
+    const emptyDraft = evaluateReleaseGate(
+      releaseInput({
+        draft: baseline({ baseline: "composite", caseCount: 0 }),
+      }),
+    );
+    assert.strictEqual(emptyDraft.recommended, false);
+    assert.ok(emptyDraft.blockers.includes(emptyCaseBlocker));
+
+    const emptyBaseline = evaluateReleaseGate(
+      releaseInput({
+        baselines: [
+          baseline({ baseline: "no_skill", caseCount: 0 }),
+          baseline({ baseline: "existing_skills" }),
+          baseline({ baseline: "sibling_bundle" }),
+        ],
+      }),
+    );
+    assert.strictEqual(emptyBaseline.recommended, false);
+    assert.ok(emptyBaseline.blockers.includes(emptyCaseBlocker));
   });
 
   it("blocks recommendation on regressions or missing validation", () => {

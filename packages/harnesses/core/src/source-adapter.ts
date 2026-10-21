@@ -31,7 +31,7 @@ export interface HarnessSourceSyncResult {
   readonly authoritativeFiles?: ReadonlyArray<string>;
 }
 
-export class HarnessSourceSyncFailure extends Schema.TaggedErrorClass<HarnessSourceSyncFailure>()(
+export class HarnessSourceSyncFailure extends Schema.TaggedError<HarnessSourceSyncFailure>()(
   "HarnessSourceSyncFailure",
   {
     adapter_id: Schema.String,

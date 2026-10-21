@@ -13,7 +13,7 @@ export function readPendingSignals(
     (() => {
       const db = getDb();
       return queryImprovementSignals(db, false).flatMap((row) => {
-        const decoded = decodeImprovementSignalRecord(row, { onExcessProperty: "preserve" });
+        const decoded = decodeImprovementSignalRecord(row);
         return Option.isSome(decoded) ? [decoded.value] : [];
       });
     });

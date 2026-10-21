@@ -105,7 +105,7 @@ export interface TeamRevalidationHostedSummary {
   readonly supported_model_count: number;
 }
 
-export class TeamSkillSetRevalidationError extends Schema.TaggedErrorClass<TeamSkillSetRevalidationError>()(
+export class TeamSkillSetRevalidationError extends Schema.TaggedError<TeamSkillSetRevalidationError>()(
   "TeamSkillSetRevalidationError",
   {
     code: Schema.String,

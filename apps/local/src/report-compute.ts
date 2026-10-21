@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import * as Effect from "effect/Effect";
+import type * as Semaphore from "effect/Semaphore";
 import { resolveSelftunePaths } from "@selftune/config";
+import { INTERNAL_REPORT_WORKER_COMMAND } from "./report-worker-command.js";
+
+declare const SELFTUNE_DESKTOP_SIDECAR_BUILD: boolean;
 
 import {
   decodeReportOutput,
@@ -26,6 +30,7 @@ const WORKER_TIMEOUT_MS = 180_000;
 export interface ReportWorkerProcessOptions {
   readonly command?: readonly string[];
   readonly timeoutMs?: number;
+  readonly semaphore?: Semaphore.Semaphore;
 }
 
 export function resolveReportComputeOptions(
@@ -67,11 +72,12 @@ export function reportWorkerCommand(
 ): readonly string[] {
   if (desktopResourceDirectory) {
     return [
-      join(
-        desktopResourceDirectory,
-        process.platform === "win32" ? "selftune-report-worker.exe" : "selftune-report-worker",
-      ),
+      join(desktopResourceDirectory, process.platform === "win32" ? "selftune.exe" : "selftune"),
+      INTERNAL_REPORT_WORKER_COMMAND,
     ];
+  }
+  if (typeof SELFTUNE_DESKTOP_SIDECAR_BUILD !== "undefined" && SELFTUNE_DESKTOP_SIDECAR_BUILD) {
+    return [process.execPath, INTERNAL_REPORT_WORKER_COMMAND];
   }
   return [process.execPath, fileURLToPath(new URL("./report-worker.ts", import.meta.url))];
 }
@@ -80,8 +86,8 @@ export function reportWorkerCommand(
  * Compute a dashboard report in a short-lived bun subprocess so the multi-second
  * synchronous computation never occupies the daemon's event loop. The worker writes its
  * JSON result to `outPath` (stdout stays free for stray library logging). npm/dev runs
- * the sibling TypeScript entry through Bun; Desktop runs the separately compiled worker
- * staged in its resource directory. A failed worker deliberately remains a failure: the
+ * the sibling TypeScript entry through Bun; Desktop runs the shared executable's private
+ * report mode. A failed worker deliberately remains a failure: the
  * materialized cache retains its last successful artifact instead of recreating this
  * heavyweight work in the long-lived dashboard daemon.
  */
@@ -92,7 +98,7 @@ export function computeReportInWorker<Name extends DashboardReportName>(
   processOptions: ReportWorkerProcessOptions = {},
 ): Effect.Effect<DashboardReportPayloads[Name], ReportComputeError> {
   const outPath = join(reportsDir, `${report}.compute-${process.pid}-${randomUUID()}.json`);
-  return computeReportInSubprocess(report, options, outPath, processOptions).pipe(
+  const compute = computeReportInSubprocess(report, options, outPath, processOptions).pipe(
     Effect.ensuring(
       Effect.sync(() => {
         try {
@@ -103,6 +109,7 @@ export function computeReportInWorker<Name extends DashboardReportName>(
       }),
     ),
   );
+  return processOptions.semaphore ? processOptions.semaphore.withPermit(compute) : compute;
 }
 
 export function computeReportInSubprocess<Name extends DashboardReportName>(
@@ -111,37 +118,52 @@ export function computeReportInSubprocess<Name extends DashboardReportName>(
   outPath: string,
   processOptions: ReportWorkerProcessOptions = {},
 ): Effect.Effect<DashboardReportPayloads[Name], ReportComputeError> {
-  return Effect.tryPromise({
-    try: async () => {
-      const workerCommand = processOptions.command ?? reportWorkerCommand();
-      const child = Bun.spawn(
-        [...workerCommand, ...reportWorkerArguments(report, options, outPath)],
-        {
+  return Effect.acquireUseRelease(
+    Effect.try({
+      try: () => {
+        const workerCommand = processOptions.command ?? reportWorkerCommand();
+        return Bun.spawn([...workerCommand, ...reportWorkerArguments(report, options, outPath)], {
           stdout: "ignore",
           stderr: "pipe",
+          env: {
+            ...process.env,
+            SELFTUNE_CONFIG_DIR: resolveReportComputeOptions(options).storagePaths.configRoot,
+          },
+        });
+      },
+      catch: (cause) => ReportComputeError.fromCause(report, cause),
+    }),
+    (child) =>
+      Effect.tryPromise({
+        try: async (signal) => {
+          signal.throwIfAborted();
+          const killTimer = setTimeout(
+            () => child.kill("SIGKILL"),
+            processOptions.timeoutMs ?? WORKER_TIMEOUT_MS,
+          );
+          try {
+            const [stderrText, exitCode] = await Promise.all([
+              new Response(child.stderr).text(),
+              child.exited,
+            ]);
+            if (exitCode !== 0) {
+              throw new ReportComputeError({
+                report,
+                exitCode,
+                message: `SelfTune report worker for ${report} exited with ${exitCode}: ${stderrText.slice(-500)}`,
+              });
+            }
+            return decodeReportOutput(report, await Bun.file(outPath).text());
+          } finally {
+            clearTimeout(killTimer);
+          }
         },
-      );
-      const killTimer = setTimeout(
-        () => child.kill(),
-        processOptions.timeoutMs ?? WORKER_TIMEOUT_MS,
-      );
-      try {
-        const [stderrText, exitCode] = await Promise.all([
-          new Response(child.stderr).text(),
-          child.exited,
-        ]);
-        if (exitCode !== 0) {
-          throw new ReportComputeError({
-            report,
-            exitCode,
-            message: `SelfTune report worker for ${report} exited with ${exitCode}: ${stderrText.slice(-500)}`,
-          });
-        }
-        return decodeReportOutput(report, await Bun.file(outPath).text());
-      } finally {
-        clearTimeout(killTimer);
-      }
-    },
-    catch: (cause) => ReportComputeError.fromCause(report, cause),
-  });
+        catch: (cause) => ReportComputeError.fromCause(report, cause),
+      }),
+    (child) =>
+      Effect.promise(async () => {
+        if (child.exitCode === null) child.kill("SIGKILL");
+        await child.exited;
+      }),
+  );
 }

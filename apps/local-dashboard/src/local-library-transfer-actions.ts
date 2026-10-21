@@ -26,7 +26,7 @@ export function useLocalLibraryTransferActions(): Pick<
   );
   return {
     backup:
-      destination === "self_hosted"
+      destination !== "unconfigured"
         ? {
             access: "available",
             isPending: backup.isPending,
@@ -41,10 +41,7 @@ export function useLocalLibraryTransferActions(): Pick<
           }
         : {
             access: "unavailable",
-            reason:
-              destination === "managed_cloud"
-                ? "SelfTune Cloud stores privacy-safe inventory metadata, not complete library backups."
-                : "Connect a self-hosted server to back up complete skill contents.",
+            reason: "Connect Cloud or a self-hosted server to back up skill files.",
           },
     share:
       destination !== "unconfigured"
@@ -59,7 +56,7 @@ export function useLocalLibraryTransferActions(): Pick<
           }
         : {
             access: "upgrade",
-            href: "/settings?section=remote-library",
+            href: "/settings?section=billing",
           },
     installTargets: [
       { id: "codex", label: "Codex" },

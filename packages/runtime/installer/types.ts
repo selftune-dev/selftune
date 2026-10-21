@@ -425,7 +425,7 @@ export interface LocalInstallPlan {
   readonly journal: OperationJournalIntent | null;
 }
 
-export class InstallerPlanningError extends Schema.TaggedErrorClass<InstallerPlanningError>()(
+export class InstallerPlanningError extends Schema.TaggedError<InstallerPlanningError>()(
   "InstallerPlanningError",
   {
     code: Schema.String,

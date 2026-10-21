@@ -69,6 +69,8 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
 import * as Layer from "effect/Layer";
+import { createSkillRevisionService } from "./skill-revision-service.js";
+import { installedSkillPackageInspector } from "./skill-package-inspector.js";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Semaphore from "effect/Semaphore";
 import { homedir } from "node:os";
@@ -76,7 +78,7 @@ import type { BlindBenchmarkExecutor } from "@selftune/skill-intelligence/blind-
 
 import { getCachedUpdateStatus } from "@selftune/runtime/auto-update";
 import { DASHBOARD_ACTION_STREAM_LOG, LOG_DIR } from "@selftune/runtime/constants";
-import type { DashboardHostKind } from "@selftune/dashboard-core/host";
+import type { DashboardHostKind } from "@selftune/dashboard-core/host/capabilities";
 import type { HealthResponse } from "@selftune/runtime/dashboard-contract";
 import { resolveSelftunePaths } from "@selftune/config";
 import { makeLocalDatabaseLive, LocalDatabaseService } from "@selftune/local-store";
@@ -95,6 +97,8 @@ import { dashboardCorsHeaders as corsHeaders } from "./dashboard-http.js";
 import { createDashboardSpa } from "./dashboard-spa.js";
 import { handleDashboardApplicationRoute } from "./routes/application.js";
 import { createDashboardCoreRoutes, type DashboardCoreRouteOverrides } from "./routes/core.js";
+import { createInteractiveReportWorker } from "./interactive-report-worker.js";
+import { join } from "node:path";
 import {
   CorrectionStudyServiceError,
   createCorrectionStudyRoutes,
@@ -233,9 +237,11 @@ export async function startDashboardServer(options?: DashboardServerOptions): Pr
     cookieSecure: options?.authCookieSecure,
   });
   const localDatabaseLayer = makeLocalDatabaseLive(storagePaths.localDatabasePath);
+  const reportSemaphore = options?.reportSemaphore ?? (await Effect.runPromise(Semaphore.make(1)));
   const operationsRuntime = ManagedRuntime.make(
     makeDashboardOperationsLayer({
       ...options,
+      reportSemaphore,
       skillSetConfigRoot: storagePaths.configDir,
     }).pipe(Layer.provideMerge(localDatabaseLayer)),
   );
@@ -471,11 +477,59 @@ export async function startDashboardServer(options?: DashboardServerOptions): Pr
     actionStreamPath:
       process.env.SELFTUNE_DASHBOARD_ACTION_STREAM_LOG || DASHBOARD_ACTION_STREAM_LOG,
   });
+  const reportOptions = {
+    storagePaths: {
+      configRoot: storagePaths.configDir,
+      localDatabasePath: storagePaths.localDatabasePath,
+      localAnalyticsPath: storagePaths.localAnalyticsPath,
+    },
+  };
+  const reportsDirectory = join(storagePaths.configDir, "cache", "reports");
+  const reportProcessOptions = { semaphore: reportSemaphore };
+  const readDatabaseVersion = () => {
+    const version = localDatabase
+      .query<{ changes: number; data_version: number }, []>(
+        "SELECT total_changes() AS changes, data_version FROM pragma_data_version",
+      )
+      .get();
+    return `${version?.changes}:${version?.data_version}`;
+  };
+  const overviewWorker = createInteractiveReportWorker(
+    "overview",
+    reportOptions,
+    reportsDirectory,
+    reportProcessOptions,
+  );
+  const skillReportWorker = createInteractiveReportWorker(
+    "skill-report",
+    reportOptions,
+    reportsDirectory,
+    reportProcessOptions,
+  );
+  const shellWorker = createInteractiveReportWorker(
+    "shell",
+    reportOptions,
+    reportsDirectory,
+    reportProcessOptions,
+    readDatabaseVersion,
+  );
+  const analyticsWorker = createInteractiveReportWorker(
+    "analytics",
+    reportOptions,
+    reportsDirectory,
+    reportProcessOptions,
+    () => `${readDatabaseVersion()}:${Math.floor(Date.now() / 30_000)}`,
+  );
   const coreRoutes = createDashboardCoreRoutes({
+    evaluationConfigRoot: storagePaths.configDir,
     ...options,
     database: localDatabase,
     onActionEvent: eventHub.broadcastAction,
     version: spa.version,
+    overviewResponse: overviewWorker,
+    skillReportResponse: skillReportWorker,
+    shellResponse: (version) => shellWorker(version, new URLSearchParams()),
+    analyticsResponse: () => analyticsWorker(spa.version(), new URLSearchParams()),
   });
   const hookRoutes = createHookRoutes({ runners: options?.hookRunners });
   const traceCandidateRoutes = createTraceCandidateRoutes(traceCandidateOperations);
@@ -487,12 +541,24 @@ export async function startDashboardServer(options?: DashboardServerOptions): Pr
       recordLocalCorrectionReviewDecision(localDatabase, input),
     listReviews: async (limit) => ({ items: listCorrectionReviews(localDatabase, limit) }),
   });
+  const skillRevisions = createSkillRevisionService(localDatabase, storagePaths.configDir, {
+    onChange: () => eventHub.broadcastUpdate(["library-inventory", "library-detail"]),
+    onError: (message) => console.error("Skill history:", message),
+  });
+  const inspectSkillPackage = installedSkillPackageInspector(localDatabase);
   const proxiedSpaSockets = new Map<unknown, WebSocket>();
   let disposePromise: Promise<void> | undefined;
   const disposeOwnedResources = (): Promise<void> => {
     disposePromise ??= (async () => {
+      await Promise.all([
+        overviewWorker.close(),
+        skillReportWorker.close(),
+        shellWorker.close(),
+        analyticsWorker.close(),
+      ]);
       if (backgroundRemoteSyncStartup) clearTimeout(backgroundRemoteSyncStartup);
       if (backgroundRemoteSyncInterval) clearInterval(backgroundRemoteSyncInterval);
+      skillRevisions.stop();
       eventHub.stop();
       for (const upstreamSocket of proxiedSpaSockets.values()) {
         try {
@@ -696,6 +762,11 @@ export async function startDashboardServer(options?: DashboardServerOptions): Pr
           return eventHub.response();
         }
 
+        const historyResponse = await skillRevisions.handle(req, url, allowedOrigins);
+        if (historyResponse) return historyResponse;
+        const packageResponse = inspectSkillPackage(req, url);
+        if (packageResponse) return packageResponse;
+
         const applicationResponse = await operationsRuntime.runPromise(
           handleDashboardApplicationRoute(req, url, {
             allowedOrigins,
@@ -730,6 +801,7 @@ export async function startDashboardServer(options?: DashboardServerOptions): Pr
   }
 
   boundPort = server.port ?? port;
+  if (runtimeMode !== "test") skillRevisions.start();
 
   if (openBrowser) {
     const url = `http://${hostname}:${boundPort}`;

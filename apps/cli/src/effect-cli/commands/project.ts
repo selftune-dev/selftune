@@ -79,9 +79,9 @@ function decode(value: Option.Option<string>): string | undefined {
 }
 
 export function makeProjectCommand(action: ProjectAction = makeLiveProjectAction()) {
-  const project = Flag.string("project").pipe(Flag.optional);
-  const sets = Flag.string("set").pipe(Flag.atLeast(0));
-  const json = Flag.boolean("json");
+  const project = Flag.String("project").pipe(Flag.optional);
+  const sets = Flag.String("set").pipe(Flag.atLeast(0));
+  const json = Flag.Boolean("json").pipe(Flag.withDefault(false));
   const makeInput = (input: { project: Option.Option<string>; sets: ReadonlyArray<string> }) => {
     const projectRoot = decode(input.project);
     if (!projectRoot?.trim()) {
@@ -95,18 +95,22 @@ export function makeProjectCommand(action: ProjectAction = makeLiveProjectAction
   const configure = Command.make("configure", { project, sets, json }, (input) =>
     action("configure", makeInput(input), input.json),
   );
-  const init = Command.make("init", { project, sets, json, yes: Flag.boolean("yes") }, (input) => {
-    if (!input.yes) {
-      return Effect.fail(
-        new CLIError(
-          "Project initialization requires --yes because it creates a new React project and installs Skill Sets.",
-          "MISSING_FLAG",
-          "Review the selected Skill Sets, then rerun with --yes.",
-        ),
-      );
-    }
-    return action("init", makeInput(input), input.json);
-  });
+  const init = Command.make(
+    "init",
+    { project, sets, json, yes: Flag.Boolean("yes").pipe(Flag.withDefault(false)) },
+    (input) => {
+      if (!input.yes) {
+        return Effect.fail(
+          new CLIError(
+            "Project initialization requires --yes because it creates a new React project and installs Skill Sets.",
+            "MISSING_FLAG",
+            "Review the selected Skill Sets, then rerun with --yes.",
+          ),
+        );
+      }
+      return action("init", makeInput(input), input.json);
+    },
+  );
   return Command.make("project", {}, () => Console.log(PROJECT_HELP)).pipe(
     Command.withSubcommands([plan, configure, init]),
     Command.withDescription("Plan and configure project Skill Sets"),

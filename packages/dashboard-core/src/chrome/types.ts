@@ -59,6 +59,7 @@ export interface DashboardCloudProfileConnection {
   state: "checking" | "unlinked" | "connecting" | "linked" | "unavailable";
   connect(): Promise<void>;
   manage(): void;
+  openWorkspace(): void;
   openDashboard(): Promise<void>;
 }
 

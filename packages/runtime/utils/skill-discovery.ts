@@ -241,6 +241,55 @@ export function findInstalledSkillPackages(
   );
 }
 
+/** Index a report's lookup paths once, preserving direct-before-nested and registry order. */
+export function findInstalledSkillPaths(
+  dirs: string[],
+  requestedNames: Iterable<string> = [],
+): Map<string, string> {
+  const paths = new Map<string, string>();
+  const aliases = new Map<string, Set<string>>();
+  for (const name of requestedNames) {
+    const trimmed = name.trim();
+    const key = trimmed.toLowerCase();
+    const names = aliases.get(key) ?? new Set<string>();
+    names.add(trimmed);
+    aliases.set(key, names);
+  }
+  const add = (name: string, path: string) => {
+    if (paths.has(name) || !existsSync(path)) return;
+    try {
+      paths.set(name, realpathSync(path));
+    } catch {
+      paths.set(name, path);
+    }
+  };
+  const addPackage = (parent: string, name: string) => {
+    add(name, join(parent, name, "SKILL.md"));
+    for (const alias of aliases.get(name.toLowerCase()) ?? []) {
+      add(alias, join(parent, alias, "SKILL.md"));
+    }
+  };
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue;
+    try {
+      const entries = readdirSync(dir);
+      for (const entry of entries) addPackage(dir, entry);
+      for (const entry of entries) {
+        try {
+          for (const nested of readdirSync(join(dir, entry))) {
+            addPackage(join(dir, entry), nested);
+          }
+        } catch {
+          // Files, broken links, and unreadable directories cannot contain skills.
+        }
+      }
+    } catch {
+      // Ignore unreadable registries, matching individual skill lookup.
+    }
+  }
+  return paths;
+}
+
 export function findInstalledSkillPath(skillName: string, dirs: string[]): string | undefined {
   const trimmedName = skillName.trim();
   if (!trimmedName) return undefined;

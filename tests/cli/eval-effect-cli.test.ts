@@ -66,6 +66,28 @@ afterEach(() => {
   }
 });
 
+test("parses native plugin and read-only report commands without invoking models", async () => {
+  const plugin = await parseEval(
+    "plugin",
+    "--target",
+    "/tmp/example",
+    "--runs",
+    "1",
+    "--trust-plugin",
+    "--json",
+  );
+  expect(plugin.action).toBe("plugin");
+  if (plugin.action === "plugin") {
+    expect(plugin.input.target).toBe("/tmp/example");
+    expect(plugin.input.trustPlugin).toBe(true);
+    expect(plugin.input.ablation).toBe("with-without");
+  }
+  expect(await parseEval("report", "--input", "/tmp/report.json", "--threshold", "0.8")).toEqual({
+    action: "report",
+    input: { input: "/tmp/report.json", threshold: "0.8", json: false },
+  });
+});
+
 describe("full eval Effect command family", () => {
   test("owns every parent and leaf argument shape", () => {
     for (const args of [

@@ -96,6 +96,8 @@ export function useLinkCloudAccount() {
     },
     onSuccess: ({ settings }) => {
       queryClient.setQueryData(["settings"], settings);
+      void queryClient.invalidateQueries({ queryKey: ["cloud-billing"] });
+      void queryClient.invalidateQueries({ queryKey: ["workspace-members"] });
       void queryClient.invalidateQueries({ queryKey: ["remote-library-status"] });
     },
   });
@@ -107,6 +109,8 @@ export function useCloudBillingStatus(enabled: boolean) {
     queryFn: fetchCloudBillingStatus,
     enabled,
     staleTime: 15_000,
+    refetchInterval: enabled ? 15_000 : false,
+    refetchOnWindowFocus: "always",
   });
 }
 

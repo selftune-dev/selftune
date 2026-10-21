@@ -1467,6 +1467,22 @@ describe("dashboard-server", () => {
   });
 
   describe("GET /api/v2/library", () => {
+    it("serves bounded indexes and complete selected skills, guarding stale snapshots", async () => {
+      const server = await getServer();
+      const base = `http://127.0.0.1:${server.port}/api/v2/library`;
+      const page = await fetch(`${base}?view=index&limit=1`);
+      expect(page.status).toBe(200);
+      const index = await page.json();
+      expect(index).toMatchObject({ total: 1, nextOffset: null });
+      expect(index.skills[0]).not.toHaveProperty("locations");
+      const selected = await fetch(`${base}?skill_id=test-skill`);
+      expect(await selected.json()).toEqual(libraryFixture);
+      expect((await fetch(`${base}?snapshot=old&view=index`)).status).toBe(409);
+      expect((await fetch(`${base}?skill_id=missing`)).status).toBe(404);
+      for (const query of ["limit=101", "offset=-1", "limit=0", "offset=NaN"]) {
+        expect((await fetch(`${base}?view=index&${query}`)).status).toBe(400);
+      }
+    });
     it("returns the canonical grouped Library contract", async () => {
       const server = await getServer();
       const res = await fetch(`http://127.0.0.1:${server.port}/api/v2/library`);

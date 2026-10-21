@@ -10,7 +10,7 @@ import * as Effect from "effect/Effect";
 
 const emptyResult = (): DuckDbQueryResult => ({ getRowObjects: async () => [] });
 
-test("runs the historical v4 rebuild once, then applies v5-v9 migrations", async () => {
+test("runs the historical v4 rebuild once, then applies v5-v12 migrations", async () => {
   const statements: string[] = [];
   let version = 3;
   const factory: DuckDbInstanceFactory = {
@@ -29,6 +29,9 @@ test("runs the historical v4 rebuild once, then applies v5-v9 migrations", async
           if (sql.includes("VALUES (7)")) version = 7;
           if (sql.includes("VALUES (8)")) version = 8;
           if (sql.includes("VALUES (9)")) version = 9;
+          if (sql.includes("VALUES (10)")) version = 10;
+          if (sql.includes("VALUES (11)")) version = 11;
+          if (sql.includes("VALUES (12)")) version = 12;
           return emptyResult();
         },
       }),
@@ -43,7 +46,7 @@ test("runs the historical v4 rebuild once, then applies v5-v9 migrations", async
   const firstOpenStatementCount = statements.length;
   await Effect.runPromise(openStore());
 
-  expect(version).toBe(9);
+  expect(version).toBe(12);
   expect(
     statements.filter((statement) =>
       statement.includes("DROP TABLE IF EXISTS observability_spans_v4"),
@@ -122,7 +125,7 @@ test("does not apply historical migrations to a future schema version", async ()
         run: async (sql) => {
           statements.push(sql);
           if (sql.includes("SELECT MAX(version)")) {
-            return { getRowObjects: async () => [{ version: 10 }] };
+            return { getRowObjects: async () => [{ version: 13 }] };
           }
           return emptyResult();
         },
@@ -141,3 +144,38 @@ test("does not apply historical migrations to a future schema version", async ()
   expect(statements.some((statement) => statement.includes("observability_spans_v4"))).toBe(false);
   expect(statements.some((statement) => statement.startsWith("ALTER TABLE"))).toBe(false);
 });
+
+test.each([9, 10, 11])(
+  "upgrades schema %i without rebuilding the historical corpus",
+  async (version) => {
+    const statements: string[] = [];
+    const factory: DuckDbInstanceFactory = {
+      open: async () => ({
+        closeSync: () => undefined,
+        connect: async () => ({
+          appendRows: async () => undefined,
+          closeSync: () => undefined,
+          run: async (sql) => {
+            statements.push(sql);
+            return sql.includes("SELECT MAX(version)")
+              ? { getRowObjects: async () => [{ version }] }
+              : emptyResult();
+          },
+        }),
+      }),
+    };
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* DuckDbAnalyticalStore;
+      }).pipe(Effect.provide(makeDuckDbAnalyticalStoreLive(factory, ":memory:")), Effect.scoped),
+    );
+    expect(
+      statements.some((sql) => sql.includes("INSERT INTO observability_historical_metric_rollups")),
+    ).toBe(false);
+    expect(statements.some((sql) => sql.includes("observability_spans_v4"))).toBe(false);
+    expect(statements.some((sql) => sql.includes("INSERT INTO observability_span_summaries"))).toBe(
+      false,
+    );
+    expect(statements.at(-1)).toContain("VALUES (12)");
+  },
+);

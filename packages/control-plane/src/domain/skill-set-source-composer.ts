@@ -59,7 +59,7 @@ export class SkillSetSourceComposerPreview extends Schema.Class<SkillSetSourceCo
   ),
 }) {}
 
-export class SkillSetSourceComposerError extends Schema.TaggedErrorClass<SkillSetSourceComposerError>()(
+export class SkillSetSourceComposerError extends Schema.TaggedError<SkillSetSourceComposerError>()(
   "SkillSetSourceComposerError",
   {
     reason: Schema.Literals([

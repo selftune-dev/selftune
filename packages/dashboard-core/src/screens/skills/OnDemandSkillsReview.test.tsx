@@ -6,6 +6,39 @@ import { OnDemandSkillsReview } from "./OnDemandSkillsReview";
 
 afterEach(cleanup);
 
+it("waits for complete inventory before showing context savings or enabling moves", async () => {
+  let finish: (() => void) | undefined;
+  const loadSkills = vi.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const move = vi.fn();
+  render(
+    <OnDemandSkillsReview
+      skills={[]}
+      introduction={<p>Setup</p>}
+      initialOpen
+      loadSkills={loadSkills}
+      refresh={vi.fn()}
+      actions={{
+        moveToLibraryMany: { access: "available", execute: move },
+        restore: { access: "unavailable", reason: "test" },
+      }}
+    />,
+  );
+  expect(screen.getByRole("status").textContent).toContain("Loading installations");
+  expect(screen.queryByRole("region", { name: "Context savings by harness" })).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Move 0 skills to on-demand" }).hasAttribute("disabled"),
+  ).toBe(true);
+  finish?.();
+  await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  expect(loadSkills).toHaveBeenCalledTimes(1);
+  expect(move).not.toHaveBeenCalled();
+});
+
 it("handles 125 skills with bounded pages and preserves selections across search", async () => {
   const execute = vi.fn().mockResolvedValue({ succeeded: 2, failed: 0, receipts: [] });
   const skills = Array.from({ length: 125 }, (_, index): LibrarySkillModel => {

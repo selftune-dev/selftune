@@ -89,7 +89,7 @@ export interface WindowsServiceInstallationPlan {
 
 export type { WindowsServiceInstallationArtifactStore } from "../artifact-store.js";
 
-export class WindowsServiceInstallationControllerError extends Schema.TaggedErrorClass<WindowsServiceInstallationControllerError>()(
+export class WindowsServiceInstallationControllerError extends Schema.TaggedError<WindowsServiceInstallationControllerError>()(
   "WindowsServiceInstallationControllerError",
   {
     message: Schema.String,

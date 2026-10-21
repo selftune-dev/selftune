@@ -408,6 +408,11 @@ Wrapper-only messages and structurally complete agent handoff or approval-review
 envelopes do not become user queries or skill triggers; any real user text after
 a leading wrapper is retained and processed normally.
 
+Eligible Codex source imports retain hash-verified reconstruction recipes for
+bounded historical-task recovery. Recovery requires the captured skill revision;
+unknown revisions remain unknown. Original files are never modified, and
+automatic analytical-detail eviction remains disabled.
+
 Requires [Bun](https://bun.sh) or Node.js 18+. No extra API keys.
 
 ---

@@ -5,6 +5,7 @@ import type {
   AnalyticsModel,
   DashboardDecisionModel,
   LibraryInventoryModel,
+  LibrarySkillModel,
   LibraryMergeModel,
   LibraryMergeConnectionModel,
   LibraryPrepareMergeInput,
@@ -134,6 +135,9 @@ export interface DashboardLibraryQueryState {
   isLoading: boolean;
   error: string | null;
   refresh(): void | Promise<void>;
+  loadDetails?(skillId: string): Promise<LibrarySkillModel>;
+  loadAll?(): Promise<void>;
+  searchHandled?: boolean;
 }
 
 export type DashboardLibraryAction<TInput, TOutput> =
@@ -210,7 +214,7 @@ export interface DashboardLibraryActions {
 export type DashboardLibraryContribution =
   | {
       readonly access: "available";
-      useInventory(): DashboardLibraryQueryState;
+      useInventory(options?: { search?: string; full?: boolean }): DashboardLibraryQueryState;
       useActions(): DashboardLibraryActions;
     }
   | { readonly access: "upgrade"; readonly href: string }
@@ -376,6 +380,8 @@ export interface DashboardSkillSetsModule {
 
 /** The complete host interface needed by the shared Skills Library journey. */
 export interface DashboardSkillsModule {
+  readonly PackageInspector?: ComponentType<{ skillPath: string }>;
+  readonly History?: ComponentType<{ skillPath: string }>;
   readonly host: DashboardHostKind;
   readonly library: DashboardLibraryContribution;
   readonly decisions: DashboardDecisionsContribution;

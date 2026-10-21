@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -34,6 +42,29 @@ afterEach(() => {
 });
 
 describe("listSkillTestingReadiness", () => {
+  it("recognizes an unused on-demand library package in the default report lookup", async () => {
+    const skillPath = join(
+      tempRoot,
+      ".selftune",
+      "library",
+      "packages",
+      "content-hash",
+      "adversarial-reviewer",
+      "SKILL.md",
+    );
+    mkdirSync(join(skillPath, ".."), { recursive: true });
+    writeFileSync(skillPath, "# adversarial-reviewer\n");
+    const mod = await loadTestingReadinessModule();
+    const readiness = mod.getSkillTestingReadiness(db, "adversarial-reviewer");
+    expect(readiness?.skill_path).toBe(realpathSync(skillPath));
+    const { handleSkillReport } = await import("@selftune/local/routes/skill-report");
+    const response = handleSkillReport(db, "adversarial-reviewer");
+    expect(response.status).toBe(200);
+    const report = await response.json();
+    expect(report.usage.total_checks).toBe(0);
+    expect(report.testing_readiness.skill_path).toBe(realpathSync(skillPath));
+    expect(handleSkillReport(db, "definitely-missing-report-fixture").status).toBe(404);
+  });
   it("stores portable eval contracts beside SKILL.md and prefers them over cached copies", async () => {
     const mod = await loadTestingReadinessModule();
     const skillRoot = join(tempRoot, "skills");

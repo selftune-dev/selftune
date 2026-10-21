@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-export class UninstallCleanupFailure extends Schema.TaggedErrorClass<UninstallCleanupFailure>()(
+export class UninstallCleanupFailure extends Schema.TaggedError<UninstallCleanupFailure>()(
   "UninstallCleanupFailure",
   {
     operation: Schema.Literals(["remove-agents", "remove-hooks"]),

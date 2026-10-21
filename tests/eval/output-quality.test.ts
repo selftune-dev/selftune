@@ -48,6 +48,49 @@ function createSkill(): string {
 }
 
 describe("Agent Skills output-quality evaluation", () => {
+  test("skill-only indicators remain visible but cannot inflate the paired score", async () => {
+    const skillDir = createSkill();
+    writeFileSync(
+      join(skillDir, "evals", "evals.json"),
+      JSON.stringify({
+        skill_name: "example",
+        evals: [
+          {
+            id: 1,
+            prompt: "Return SUCCESS",
+            expected_output: "SUCCESS",
+            selftune_assertions: [
+              { type: "contains", value: "SUCCESS" },
+              { type: "tool_called", value: "Skill" },
+              { type: "contains", value: "marker", arm: "with-only" },
+            ],
+          },
+        ],
+      }),
+    );
+    const result = await runOutputQualityEvaluation(
+      { skillPath: skillDir, agent: "test" },
+      {
+        execute: async ({ system }) => ({
+          output: system.includes("Follow this Agent Skill") ? "SUCCESS Skill marker" : "SUCCESS",
+          totalTokens: 1,
+        }),
+        grade: async () => [],
+        compare: async () => ({ winner: "tie", evidence: "Same outcome" }),
+      },
+    );
+    expect(result.benchmark.run_summary.delta.pass_rate).toBe(0);
+    expect(result.benchmark.cases[0]?.with_skill_pass_rate).toBe(1);
+    const grading = JSON.parse(
+      readFileSync(join(result.iteration_dir, "eval-1", "with_skill", "grading.json"), "utf8"),
+    );
+    expect(grading.assertion_results.map((row: { scored: boolean }) => row.scored)).toEqual([
+      true,
+      false,
+      false,
+    ]);
+    expect(grading.summary.total).toBe(1);
+  });
   test.each(
     [
       {},

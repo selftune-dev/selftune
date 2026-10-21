@@ -61,6 +61,9 @@ Grade each expectation and output ONLY valid JSON matching this schema:
   "expectations": [
     {"text": "...", "passed": true/false, "evidence": "specific quote or metric", "score": 0.0-1.0}
   ],
+  "unobserved_expectations": [
+    {"text": "exact expectation text", "reason": "specific missing evidence"}
+  ],
   "summary": {"passed": N, "failed": N, "total": N, "pass_rate": 0.0, "mean_score": 0.0},
   "claims": [
     {"claim": "...", "type": "factual|process|quality", "verified": true/false, "evidence": "..."}
@@ -77,17 +80,20 @@ Grade each expectation and output ONLY valid JSON matching this schema:
 Score guide:
 - 1.0: Clear, specific evidence of full completion
 - 0.7-0.9: Strong evidence with minor gaps
-- 0.4-0.6: Partial evidence or partial completion
-- 0.1-0.3: Weak evidence, mostly not met
-- 0.0: No evidence or clearly not met
+- 0.4-0.6: Observed partial completion
+- 0.1-0.3: Observed behavior mostly fails the requirement
+- 0.0: Specific evidence establishes failure
 
 Rules:
 - PASS only when there is clear, specific evidence — not assumptions
-- FAIL when evidence is absent or contradictory
+- FAIL when specific evidence establishes that the requirement was not met
+- Put expectations with insufficient evidence in unobserved_expectations instead of expectations; leave them unscored
+- Treat excerpts as partial observations. Missing events or aggregate counts alone cannot establish completion, tool identity, read order, or absence of errors
+- Copy each expectation's exact text into exactly one of the two arrays
 - Cite exact quotes or specific metric values
 - Extract 2-4 implicit claims from the transcript and verify them
 - Suggest eval improvements only for clear gaps
-- Set score to reflect confidence level (0.0-1.0)
+- Set score to reflect observed fulfillment (0.0-1.0), not confidence
 - For each FAILED expectation, provide a failure_feedback entry with the relevant query, specific reason for failure, and actionable improvement hint`;
 
 // ---------------------------------------------------------------------------
@@ -567,6 +573,25 @@ function normalizeExpectations(expectations: GradingExpectation[]): GradingExpec
   }));
 }
 
+function hasTranscriptEvidence(excerpt: string): boolean {
+  const normalized = excerpt.trim();
+  return (
+    normalized.length > 0 &&
+    normalized !== "(no transcript)" &&
+    normalized !== "(transcript not found)"
+  );
+}
+
+function requireObservedEvidence(output: Partial<GraderOutput>): void {
+  if (output.unobserved_expectations?.length) {
+    throw new CLIError(
+      `Grading incomplete: ${output.unobserved_expectations.length} expectation(s) have unobserved evidence. No quality score was saved.`,
+      "MISSING_DATA",
+      "Recover the source transcript and required artifacts, then rerun selftune grade",
+    );
+  }
+}
+
 function assembleResultFromExpectations(
   expectations: GradingExpectation[],
   telemetry: PreGateContext["telemetry"] | null,
@@ -619,6 +644,13 @@ export async function gradeSession({
   agent,
   gradeViaAgentFn = gradeViaAgent,
 }: GradeSessionParams): Promise<GradingResult> {
+  if (expectations.length === 0) {
+    throw new CLIError(
+      "Grading requires at least one expectation",
+      "MISSING_DATA",
+      "Provide expectations with selftune grade",
+    );
+  }
   const preGateCtx: PreGateContext = {
     telemetry,
     skillName,
@@ -634,6 +666,13 @@ export async function gradeSession({
     );
     allExpectations = preGateResult.resolved;
   } else {
+    if (!hasTranscriptEvidence(transcriptExcerpt)) {
+      throw new CLIError(
+        "Grading incomplete: source transcript evidence is unavailable. No quality score was saved.",
+        "MISSING_DATA",
+        "Recover the source transcript, then rerun selftune grade",
+      );
+    }
     console.error(
       `[INFO] Pre-gates resolved ${preGateResult.resolved.length}/${expectations.length} expectations`,
     );
@@ -656,11 +695,20 @@ export async function gradeSession({
       });
     }
 
+    requireObservedEvidence(graderOutput);
     const llmExpectations = normalizeExpectations(graderOutput.expectations ?? []);
     if (llmExpectations.length !== preGateResult.remaining.length) {
       throw new Error(
         `Grader returned ${llmExpectations.length} expectations for ${preGateResult.remaining.length} unresolved expectations`,
       );
+    }
+    const unmatched = [...preGateResult.remaining];
+    for (const expectation of llmExpectations) {
+      const index = unmatched.indexOf(expectation.text);
+      if (index === -1) {
+        throw new Error("Grader returned duplicate or unrelated expectations");
+      }
+      unmatched.splice(index, 1);
     }
 
     allExpectations = [...preGateResult.resolved, ...llmExpectations];
@@ -686,6 +734,7 @@ export function assembleResult(
   skillName: string | null,
   transcriptPath: string | null,
 ): GradingResult {
+  requireObservedEvidence(graderOutput);
   const result = assembleResultFromExpectations(
     normalizeExpectations(graderOutput?.expectations ?? []),
     telemetry,

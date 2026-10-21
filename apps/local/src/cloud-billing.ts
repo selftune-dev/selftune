@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import { billingPlans } from "@selftune/runtime/billing-plans";
 import * as Predicate from "effect/Predicate";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
@@ -17,6 +18,8 @@ const HostedState = Schema.Struct({
   plan: Schema.Literals(["free", "pro", "team"]),
   status: Schema.Literals(["none", "active", "canceled", "past_due", "trialing", "unpaid"]),
   currentPeriodEnd: Schema.NullOr(Schema.Number),
+  hasStripeCustomer: Schema.optionalKey(Schema.Boolean),
+  seatCount: Schema.optionalKey(Schema.Number),
 });
 const CloudBillingErrorResponse = Schema.Struct({
   error: Schema.Union([
@@ -122,51 +125,10 @@ function decodeBillingStatus(body: string): DesktopBillingStatus {
       currentPeriodEnd:
         state.currentPeriodEnd === null ? null : new Date(state.currentPeriodEnd).toISOString(),
       trialEnd: null,
-      seatCount: 1,
-      hasStripeCustomer: state.status !== "none",
+      seatCount: state.seatCount ?? (state.plan === "team" ? 3 : 1),
+      hasStripeCustomer: state.hasStripeCustomer ?? false,
       canManageBilling: true,
-      availablePlans: [
-        {
-          id: "free",
-          name: "Community",
-          price: "$0",
-          period: null,
-          description: "Find, review, package, and install skills on your machine.",
-          features: [
-            "Unlimited local skills and Skill Sets",
-            "Discovery across supported agents and projects",
-            "Local evaluation and reviewable proposals",
-          ],
-          highlighted: false,
-        },
-        {
-          id: "pro",
-          name: "Pro",
-          price: "$19",
-          period: "/month",
-          description: "Publish and manage reviewed Skill Sets as one owner.",
-          features: [
-            "Explicit skill and Skill Set sharing",
-            "Expiring and revocable share links",
-            "Linked-device and revision status",
-          ],
-          highlighted: true,
-        },
-        {
-          id: "team",
-          name: "Team",
-          price: "$49",
-          period: "/month",
-          description: "Distribute reviewed Skill Sets across a workspace.",
-          features: [
-            "Everything in Pro",
-            "3 members included",
-            "Workspace membership and access roles",
-          ],
-          highlighted: false,
-          seats: { minimum: 3, label: "members" },
-        },
-      ],
+      availablePlans: billingPlans,
     };
   } catch {
     throw new CLIError(
@@ -214,7 +176,10 @@ export function makeCloudBillingOperations(
       }).then(decodeBillingStatus);
     },
     checkout: async (input: DesktopBillingCheckoutRequest): Promise<DesktopBillingSession> => {
-      return { url: `https://cloud.selftune.dev/?billing=${input.plan}` };
+      const query = new URLSearchParams({ billing: input.plan });
+      if (input.plan === "team" && input.seats !== undefined)
+        query.set("seats", String(input.seats));
+      return { url: `https://cloud.selftune.dev/?${query}` };
     },
     portal: async (): Promise<DesktopBillingSession> => {
       return { url: "https://cloud.selftune.dev/?billing=portal" };

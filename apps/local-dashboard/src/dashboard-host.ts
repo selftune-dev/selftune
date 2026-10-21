@@ -1,4 +1,6 @@
 // oxlint-disable max-lines -- Host capability composition is intentionally centralized here.
+import { SkillHistory } from "./components/SkillHistory";
+import { SkillPackageInspector } from "./components/SkillPackageInspector";
 import {
   capabilitiesFromModule,
   type DashboardLibraryActions,
@@ -27,7 +29,8 @@ import type {
 } from "@selftune/dashboard-core/models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { fetchAnalytics } from "./api";
+import { fetchLibrary } from "./api";
+import { useLocalLibraryInventory } from "./use-local-library-inventory";
 import { useManagePlugin, usePlugins } from "./hooks/usePlugins";
 import {
   useApplySkillSourceMerge,
@@ -40,7 +43,6 @@ import {
 } from "./hooks/useLibrary";
 import {
   useBulkQuarantinePortfolioSkills,
-  usePortfolio,
   useQuarantinePortfolioSkill,
   useRestorePortfolioSkill,
 } from "./hooks/usePortfolio";
@@ -104,7 +106,6 @@ import {
   connectionNames,
   isLocalSkillCategoryId,
   localMergeConnections,
-  mapLocalLibraryInventory,
   resolveLocalMergeRequest,
 } from "./local-library-model";
 import type {
@@ -224,44 +225,7 @@ const LOCAL_FEATURES: DashboardHostModules["capability"]["features"] = {
   runtimeStatus: { access: "available" },
 };
 
-function useLocalLibraryInventory() {
-  const query = useLibrary();
-  const intelligence = useSkillIntelligence();
-  const portfolio = usePortfolio();
-  const settings = useSettings();
-  const analytics = useQuery({
-    queryKey: ["analytics"],
-    queryFn: fetchAnalytics,
-    staleTime: 30_000,
-  });
-  const data = query.data
-    ? mapLocalLibraryInventory(
-        query.data,
-        intelligence.data ?? null,
-        portfolio.data ?? null,
-        settings.data?.harnesses ?? [],
-        analytics.data ?? null,
-      )
-    : null;
-
-  return {
-    data,
-    isLoading: query.isLoading,
-    error:
-      query.error instanceof Error ? query.error.message : query.error ? String(query.error) : null,
-    refresh: async () => {
-      await Promise.all([
-        query.refetch(),
-        intelligence.refetch(),
-        portfolio.refetch(),
-        analytics.refetch(),
-      ]);
-    },
-  };
-}
-
 function useLocalLibraryActions(): DashboardLibraryActions {
-  const library = useLibrary();
   const intelligence = useSkillIntelligence();
   const settings = useSettings();
   const updateCategory = useUpdateSkillClassification();
@@ -456,7 +420,7 @@ function useLocalLibraryActions(): DashboardLibraryActions {
       access: "available",
       isPending: prepareConsolidation.isPending || decideDecision.isPending,
       async execute(skillId) {
-        const skill = library.data?.skills.find((candidate) => candidate.skillId === skillId);
+        const skill = (await fetchLibrary({ skillId })).skills[0];
         if (!skill) throw new Error("Refresh the Library and review this consolidation again.");
         const recommendation = recommendLibraryConsolidation(skill);
         if (!recommendation) {
@@ -483,7 +447,7 @@ function useLocalLibraryActions(): DashboardLibraryActions {
     remove: {
       access: "available",
       async execute(skillId) {
-        const skill = library.data?.skills.find((candidate) => candidate.skillId === skillId);
+        const skill = (await fetchLibrary({ skillId })).skills[0];
         if (!skill) throw new Error("Refresh the Library and try removing this skill again.");
         const locations = skill.locations
           .filter(
@@ -1400,6 +1364,8 @@ export function createLocalDashboardModules(
       assignments: LOCAL_ASSIGNED_SKILL_SETS,
     },
     skills: {
+      History: SkillHistory,
+      PackageInspector: SkillPackageInspector,
       host,
       library: LOCAL_LIBRARY,
       decisions: LOCAL_DECISIONS,

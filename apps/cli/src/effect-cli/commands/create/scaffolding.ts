@@ -12,23 +12,25 @@ import {
 import type { CreateCommandActions } from "./contracts.js";
 
 const optionalString = (name: string, description: string) =>
-  Flag.string(name).pipe(Flag.withDescription(description), Flag.optional);
+  Flag.String(name).pipe(Flag.withDescription(description), Flag.optional);
 
 export function makeCreateScaffoldingCommands(actions: CreateCommandActions) {
   const init = Command.make(
     "init",
     {
-      internalHelp: Flag.boolean(CREATE_INTERNAL_HELP_FLAG),
+      internalHelp: Flag.Boolean(CREATE_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false)),
       name: optionalString("name", "Display name for the new skill package (required)"),
       description: optionalString(
         "description",
         "Short routing description for the draft skill (required)",
       ),
       outputDir: optionalString("output-dir", "Parent directory for the new package"),
-      force: Flag.boolean("force").pipe(
-        Flag.withDescription("Overwrite scaffold files when the package already exists"),
-      ),
-      json: Flag.boolean("json").pipe(Flag.withDescription("Emit the package summary as JSON")),
+      force: Flag.Boolean("force")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Overwrite scaffold files when the package already exists")),
+      json: Flag.Boolean("json")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Emit the package summary as JSON")),
     },
     (input) => {
       if (input.internalHelp)
@@ -46,9 +48,11 @@ export function makeCreateScaffoldingCommands(actions: CreateCommandActions) {
   const status = Command.make(
     "status",
     {
-      internalHelp: Flag.boolean(CREATE_INTERNAL_HELP_FLAG),
+      internalHelp: Flag.Boolean(CREATE_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false)),
       skillPath: optionalString("skill-path", "Path to a skill directory or SKILL.md"),
-      json: Flag.boolean("json").pipe(Flag.withDescription("Emit the readiness state as JSON")),
+      json: Flag.Boolean("json")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Emit the readiness state as JSON")),
     },
     (input) => {
       if (input.internalHelp)
@@ -63,7 +67,7 @@ export function makeCreateScaffoldingCommands(actions: CreateCommandActions) {
   const scaffold = Command.make(
     "scaffold",
     {
-      internalHelp: Flag.boolean(CREATE_INTERNAL_HELP_FLAG),
+      internalHelp: Flag.Boolean(CREATE_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false)),
       fromWorkflow: optionalString(
         "from-workflow",
         "Workflow ID or 1-based index from selftune workflows (required)",
@@ -71,13 +75,15 @@ export function makeCreateScaffoldingCommands(actions: CreateCommandActions) {
       outputDir: optionalString("output-dir", "Parent directory for the new package"),
       skillName: optionalString("skill-name", "Override the generated skill name"),
       description: optionalString("description", "Override the routing description"),
-      write: Flag.boolean("write").pipe(
-        Flag.withDescription("Persist the package instead of previewing it"),
-      ),
-      force: Flag.boolean("force").pipe(
-        Flag.withDescription("Overwrite scaffold files when the package already exists"),
-      ),
-      json: Flag.boolean("json").pipe(Flag.withDescription("Emit the package summary as JSON")),
+      write: Flag.Boolean("write")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Persist the package instead of previewing it")),
+      force: Flag.Boolean("force")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Overwrite scaffold files when the package already exists")),
+      json: Flag.Boolean("json")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Emit the package summary as JSON")),
       minOccurrences: optionalString(
         "min-occurrences",
         "Minimum workflow frequency used for selection",
@@ -104,9 +110,11 @@ export function makeCreateScaffoldingCommands(actions: CreateCommandActions) {
   const check = Command.make(
     "check",
     {
-      internalHelp: Flag.boolean(CREATE_INTERNAL_HELP_FLAG),
+      internalHelp: Flag.Boolean(CREATE_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false)),
       skillPath: optionalString("skill-path", "Path to a skill directory or SKILL.md"),
-      json: Flag.boolean("json").pipe(Flag.withDescription("Emit the readiness report as JSON")),
+      json: Flag.Boolean("json")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Emit the readiness report as JSON")),
     },
     (input) => {
       if (input.internalHelp)

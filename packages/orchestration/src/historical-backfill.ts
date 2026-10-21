@@ -35,7 +35,7 @@ const BoundaryRow = Schema.Struct({
 const PageCursorRow = Schema.Struct({ cursor_key: Schema.Number });
 const MaximumKeyRow = Schema.Struct({ key: Schema.Number });
 
-export class HistoricalBackfillFailure extends Schema.TaggedErrorClass<HistoricalBackfillFailure>()(
+export class HistoricalBackfillFailure extends Schema.TaggedError<HistoricalBackfillFailure>()(
   "HistoricalBackfillFailure",
   { operation: Schema.String, message: Schema.String },
 ) {}

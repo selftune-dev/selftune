@@ -34,6 +34,7 @@ function cloudConnection(
     state,
     connect,
     manage: vi.fn(),
+    openWorkspace: vi.fn(),
     openDashboard: vi.fn(async () => {}),
   };
 }
@@ -62,17 +63,20 @@ describe("sidebar Cloud profile", () => {
     await activateServerProfile(controller, cloudProfile, connection);
 
     expect(events).toEqual(["connect"]);
+    expect(connection.openWorkspace).toHaveBeenCalledOnce();
+    expect(connection.manage).not.toHaveBeenCalled();
     expect(controller.select).not.toHaveBeenCalled();
   });
 
-  it("opens in-app Cloud management when the Desktop account is already linked", async () => {
+  it("opens the Team workspace when the Desktop account is already linked", async () => {
     const connection = cloudConnection("linked");
     const controller = { select: vi.fn(async () => {}) };
 
     await activateServerProfile(controller, cloudProfile, connection);
 
     expect(connection.connect).not.toHaveBeenCalled();
-    expect(connection.manage).toHaveBeenCalledOnce();
+    expect(connection.openWorkspace).toHaveBeenCalledOnce();
+    expect(connection.manage).not.toHaveBeenCalled();
     expect(controller.select).not.toHaveBeenCalled();
   });
 
@@ -82,5 +86,21 @@ describe("sidebar Cloud profile", () => {
     await activateServerProfile(controller, cloudProfile);
 
     expect(controller.select).toHaveBeenCalledWith("cloud:selftune");
+  });
+
+  it("does not open Team when connecting fails", async () => {
+    const connection = cloudConnection(
+      "unlinked",
+      vi.fn(async () => {
+        throw new Error("Connection cancelled");
+      }),
+    );
+    const controller = { select: vi.fn(async () => {}) };
+    await expect(activateServerProfile(controller, cloudProfile, connection)).rejects.toThrow(
+      "Connection cancelled",
+    );
+    expect(connection.openWorkspace).not.toHaveBeenCalled();
+    expect(connection.manage).not.toHaveBeenCalled();
+    expect(controller.select).not.toHaveBeenCalled();
   });
 });

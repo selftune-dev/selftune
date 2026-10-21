@@ -161,29 +161,31 @@ export const liveServiceCommandActions: ServiceCommandActions = {
 
 function makeServiceFlags() {
   return {
-    _noOperands: Argument.none.pipe(Argument.optional, Argument.withMetavar("")),
-    port: Flag.integer("port").pipe(
+    _noOperands: Argument.Never.pipe(Argument.optional, Argument.withMetavar("")),
+    port: Flag.Int("port").pipe(
       Flag.filter(
         (port) => port >= 1 && port <= 65_535,
         (port) => `Invalid service port: ${port}`,
       ),
       Flag.withDefault(DEFAULT_SERVICE_PORT),
     ),
-    configDir: Flag.string("config-dir").pipe(Flag.optional),
-    owner: Flag.choice("owner", ["desktop", "cli"]).pipe(Flag.optional),
-    boot: Flag.boolean("boot").pipe(
-      Flag.withDescription("Windows only: start before login (requires elevation)"),
-    ),
-    json: Flag.boolean("json").pipe(Flag.withDescription("Emit a machine-readable response")),
-    executable: Flag.string("executable").pipe(
+    configDir: Flag.String("config-dir").pipe(Flag.optional),
+    owner: Flag.Literals("owner", ["desktop", "cli"]).pipe(Flag.optional),
+    boot: Flag.Boolean("boot")
+      .pipe(Flag.withDefault(false))
+      .pipe(Flag.withDescription("Windows only: start before login (requires elevation)")),
+    json: Flag.Boolean("json")
+      .pipe(Flag.withDefault(false))
+      .pipe(Flag.withDescription("Emit a machine-readable response")),
+    executable: Flag.String("executable").pipe(
       Flag.withDescription("SelfTune executable registered with the OS supervisor"),
       Flag.optional,
     ),
-    resourceDir: Flag.string("resource-dir").pipe(
+    resourceDir: Flag.String("resource-dir").pipe(
       Flag.withDescription("Packaged SelfTune resource directory"),
       Flag.optional,
     ),
-    serviceVersion: Flag.string("service-version").pipe(
+    serviceVersion: Flag.String("service-version").pipe(
       Flag.withDescription("Version recorded for the supervised SelfTune runtime"),
       Flag.optional,
     ),
@@ -192,8 +194,10 @@ function makeServiceFlags() {
 
 function makeMaintenanceFlags() {
   return {
-    _noOperands: Argument.none.pipe(Argument.optional, Argument.withMetavar("")),
-    json: Flag.boolean("json").pipe(Flag.withDescription("Emit a machine-readable response")),
+    _noOperands: Argument.Never.pipe(Argument.optional, Argument.withMetavar("")),
+    json: Flag.Boolean("json")
+      .pipe(Flag.withDefault(false))
+      .pipe(Flag.withDescription("Emit a machine-readable response")),
   };
 }
 

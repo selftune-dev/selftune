@@ -15,15 +15,17 @@ export function makeCreatePublishCommand(actions: CreateCommandActions) {
   return Command.make(
     "publish",
     {
-      internalHelp: Flag.boolean(CREATE_INTERNAL_HELP_FLAG),
-      skillPath: Flag.string("skill-path").pipe(Flag.optional),
-      watch: Flag.boolean("watch").pipe(
-        Flag.withDescription("Start watch immediately after publish succeeds"),
-      ),
-      ignoreWatchAlerts: Flag.boolean("ignore-watch-alerts").pipe(
-        Flag.withDescription("Bypass the publish-time watch gate"),
-      ),
-      json: Flag.boolean("json").pipe(Flag.withDescription("Emit the publish result as JSON")),
+      internalHelp: Flag.Boolean(CREATE_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false)),
+      skillPath: Flag.String("skill-path").pipe(Flag.optional),
+      watch: Flag.Boolean("watch")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Start watch immediately after publish succeeds")),
+      ignoreWatchAlerts: Flag.Boolean("ignore-watch-alerts")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Bypass the publish-time watch gate")),
+      json: Flag.Boolean("json")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Emit the publish result as JSON")),
     },
     (input) => {
       if (input.internalHelp)

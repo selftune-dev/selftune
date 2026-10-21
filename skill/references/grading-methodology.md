@@ -31,8 +31,9 @@ Always include at least one Process and one Quality expectation.
    - Evidence: a `Read` tool call with a path ending in `SKILL.md` appears before
      any `Write`, `Edit`, or significant `Bash` command.
 
-2. **No more than 1 error encountered** (Quality)
-   - Evidence: `errors_encountered` field in session telemetry is 0 or 1.
+2. **The requested outcome satisfies its acceptance criteria** (Quality)
+   - Evidence: inspect the resulting artifact, test result, or verified end state.
+     An error count is a diagnostic, not an outcome-quality verdict.
 
 3. **Expected output type exists** (Quality)
    - Evidence: the file, command output, or artifact the user asked for is present.
@@ -41,8 +42,9 @@ Always include at least one Process and one Quality expectation.
    - Evidence: no single bash command or tool call is repeated more than 3 times
      consecutively in the transcript.
 
-5. **Skill steps followed in order** (Process)
-   - Evidence: the sequence of tool calls matches the step order in SKILL.md.
+5. **Required skill dependencies were respected** (Process)
+   - Evidence: observed actions satisfy ordering requirements that affect correctness.
+     Independent steps need not follow an arbitrary written order.
 
 ---
 
@@ -59,8 +61,13 @@ Always include at least one Process and one Quality expectation.
 
 - **A file existing is NOT evidence it has correct content.** Verify content claims
   separately from existence claims.
-- **Absence of evidence IS evidence of absence** for process steps. If the transcript
-  does not show SKILL.md being read, the expectation fails.
+- **Incomplete observation is unscored.** If a partial transcript cannot establish
+  a step or outcome, record it in `unobserved_expectations` with the missing evidence.
+  Grading stops with `MISSING_DATA` before saving a quality score when any expectation
+  is unobserved. Recover the source evidence and rerun.
+- **Match the exact claim.** A trigger is not proof of a successful file read or
+  read order; an assistant turn is not proof of completion; a tool count does not
+  identify which tools ran.
 - **Cite specific evidence.** Never mark PASS without pointing to a transcript line,
   tool call, or telemetry field.
 

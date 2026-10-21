@@ -63,6 +63,7 @@ function storeWithQuery(querySkillSignals: DuckDbAnalyticalStoreService["querySk
   return Layer.succeed(
     DuckDbAnalyticalStore,
     DuckDbAnalyticalStore.of({
+      resolveSourceTask: () => Effect.die("unused"),
       hasExactBatchReceipt: () => Effect.succeed(false),
       ingest: () =>
         Effect.fail(

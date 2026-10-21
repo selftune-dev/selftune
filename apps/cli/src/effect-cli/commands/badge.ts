@@ -59,14 +59,14 @@ export function makeBadgeCommand(action: BadgeAction = runBadgeAction) {
   return Command.make(
     "badge",
     {
-      _noOperands: Argument.none.pipe(Argument.optional, Argument.withMetavar("")),
-      internalHelp: Flag.boolean(BADGE_INTERNAL_HELP_FLAG),
-      skill: Flag.string("skill").pipe(Flag.withDescription("Skill name (required)")),
-      format: Flag.choice("format", ["svg", "markdown", "url"]).pipe(
+      _noOperands: Argument.Never.pipe(Argument.optional, Argument.withMetavar("")),
+      internalHelp: Flag.Boolean(BADGE_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false)),
+      skill: Flag.String("skill").pipe(Flag.withDescription("Skill name (required)")),
+      format: Flag.Literals("format", ["svg", "markdown", "url"]).pipe(
         Flag.withDescription("Output format: svg, markdown, or url"),
         Flag.withDefault("svg"),
       ),
-      output: Flag.string("output").pipe(
+      output: Flag.String("output").pipe(
         Flag.withDescription("Write to a file instead of stdout"),
         Flag.optional,
       ),

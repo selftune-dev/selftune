@@ -30,26 +30,6 @@ export function generateCandidateEvals(
       heldOut: false,
     }),
   );
-  cases.push(
-    GeneratedEvalCase.make({
-      evalId: `negative-${id(`${candidate.candidateId}:near-neighbor`)}`,
-      kind: "negative",
-      query: `A related request outside the boundaries of ${candidate.title}`,
-      expectedSkillNames: [],
-      sourceSessionIds: [],
-      evidenceSnapshotId: snapshotId,
-      heldOut: false,
-    }),
-    GeneratedEvalCase.make({
-      evalId: `boundary-${id(`${candidate.candidateId}:boundary`)}`,
-      kind: "boundary",
-      query: `Decide whether this ambiguous request belongs to ${candidate.title}`,
-      expectedSkillNames: expected,
-      sourceSessionIds: [],
-      evidenceSnapshotId: snapshotId,
-      heldOut: false,
-    }),
-  );
   const heldOutExamples = candidate.heldOutExamples ?? [];
   cases.push(
     ...heldOutExamples.map((example) =>
@@ -69,6 +49,13 @@ export function generateCandidateEvals(
 
 export function evaluateReleaseGate(input: ReleaseGateInput): typeof ReleaseRecommendation.Type {
   const blockers: string[] = [];
+  const measuredCaseCounts = [
+    input.draft.caseCount,
+    ...input.baselines.map((baseline) => baseline.caseCount),
+  ];
+  if (measuredCaseCounts.some((caseCount) => !Number.isInteger(caseCount) || caseCount <= 0)) {
+    blockers.push("Every evaluation arm must include at least one measured case.");
+  }
   if (!input.packageValid) blockers.push("Package validation has not passed.");
   if (!input.replayPassed) blockers.push("Package replay has not passed.");
   if (input.draft.regressions.length > 0) blockers.push("Draft evaluation contains regressions.");

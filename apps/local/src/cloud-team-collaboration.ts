@@ -162,7 +162,7 @@ export interface TeamContributionDecisionResultModel {
   readonly rolloutPolicy?: TeamRolloutPolicyModel;
 }
 
-export class CloudTeamCollaborationError extends Schema.TaggedErrorClass<CloudTeamCollaborationError>()(
+export class CloudTeamCollaborationError extends Schema.TaggedError<CloudTeamCollaborationError>()(
   "CloudTeamCollaborationError",
   {
     code: Schema.String,

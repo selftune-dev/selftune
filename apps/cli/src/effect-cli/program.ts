@@ -43,7 +43,11 @@ export const makeEffectCliProgram = Effect.fn("selftune.cli.program")(function* 
   args: ReadonlyArray<string>,
 ) {
   const preparedArgs = yield* prepareEffectCliArguments(args);
-  yield* runLiveCommand(preparedArgs);
+  yield* runLiveCommand(preparedArgs).pipe(
+    Effect.catchTag("ShowHelp", (error) =>
+      error.errors.length === 0 ? Effect.void : Effect.fail(error),
+    ),
+  );
 });
 
 export interface EffectCliTestProgramOptions {
@@ -350,6 +354,9 @@ export function makeEffectCliTestProgram(
   return Effect.gen(function* () {
     const preparedArgs = yield* prepareEffectCliArguments(args);
     yield* runTestCommand(preparedArgs).pipe(
+      Effect.catchTag("ShowHelp", (error) =>
+        error.errors.length === 0 ? Effect.void : Effect.fail(error),
+      ),
       Effect.provide(FetchHttpClient.layer),
       Effect.provideService(FetchHttpClient.RequestInit, { redirect: "manual" }),
     );

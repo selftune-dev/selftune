@@ -33,6 +33,8 @@ it("renders an accessible icon update action and invokes it on click", () => {
   });
   expect(button.querySelector("svg")).not.toBeNull();
   expect(button.textContent).toBe("Update");
+  expect(button.className).toContain("rounded-full");
+  expect(button.className).toContain("bg-primary-accent");
   fireEvent.click(button);
   expect(onClick).toHaveBeenCalledOnce();
 });

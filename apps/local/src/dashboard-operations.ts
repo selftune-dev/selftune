@@ -816,15 +816,11 @@ export function makeDashboardOperationsLayer(options: DashboardOperationOverride
         (async (action) => {
           if (!(await configuredHostedState.isCloudConnection()))
             return configuredRemoteLibrary.run(action);
-          if (action === "sync") return configuredHostedState.sync();
-          if (action === "status")
-            return {
-              url: "https://cloud.selftune.dev",
-              mode: "privacy_safe_manifest",
-            };
-          throw new Error(
-            "SelfTune Cloud does not store a library backup. Export and restore remain local.",
-          );
+          if (action === "sync") {
+            await configuredHostedState.sync();
+            return configuredRemoteLibrary.run("sync");
+          }
+          return configuredRemoteLibrary.run(action);
         });
 
       const cloudAccountLink = yield* CloudAccountLinkService;
@@ -1375,10 +1371,7 @@ export function makeDashboardOperationsLayer(options: DashboardOperationOverride
           attempt("remote_library.skill.backup", () =>
             options.remoteLibrarySkillBackup
               ? options.remoteLibrarySkillBackup(skillId)
-              : (async () =>
-                  (await configuredHostedState.isCloudConnection())
-                    ? configuredHostedState.sync()
-                    : configuredRemoteLibrary.backupSkill(skillId))(),
+              : configuredRemoteLibrary.backupSkill(skillId),
           ),
         installLibrarySkill: (skillId, targetAgent) =>
           attempt("remote_library.skill.install", () =>

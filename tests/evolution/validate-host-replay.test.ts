@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 
 import {
   buildRoutingReplayFixture,
+  evaluateRuntimeReplayObservation,
   parseCodexRuntimeReplayOutput,
   parseOpenCodeRuntimeReplayOutput,
   runHostRuntimeReplayFixture,
@@ -14,6 +15,10 @@ import {
 } from "../../packages/runtime/evolution/validate-host-replay.js";
 import { setCurrentDashboardActionContext } from "../../packages/runtime/dashboard-action-events.js";
 import type { EvalEntry, RoutingReplayFixture } from "../../packages/runtime/types.js";
+import type {
+  ReplayWorkspace,
+  RuntimeReplayObservation,
+} from "../../packages/runtime/evolution/validate-host-replay.js";
 import { readJsonl } from "../../packages/runtime/utils/jsonl.js";
 
 function writeSkill(
@@ -51,6 +56,53 @@ function makeFixture(targetPath: string, competingSkillPaths: string[] = []): Ro
     competing_skill_paths: competingSkillPaths,
   };
 }
+
+describe("evaluateRuntimeReplayObservation", () => {
+  test("uses selection and read-path events rather than output claims", () => {
+    const targetSkillPath = "/qualification/.agents/skills/deck-skill/SKILL.md";
+    const competingSkillPaths = [
+      "/qualification/.agents/skills/compare-a/SKILL.md",
+      "/qualification/.agents/skills/compare-b/SKILL.md",
+    ];
+    const fixture = makeFixture(targetSkillPath, competingSkillPaths);
+    const workspace: ReplayWorkspace = {
+      rootDir: "/qualification",
+      skillRegistryDir: "/qualification/.agents/skills",
+      targetSkillPath,
+      competingSkillPaths,
+      allowedReadRoots: [
+        "/qualification/.agents/skills/deck-skill",
+        "/qualification/.agents/skills/compare-a",
+        "/qualification/.agents/skills/compare-b",
+      ],
+    };
+    const evaluate = (
+      shouldTrigger: boolean,
+      triggeredSkillNames: string[],
+      readSkillPaths: string[] = [],
+      rawOutput = "",
+    ) => {
+      const entry: EvalEntry = { query: "qualification control", should_trigger: shouldTrigger };
+      const observation: RuntimeReplayObservation = {
+        triggeredSkillNames,
+        readSkillPaths,
+        rawOutput,
+      };
+      return evaluateRuntimeReplayObservation(entry, fixture, observation, workspace);
+    };
+
+    expect(evaluate(true, ["deck-skill"], [targetSkillPath]).passed).toBe(true);
+    expect(evaluate(true, ["deck-skill", "deck-skill"]).passed).toBe(false);
+    expect(evaluate(true, ["deck-skill", "compare-a"]).passed).toBe(false);
+    expect(evaluate(false, ["compare-a", "compare-b"]).passed).toBe(false);
+    expect(evaluate(true, []).passed).toBe(false);
+    expect(evaluate(false, []).passed).toBe(true);
+    expect(evaluate(true, ["deck-skill"], ["/qualification/unrelated/SKILL.md"]).passed).toBe(
+      false,
+    );
+    expect(evaluate(true, [], [], "Selected the deck-skill skill.").passed).toBe(false);
+  });
+});
 
 describe("runHostReplayFixture", () => {
   test("builds an auto fixture from the target skill registry", () => {

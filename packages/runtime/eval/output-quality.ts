@@ -13,7 +13,14 @@ export const OutputEvalCase = Schema.Struct({
   expected_output: Schema.String,
   files: Schema.optionalKey(Schema.Array(Schema.String)),
   assertions: Schema.optionalKey(Schema.Array(Schema.String)),
-  selftune_assertions: Schema.optionalKey(Schema.Array(SkillAssertion)),
+  selftune_assertions: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        ...SkillAssertion.fields,
+        arm: Schema.optionalKey(Schema.Literals(["with-only", "both"])),
+      }),
+    ),
+  ),
 });
 export type OutputEvalCase = typeof OutputEvalCase.Type;
 
@@ -24,6 +31,7 @@ export const OutputEvalFile = Schema.Struct({
 export type OutputEvalFile = typeof OutputEvalFile.Type;
 
 export interface OutputEvalRunInput {
+  readonly threshold?: number;
   readonly skillPath: string;
   readonly evalsPath?: string;
   readonly workspacePath?: string;
@@ -85,7 +93,7 @@ interface ArmResult {
   readonly duration_ms: number;
   readonly total_tokens: number | null;
   readonly grading: {
-    readonly assertion_results: readonly GradingAssertionResult[];
+    readonly assertion_results: readonly (GradingAssertionResult & { readonly scored: boolean })[];
     readonly summary: {
       readonly passed: number;
       readonly failed: number;
@@ -280,11 +288,19 @@ async function runArm(
       text: assertion.description ?? `${assertion.type}: ${assertion.value}`,
       passed: result.passed,
       evidence: result.actual ?? "No mechanical evidence was produced.",
+      scored:
+        assertion.arm === "both" ||
+        (assertion.arm !== "with-only" &&
+          !(assertion.type === "tool_called" && assertion.value === "Skill")),
     };
   });
-  const assertionResults = [...judged, ...mechanical];
-  const passed = assertionResults.filter((result) => result.passed).length;
-  const total = assertionResults.length;
+  const assertionResults = [
+    ...judged.map((result) => ({ ...result, scored: true })),
+    ...mechanical,
+  ];
+  const scoredResults = assertionResults.filter((result) => result.scored);
+  const passed = scoredResults.filter((result) => result.passed).length;
+  const total = scoredResults.length;
   const grading = {
     assertion_results: assertionResults,
     summary: { passed, failed: total - passed, total, pass_rate: total === 0 ? 0 : passed / total },
@@ -405,6 +421,7 @@ export async function runOutputQualityEvaluation(
       result.baseline.grading.assertion_results.map((assertion) => [assertion.text, assertion]),
     );
     return result.with_skill.grading.assertion_results.flatMap((withSkill) => {
+      if (!withSkill.scored) return [];
       const baseline = baselineByText.get(withSkill.text);
       return baseline ? [{ id: result.id, text: withSkill.text, withSkill, baseline }] : [];
     });
@@ -416,6 +433,10 @@ export async function runOutputQualityEvaluation(
     .filter((pair) => !pair.withSkill.passed && !pair.baseline.passed)
     .map((pair) => ({ eval_id: pair.id, assertion: pair.text }));
   const benchmark = {
+    agent,
+    model: input.model,
+    created_at: new Date().toISOString(),
+    threshold: input.threshold,
     iteration: iterationNumber,
     skill_name: contract.skill_name,
     baseline: baselineArm,
@@ -433,6 +454,9 @@ export async function runOutputQualityEvaluation(
       id: result.id,
       with_skill_pass_rate: result.with_skill.pass_rate,
       baseline_pass_rate: result.baseline.pass_rate,
+      prompt: contract.evals.find((entry) => entry.id === result.id)?.prompt,
+      with_skill_assertions: result.with_skill.grading.assertion_results,
+      baseline_assertions: result.baseline.grading.assertion_results,
       blind_comparison: result.blind_comparison,
     })),
   };

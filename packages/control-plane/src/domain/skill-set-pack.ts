@@ -58,7 +58,7 @@ export class SkillSetPackManagementList extends Schema.Class<SkillSetPackManagem
   packs: Schema.Array(SkillSetPackManagementItem),
 }) {}
 
-export class SkillSetPackUrlError extends Schema.TaggedErrorClass<SkillSetPackUrlError>()(
+export class SkillSetPackUrlError extends Schema.TaggedError<SkillSetPackUrlError>()(
   "SkillSetPackUrlError",
   { message: Schema.String },
 ) {}

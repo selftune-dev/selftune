@@ -12,19 +12,21 @@ import {
 import type { CreateCommandActions } from "./contracts.js";
 
 const optionalString = (name: string, description: string) =>
-  Flag.string(name).pipe(Flag.withDescription(description), Flag.optional);
+  Flag.String(name).pipe(Flag.withDescription(description), Flag.optional);
 
 function makeEvaluationFlags() {
   return {
-    internalHelp: Flag.boolean(CREATE_INTERNAL_HELP_FLAG),
+    internalHelp: Flag.Boolean(CREATE_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false)),
     skillPath: optionalString("skill-path", "Path to a skill directory or SKILL.md"),
-    mode: Flag.string("mode").pipe(
+    mode: Flag.String("mode").pipe(
       Flag.withDescription("Evaluation scope: routing or package"),
       Flag.withDefault("routing"),
     ),
     agent: optionalString("agent", "Runtime agent to use"),
     evalSetPath: optionalString("eval-set", "Override the canonical eval-set path"),
-    json: Flag.boolean("json").pipe(Flag.withDescription("Emit the evaluation result as JSON")),
+    json: Flag.Boolean("json")
+      .pipe(Flag.withDefault(false))
+      .pipe(Flag.withDescription("Emit the evaluation result as JSON")),
   };
 }
 
@@ -56,11 +58,13 @@ export function makeCreateEvaluationCommands(actions: CreateCommandActions) {
   const report = Command.make(
     "report",
     {
-      internalHelp: Flag.boolean(CREATE_INTERNAL_HELP_FLAG),
+      internalHelp: Flag.Boolean(CREATE_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false)),
       skillPath: optionalString("skill-path", "Path to a skill directory or SKILL.md"),
       agent: optionalString("agent", "Runtime agent to use"),
       evalSetPath: optionalString("eval-set", "Override the canonical eval-set path"),
-      json: Flag.boolean("json").pipe(Flag.withDescription("Emit the evaluation result as JSON")),
+      json: Flag.Boolean("json")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Emit the evaluation result as JSON")),
     },
     (input) => {
       if (input.internalHelp)

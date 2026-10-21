@@ -17,7 +17,7 @@ export class AnalyticalImportCheckpoint extends Schema.Class<AnalyticalImportChe
   normalizer_version: NonEmptyText,
 }) {}
 
-export class AnalyticalImportCheckpointFailure extends Schema.TaggedErrorClass<AnalyticalImportCheckpointFailure>()(
+export class AnalyticalImportCheckpointFailure extends Schema.TaggedError<AnalyticalImportCheckpointFailure>()(
   "AnalyticalImportCheckpointFailure",
   { operation: Schema.String, message: Schema.String },
 ) {}

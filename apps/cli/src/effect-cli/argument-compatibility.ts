@@ -272,6 +272,27 @@ interface EvalLeafSpec {
 }
 
 const EVAL_LEAF_SPECS: ReadonlyMap<string, EvalLeafSpec> = new Map([
+  ["report", { booleans: new Set(["--json"]), values: new Set(["--input", "--threshold"]) }],
+  [
+    "plugin",
+    {
+      booleans: new Set(["--trust-plugin", "--json"]),
+      values: new Set([
+        "--target",
+        "--runs",
+        "--threshold",
+        "--concurrency",
+        "--max-cost-usd",
+        "--model",
+        "--judge-model",
+        "--case",
+        "--eval-dir",
+        "--output-dir",
+        "--report",
+        "--ablation",
+      ]),
+    },
+  ],
   [
     "generate",
     {
@@ -311,6 +332,7 @@ const EVAL_LEAF_SPECS: ReadonlyMap<string, EvalLeafSpec> = new Map([
     {
       booleans: new Set(["--json"]),
       values: new Set([
+        "--threshold",
         "--skill-path",
         "--evals",
         "--workspace",

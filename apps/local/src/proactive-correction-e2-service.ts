@@ -106,7 +106,7 @@ export interface ProactiveCandidateEvaluationRecord {
   readonly applies_change: false;
 }
 
-export class ProactiveCandidateEvaluationPersistenceFailure extends Schema.TaggedErrorClass<ProactiveCandidateEvaluationPersistenceFailure>()(
+export class ProactiveCandidateEvaluationPersistenceFailure extends Schema.TaggedError<ProactiveCandidateEvaluationPersistenceFailure>()(
   "ProactiveCandidateEvaluationPersistenceFailure",
   { message: Schema.String },
 ) {}
@@ -175,7 +175,7 @@ export function makeLocalStoreProactiveCandidateEvaluationPersistence(
   };
 }
 
-export class ProactiveCorrectionE2Failure extends Schema.TaggedErrorClass<ProactiveCorrectionE2Failure>()(
+export class ProactiveCorrectionE2Failure extends Schema.TaggedError<ProactiveCorrectionE2Failure>()(
   "ProactiveCorrectionE2Failure",
   { code: Schema.Literals(["INVALID_REQUEST", "PERSISTENCE_FAILED"]), message: Schema.String },
 ) {}

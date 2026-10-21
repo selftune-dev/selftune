@@ -23,6 +23,14 @@ const output: GraderOutput = {
 };
 
 describe("grader output boundary", () => {
+  test("retains unobserved evidence instead of stripping it at the JSON boundary", () => {
+    const incomplete = {
+      ...output,
+      expectations: [],
+      unobserved_expectations: [{ text: "writes the campaign", reason: "Missing final artifact" }],
+    };
+    expect(parseGraderOutput(JSON.stringify(incomplete))).toEqual(incomplete);
+  });
   test("decodes complete output and preserves false values, evidence, and feedback", () => {
     expect(parseGraderOutput(JSON.stringify(output))).toEqual(output);
     expect(parseGraderOutput(`\x60\x60\x60json\n${JSON.stringify(output)}\n\x60\x60\x60`)).toEqual(

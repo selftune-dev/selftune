@@ -89,7 +89,7 @@ export interface PreparedSkillSourceMergeAudit {
   >;
 }
 
-export class SkillSourceUpdateFailure extends Schema.TaggedErrorClass<SkillSourceUpdateFailure>()(
+export class SkillSourceUpdateFailure extends Schema.TaggedError<SkillSourceUpdateFailure>()(
   "SkillSourceUpdateFailure",
   {
     code: Schema.String,

@@ -390,6 +390,35 @@ function actions(
 }
 
 describe("Skills Library bulk actions", () => {
+  it("bounds large libraries and resets pagination when searching", () => {
+    const data = {
+      categoryOptions: [],
+      skills: Array.from({ length: 125 }, (_, index) =>
+        sortingSkill({ id: `skill-${index}`, name: `skill-${String(index).padStart(3, "0")}` }),
+      ),
+    };
+    render(
+      <DashboardHostProvider
+        modules={adapter({
+          access: "available",
+          useInventory: () => ({ data, isLoading: false, error: null, refresh: vi.fn() }),
+          useActions: () => actions({ access: "unavailable", reason: "unused" }, vi.fn()),
+        })}
+      >
+        <SkillsLibraryScreen />
+      </DashboardHostProvider>,
+    );
+    expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(51);
+    const pages = screen.getByRole("navigation", { name: "Library pages" });
+    fireEvent.click(within(pages).getByRole("button", { name: "Next" }));
+    expect(pages.textContent).toContain("51–100 of 125 skills");
+    fireEvent.change(screen.getByLabelText("Search skills or locations"), {
+      target: { value: "skill-124" },
+    });
+    expect(screen.getByText("skill-124")).toBeTruthy();
+    expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(2);
+  });
+
   it("sorts visible columns through accessible native controls with missing values last", () => {
     render(
       <DashboardHostProvider

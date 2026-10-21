@@ -3,6 +3,8 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import { LocalTelemetryBatch } from "./trace-batch.js";
+import { SourceSnapshot } from "./source-reconstruction.js";
+import { SourceProvider, SourceSessionIds } from "./source-identity.js";
 
 const BoundedText = Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(256));
 const TraceId = Schema.String.check(
@@ -16,13 +18,7 @@ const MetricCount = Schema.Number.check(
 );
 
 /** Source identities supported by the local trace import pipeline. */
-export const LocalTraceSourceKind = Schema.Literals([
-  "claude_code",
-  "codex",
-  "opencode",
-  "pi",
-  "otlp",
-]);
+export const LocalTraceSourceKind = SourceProvider;
 
 /**
  * A normalized source revision ready to be made durable in local analytics.
@@ -35,6 +31,8 @@ export class LocalTraceImportRequest extends Schema.Class<LocalTraceImportReques
   source_kind: LocalTraceSourceKind,
   source_revision: BoundedText,
   normalizer_version: BoundedText,
+  source_snapshot: Schema.optionalKey(SourceSnapshot),
+  source_session_ids: Schema.optionalKey(SourceSessionIds),
   batch: LocalTelemetryBatch,
 }) {}
 
@@ -60,7 +58,7 @@ export class LocalTraceImportResult extends Schema.Class<LocalTraceImportResult>
   skill_failure_signals: Schema.Array(LocalSkillFailureSignal),
 }) {}
 
-export class LocalTraceImportFailure extends Schema.TaggedErrorClass<LocalTraceImportFailure>()(
+export class LocalTraceImportFailure extends Schema.TaggedError<LocalTraceImportFailure>()(
   "LocalTraceImportFailure",
   { operation: Schema.String, message: Schema.String },
 ) {}

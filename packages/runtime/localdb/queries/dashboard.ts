@@ -14,17 +14,12 @@ import type {
   RecentActivityItem,
   SkillReportPaginatedPayload,
   SkillReportPayload,
-  SkillTestingReadiness,
-  SkillSummary,
   SkillUsageRecord,
   TelemetryRecord,
 } from "../../dashboard-contract.js";
-import { computeCreateDashboardReadiness, isCreateSkillDraft } from "../../create/readiness.js";
 import { getPendingProposals } from "./evolution.js";
 import { safeParseJsonArray } from "./json.js";
 import { queryTrustedSkillObservationRows } from "./trust.js";
-import { listSkillTestingReadiness } from "../../testing-readiness.js";
-import { classifySkillPath } from "../../utils/skill-discovery.js";
 
 function mapOverviewEvolutionEntry(row: {
   timestamp: string;
@@ -592,145 +587,7 @@ function paginateSkillReportInvocations(
   return { items, next_cursor, has_more: hasMore };
 }
 
-export function getSkillsList(
-  db: Database,
-  testingReadinessRows?: SkillTestingReadiness[],
-): SkillSummary[] {
-  const trustedRows = queryTrustedSkillObservationRows(db);
-  const bySkill = new Map<
-    string,
-    Array<{
-      skill_name: string;
-      session_id: string;
-      occurred_at: string | null;
-      triggered: number;
-      matched_prompt_id: string | null;
-      confidence: number | null;
-    }>
-  >();
-
-  for (const row of trustedRows) {
-    const base = {
-      skill_name: row.skill_name,
-      session_id: row.session_id,
-      occurred_at: row.occurred_at,
-      triggered: row.triggered,
-      matched_prompt_id: row.matched_prompt_id,
-      confidence: row.confidence,
-    };
-    const existing = bySkill.get(row.skill_name);
-    if (existing) existing.push(base);
-    else bySkill.set(row.skill_name, [base]);
-  }
-
-  const evidenceSkills = new Set(
-    db
-      .query<
-        {
-          skill_name: string;
-        },
-        SQLQueryBindings[]
-      >(`SELECT DISTINCT skill_name FROM evolution_evidence`)
-      .all()
-      .map((row) => row.skill_name),
-  );
-
-  const skillScopeRows = db
-    .query<{ skill_name: string; skill_scope: string | null }, SQLQueryBindings[]>(
-      `SELECT
-         si.skill_name,
-         COALESCE(
-           (SELECT s2.skill_scope FROM skill_invocations s2
-            WHERE s2.skill_name = si.skill_name AND s2.skill_scope IS NOT NULL
-            ORDER BY s2.occurred_at DESC LIMIT 1),
-           (SELECT su.skill_scope FROM skill_usage su
-            WHERE su.skill_name = si.skill_name AND su.skill_scope IS NOT NULL
-            ORDER BY su.timestamp DESC LIMIT 1)
-         ) as skill_scope
-       FROM skill_invocations si
-       GROUP BY si.skill_name`,
-    )
-    .all();
-  const scopeBySkill = new Map(skillScopeRows.map((row) => [row.skill_name, row.skill_scope]));
-  const testingReadiness = testingReadinessRows ?? listSkillTestingReadiness(db);
-  const testingReadinessBySkill = new Map(
-    testingReadiness.map((row) => [row.skill_name, row] as const),
-  );
-  const createReadinessBySkill = new Map(
-    testingReadiness
-      .flatMap((row) => {
-        if (!row.skill_path || !isCreateSkillDraft(row.skill_path)) return [];
-        try {
-          return [
-            [
-              row.skill_name,
-              computeCreateDashboardReadiness(row.skill_path, {
-                getTestingReadiness: () => row,
-              }),
-            ] as const,
-          ];
-        } catch {
-          return [];
-        }
-      })
-      .filter(Boolean),
-  );
-  const knownSkills = new Set<string>(bySkill.keys());
-  for (const skillName of createReadinessBySkill.keys()) {
-    knownSkills.add(skillName);
-  }
-
-  return [...knownSkills]
-    .map((skillName) => {
-      const rows = bySkill.get(skillName) ?? [];
-      const totalChecks = rows.length;
-      const triggeredCount = rows.filter((row) => row.triggered === 1).length;
-      const uniqueSessions = new Set(rows.map((row) => row.session_id)).size;
-      const lastSeen =
-        rows
-          .map((row) => row.occurred_at)
-          .filter((value): value is string => value != null)
-          .sort((a, b) => b.localeCompare(a))[0] ?? null;
-      const withConfidence = rows.filter((row) => row.confidence != null);
-      const routingConfidence =
-        withConfidence.length > 0
-          ? withConfidence.reduce((sum, row) => sum + (row.confidence ?? 0), 0) /
-            withConfidence.length
-          : null;
-      const readiness = testingReadinessBySkill.get(skillName);
-      const createReadiness = createReadinessBySkill.get(skillName);
-      const fallbackScope =
-        readiness?.skill_path != null ? classifySkillPath(readiness.skill_path).skill_scope : null;
-      const createScope =
-        createReadiness?.skill_path != null
-          ? classifySkillPath(createReadiness.skill_path).skill_scope
-          : null;
-
-      return {
-        skill_name: skillName,
-        skill_scope:
-          scopeBySkill.get(skillName) ??
-          (createScope && createScope !== "unknown" ? createScope : null) ??
-          (fallbackScope && fallbackScope !== "unknown" ? fallbackScope : null),
-        total_checks: totalChecks,
-        triggered_count: triggeredCount,
-        pass_rate: totalChecks > 0 ? triggeredCount / totalChecks : 0,
-        unique_sessions: uniqueSessions,
-        last_seen: lastSeen,
-        has_evidence: evidenceSkills.has(skillName),
-        routing_confidence: routingConfidence,
-        confidence_coverage: totalChecks > 0 ? withConfidence.length / totalChecks : 0,
-        testing_readiness: readiness,
-        create_readiness: createReadiness,
-      };
-    })
-    .sort(
-      (a, b) =>
-        b.total_checks - a.total_checks ||
-        (b.last_seen ?? "").localeCompare(a.last_seen ?? "") ||
-        a.skill_name.localeCompare(b.skill_name),
-    );
-}
+export { getSkillsList } from "./skills.js";
 
 export function getAnalyticsPayload(db: Database): AnalyticsResponse {
   const trustedRows = queryTrustedSkillObservationRows(db);

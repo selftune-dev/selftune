@@ -213,7 +213,7 @@ async function invokeOpenCodeRuntimeReplay(
   return observation;
 }
 
-function evaluateRuntimeReplayObservation(
+export function evaluateRuntimeReplayObservation(
   entry: EvalEntry,
   fixture: RoutingReplayFixture,
   observation: RuntimeReplayObservation,
@@ -249,6 +249,15 @@ function evaluateRuntimeReplayObservation(
   const sessionPrefix = observation.sessionId
     ? `runtime replay session ${observation.sessionId}`
     : "runtime replay";
+  if (unrelatedReadPaths.length > 0) {
+    return {
+      query: entry.query,
+      should_trigger: entry.should_trigger,
+      triggered: false,
+      passed: false,
+      evidence: `${sessionPrefix} read files outside staged skill set: ${unrelatedReadPaths.join(", ")}`,
+    };
+  }
   if (observation.triggeredSkillNames.length > 1) {
     return {
       query: entry.query,
@@ -283,15 +292,6 @@ function evaluateRuntimeReplayObservation(
       triggered: false,
       passed: false,
       evidence: `${sessionPrefix} selected unrelated skill: ${unrelatedTriggered}`,
-    };
-  }
-  if (unrelatedReadPaths.length > 0) {
-    return {
-      query: entry.query,
-      should_trigger: entry.should_trigger,
-      triggered: false,
-      passed: false,
-      evidence: `${sessionPrefix} read files outside staged skill set: ${unrelatedReadPaths.join(", ")}`,
     };
   }
   if (targetRead) {

@@ -30,7 +30,7 @@ export class CatalogSkillResolutionProgress extends Schema.Class<CatalogSkillRes
   message: Schema.String,
 }) {}
 
-export class CatalogSkillResolverFailure extends Schema.TaggedErrorClass<CatalogSkillResolverFailure>()(
+export class CatalogSkillResolverFailure extends Schema.TaggedError<CatalogSkillResolverFailure>()(
   "CatalogSkillResolverFailure",
   {
     skill_name: Schema.String,
@@ -52,7 +52,7 @@ export const CatalogSkillResolutionFailureDetail = Schema.Struct({
 });
 export type CatalogSkillResolutionFailureDetail = typeof CatalogSkillResolutionFailureDetail.Type;
 
-export class CatalogSkillSetResolutionError extends Schema.TaggedErrorClass<CatalogSkillSetResolutionError>()(
+export class CatalogSkillSetResolutionError extends Schema.TaggedError<CatalogSkillSetResolutionError>()(
   "CatalogSkillSetResolutionError",
   {
     code: Schema.Literal("CATALOG_SKILL_RESOLUTION_FAILED"),
@@ -63,7 +63,7 @@ export class CatalogSkillSetResolutionError extends Schema.TaggedErrorClass<Cata
   },
 ) {}
 
-export class SkillSetCreationError extends Schema.TaggedErrorClass<SkillSetCreationError>()(
+export class SkillSetCreationError extends Schema.TaggedError<SkillSetCreationError>()(
   "SkillSetCreationError",
   {
     code: Schema.String,

@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { makeDuckDbNodeApiAnalyticalStoreLive } from "@selftune/observability/duckdb-node-api";
 
 import { _setTestDb, getDb, openDb } from "@selftune/local-store";
 import {
@@ -122,6 +126,7 @@ const recordingStore = (received: DuckDbAnalyticalBatch[], receipts = new Set<st
   Layer.succeed(
     DuckDbAnalyticalStore,
     DuckDbAnalyticalStore.of({
+      resolveSourceTask: () => Effect.die("unused"),
       hasExactBatchReceipt: (input) =>
         Schema.decodeUnknownEffect(DuckDbAnalyticalBatch)(input).pipe(
           Effect.map((batch) => receipts.has(batch.batch_id)),
@@ -215,6 +220,39 @@ test("imports a source revision before acknowledging its SQLite checkpoint", asy
     imported_at: "2000-01-01T00:00:00.000Z",
     source_fingerprint: "100:10",
   });
+});
+
+test("disk-pressure refusal leaves no checkpoint and a restarted import retries exactly once", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "selftune-import-pressure-"));
+  try {
+    const path = join(directory, "observability.duckdb");
+    const run = (bytes: bigint) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          return yield* (yield* LocalTraceImporter).importTrace(request);
+        }).pipe(
+          Effect.provide(
+            Layer.provide(
+              makeLocalTraceImporterLive(getDb()),
+              makeDuckDbNodeApiAnalyticalStoreLive(path, async () => bytes),
+            ),
+          ),
+          Effect.scoped,
+        ),
+      );
+    await expect(run(0n)).rejects.toThrow("maintenance deferred");
+    expect(
+      getDb().query("SELECT source_identity FROM analytical_import_checkpoints").all(),
+    ).toEqual([]);
+    await run(1024n ** 4n);
+    const checkpoint = getDb().query("SELECT * FROM analytical_import_checkpoints").all();
+    expect(checkpoint).toHaveLength(1);
+    // Exact receipts remain readable under pressure; no redundant write is required.
+    await run(0n);
+    expect(getDb().query("SELECT * FROM analytical_import_checkpoints").all()).toEqual(checkpoint);
+  } finally {
+    rmSync(directory, { recursive: true });
+  }
 });
 
 const importBatch = (input: LocalTraceImportRequest, received: DuckDbAnalyticalBatch[]) =>

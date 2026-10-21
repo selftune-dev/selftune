@@ -99,6 +99,109 @@ async function loadService(
 }
 
 describe("scoped desktop runtime", () => {
+  it("leaves the recovery screen when the supervised service becomes healthy later", async () => {
+    const events: string[] = [];
+    const failed = Promise.withResolvers<void>();
+    const observedRecovery = Promise.withResolvers<void>();
+    let healthy = false;
+    let statusReads = 0;
+    let starts = 0;
+    const active = connection("1", "os-service");
+    const baseCallbacks = callbacks(events);
+    const runtime = ManagedRuntime.make(
+      makeDesktopRuntimeLayer(
+        dependencies({
+          canManageBackgroundService: true,
+          monitorIntervalMs: 2,
+          monitorFailureThreshold: 1,
+          fetch: async () => new Response(null, { status: healthy ? 200 : 503 }),
+          attachSupervisedSidecar: async () => active,
+          getBackgroundStatus: () =>
+            ++statusReads === 1
+              ? Effect.succeed({
+                  detail: [],
+                  pid: active.pid,
+                  platform: "darwin",
+                  registered: true,
+                  running: true,
+                  supported: true,
+                })
+              : Effect.fail(new Error("Service status timed out")),
+          startSidecar: async () => {
+            starts += 1;
+            return active;
+          },
+        }),
+        {
+          ...baseCallbacks,
+          onRecoveryFailed: async (cause) => {
+            await baseCallbacks.onRecoveryFailed(cause);
+            failed.resolve();
+          },
+          onConnectionActivated: async (value) => {
+            await baseCallbacks.onConnectionActivated(value);
+            if (healthy) observedRecovery.resolve();
+          },
+        },
+      ),
+    );
+    try {
+      const service = await loadService(runtime);
+      await runtime.runPromise(service.boot);
+      await failed.promise;
+      healthy = true;
+      const recovered = await Promise.race([
+        observedRecovery.promise.then(() => true),
+        Bun.sleep(150).then(() => false),
+      ]);
+      expect(recovered).toBe(true);
+      expect(events.filter((event) => event.startsWith("rebind:"))).toEqual([
+        "rebind:1",
+        "rebind:1",
+      ]);
+      expect(starts).toBe(0);
+    } finally {
+      await runtime.dispose();
+    }
+  });
+  it.each([true, false])(
+    "rechecks health before replacing the runtime (restored: %s)",
+    async (restored) => {
+      const events: string[] = [];
+      const checkedAgain = Promise.withResolvers<void>();
+      let probes = 0;
+      let starts = 0;
+      const runtime = ManagedRuntime.make(
+        makeDesktopRuntimeLayer(
+          dependencies({
+            monitorFailureThreshold: 1,
+            monitorIntervalMs: 2,
+            fetch: async () => {
+              probes += 1;
+              if (probes === 1 || (!restored && starts === 1))
+                return new Response(null, { status: 503 });
+              checkedAgain.resolve();
+              return new Response(null, { status: 200 });
+            },
+            startSidecar: async () => connection(String(++starts)),
+          }),
+          callbacks(events),
+        ),
+      );
+      try {
+        const service = await loadService(runtime);
+        await runtime.runPromise(service.boot);
+        await checkedAgain.promise;
+        await runtime.runPromise(service.connection);
+        expect(starts).toBe(restored ? 1 : 2);
+        expect(events.filter((event) => event.startsWith("rebind:"))).toEqual(
+          restored ? ["rebind:1"] : ["rebind:1", "rebind:2"],
+        );
+      } finally {
+        await runtime.dispose();
+      }
+    },
+  );
   it("boots one desktop child and stops only that owned child on disposal", async () => {
     const events: string[] = [];
     const stopped: string[] = [];

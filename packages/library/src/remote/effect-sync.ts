@@ -96,7 +96,7 @@ export const syncRemoteObjectsEffect = Effect.fn("selftune.library.remote.syncOb
       });
       return true;
     }),
-    { concurrency: "unbounded" },
+    { concurrency: 4 },
   );
   const uploaded = uploads.reduce((total, didUpload) => total + (didUpload ? 1 : 0), 0);
   const unchanged = uploads.length - uploaded;

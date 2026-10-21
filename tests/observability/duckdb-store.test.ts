@@ -239,7 +239,7 @@ test("creates the analytical schema, derives metrics, and ignores a replayed bat
   ]);
   expect(result.health).toEqual({
     database_path: ":memory:",
-    schema_version: 9,
+    schema_version: 12,
     span_count: 1,
     metric_count: 5,
     link_count: 1,
@@ -794,7 +794,7 @@ test("v8 rebuilds materialized rollups deterministically for an existing v7 poin
         "DELETE FROM observability_schema_migrations WHERE version = 8",
       );
       await inspectionConnection.run(
-        "DELETE FROM observability_schema_migrations WHERE version = 9",
+        "DELETE FROM observability_schema_migrations WHERE version >= 9",
       );
     } finally {
       inspectionConnection.closeSync();

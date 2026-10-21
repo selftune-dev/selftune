@@ -174,14 +174,14 @@ export interface WindowsServiceLockCompatibilityDependencies {
   ) => Effect.Effect<A, E | WindowsServiceLockCompatibilityError, R>;
 }
 
-export class WindowsServiceLockCompatibilityError extends Schema.TaggedErrorClass<WindowsServiceLockCompatibilityError>()(
+export class WindowsServiceLockCompatibilityError extends Schema.TaggedError<WindowsServiceLockCompatibilityError>()(
   "WindowsServiceLockCompatibilityError",
   { message: Schema.String, operation: Schema.String },
 ) {}
 
-export class WindowsServiceLockFileError extends Schema.TaggedErrorClass<WindowsServiceLockFileError>()(
+export class WindowsServiceLockFileError extends Schema.TaggedError<WindowsServiceLockFileError>()(
   "WindowsServiceLockFileError",
-  { message: Schema.String, code: Schema.NullOr(Schema.String), cause: Schema.Defect },
+  { message: Schema.String, code: Schema.NullOr(Schema.String), cause: Schema.Defect() },
 ) {}
 
 export interface WindowsServiceLockCompatibility {

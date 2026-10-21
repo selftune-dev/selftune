@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Option, Schema } from "effect";
 
 import type {
   HarnessSourceAdapter,
@@ -12,10 +12,17 @@ import type {
 } from "@selftune/harness-core/source-adapter";
 import { harnessSourceSyncFailure } from "@selftune/harness-core/source-adapter";
 import { LocalTraceImporter } from "@selftune/observability";
+import {
+  CODEX_RECONSTRUCTION_PARSER,
+  SourceSnapshot,
+  readBoundedSource,
+  sourceDigest,
+} from "@selftune/observability/source-reconstruction";
 import { CODEX_INGEST_MARKER, QUERY_LOG, TELEMETRY_LOG } from "@selftune/runtime/constants";
 import { NORMALIZER_VERSION } from "@selftune/runtime/normalization";
 import {
   fingerprintIngestionFile,
+  fileIngestionRevision,
   isFileIngestionCurrent,
   loadFileIngestionMarker,
   saveFileIngestionMarker,
@@ -27,12 +34,13 @@ import {
   findSkillNames,
   ingestFile,
   parseRolloutFileAsync,
+  parseRolloutTextAsync,
   type ParsedRollout,
 } from "./ingestors/codex-rollout.js";
 import { buildLocalTelemetryBatchFromRollout } from "./ingestors/codex-trace-projection.js";
 
 const adapterId = "codex";
-const CODEX_SOURCE_PROJECTION_VERSION = "codex-source-v5";
+const CODEX_SOURCE_PROJECTION_VERSION = "codex-source-v7";
 
 const sourceFailure = (operation: string, cause: unknown) =>
   harnessSourceSyncFailure(adapterId, operation, cause);
@@ -48,6 +56,7 @@ const ingestParsedRollout = Effect.fn("Codex.syncSource.ingestParsedRollout")(fu
   fingerprint: FileIngestionFingerprint,
   request: HarnessSourceSyncRequest,
   onDryRunMessage: HarnessSourceProgressCallback,
+  snapshot?: SourceSnapshot,
 ): Effect.fn.Return<boolean, HarnessSourceSyncFailure, LocalTraceImporter> {
   const canonicalSucceeded = yield* Effect.try({
     try: () =>
@@ -68,12 +77,16 @@ const ingestParsedRollout = Effect.fn("Codex.syncSource.ingestParsedRollout")(fu
     try: () => {
       const batch = buildLocalTelemetryBatchFromRollout(parsed);
       if (batch === null) return null;
-      return {
+      const input = {
         source_kind: "codex" as const,
-        source_revision: `${CODEX_SOURCE_PROJECTION_VERSION}:${fingerprint.size}:${fingerprint.mtime_ms}`,
+        source_session_ids: [parsed.session_id],
+        source_revision: snapshot
+          ? `${CODEX_SOURCE_PROJECTION_VERSION}:${snapshot.sha256}:${sourceDigest(Buffer.from(JSON.stringify([snapshot.parser, snapshot.skill_names, snapshot.workspace_skills, snapshot.task_sha256])))}`
+          : `${CODEX_SOURCE_PROJECTION_VERSION}:${fileIngestionRevision(fingerprint)}`,
         normalizer_version: NORMALIZER_VERSION,
         batch,
       };
+      return snapshot ? { ...input, source_snapshot: snapshot } : input;
     },
     catch: (cause) => sourceFailure("prepare Codex analytical import", cause),
   });
@@ -149,6 +162,14 @@ const makeSyncCodexSource = (markerPath: string) =>
       `found ${source.rolloutFiles.length} rollouts, ${pending.length} pending`,
     );
 
+    if (pending.length === 0)
+      return {
+        available: true,
+        scanned: source.rolloutFiles.length,
+        synced: 0,
+        skipped: 0,
+        authoritativeFiles: source.rolloutFiles,
+      };
     const skillNames = yield* Effect.try({
       try: () => findSkillNames(),
       catch: (cause) => sourceFailure("discover Codex skills", cause),
@@ -163,8 +184,47 @@ const makeSyncCodexSource = (markerPath: string) =>
       // Parsing is explicitly asynchronous and yields every bounded byte
       // batch. This makes a large source replay interruptible instead of
       // trapping the desktop/CLI event loop in a long synchronous scan.
+      let snapshot: SourceSnapshot | undefined;
       const parsed = yield* Effect.tryPromise({
-        try: (signal) => parseRolloutFileAsync(rolloutFile, skillNames, signal),
+        try: async (signal) => {
+          const source = skillNames.size <= 1024 ? await readBoundedSource(rolloutFile) : null;
+          if (source?.state === "available") {
+            signal.throwIfAborted();
+            const workspaces = new Map<string, string[]>();
+            const parsed = await parseRolloutTextAsync(
+              rolloutFile,
+              source.bytes.toString("utf8"),
+              skillNames,
+              (cwd) => {
+                const names = findSkillNames(cwd);
+                workspaces.set(cwd, [...names].toSorted());
+                return names;
+              },
+              signal,
+            );
+            if (
+              workspaces.size <= 16 &&
+              [...workspaces.values()].reduce(
+                (count, names) => count + names.length,
+                skillNames.size,
+              ) <= 1024
+            ) {
+              snapshot = Option.getOrUndefined(
+                Schema.decodeUnknownOption(SourceSnapshot)({
+                  parser: CODEX_RECONSTRUCTION_PARSER,
+                  path: rolloutFile,
+                  sha256: sourceDigest(source.bytes),
+                  bytes: source.bytes.length,
+                  task_sha256: sourceDigest(Buffer.from(parsed?.query ?? "")),
+                  skill_names: [...skillNames].toSorted(),
+                  workspace_skills: [...workspaces].map(([cwd, names]) => ({ cwd, names })),
+                }),
+              );
+            }
+            return parsed;
+          }
+          return parseRolloutFileAsync(rolloutFile, skillNames, signal);
+        },
         catch: (cause) => sourceFailure("parse Codex rollout", cause),
       });
       if (parsed === null) {
@@ -174,7 +234,13 @@ const makeSyncCodexSource = (markerPath: string) =>
         }
         skipped += 1;
       } else {
-        const ingested = yield* ingestParsedRollout(parsed, fingerprint, request, onDryRunMessage);
+        const ingested = yield* ingestParsedRollout(
+          parsed,
+          fingerprint,
+          request,
+          onDryRunMessage,
+          snapshot,
+        );
         if (!ingested) {
           skipped += 1;
           yield* reportProgress(

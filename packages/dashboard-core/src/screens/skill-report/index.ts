@@ -43,3 +43,6 @@ export {
   type SkillReportScaffoldProps,
 } from "./SkillReportScaffold";
 export { SkillReportTrustBadge, getSkillReportTrustBadgeConfig } from "./SkillReportTrustBadge";
+export { LocalSkillReport } from "./LocalSkillReport";
+export { SkillEvaluations } from "./SkillEvaluations";
+export { SkillReportRecentActivity } from "./SkillReportRecentActivity";

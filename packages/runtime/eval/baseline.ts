@@ -10,6 +10,7 @@
 
 import { parseArgs } from "node:util";
 import * as Schema from "effect/Schema";
+import { preservingJsonDecoder } from "../utils/preserving-schema.js";
 
 import { writeGradingBaseline } from "../localdb/direct-write.js";
 import type { BaselineResult } from "../types.js";
@@ -202,9 +203,9 @@ Options:
       );
     }
     try {
-      evalSet = Schema.decodeUnknownSync(
-        Schema.fromJsonString(Schema.mutable(Schema.Array(EvalEntry))),
-      )(readFileSync(evalSetPath, "utf8"), { onExcessProperty: "preserve" });
+      evalSet = preservingJsonDecoder(Schema.mutable(Schema.Array(EvalEntry)))(
+        readFileSync(evalSetPath, "utf8"),
+      );
     } catch {
       throw new CLIError(
         `Eval set at ${evalSetPath} is invalid.`,

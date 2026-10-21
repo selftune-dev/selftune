@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { SkillReportResponse, SkillTestingReadiness } from "@/types";
 import { SkillReport } from "./SkillReport";
+import { ThemeProvider } from "@selftune/dashboard-core/chrome";
 
 interface ReportFixture extends SkillReportResponse {
   testing_readiness: SkillTestingReadiness;
@@ -13,16 +14,29 @@ let mockSkillReportData: ReportFixture;
 let mockSearchParams = new URLSearchParams();
 let client: QueryClient;
 
-function renderReport() {
+function renderReport(error?: Error) {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(["skill-report", "test-skill"], mockSkillReportData);
+  if (error) {
+    client.setQueryDefaults(["skill-report", "test-skill"], { retryOnMount: false });
+    client
+      .getQueryCache()
+      .find({ queryKey: ["skill-report", "test-skill"] })
+      ?.setState({
+        data: undefined,
+        status: "error",
+        error,
+      });
+  }
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[`/skills/test-skill?${mockSearchParams}`]}>
-        <Routes>
-          <Route path="/skills/:name" element={<SkillReport />} />
-        </Routes>
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={[`/skills/test-skill?${mockSearchParams}`]}>
+          <Routes>
+            <Route path="/skills/:name" element={<SkillReport />} />
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>
     </QueryClientProvider>,
   );
 }
@@ -214,50 +228,70 @@ beforeEach(() => {
 });
 
 describe("SkillReport", () => {
+  it("keeps skill identity and recovery navigation when the report fails", () => {
+    renderReport(new Error("Skill not found"));
+    expect(screen.getByRole("heading", { name: "test-skill" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Back to Skills" }).getAttribute("href")).toBe(
+      "/skills",
+    );
+    expect(screen.getByText("Report unavailable")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry report" })).toBeTruthy();
+  });
+
+  it("renders the report for an installed skill without usage history", () => {
+    mockSkillReportData.usage.total_checks = 0;
+    mockSkillReportData.coverage.checks = 0;
+    mockSkillReportData.evidence = [];
+    mockSkillReportData.evolution = [];
+    mockSkillReportData.canonical_invocations = [];
+    renderReport();
+    expect(screen.getByRole("heading", { name: "selftune" })).toBeTruthy();
+    expect(screen.queryByText(/No data found for skill/)).toBeNull();
+    expect(screen.getByRole("tab", { name: /Overview/ })).toBeTruthy();
+  });
+
   it("renders tabs directly before tab-controlled content", async () => {
     renderReport();
-    const tabs = screen.getByRole("tab", { name: "Evidence" });
-    const panel = screen.getByRole("tabpanel", { name: "Evidence" });
+    const tabs = screen.getByRole("tab", { name: "Overview" });
+    const panel = screen.getByRole("tabpanel", { name: "Overview" });
     expect(tabs.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
   });
 
-  it("does not duplicate the latest decision block", async () => {
-    const { container } = renderReport();
-    const html = container.innerHTML;
-
-    expect(html.match(/Latest Decision/g)?.length).toBe(1);
+  it("keeps testing actions out of the overview", () => {
+    renderReport();
+    expect(screen.queryByText("Measured trust loop")).toBeNull();
+    expect(screen.getByText("Recent activity")).toBeTruthy();
+    expect(screen.queryByText("Latest Decision")).toBeNull();
   });
 
-  it("renders evidence and data quality panel content in their sections", async () => {
+  it("keeps evidence in History and diagnostics collapsed in Overview", () => {
     renderReport();
-    fireEvent.click(screen.getByRole("tab", { name: "Evidence" }));
-    expect(screen.getByRole("tabpanel", { name: "Evidence" }).textContent).toContain(
+    fireEvent.click(screen.getByRole("tab", { name: "History" }));
+    expect(screen.getByRole("tabpanel", { name: "History" }).textContent).toContain(
       "Prompt Evidence",
     );
-    fireEvent.click(screen.getByRole("tab", { name: "Data Quality" }));
-    expect(screen.getByRole("tabpanel", { name: "Data Quality" }).textContent).toContain(
-      "Evidence Quality Rates",
-    );
-    expect(screen.getByRole("tabpanel", { name: "Data Quality" }).textContent).toContain(
-      "Data Hygiene",
-    );
-    fireEvent.click(screen.getByRole("tab", { name: /Missed Queries/ }));
-    expect(screen.getByRole("tabpanel", { name: /Missed Queries/ }).textContent).toContain(
-      "missed query",
-    );
+    fireEvent.click(screen.getByRole("tab", { name: "Overview" }));
+    const summary = screen.getByText("Diagnostics and data sources");
+    expect(summary.closest("details")?.open).toBe(false);
+    fireEvent.click(summary);
+    expect(screen.getByRole("tabpanel").textContent).toContain("Evidence Quality Rates");
+    expect(screen.getByRole("tabpanel").textContent).toContain("Data Hygiene");
+    expect(screen.getByRole("tabpanel").textContent).toContain("missed query");
   });
 
-  it("shows invoker fallback data from session metadata", async () => {
+  it("shows harness attribution from session metadata and preserves detailed records", () => {
     renderReport();
-    fireEvent.click(screen.getByRole("tab", { name: /Invocations/ }));
+    expect(screen.getByRole("tabpanel").textContent).toContain("codex");
+    fireEvent.click(screen.getByRole("button", { name: "Inspect records" }));
     expect(screen.getByRole("tabpanel").textContent).toContain("Invoker");
     expect(screen.getByRole("tabpanel").textContent).toContain("codex");
   });
 
   it("renders the creator test loop section with the recommended command", async () => {
     const { container } = renderReport();
+    fireEvent.click(screen.getByRole("tab", { name: "Testing" }));
     const html = container.innerHTML;
 
     expect(html).toContain("Measured trust loop");
@@ -344,6 +378,7 @@ describe("SkillReport", () => {
     };
 
     const { container } = renderReport();
+    fireEvent.click(screen.getByRole("tab", { name: "Testing" }));
     const html = container.innerHTML;
 
     expect(html).toContain("Draft skill lifecycle");
@@ -435,6 +470,7 @@ describe("SkillReport", () => {
     };
 
     const { container } = renderReport();
+    fireEvent.click(screen.getByRole("tab", { name: "Testing" }));
     const html = container.innerHTML;
 
     expect(html).toContain("Draft skill lifecycle");
@@ -504,6 +540,7 @@ describe("SkillReport", () => {
     };
 
     const { container } = renderReport();
+    fireEvent.click(screen.getByRole("tab", { name: "Testing" }));
     const html = container.innerHTML;
 
     expect(html).toContain("Package frontier");
@@ -518,7 +555,7 @@ describe("SkillReport", () => {
 
     expect(html).not.toContain("New to selftune?");
     expect(html).not.toContain("Measured trust loop");
-    expect(html).toContain("Ship candidate");
-    expect(html.indexOf("Trust Signals")).toBeLessThan(html.indexOf("Evidence"));
+    expect(screen.getByRole("tab", { name: "History" }).getAttribute("aria-selected")).toBe("true");
+    expect(html).toContain("Replay passed");
   });
 });

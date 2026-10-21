@@ -79,9 +79,12 @@ import {
 } from "@selftune/runtime/utils/skill-discovery";
 export { buildLocalTelemetryBatchFromRollout } from "./codex-trace-projection.js";
 import { decodeRolloutLine } from "./rollout-contract.js";
+import { createSkillReadEvidenceCollector, type SkillReadEvidence } from "./skill-read-evidence.js";
 import {
   scanRolloutLines,
   scanRolloutLinesAsync,
+  scanRolloutText,
+  scanRolloutTextAsync,
   type RolloutLineScan,
 } from "./rollout-line-scanner.js";
 
@@ -187,6 +190,7 @@ export interface ParsedRollout {
   skills_triggered: string[];
   skills_invoked: string[];
   skill_evidence: Record<string, "explicit" | "inferred">;
+  skill_reads?: SkillReadEvidence[];
   assistant_turns: number;
   errors_encountered: number;
   input_tokens: number;
@@ -266,7 +270,11 @@ interface RolloutParser {
   readonly finish: (scan: RolloutLineScan | null) => ParsedRollout | null;
 }
 
-function makeRolloutParser(path: string, skillNames: Set<string>): RolloutParser {
+function makeRolloutParser(
+  path: string,
+  skillNames: Set<string>,
+  workspaceSkills: (cwd: string) => Set<string> = findSkillNames,
+): RolloutParser {
   const threadId = basename(path, ".jsonl").replace("rollout-", "");
   let prompt = "";
   let lastUserQuery = "";
@@ -277,6 +285,8 @@ function makeRolloutParser(path: string, skillNames: Set<string>): RolloutParser
   const bashCommands: string[] = [];
   const skillsTriggered: string[] = [];
   const skillEvidence = new Map<string, "explicit" | "inferred">();
+  const skillReads = createSkillReadEvidenceCollector();
+  let sourceLine = 0;
   let errors = 0;
   let turns = 0;
   let inputTokens = 0;
@@ -326,7 +336,7 @@ function makeRolloutParser(path: string, skillNames: Set<string>): RolloutParser
   };
   const rememberWorkspaceSkills = (cwd: string | undefined): void => {
     if (!cwd?.trim()) return;
-    for (const skillName of findSkillNames(cwd)) {
+    for (const skillName of workspaceSkills(cwd)) {
       sessionSkillNames.add(skillName);
     }
   };
@@ -425,6 +435,7 @@ function makeRolloutParser(path: string, skillNames: Set<string>): RolloutParser
   };
 
   const onLine = (line: string): void => {
+    sourceLine += 1;
     const isEventMessage = line.includes('"type":"event_msg"');
     const isResponseItem = line.includes('"type":"response_item"');
     const canSkipEventMessage =
@@ -432,6 +443,8 @@ function makeRolloutParser(path: string, skillNames: Set<string>): RolloutParser
     const canSkipResponseItem =
       isResponseItem &&
       !line.includes('"type":"function_call"') &&
+      !line.includes('"type":"function_call_output"') &&
+      !line.includes('"type":"custom_tool_call_output"') &&
       !line.includes('"type":"custom_tool_call"') &&
       !line.includes('"type":"agent_reasoning"') &&
       !line.includes('"role":"user"');
@@ -500,11 +513,15 @@ function makeRolloutParser(path: string, skillNames: Set<string>): RolloutParser
       const payload = event.payload ?? {};
       const itemType = payload.type ?? "";
       if (itemType === "function_call") {
+        skillReads.call(payload.call_id, payload.name, payload.arguments);
         const fnName = payload.name ?? "function_call";
         countTool(fnName);
         // Only path-based skill references count as triggers here.
         detectExplicitSkillReads(payload.arguments);
+      } else if (itemType === "function_call_output" || itemType === "custom_tool_call_output") {
+        skillReads.output(payload.call_id, payload.output, sourceLine);
       } else if (itemType === "custom_tool_call") {
+        skillReads.customCall(payload.call_id, payload.input);
         const toolName = optionalString(payload.name) ?? "custom_tool_call";
         countTool(toolName);
         // Codex Desktop sends its executable tool program in `input` rather
@@ -606,6 +623,7 @@ function makeRolloutParser(path: string, skillNames: Set<string>): RolloutParser
         (skillName) => skillEvidence.get(skillName) === "explicit",
       ),
       skill_evidence: Object.fromEntries(skillEvidence),
+      skill_reads: skillReads.reads,
       assistant_turns: turns,
       errors_encountered: errors,
       input_tokens: inputTokens,
@@ -628,6 +646,27 @@ function makeRolloutParser(path: string, skillNames: Set<string>): RolloutParser
 export function parseRolloutFile(path: string, skillNames: Set<string>): ParsedRollout | null {
   const parser = makeRolloutParser(path, skillNames);
   return parser.finish(scanRolloutLines(path, parser.onLine));
+}
+
+export function parseRolloutText(
+  path: string,
+  text: string,
+  skillNames: Set<string>,
+  workspaceSkills: (cwd: string) => Set<string> = findSkillNames,
+): ParsedRollout | null {
+  const parser = makeRolloutParser(path, skillNames, workspaceSkills);
+  return parser.finish(scanRolloutText(text, parser.onLine));
+}
+
+export async function parseRolloutTextAsync(
+  path: string,
+  text: string,
+  skillNames: Set<string>,
+  workspaceSkills: (cwd: string) => Set<string>,
+  signal: AbortSignal,
+): Promise<ParsedRollout | null> {
+  const parser = makeRolloutParser(path, skillNames, workspaceSkills);
+  return parser.finish(await scanRolloutTextAsync(text, parser.onLine, signal));
 }
 
 /** Parse a rollout through bounded, interruptible source-sync I/O. */
@@ -783,6 +822,10 @@ export function buildCanonicalRecordsFromRollout(parsed: ParsedRollout): Canonic
   // Skill invocation records
   for (let i = 0; i < parsed.skills_triggered.length; i++) {
     const skillName = parsed.skills_triggered[i];
+    const reads = (parsed.skill_reads ?? []).filter(
+      (read) => read.skill_name.toLowerCase() === skillName.toLowerCase(),
+    );
+    const paths = new Set(reads.map((read) => read.skill_path));
     const isExplicit = parsed.skill_evidence[skillName] === "explicit";
     const { invocation_mode, confidence } = deriveInvocationMode(
       isExplicit ? { has_skill_md_read: true } : { is_text_mention_only: true },
@@ -799,7 +842,14 @@ export function buildCanonicalRecordsFromRollout(parsed: ParsedRollout): Canonic
         occurred_at: parsed.timestamp,
         matched_prompt_id: promptId,
         skill_name: skillName,
-        skill_path: `(codex:${skillName})`,
+        skill_path: paths.size === 1 ? reads[0]?.skill_path : `(codex:${skillName})`,
+        raw_source_ref: {
+          ...baseInput.raw_source_ref,
+          metadata: {
+            package_version_status: "unknown",
+            skill_reads: reads.map((read) => ({ ...read })),
+          },
+        },
         invocation_mode,
         triggered: true,
         confidence,

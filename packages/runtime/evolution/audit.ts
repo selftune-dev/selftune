@@ -14,7 +14,7 @@ import { decodeEvolutionAuditRecord } from "../utils/log-contracts.js";
 
 function loadAuditEntries(skillName?: string): EvolutionAuditEntry[] {
   return queryEvolutionAudit(getDb(), skillName).flatMap((row) => {
-    const decoded = decodeEvolutionAuditRecord(row, { onExcessProperty: "preserve" });
+    const decoded = decodeEvolutionAuditRecord(row);
     return Option.isSome(decoded) ? [decoded.value] : [];
   });
 }
