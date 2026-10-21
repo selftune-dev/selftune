@@ -113,6 +113,9 @@ export interface LibrarySkillModel {
   sources: LibrarySourceModel[];
   locations: LibraryLocationModel[];
   revisionHashes: string[];
+  detailsLoaded?: boolean;
+  consolidationAvailable?: boolean;
+  archiveAvailable?: boolean;
   modifiedAt?: string | null;
   lastUsedAt?: string | null;
   triggerTrend?: LibraryTriggerTrendPointModel[];

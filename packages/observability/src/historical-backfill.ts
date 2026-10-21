@@ -6,6 +6,7 @@ import * as Predicate from "effect/Predicate";
 import { flow } from "effect/Function";
 
 import { LocalTraceImportRequest } from "./local-trace-importer.js";
+import { SourceSessionIds } from "./source-identity.js";
 import {
   LocalTelemetryBatch,
   LocalTelemetryLogRecord,
@@ -134,7 +135,7 @@ export class HistoricalBackfillNormalizationResult extends Schema.Class<Historic
   withheld: Schema.Array(HistoricalBackfillWithheld),
 }) {}
 
-export class HistoricalBackfillNormalizationFailure extends Schema.TaggedErrorClass<HistoricalBackfillNormalizationFailure>()(
+export class HistoricalBackfillNormalizationFailure extends Schema.TaggedError<HistoricalBackfillNormalizationFailure>()(
   "HistoricalBackfillNormalizationFailure",
   { operation: Schema.String, message: Schema.String },
 ) {}
@@ -169,11 +170,11 @@ interface HistoricalSourceRevision {
   readonly platform: SupportedPlatform;
   readonly current: readonly HistoricalFact[];
 }
-const decodeHashValue = Schema.decodeUnknownSync(Schema.Json);
+const decodeHashValue = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Json));
 const hash = (domain: string, value: string | HistoricalSourceRevision) =>
   createHash("sha256")
     .update(domain)
-    .update(canonicalJson(decodeHashValue(value)))
+    .update(canonicalJson(decodeHashValue(JSON.stringify(value))))
     .digest("hex");
 const traceId = (sessionId: string) => hash("historical-backfill:trace:v1", sessionId).slice(0, 32);
 const id = (domain: string, sourceId: string, length: number) =>
@@ -456,6 +457,9 @@ const chunk = (
 };
 
 const normalize = (input: HistoricalBackfillInput): HistoricalBackfillNormalizationResult => {
+  const sessionIdsByTrace = new Map(
+    input.sessions.map((session) => [traceId(session.session_id), session.session_id]),
+  );
   const prompts = Map.groupBy(input.prompts, (item) => item.session_id);
   const invocations = Map.groupBy(input.skill_invocations, (item) => item.session_id);
   const executions = Map.groupBy(input.execution_facts, (item) => item.session_id);
@@ -498,6 +502,15 @@ const normalize = (input: HistoricalBackfillInput): HistoricalBackfillNormalizat
       imports.push(
         LocalTraceImportRequest.make({
           source_kind: platform,
+          source_session_ids: Schema.decodeUnknownSync(SourceSessionIds)([
+            ...new Set(
+              current.map((fact) =>
+                sessionIdsByTrace.get(
+                  fact.kind === "span" ? fact.span.trace_id : (fact.log.trace_id ?? ""),
+                ),
+              ),
+            ),
+          ]),
           source_revision,
           normalizer_version: HISTORICAL_BACKFILL_NORMALIZER_VERSION,
           batch: LocalTelemetryBatch.make({

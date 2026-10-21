@@ -74,11 +74,13 @@ export async function schemaRequest<T>(
   path: string,
   schema: Schema.Codec<T>,
   body?: string,
+  signal?: AbortSignal,
 ): Promise<T> {
   const response = await fetch(path, {
     method: body === undefined ? "GET" : "POST",
     headers: body === undefined ? undefined : { "Content-Type": "application/json" },
     body,
+    signal,
   });
   const text = await response.text();
   if (!response.ok) throw responseError(response, text);

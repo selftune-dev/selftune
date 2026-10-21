@@ -39,7 +39,7 @@ export interface WindowsUserServiceMutationLockDependencies {
   readonly openDatabase: (path: string) => WindowsUserServiceMutationLockDatabase;
 }
 
-export class WindowsServiceMutationLockError extends Schema.TaggedErrorClass<WindowsServiceMutationLockError>()(
+export class WindowsServiceMutationLockError extends Schema.TaggedError<WindowsServiceMutationLockError>()(
   "WindowsServiceMutationLockError",
   {
     message: Schema.String,

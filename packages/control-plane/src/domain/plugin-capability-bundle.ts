@@ -84,7 +84,7 @@ export const PluginCapabilityBundleErrorReason = Schema.Literals([
   "missing_risk_acceptance",
 ]);
 
-export class PluginCapabilityBundleError extends Schema.TaggedErrorClass<PluginCapabilityBundleError>()(
+export class PluginCapabilityBundleError extends Schema.TaggedError<PluginCapabilityBundleError>()(
   "PluginCapabilityBundleError",
   {
     reason: PluginCapabilityBundleErrorReason,

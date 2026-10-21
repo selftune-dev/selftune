@@ -172,6 +172,7 @@ const ingestSession = Effect.fn("OpenCode.syncSource.ingestSession")(function* (
     .importTrace(
       LocalTraceImportRequest.make({
         source_kind: "opencode",
+        source_session_ids: [session.session_id],
         source_revision: revision,
         normalizer_version: NORMALIZER_VERSION,
         batch: buildLocalTelemetryBatchFromOpenCode(session),

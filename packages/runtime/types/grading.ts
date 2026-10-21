@@ -53,6 +53,9 @@ export type EvalFeedback = typeof EvalFeedback.Type;
 
 export const GraderOutput = Schema.Struct({
   expectations: Schema.mutableKey(Schema.mutable(Schema.Array(GradingExpectation))),
+  unobserved_expectations: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ text: Schema.String, reason: Schema.String })),
+  ),
   summary: Schema.mutableKey(GradingSummary),
   claims: Schema.mutableKey(Schema.mutable(Schema.Array(GradingClaim))),
   eval_feedback: Schema.mutableKey(EvalFeedback),

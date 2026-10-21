@@ -132,7 +132,7 @@ const RegistryState = Schema.Array(
   }),
 );
 
-export class RegistryStateValidationError extends Schema.TaggedErrorClass<RegistryStateValidationError>()(
+export class RegistryStateValidationError extends Schema.TaggedError<RegistryStateValidationError>()(
   "RegistryStateValidationError",
   {
     message: Schema.String,

@@ -34,10 +34,12 @@ describe("report process boundary", () => {
 
   test("runs the compiled report worker directly in the packaged Desktop runtime", () => {
     const resourceRoot = "/tmp/selftune-desktop-resource";
-    const worker =
-      process.platform === "win32" ? "selftune-report-worker.exe" : "selftune-report-worker";
+    const worker = process.platform === "win32" ? "selftune.exe" : "selftune";
 
-    expect(reportWorkerCommand(resourceRoot)).toEqual([join(resourceRoot, worker)]);
+    expect(reportWorkerCommand(resourceRoot)).toEqual([
+      join(resourceRoot, worker),
+      "__selftune_report_worker",
+    ]);
   });
 
   test("serializes host-owned SQLite and DuckDB paths instead of inheriting worker defaults", () => {

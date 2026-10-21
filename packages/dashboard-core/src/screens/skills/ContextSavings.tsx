@@ -1,4 +1,6 @@
 import type { LibrarySkillModel } from "../../models";
+import { useMemo, useState } from "react";
+import { Button } from "@selftune/ui/primitives";
 import { contextFootprint } from "./context-footprint";
 import { HarnessLabel } from "@selftune/ui/components";
 
@@ -9,8 +11,24 @@ export function ContextSavings({
   skills: readonly LibrarySkillModel[];
   selectedIds?: ReadonlySet<string>;
 }) {
-  const rows = contextFootprint(skills, selectedIds);
-  const baseline = new Map(contextFootprint(skills).map((row) => [row.key, row]));
+  const rows = useMemo(() => contextFootprint(skills, selectedIds), [skills, selectedIds]);
+  const baseline = useMemo(
+    () => new Map(contextFootprint(skills).map((row) => [row.key, row])),
+    [skills],
+  );
+  const icons = useMemo(() => {
+    const result = new Map<string, LibrarySkillModel["locations"][number]["connectionIcon"]>();
+    for (const skill of skills)
+      for (const location of skill.locations) {
+        if (location.connection && location.connectionIcon && !result.has(location.connection)) {
+          result.set(location.connection, location.connectionIcon);
+        }
+      }
+    return result;
+  }, [skills]);
+  const [requestedPage, setPage] = useState(0);
+  const pageCount = Math.max(1, Math.ceil(rows.length / 10));
+  const page = Math.min(requestedPage, pageCount - 1);
   const preview = selectedIds !== undefined;
   return (
     <section aria-label="Context savings by harness" className="space-y-3">
@@ -32,20 +50,13 @@ export function ContextSavings({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {rows.slice(page * 10, (page + 1) * 10).map((row) => (
                 <tr key={row.key} className="border-b">
                   <td className="py-2">
                     <HarnessLabel
                       name={row.harness}
                       variant="inline"
-                      icon={
-                        skills
-                          .flatMap((skill) => skill.locations)
-                          .find(
-                            (location) =>
-                              location.connection === row.harness && location.connectionIcon,
-                          )?.connectionIcon
-                      }
+                      icon={icons.get(row.harness)}
                     />
                     <span className="block truncate text-muted-foreground" title={row.scope}>
                       {row.scope.split("/").filter(Boolean).at(-1) ?? row.scope}
@@ -70,6 +81,34 @@ export function ContextSavings({
               ))}
             </tbody>
           </table>
+          {pageCount > 1 ? (
+            <nav
+              aria-label="Context savings pages"
+              className="mt-3 flex items-center justify-between gap-2"
+            >
+              <span className="text-xs text-muted-foreground">
+                {page * 10 + 1}–{Math.min((page + 1) * 10, rows.length)} of {rows.length} contexts
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={page === 0}
+                  onClick={() => setPage(page - 1)}
+                >
+                  Previous
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={page + 1 === pageCount}
+                  onClick={() => setPage(page + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </nav>
+          ) : null}
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">

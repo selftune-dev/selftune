@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Latch from "effect/Latch";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
+import { preservingJsonDecoder } from "@selftune/runtime/utils/preserving-schema";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
@@ -65,16 +66,12 @@ interface Artifact<A> {
 function readArtifact<A>(options: MaterializedCacheOptions<A>): { readonly value: A } | null {
   if (options.artifactPath === undefined) return null;
   try {
-    const schema = Schema.fromJsonString(
-      Schema.Struct({
-        schema_version: Schema.Literal(1),
-        generated_at: Schema.String,
-        data: options.schema,
-      }),
-    );
-    const envelope = Schema.decodeUnknownSync(schema)(readFileSync(options.artifactPath, "utf8"), {
-      onExcessProperty: "preserve",
+    const schema = Schema.Struct({
+      schema_version: Schema.Literal(1),
+      generated_at: Schema.String,
+      data: options.schema,
     });
+    const envelope = preservingJsonDecoder(schema)(readFileSync(options.artifactPath, "utf8"));
     return { value: envelope.data };
   } catch {
     // Missing or corrupt artifact — recomputed by the refresh loop.
@@ -117,13 +114,15 @@ export function makeMaterializedCache<A, E, R>(
   const refreshIntervalMs = options.refreshIntervalMs ?? 60_000;
   const refreshTtlMs = options.refreshTtlMs ?? 5 * 60 * 1_000;
   return Effect.gen(function* () {
-    let latest = readArtifact(options);
+    let latest: { readonly value: A } | null = null;
+    let artifactLoaded = false;
     let version: string | null = null;
     let refreshedAt = 0;
     let pendingRefreshGeneration = 0;
 
     const record = (value: A, versionBeforeCompute: string) =>
       Effect.sync(() => {
+        artifactLoaded = true;
         latest = { value };
         refreshedAt = Date.now();
         // A report may write one of its own dependent tables as part of its work. Record
@@ -182,6 +181,10 @@ export function makeMaterializedCache<A, E, R>(
     );
 
     const read: Effect.Effect<A, E, R> = Effect.suspend(() => {
+      if (!artifactLoaded) {
+        latest = readArtifact(options);
+        artifactLoaded = true;
+      }
       started.openUnsafe();
       if (latest !== null) return Effect.succeed(latest.value);
       return sharedCompute.pipe(Effect.onError(() => invalidateShared));
@@ -191,6 +194,7 @@ export function makeMaterializedCache<A, E, R>(
       read,
       invalidate: Effect.flatMap(
         Effect.sync(() => {
+          artifactLoaded = true;
           latest = null;
           version = null;
           pendingRefreshGeneration = 0;

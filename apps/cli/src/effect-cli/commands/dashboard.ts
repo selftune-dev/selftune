@@ -67,8 +67,8 @@ export function makeDashboardCommand(action: DashboardAction = runDashboardActio
   return Command.make(
     "dashboard",
     {
-      _noOperands: Argument.none.pipe(Argument.optional, Argument.withMetavar("")),
-      port: Flag.integer("port").pipe(
+      _noOperands: Argument.Never.pipe(Argument.optional, Argument.withMetavar("")),
+      port: Flag.Int("port").pipe(
         Flag.withDescription(`Listening port (default: ${DEFAULT_DASHBOARD_PORT})`),
         Flag.filter(
           (port) => port >= 1 && port <= 65_535,
@@ -76,13 +76,15 @@ export function makeDashboardCommand(action: DashboardAction = runDashboardActio
         ),
         Flag.withDefault(DEFAULT_DASHBOARD_PORT),
       ),
-      restart: Flag.boolean("restart").pipe(
-        Flag.withDescription("Restart an existing dashboard on the target port"),
-      ),
-      noOpen: Flag.boolean("no-open").pipe(Flag.withDescription("Start without opening a browser")),
-      serve: Flag.boolean("serve").pipe(
-        Flag.withDescription("Deprecated alias for the default behavior"),
-      ),
+      restart: Flag.Boolean("restart")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Restart an existing dashboard on the target port")),
+      noOpen: Flag.Boolean("no-open")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Start without opening a browser")),
+      serve: Flag.Boolean("serve")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Deprecated alias for the default behavior")),
     },
     (input) =>
       action({

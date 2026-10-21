@@ -218,33 +218,35 @@ export function makeContributionsCommand(
   const status = Command.make("status", {}, () => actions.status());
   const preview = Command.make(
     "preview",
-    { skill: Argument.string("skill").pipe(Argument.optional) },
+    { skill: Argument.String("skill").pipe(Argument.optional) },
     ({ skill }) => actions.preview(decodeArgument(skill)),
   );
   const approve = Command.make(
     "approve",
-    { skill: Argument.string("skill").pipe(Argument.optional) },
+    { skill: Argument.String("skill").pipe(Argument.optional) },
     ({ skill }) => actions.approve(decodeArgument(skill)),
   );
   const revoke = Command.make(
     "revoke",
-    { skill: Argument.string("skill").pipe(Argument.optional) },
+    { skill: Argument.String("skill").pipe(Argument.optional) },
     ({ skill }) => actions.revoke(decodeArgument(skill)),
   );
   const setDefault = Command.make(
     "default",
-    { value: Argument.string("value").pipe(Argument.optional) },
+    { value: Argument.String("value").pipe(Argument.optional) },
     ({ value }) => actions.setDefault(decodeFlag(value)),
   );
   const upload = Command.make(
     "upload",
     {
-      internalHelp: Flag.boolean(CONTRIBUTIONS_INTERNAL_UPLOAD_HELP_FLAG),
-      dryRun: Flag.boolean("dry-run"),
-      retryFailed: Flag.boolean("retry-failed"),
-      limit: Flag.string("limit").pipe(Flag.optional),
-      endpoint: Flag.string("endpoint").pipe(Flag.optional),
-      apiKey: Flag.string("api-key").pipe(Flag.optional),
+      internalHelp: Flag.Boolean(CONTRIBUTIONS_INTERNAL_UPLOAD_HELP_FLAG).pipe(
+        Flag.withDefault(false),
+      ),
+      dryRun: Flag.Boolean("dry-run").pipe(Flag.withDefault(false)),
+      retryFailed: Flag.Boolean("retry-failed").pipe(Flag.withDefault(false)),
+      limit: Flag.String("limit").pipe(Flag.optional),
+      endpoint: Flag.String("endpoint").pipe(Flag.optional),
+      apiKey: Flag.String("api-key").pipe(Flag.optional),
     },
     (input) => {
       if (input.internalHelp) return Console.log(CONTRIBUTIONS_UPLOAD_HELP);
@@ -262,7 +264,11 @@ export function makeContributionsCommand(
 
   return Command.make(
     "contributions",
-    { internalHelp: Flag.boolean(CONTRIBUTIONS_INTERNAL_PARENT_HELP_FLAG) },
+    {
+      internalHelp: Flag.Boolean(CONTRIBUTIONS_INTERNAL_PARENT_HELP_FLAG).pipe(
+        Flag.withDefault(false),
+      ),
+    },
     ({ internalHelp }) => (internalHelp ? Console.log(CONTRIBUTIONS_HELP) : Effect.void),
   ).pipe(
     Command.withSubcommands([status, preview, approve, revoke, setDefault, upload, reset]),

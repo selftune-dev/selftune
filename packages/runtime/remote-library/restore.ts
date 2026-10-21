@@ -50,7 +50,9 @@ export async function restoreRemoteLibrary(options: {
           staging,
           "library",
           "packages",
-          identity.revisionHash,
+          artifact.artifactId.startsWith("backup-skill-object/")
+            ? artifact.objectHash
+            : identity.revisionHash,
           identity.skillName,
         );
         const authority = restorePackage(bytes, destination);

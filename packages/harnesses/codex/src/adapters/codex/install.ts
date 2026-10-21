@@ -12,6 +12,7 @@
  */
 
 import { Option, Schema } from "effect";
+import { isDeepStrictEqual } from "node:util";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -293,10 +294,7 @@ export function installHooks(options: { dryRun?: boolean } = {}): InstallResult 
   const serializedMerged = serializeHooksByEvent(merged);
 
   // Compare the persisted shape; _selftune markers are internal only.
-  const existingJson = JSON.stringify(serializedExisting);
-  const mergedJson = JSON.stringify(serializedMerged);
-
-  if (existingJson === mergedJson) {
+  if (isDeepStrictEqual(serializedExisting, serializedMerged)) {
     return {
       hooksPath,
       action: "no_change",

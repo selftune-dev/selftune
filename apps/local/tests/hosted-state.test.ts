@@ -354,6 +354,7 @@ describe("Desktop hosted-state adapter", () => {
     let intentBody: unknown;
     let finalizeBody: unknown;
     let uploadedBytes = new Uint8Array();
+    let subscriptionRequired = false;
     let preview: Awaited<
       ReturnType<ReturnType<typeof makeHostedStateOperations>["previewSkillSetPublish"]>
     >;
@@ -375,6 +376,16 @@ describe("Desktop hosted-state adapter", () => {
         const request = new Request(input, init);
         requests.push(request.clone());
         if (request.url.endsWith("/releases/publish-intent")) {
+          if (subscriptionRequired)
+            return Response.json(
+              {
+                error: {
+                  code: "SUBSCRIPTION_REQUIRED",
+                  message: "Active Team subscription required",
+                },
+              },
+              { status: 402 },
+            );
           intentBody = await request.json();
           return Response.json({
             publish_intent_id: "intent_123",
@@ -439,6 +450,21 @@ describe("Desktop hosted-state adapter", () => {
     expect(requests[0]?.headers.get("authorization")).toBe("Bearer st_live_secret");
     expect(requests[2]?.headers.get("authorization")).toBe("Bearer st_live_secret");
     expect(JSON.stringify(intentBody)).not.toContain(skillRoot);
+    subscriptionRequired = true;
+    const requestsBeforeDenial = requests.length;
+    await expect(
+      operations.publishSkillSet({
+        setId: set.set_id,
+        expectedSkillSetRevisionSha256: preview.skillSetRevisionSha256,
+        expectedEnvelopeSha256: preview.envelopeSha256,
+        dependencyResolution: dependencies,
+        expectedDependencyLock: preview.dependencies.lock,
+        confirmPublish: true,
+      }),
+    ).rejects.toThrow(
+      "An active Team subscription is required to publish Skill Sets to a workspace.",
+    );
+    expect(requests.length).toBe(requestsBeforeDenial + 1);
   });
 
   test("rejects local package drift after preview before requesting an upload", async () => {

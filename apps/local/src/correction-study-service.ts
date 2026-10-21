@@ -125,7 +125,7 @@ export class ManagedCorrectionStudyRequest extends Schema.Class<ManagedCorrectio
   ),
 }) {}
 
-export class CorrectionStudyServiceFailure extends Schema.TaggedErrorClass<CorrectionStudyServiceFailure>()(
+export class CorrectionStudyServiceFailure extends Schema.TaggedError<CorrectionStudyServiceFailure>()(
   "CorrectionStudyServiceFailure",
   {
     code: Schema.Literals([

@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import { makePluginEvalCommand } from "./plugin-eval.js";
 import * as Option from "effect/Option";
 import * as Command from "effect/unstable/cli/Command";
 import * as Flag from "effect/unstable/cli/Flag";
@@ -58,60 +59,62 @@ export const runEvalAction: EvalAction = (request) =>
   runEvalActionWithDependencies(request, LIVE_EVAL_DEPENDENCIES);
 
 const optionalString = (name: string, description: string) =>
-  Flag.string(name).pipe(Flag.withDescription(description), Flag.optional);
+  Flag.String(name).pipe(Flag.withDescription(description), Flag.optional);
 
 export function makeEvalCommand(action: EvalAction = runEvalAction) {
   const generate = Command.make(
     "generate",
     {
       skill: optionalString("skill", "Skill name (required unless --list-skills)"),
-      output: Flag.string("output").pipe(
+      output: Flag.String("output").pipe(
         Flag.withAlias("out"),
         Flag.withDescription("Output file path (default: <skill>_trigger_eval.json)"),
         Flag.optional,
       ),
       agent: optionalString("agent", "Agent CLI for synthetic or blended generation"),
-      max: Flag.string("max").pipe(
+      max: Flag.String("max").pipe(
         Flag.withDescription("Maximum eval entries per side"),
         Flag.withDefault("50"),
       ),
-      seed: Flag.string("seed").pipe(
+      seed: Flag.String("seed").pipe(
         Flag.withDescription("Deterministic shuffle seed"),
         Flag.withDefault("42"),
       ),
-      listSkills: Flag.boolean("list-skills").pipe(
-        Flag.withDescription("List skills with trusted-vs-raw readiness counts"),
-      ),
-      stats: Flag.boolean("stats").pipe(
-        Flag.withDescription("Show aggregate telemetry stats for the skill"),
-      ),
-      noNegatives: Flag.boolean("no-negatives").pipe(
-        Flag.withDescription("Exclude negative examples from output"),
-      ),
-      noTaxonomy: Flag.boolean("no-taxonomy").pipe(
-        Flag.withDescription("Skip invocation_type classification"),
-      ),
-      skillLog: Flag.string("skill-log").pipe(
+      listSkills: Flag.Boolean("list-skills")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("List skills with trusted-vs-raw readiness counts")),
+      stats: Flag.Boolean("stats")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Show aggregate telemetry stats for the skill")),
+      noNegatives: Flag.Boolean("no-negatives")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Exclude negative examples from output")),
+      noTaxonomy: Flag.Boolean("no-taxonomy")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Skip invocation_type classification")),
+      skillLog: Flag.String("skill-log").pipe(
         Flag.withDescription("Skill usage JSONL override"),
         Flag.withDefault(SKILL_LOG),
       ),
-      queryLog: Flag.string("query-log").pipe(
+      queryLog: Flag.String("query-log").pipe(
         Flag.withDescription("Query log JSONL override"),
         Flag.withDefault(QUERY_LOG),
       ),
-      telemetryLog: Flag.string("telemetry-log").pipe(
+      telemetryLog: Flag.String("telemetry-log").pipe(
         Flag.withDescription("Session telemetry JSONL override"),
         Flag.withDefault(TELEMETRY_LOG),
       ),
-      synthetic: Flag.boolean("synthetic").pipe(
-        Flag.withDescription("Generate from SKILL.md instead of logs"),
-      ),
-      autoSynthetic: Flag.boolean("auto-synthetic").pipe(
-        Flag.withDescription("Fall back to cold-start generation when trusted logs are sparse"),
-      ),
-      blend: Flag.boolean("blend").pipe(
-        Flag.withDescription("Blend log-derived and synthetic eval entries"),
-      ),
+      synthetic: Flag.Boolean("synthetic")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Generate from SKILL.md instead of logs")),
+      autoSynthetic: Flag.Boolean("auto-synthetic")
+        .pipe(Flag.withDefault(false))
+        .pipe(
+          Flag.withDescription("Fall back to cold-start generation when trusted logs are sparse"),
+        ),
+      blend: Flag.Boolean("blend")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Blend log-derived and synthetic eval entries")),
       skillPath: optionalString("skill-path", "Path to SKILL.md for synthetic generation"),
       model: optionalString("model", "Model override for synthetic generation"),
     },
@@ -157,12 +160,12 @@ export function makeEvalCommand(action: EvalAction = runEvalAction) {
     {
       skill: optionalString("skill", "Skill name (required)"),
       tests: optionalString("tests", "Unit-test JSON path"),
-      runAgent: Flag.boolean("run-agent").pipe(
-        Flag.withDescription("Run tests through an agent instead of static dry-run checks"),
-      ),
-      generate: Flag.boolean("generate").pipe(
-        Flag.withDescription("Generate tests from skill content using an agent"),
-      ),
+      runAgent: Flag.Boolean("run-agent")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Run tests through an agent instead of static dry-run checks")),
+      generate: Flag.Boolean("generate")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Generate tests from skill content using an agent")),
       skillPath: optionalString("skill-path", "Skill file used for test generation"),
       evalSet: optionalString("eval-set", "Eval set used as failure context"),
       model: optionalString("model", "Model override for agent calls"),
@@ -185,6 +188,7 @@ export function makeEvalCommand(action: EvalAction = runEvalAction) {
   const run = Command.make(
     "run",
     {
+      threshold: optionalString("threshold", "Fail CI when any case scores below this value (0–1)"),
       skillPath: optionalString("skill-path", "Skill directory or SKILL.md path (required)"),
       evals: optionalString("evals", "Override evals/evals.json"),
       workspace: optionalString("workspace", "Override the sibling evaluation workspace"),
@@ -195,12 +199,15 @@ export function makeEvalCommand(action: EvalAction = runEvalAction) {
       feedback: optionalString("feedback", "Human feedback JSON to copy into the iteration"),
       agent: optionalString("agent", "Agent CLI for isolated runs and grading"),
       model: optionalString("model", "Model override"),
-      json: Flag.boolean("json").pipe(Flag.withDescription("Print benchmark result as JSON")),
+      json: Flag.Boolean("json")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Print benchmark result as JSON")),
     },
     (input) =>
       action({
         action: "run",
         input: {
+          threshold: Option.getOrUndefined(input.threshold),
           skillPath: Option.getOrUndefined(input.skillPath),
           evals: Option.getOrUndefined(input.evals),
           workspace: Option.getOrUndefined(input.workspace),
@@ -219,7 +226,7 @@ export function makeEvalCommand(action: EvalAction = runEvalAction) {
       dir: optionalString("dir", "SkillsBench corpus directory (required)"),
       skill: optionalString("skill", "Target skill name (required)"),
       output: optionalString("output", "Output eval-set JSON path"),
-      matchStrategy: Flag.choice("match-strategy", ["exact", "fuzzy"]).pipe(
+      matchStrategy: Flag.Literals("match-strategy", ["exact", "fuzzy"]).pipe(
         Flag.withDescription("Task matching strategy"),
         Flag.withDefault("exact"),
       ),
@@ -289,6 +296,22 @@ export function makeEvalCommand(action: EvalAction = runEvalAction) {
 
   return Command.make("eval").pipe(
     Command.withSubcommands([
+      Command.make(
+        "report",
+        {
+          input: Flag.String("input").pipe(
+            Flag.withDescription("Native aggregate-result.json or SelfTune benchmark.json"),
+          ),
+          threshold: Flag.String("threshold").pipe(Flag.withDefault("1")),
+          json: Flag.Boolean("json").pipe(Flag.withDefault(false)),
+        },
+        (input) => action({ action: "report", input }),
+      ).pipe(
+        Command.withDescription(
+          "Read either evaluation format and apply a per-case CI gate without model calls",
+        ),
+      ),
+      makePluginEvalCommand(action),
       generate,
       unitTest,
       run,
@@ -299,7 +322,7 @@ export function makeEvalCommand(action: EvalAction = runEvalAction) {
     Command.withDescription(
       `Evaluation and testing tools
 
-Actions: generate, unit-test, run, import, composability, family-overlap
+Actions: generate, unit-test, run, plugin, report, import, composability, family-overlap
 
 Recommended creator loop:
   1. selftune eval generate --skill <name>

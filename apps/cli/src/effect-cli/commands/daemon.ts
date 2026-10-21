@@ -119,36 +119,36 @@ export const liveDaemonCommandActions: DaemonCommandActions = {
     runDaemonRotateTokenActionWithDependencies(input, LIVE_DAEMON_DEPENDENCIES),
 };
 
-const noOperands = () => Argument.none.pipe(Argument.optional, Argument.withMetavar(""));
+const noOperands = () => Argument.Never.pipe(Argument.optional, Argument.withMetavar(""));
 
 export function makeDaemonCommand(actions: DaemonCommandActions = liveDaemonCommandActions) {
   const run = Command.make(
     "run",
     {
       _noOperands: noOperands(),
-      port: Flag.integer("port").pipe(
+      port: Flag.Int("port").pipe(
         Flag.filter(
           (port) => port >= 0 && port <= 65_535,
           (port) => `Invalid daemon port: ${port}`,
         ),
         Flag.withDefault(DEFAULT_DAEMON_PORT),
       ),
-      hostname: Flag.string("hostname").pipe(Flag.withDefault("127.0.0.1")),
-      configDir: Flag.string("config-dir").pipe(Flag.optional),
-      spaDir: Flag.string("spa-dir").pipe(Flag.optional),
-      owner: Flag.choice("owner", ["desktop", "cli"]).pipe(Flag.optional),
-      runtimeMode: Flag.choice("runtime-mode", ["standalone", "dev-server", "test"]).pipe(
+      hostname: Flag.String("hostname").pipe(Flag.withDefault("127.0.0.1")),
+      configDir: Flag.String("config-dir").pipe(Flag.optional),
+      spaDir: Flag.String("spa-dir").pipe(Flag.optional),
+      owner: Flag.Literals("owner", ["desktop", "cli"]).pipe(Flag.optional),
+      runtimeMode: Flag.Literals("runtime-mode", ["standalone", "dev-server", "test"]).pipe(
         Flag.optional,
       ),
-      serviceInstallationNonce: Flag.string("service-installation-nonce").pipe(
+      serviceInstallationNonce: Flag.String("service-installation-nonce").pipe(
         Flag.filter(isServiceInstallationNonce, () => "Expected 32-128 base64url characters"),
         Flag.optional,
       ),
-      foreground: Flag.boolean("foreground").pipe(
-        Flag.withDescription("Compatibility no-op; daemon run is always foreground"),
-      ),
-      supervised: Flag.boolean("supervised"),
-      readySentinel: Flag.boolean("ready-sentinel"),
+      foreground: Flag.Boolean("foreground")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Compatibility no-op; daemon run is always foreground")),
+      supervised: Flag.Boolean("supervised").pipe(Flag.withDefault(false)),
+      readySentinel: Flag.Boolean("ready-sentinel").pipe(Flag.withDefault(false)),
     },
     (input) => {
       const serviceInstallationNonce = Option.getOrUndefined(input.serviceInstallationNonce);
@@ -180,8 +180,8 @@ export function makeDaemonCommand(actions: DaemonCommandActions = liveDaemonComm
     "status",
     {
       _noOperands: noOperands(),
-      configDir: Flag.string("config-dir").pipe(Flag.optional),
-      json: Flag.boolean("json"),
+      configDir: Flag.String("config-dir").pipe(Flag.optional),
+      json: Flag.Boolean("json").pipe(Flag.withDefault(false)),
     },
     (input) =>
       actions.status({
@@ -194,15 +194,15 @@ export function makeDaemonCommand(actions: DaemonCommandActions = liveDaemonComm
     "stop",
     {
       _noOperands: noOperands(),
-      configDir: Flag.string("config-dir").pipe(Flag.optional),
-      expectedPid: Flag.integer("expected-pid").pipe(
+      configDir: Flag.String("config-dir").pipe(Flag.optional),
+      expectedPid: Flag.Int("expected-pid").pipe(
         Flag.filter(
           (pid) => Number.isSafeInteger(pid) && pid > 1,
           (pid) => `Invalid expected daemon pid: ${pid}`,
         ),
         Flag.optional,
       ),
-      expectedInstanceId: Flag.string("expected-instance-id").pipe(Flag.optional),
+      expectedInstanceId: Flag.String("expected-instance-id").pipe(Flag.optional),
     },
     (input) => {
       const expectedPid = Option.getOrUndefined(input.expectedPid);
@@ -237,7 +237,7 @@ export function makeDaemonCommand(actions: DaemonCommandActions = liveDaemonComm
     "rotate-token",
     {
       _noOperands: noOperands(),
-      configDir: Flag.string("config-dir").pipe(Flag.optional),
+      configDir: Flag.String("config-dir").pipe(Flag.optional),
     },
     (input) => actions.rotateToken({ configDir: Option.getOrUndefined(input.configDir) }),
   ).pipe(Command.withDescription("Rotate local daemon authentication"));

@@ -78,22 +78,40 @@ export async function syncRemoteObjects(options: {
   now?: Date;
   onSnapshot?: (snapshot: RemoteSnapshot) => Promise<void>;
 }): Promise<{ snapshot: RemoteSnapshot; uploaded: number; unchanged: number }> {
-  const uploads = await Promise.all(
-    options.objects.map(async (object) => {
-      if (await options.handle.hasObject(object.artifact.objectHash)) return false;
-      await options.handle.putObject(object.artifact.objectHash, object.bytes);
-      return true;
-    }),
-  );
+  const uploads: boolean[] = [];
+  for (let start = 0; start < options.objects.length; start += 4) {
+    uploads.push(
+      ...(await Promise.all(
+        options.objects.slice(start, start + 4).map(async (object) => {
+          if (await options.handle.hasObject(object.artifact.objectHash)) return false;
+          await options.handle.putObject(object.artifact.objectHash, object.bytes);
+          return true;
+        }),
+      )),
+    );
+  }
   const uploaded = uploads.filter(Boolean).length;
   const unchanged = uploads.length - uploaded;
+  const snapshot = await commitRemoteArtifacts({
+    handle: options.handle,
+    artifacts: options.objects.map((object) => object.artifact),
+    now: options.now,
+    onSnapshot: options.onSnapshot,
+  });
+  return { snapshot, uploaded, unchanged };
+}
 
+export async function commitRemoteArtifacts(options: {
+  handle: RemoteLibraryHandle;
+  artifacts: ReadonlyArray<RemoteArtifact>;
+  now?: Date;
+  onSnapshot?: (snapshot: RemoteSnapshot) => Promise<void>;
+}): Promise<RemoteSnapshot> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const head = await options.handle.head();
     const merged = new Map<string, RemoteArtifact>();
     for (const artifact of head?.artifacts ?? []) merged.set(artifact.artifactId, artifact);
-    for (const object of options.objects) {
-      const artifact = object.artifact;
+    for (const artifact of options.artifacts) {
       const existing = merged.get(artifact.artifactId);
       if (existing && existing.objectHash !== artifact.objectHash) {
         throw new LibraryError(
@@ -116,7 +134,7 @@ export async function syncRemoteObjects(options: {
       ) === JSON.stringify(artifacts.map(artifactIdentity));
     if (head && unchangedSnapshot) {
       await options.onSnapshot?.(head);
-      return { snapshot: head, uploaded, unchanged };
+      return head;
     }
 
     const snapshot = buildRemoteSnapshot({
@@ -127,7 +145,7 @@ export async function syncRemoteObjects(options: {
     try {
       const committed = await options.handle.commitSnapshot(snapshot);
       await options.onSnapshot?.(committed);
-      return { snapshot: committed, uploaded, unchanged };
+      return committed;
     } catch (error) {
       if (!(error instanceof RemoteConflict) || attempt === 2) throw error;
     }

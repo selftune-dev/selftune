@@ -213,6 +213,33 @@ describe("report subprocess transport", () => {
 });
 
 describe("persisted report cache decoding", () => {
+  test("defers artifact reads until first use and never reloads one after invalidation", async () => {
+    const dir = temporaryDirectory();
+    const artifactPath = join(dir, "lazy.json");
+    const write = (data: number) =>
+      writeFileSync(
+        artifactPath,
+        JSON.stringify({ schema_version: 1, generated_at: "today", data }),
+      );
+    write(1);
+    const observed = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const cache = yield* makeMaterializedCache(Effect.succeed(3), {
+            artifactPath,
+            schema: Schema.Number,
+            readVersion: () => "fixed",
+          });
+          write(2);
+          const initial = yield* cache.read;
+          yield* cache.invalidate;
+          const fresh = yield* cache.read;
+          return [initial, fresh];
+        }),
+      ),
+    );
+    expect(observed).toEqual([2, 3]);
+  });
   test.each([
     "{",
     "null",

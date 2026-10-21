@@ -122,10 +122,10 @@ function helpOrRun(
   return internalHelp ? Console.log(SKILL_SETS_HELP) : action(input, json);
 }
 
-const helpFlag = () => Flag.boolean(SETS_INTERNAL_HELP_FLAG);
-const jsonFlag = () => Flag.boolean("json");
-const optionalString = (name: string) => Flag.string(name).pipe(Flag.optional);
-const repeatedString = (name: string) => Flag.string(name).pipe(Flag.atLeast(0));
+const helpFlag = () => Flag.Boolean(SETS_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false));
+const jsonFlag = () => Flag.Boolean("json").pipe(Flag.withDefault(false));
+const optionalString = (name: string) => Flag.String(name).pipe(Flag.optional);
+const repeatedString = (name: string) => Flag.String(name).pipe(Flag.atLeast(0));
 
 export function makeSkillSetsCommand(action: SkillSetsAction = makeLiveSkillSetsAction()) {
   const list = Command.make("list", { internalHelp: helpFlag(), json: jsonFlag() }, (input) =>
@@ -344,7 +344,7 @@ export function makeSkillSetsCommand(action: SkillSetsAction = makeLiveSkillSets
 
   return Command.make(
     "sets",
-    { internalHelp: Flag.boolean(SETS_INTERNAL_PARENT_HELP_FLAG) },
+    { internalHelp: Flag.Boolean(SETS_INTERNAL_PARENT_HELP_FLAG).pipe(Flag.withDefault(false)) },
     ({ internalHelp }) => (internalHelp ? Console.log(SKILL_SETS_HELP) : Effect.void),
   ).pipe(
     Command.withSubcommands([

@@ -71,19 +71,19 @@ export function makeExportCommand(action: ExportAction = runExportAction) {
   return Command.make(
     "export",
     {
-      internalHelp: Flag.boolean(EXPORT_INTERNAL_HELP_FLAG),
-      tables: Argument.choice("table", EXPORT_TABLE_NAMES).pipe(
+      internalHelp: Flag.Boolean(EXPORT_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false)),
+      tables: Argument.Literals("table", EXPORT_TABLE_NAMES).pipe(
         Argument.withDescription(
           `SQLite table snapshot to export (${EXPORT_TABLE_NAMES.join(", ")})`,
         ),
         Argument.variadic(),
       ),
-      outputDirs: Flag.string("output").pipe(
+      outputDirs: Flag.String("output").pipe(
         Flag.withAlias("o"),
         Flag.withDescription("Output directory (default: current directory)"),
         Flag.atMost(Number.MAX_SAFE_INTEGER),
       ),
-      sinceValues: Flag.string("since").pipe(
+      sinceValues: Flag.String("since").pipe(
         Flag.withDescription("Only export records after this ISO 8601 date"),
         Flag.atMost(Number.MAX_SAFE_INTEGER),
       ),

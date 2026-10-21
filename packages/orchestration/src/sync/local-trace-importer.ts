@@ -26,6 +26,7 @@ import {
   LocalTraceImportRequest,
   LocalTraceImportResult,
 } from "@selftune/observability/local-trace-importer";
+import { SourceReconstruction } from "@selftune/observability/source-reconstruction";
 
 const resolveSkillName = Effect.fn("LocalTraceImporter.resolveSkillName")(function* (
   database: Database,
@@ -34,7 +35,10 @@ const resolveSkillName = Effect.fn("LocalTraceImporter.resolveSkillName")(functi
   const invocation = yield* Effect.try({
     try: () =>
       getDrizzleDb(database)
-        .select({ skill_name: skill_invocations.skill_name })
+        .select({
+          skill_name: skill_invocations.skill_name,
+          skill_revision: skill_invocations.skill_version_hash,
+        })
         .from(skill_invocations)
         .where(eq(skill_invocations.skill_invocation_id, skillInvocationId))
         .get(),
@@ -52,7 +56,7 @@ const resolveSkillName = Effect.fn("LocalTraceImporter.resolveSkillName")(functi
       }),
     );
   }
-  return invocation.skill_name;
+  return invocation;
 });
 
 const signalId = (sourceKind: string, traceId: string, skillInvocationId: string) => {
@@ -137,6 +141,7 @@ const resolveBatch = Effect.fn("LocalTraceImporter.resolveBatch")(function* (
     }
   }
   const logSkillLinks: DuckDbHistoricalLogSkillLink[] = [];
+  const bindings: SourceReconstruction["bindings"][number][] = [];
   const logLinkIds = new Set<string>();
   for (const sourceLink of request.batch.log_skill_links ?? []) {
     if (logLinkIds.has(sourceLink.link_id)) {
@@ -157,7 +162,8 @@ const resolveBatch = Effect.fn("LocalTraceImporter.resolveBatch")(function* (
         }),
       );
     }
-    const skillName = yield* resolveSkillName(database, sourceLink.skill_invocation_id);
+    const skill = yield* resolveSkillName(database, sourceLink.skill_invocation_id);
+    const skillName = skill.skill_name;
     logSkillLinks.push(
       DuckDbHistoricalLogSkillLink.make({
         ...sourceLink,
@@ -196,7 +202,9 @@ const resolveBatch = Effect.fn("LocalTraceImporter.resolveBatch")(function* (
         }),
       );
     }
-    const skillName = yield* resolveSkillName(database, sourceLink.skill_invocation_id);
+    const skill = yield* resolveSkillName(database, sourceLink.skill_invocation_id);
+    const skillName = skill.skill_name;
+    bindings.push({ skill_invocation_id: sourceLink.skill_invocation_id, ...skill });
     links.push(DuckDbTraceSkillLink.make({ ...sourceLink, skill_name: skillName }));
     if (span.error_count > 0) {
       skillFailureSignals.push(
@@ -222,10 +230,22 @@ const resolveBatch = Effect.fn("LocalTraceImporter.resolveBatch")(function* (
     normalizer_version: request.normalizer_version,
     links,
   };
+  const identifiedInput = request.source_session_ids
+    ? {
+        ...analyticalInput,
+        source_identities: request.source_session_ids.map((session_id) => ({
+          provider: request.source_kind,
+          session_id,
+        })),
+      }
+    : analyticalInput;
+  const sourceWithProof = request.source_snapshot
+    ? { ...identifiedInput, reconstruction: { snapshot: request.source_snapshot, bindings } }
+    : identifiedInput;
   const analyticalBatch = yield* Schema.decodeEffect(DuckDbAnalyticalBatch)(
     sourceLogLinks === undefined
-      ? analyticalInput
-      : { ...analyticalInput, log_skill_links: logSkillLinks },
+      ? sourceWithProof
+      : { ...sourceWithProof, log_skill_links: logSkillLinks },
   ).pipe(
     Effect.mapError((error) =>
       LocalTraceImportFailure.make({

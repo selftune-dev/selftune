@@ -77,7 +77,7 @@ function fingerprint(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-export function* iterateTrustedSkillObservationRows(
+function* readTrustedSkillObservationRows(
   db: Database,
 ): IterableIterator<TrustedSkillObservationRow> {
   const isSystemLike = (text: string | null | undefined): boolean => {
@@ -247,6 +247,37 @@ export function* iterateTrustedSkillObservationRows(
   }
 }
 
+const trustedSnapshots = new WeakMap<
+  Database,
+  { version: string; rows: readonly TrustedSkillObservationRow[] }
+>();
+
+function observationVersion(db: Database): string {
+  const row = db
+    .query<{ changes: number; data_version: number }, []>(
+      "SELECT total_changes() AS changes, data_version FROM pragma_data_version",
+    )
+    .get();
+  if (row === null) throw new Error("SQLite returned no observation version");
+  return `${row.changes}:${row.data_version}`;
+}
+
+/** One accepted snapshot per connection, never a TTL or a persisted evidence replacement. */
+export function* iterateTrustedSkillObservationRows(
+  db: Database,
+): IterableIterator<TrustedSkillObservationRow> {
+  const version = observationVersion(db);
+  const cached = trustedSnapshots.get(db);
+  let rows = cached?.version === version ? cached.rows : undefined;
+  if (!rows) {
+    rows = [...readTrustedSkillObservationRows(db)];
+    if (observationVersion(db) === version) trustedSnapshots.set(db, { version, rows });
+    else trustedSnapshots.delete(db);
+  }
+  // Callers historically own mutable rows. Do not let one caller poison another summary.
+  for (const row of rows) yield { ...row };
+}
+
 export function queryTrustedSkillObservationRows(db: Database): TrustedSkillObservationRow[] {
   return [...iterateTrustedSkillObservationRows(db)];
 }
@@ -304,8 +335,10 @@ export function getSkillTrustSummaries(db: Database): SkillTrustSummary[] {
   return summaries;
 }
 
-export function getAttentionQueue(db: Database): AttentionItem[] {
-  const summaries = getSkillTrustSummaries(db);
+export function getAttentionQueue(
+  db: Database,
+  summaries = getSkillTrustSummaries(db),
+): AttentionItem[] {
   const pending = getPendingProposals(db);
   const pendingSkills = new Set(pending.map((proposal) => proposal.skill_name).filter(Boolean));
 

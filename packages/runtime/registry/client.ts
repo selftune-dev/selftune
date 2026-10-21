@@ -25,12 +25,12 @@ export interface RegistryRequestOptions {
   readonly formData?: FormData;
 }
 
-export class RegistryAuthenticationError extends Schema.TaggedErrorClass<RegistryAuthenticationError>()(
+export class RegistryAuthenticationError extends Schema.TaggedError<RegistryAuthenticationError>()(
   "RegistryAuthenticationError",
   { message: Schema.String },
 ) {}
 
-export class RegistryConfigError extends Schema.TaggedErrorClass<RegistryConfigError>()(
+export class RegistryConfigError extends Schema.TaggedError<RegistryConfigError>()(
   "RegistryConfigError",
   {
     path: Schema.String,
@@ -38,12 +38,12 @@ export class RegistryConfigError extends Schema.TaggedErrorClass<RegistryConfigE
   },
 ) {}
 
-export class RegistryTransportError extends Schema.TaggedErrorClass<RegistryTransportError>()(
+export class RegistryTransportError extends Schema.TaggedError<RegistryTransportError>()(
   "RegistryTransportError",
   { message: Schema.String },
 ) {}
 
-export class RegistryHttpError extends Schema.TaggedErrorClass<RegistryHttpError>()(
+export class RegistryHttpError extends Schema.TaggedError<RegistryHttpError>()(
   "RegistryHttpError",
   {
     status: Schema.Number,
@@ -51,7 +51,7 @@ export class RegistryHttpError extends Schema.TaggedErrorClass<RegistryHttpError
   },
 ) {}
 
-export class RegistryResponseDecodeError extends Schema.TaggedErrorClass<RegistryResponseDecodeError>()(
+export class RegistryResponseDecodeError extends Schema.TaggedError<RegistryResponseDecodeError>()(
   "RegistryResponseDecodeError",
   {
     status: Schema.Number,
@@ -59,22 +59,22 @@ export class RegistryResponseDecodeError extends Schema.TaggedErrorClass<Registr
   },
 ) {}
 
-export class RegistryResponseSizeError extends Schema.TaggedErrorClass<RegistryResponseSizeError>()(
+export class RegistryResponseSizeError extends Schema.TaggedError<RegistryResponseSizeError>()(
   "RegistryResponseSizeError",
   { message: Schema.String },
 ) {}
 
-export class RegistryDownloadSizeError extends Schema.TaggedErrorClass<RegistryDownloadSizeError>()(
+export class RegistryDownloadSizeError extends Schema.TaggedError<RegistryDownloadSizeError>()(
   "RegistryDownloadSizeError",
   { message: Schema.String },
 ) {}
 
-export class RegistryDownloadUrlError extends Schema.TaggedErrorClass<RegistryDownloadUrlError>()(
+export class RegistryDownloadUrlError extends Schema.TaggedError<RegistryDownloadUrlError>()(
   "RegistryDownloadUrlError",
   { message: Schema.String },
 ) {}
 
-export class RegistryApiUrlError extends Schema.TaggedErrorClass<RegistryApiUrlError>()(
+export class RegistryApiUrlError extends Schema.TaggedError<RegistryApiUrlError>()(
   "RegistryApiUrlError",
   { message: Schema.String },
 ) {}

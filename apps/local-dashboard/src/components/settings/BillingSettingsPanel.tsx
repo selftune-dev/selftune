@@ -1,9 +1,16 @@
-import { ExternalLinkIcon, LogInIcon, RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { billingPlans } from "@selftune/runtime/billing-plans";
+import { PricingCards } from "@selftune/dashboard-core/screens/settings";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+  Button,
+  Field,
+  FieldLabel,
+  Input,
+} from "@selftune/ui/primitives";
 import {
   useCloudBillingCheckout,
   useCloudBillingPortal,
@@ -18,13 +25,6 @@ export interface BillingSettingsPanelProps {
   readonly openExternal?: (url: string) => void | Promise<void>;
 }
 
-function planName(id: "free" | "pro" | "team" | "enterprise"): string {
-  if (id === "free") return "Community";
-  if (id === "enterprise") return "Enterprise";
-  return id === "pro" ? "Pro" : "Team";
-}
-
-/** Desktop's Settings tab for the Cloud-owned billing journey. */
 export function BillingSettingsPanel({
   cloudConfigured,
   active,
@@ -32,185 +32,176 @@ export function BillingSettingsPanel({
   onConnect,
   openExternal,
 }: BillingSettingsPanelProps) {
-  const cloudBilling = useCloudBillingStatus(cloudConfigured && active);
-  const cloudBillingCheckout = useCloudBillingCheckout();
-  const cloudBillingPortal = useCloudBillingPortal();
-  const [teamSeats, setTeamSeats] = useState(1);
+  const billing = useCloudBillingStatus(cloudConfigured && active);
+  const checkout = useCloudBillingCheckout();
+  const portal = useCloudBillingPortal();
+  const [teamSeats, setTeamSeats] = useState(3);
+  const [checkoutOpened, setCheckoutOpened] = useState(false);
+  const data = cloudConfigured ? billing.data : undefined;
+  const currentName =
+    data?.availablePlans.find((plan) => plan.id === data.plan)?.name ??
+    (data?.plan === "free"
+      ? "Community"
+      : data?.plan === "enterprise"
+        ? "Enterprise"
+        : data?.plan === "team"
+          ? "Team"
+          : "Pro");
+  const busy = checkout.isPending || portal.isPending;
+  const grantedAccess = data && data.plan !== "free" && !data.hasStripeCustomer;
 
-  async function openBillingUrl(url: string) {
-    if (openExternal) {
-      await openExternal(url);
-      return;
+  async function openUrl(url: string) {
+    try {
+      if (openExternal) await openExternal(url);
+      else if (window.selftuneDesktop) await window.selftuneDesktop.openExternal(url);
+      else window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      toast.error("Could not open your browser. Please try again.");
     }
-    if (window.selftuneDesktop) {
-      await window.selftuneDesktop.openExternal(url);
-      return;
-    }
-    window.open(url, "_blank", "noopener,noreferrer");
   }
-
-  function startCheckout(plan: "pro" | "team", seats?: number) {
-    cloudBillingCheckout.mutate(seats === undefined ? { plan } : { plan, seats }, {
-      onSuccess: ({ url }) => void openBillingUrl(url),
-      onError: (error) =>
-        toast.error("Checkout could not be started", {
-          description: error instanceof Error ? error.message : String(error),
-        }),
-    });
+  function showError(error: Error) {
+    toast.error("Billing could not be opened", { description: error.message });
   }
-
-  function openBillingPortal() {
-    cloudBillingPortal.mutate(undefined, {
-      onSuccess: ({ url }) => void openBillingUrl(url),
-      onError: (error) =>
-        toast.error("Billing portal could not be opened", {
-          description: error instanceof Error ? error.message : String(error),
-        }),
-    });
+  function openPortal() {
+    portal.mutate(undefined, { onSuccess: ({ url }) => void openUrl(url), onError: showError });
+  }
+  function choose(plan: "pro" | "team") {
+    const seats = Math.min(1000, Math.max(3, Math.trunc(teamSeats) || 3));
+    setCheckoutOpened(true);
+    if (!cloudConfigured) {
+      void openUrl(
+        `https://cloud.selftune.dev/?billing=${plan}${plan === "team" ? `&seats=${seats}` : ""}`,
+      );
+    } else if (
+      data?.hasStripeCustomer &&
+      data.plan !== "free" &&
+      data.subscriptionStatus !== "canceled"
+    )
+      openPortal();
+    else
+      checkout.mutate(plan === "team" ? { plan, seats } : { plan }, {
+        onSuccess: ({ url }) => void openUrl(url),
+        onError: showError,
+      });
   }
 
   return (
-    <section aria-labelledby="billing-heading">
-      <div className="mb-3">
-        <h2 id="billing-heading" className="text-base font-semibold text-foreground">
+    <section aria-labelledby="billing-heading" className="flex flex-col gap-4">
+      <div>
+        <h2 id="billing-heading" className="text-base font-semibold">
           Billing
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Manage your SelfTune Cloud workspace plan and subscription.
+          Use SelfTune locally for free. Add controlled sharing or bring your team.
         </p>
       </div>
       {!cloudConfigured ? (
-        <div className="rounded-lg border border-border/70 bg-background/25 p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium text-foreground">Connect SelfTune Cloud</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Link a Cloud account to view your plan and securely manage billing. Your local
-                Library remains available without Cloud.
-              </p>
-            </div>
-            <Button size="sm" disabled={connectPending} onClick={onConnect}>
-              <LogInIcon data-icon="inline-start" />
-              {connectPending ? "Waiting for approval" : "Connect Cloud"}
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          Already have an account?
+          <Button variant="link" size="sm" disabled={connectPending} onClick={onConnect}>
+            {connectPending ? "Waiting for approval" : "Connect Cloud"}
+          </Button>
+        </div>
+      ) : billing.isError ? (
+        <Alert variant="destructive">
+          <AlertTitle>Could not load your plan</AlertTitle>
+          <AlertDescription>
+            {billing.error instanceof Error
+              ? billing.error.message
+              : "Billing is unavailable right now."}
+            <Button variant="outline" size="sm" onClick={() => billing.refetch()}>
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : data ? (
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <span className="font-medium">Current plan: {currentName}</span>
+          <span className="text-muted-foreground">
+            {grantedAccess
+              ? "Internal access"
+              : data.subscriptionStatus === "none"
+                ? "No active subscription"
+                : `Subscription: ${data.subscriptionStatus}`}
+          </span>
+          <div className="ml-auto flex gap-2">
+            {data.hasStripeCustomer && data.canManageBilling ? (
+              <Button variant="outline" size="sm" disabled={busy} onClick={openPortal}>
+                Manage subscription
+              </Button>
+            ) : null}
+            <Button variant="outline" size="sm" onClick={() => billing.refetch()}>
+              Refresh plan
             </Button>
           </div>
         </div>
-      ) : cloudBilling.isLoading ? (
-        <div className="rounded-lg border border-border/70 bg-background/25 p-5 text-sm text-muted-foreground">
-          Loading billing…
-        </div>
-      ) : cloudBilling.isError || !cloudBilling.data ? (
-        <div className="rounded-lg border border-destructive/25 bg-destructive/5 p-5">
-          <p role="alert" className="text-sm text-destructive">
-            {cloudBilling.error instanceof Error
-              ? cloudBilling.error.message
-              : "Billing is unavailable right now."}
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-3"
-            onClick={() => cloudBilling.refetch()}
-          >
-            <RefreshCwIcon data-icon="inline-start" /> Retry
-          </Button>
-        </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border/70 bg-background/25">
-          <div className="flex flex-col gap-3 border-b border-border/60 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                Current plan:{" "}
-                {cloudBilling.data.availablePlans.find(
-                  (plan) => plan.id === cloudBilling.data?.plan,
-                )?.name ?? planName(cloudBilling.data.plan)}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {cloudBilling.data.subscriptionStatus === "none"
-                  ? "No active subscription"
-                  : cloudBilling.data.subscriptionStatus}
-              </p>
-            </div>
-            {cloudBilling.data.plan !== "free" && cloudBilling.data.canManageBilling ? (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={cloudBillingPortal.isPending}
-                onClick={openBillingPortal}
-              >
-                <ExternalLinkIcon data-icon="inline-start" />
-                {cloudBillingPortal.isPending ? "Opening" : "Manage subscription"}
-              </Button>
-            ) : null}
-          </div>
-          {!cloudBilling.data.canManageBilling ? (
-            <p className="border-b border-border/60 px-4 py-3 text-sm text-muted-foreground">
-              Only workspace owners can manage billing.
-            </p>
-          ) : null}
-          <div className="grid gap-px bg-border/60 md:grid-cols-2">
-            {cloudBilling.data.availablePlans.map((plan) => {
-              const current = plan.id === cloudBilling.data?.plan;
-              const checkoutPlan = plan.id;
-              return (
-                <div key={plan.id} className="bg-background px-4 py-4">
-                  <p className="text-sm font-medium text-foreground">{plan.name}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {plan.price ? `${plan.price}${plan.period ?? ""}` : "Contact us"}
-                  </p>
-                  <p className="mt-2 min-h-10 text-xs text-muted-foreground">{plan.description}</p>
-                  {checkoutPlan === "team" && !current && cloudBilling.data?.plan === "free" ? (
-                    <label className="mt-3 flex flex-col gap-1 text-xs text-muted-foreground">
-                      Seats
-                      <Input
-                        aria-label="Team seats"
-                        className="h-8"
-                        type="number"
-                        min={plan.seats?.minimum ?? 1}
-                        max={1_000}
-                        value={teamSeats}
-                        onChange={(event) => setTeamSeats(Number(event.target.value))}
-                      />
-                    </label>
-                  ) : null}
-                  {checkoutPlan === "pro" || checkoutPlan === "team" ? (
-                    <Button
-                      variant={current ? "outline" : "default"}
-                      size="sm"
-                      className="mt-3"
-                      disabled={
-                        current ||
-                        !cloudBilling.data?.canManageBilling ||
-                        cloudBillingCheckout.isPending ||
-                        cloudBillingPortal.isPending
-                      }
-                      onClick={() => {
-                        if (cloudBilling.data?.plan !== "free") openBillingPortal();
-                        else
-                          startCheckout(
-                            checkoutPlan,
-                            checkoutPlan === "team"
-                              ? Math.min(
-                                  1_000,
-                                  Math.max(plan.seats?.minimum ?? 1, Math.trunc(teamSeats) || 1),
-                                )
-                              : undefined,
-                          );
-                      }}
-                    >
-                      {current
-                        ? "Current plan"
-                        : cloudBilling.data?.plan === "free"
-                          ? "Choose plan"
-                          : "Manage plan"}
-                    </Button>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <p role="status">Loading billing…</p>
       )}
+      {checkoutOpened ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          {data && (data.subscriptionStatus === "active" || data.subscriptionStatus === "trialing")
+            ? "Your plan is active. You can return to sharing."
+            : "Finish checkout in your browser, then return here. Your plan refreshes while Billing is open. If you are not linked yet, connect the same Cloud workspace afterward."}
+        </p>
+      ) : null}
+      {data && !data.canManageBilling ? (
+        <p className="text-sm text-muted-foreground">Only workspace owners can manage billing.</p>
+      ) : null}
+      <PricingCards
+        plans={data?.availablePlans ?? billingPlans}
+        currentPlan={data?.plan ?? (!cloudConfigured ? "free" : undefined)}
+        renderOptions={(plan) =>
+          plan.id === "team" && !grantedAccess && (!data || data.plan === "free") ? (
+            <Field>
+              <FieldLabel htmlFor="team-seats">Team seats</FieldLabel>
+              <Input
+                id="team-seats"
+                type="number"
+                min={3}
+                max={1000}
+                value={teamSeats}
+                onChange={(event) => setTeamSeats(Number(event.target.value))}
+              />
+              <p className="text-xs text-muted-foreground">
+                3 members included; $15/month per additional member.
+              </p>
+            </Field>
+          ) : null
+        }
+        renderAction={(plan) => {
+          if (plan.id !== "pro" && plan.id !== "team")
+            return <span className="text-sm text-muted-foreground">Free on this device</span>;
+          const current =
+            plan.id === data?.plan &&
+            (data.subscriptionStatus === "active" || data.subscriptionStatus === "trialing");
+          return (
+            <Button
+              className="w-full"
+              variant={current ? "outline" : "default"}
+              disabled={
+                busy ||
+                current ||
+                Boolean(grantedAccess) ||
+                (cloudConfigured && (!data || !data.canManageBilling))
+              }
+              onClick={() => {
+                if (plan.id === "pro" || plan.id === "team") choose(plan.id);
+              }}
+            >
+              {current
+                ? "Current plan"
+                : grantedAccess
+                  ? "Included in your access"
+                  : data && data.plan !== "free"
+                    ? "Manage plan"
+                    : !cloudConfigured
+                      ? `Choose ${plan.name}`
+                      : "Choose plan"}
+            </Button>
+          );
+        }}
+      />
     </section>
   );
 }

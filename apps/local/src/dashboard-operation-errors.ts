@@ -16,7 +16,7 @@ import { TeamSkillSetContributionError } from "@selftune/runtime/team-contributi
 
 import { CloudTeamCollaborationError } from "./cloud-team-collaboration.js";
 
-export class DashboardOperationError extends Schema.TaggedErrorClass<DashboardOperationError>()(
+export class DashboardOperationError extends Schema.TaggedError<DashboardOperationError>()(
   "DashboardOperationError",
   {
     operation: Schema.String,

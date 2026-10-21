@@ -20,7 +20,7 @@ selftune grade baseline  --skill <name> --skill-path <path> [--eval-set <path>] 
 selftune evolve          --skill <name> --skill-path <path> [--dry-run] [--validation-mode auto|replay|judge]
 selftune evolve body     --skill <name> --skill-path <path> --target <body|routing> [--dry-run]
 selftune evolve rollback --skill <name> --skill-path <path> [--proposal-id <id>]
-selftune improve --skill <name> --skill-path <path> [--scope auto|description|routing|body|package] [--dry-run] [--validation-mode auto|replay|judge]
+selftune improve --skill <name> --skill-path <path> [--scope auto|description|routing|body|package] [--dry-run] [--budget-remaining-usd <amount> --estimated-cost-usd <amount>] [--validation-mode auto|replay|judge]
 
 # Create group
 selftune verify --skill-path <path> [--agent AGENT] [--eval-set PATH] [--no-auto-fix] [--json]

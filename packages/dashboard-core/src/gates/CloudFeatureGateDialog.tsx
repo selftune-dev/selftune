@@ -207,6 +207,10 @@ export function CloudFeatureGateDialog({
           </div>
         </div>
         <DialogFooter className="m-0 rounded-none px-6 py-4 sm:px-8">
+          <p className="mr-auto text-sm text-muted-foreground">
+            Pro: $19/month for share links. Team: $49/month for publishing and team access,
+            including 3 members.
+          </p>
           <Button
             variant="ghost"
             nativeButton={false}
@@ -215,7 +219,7 @@ export function CloudFeatureGateDialog({
             Learn more
           </Button>
           <Button nativeButton={false} render={<a href={upgradeHref} />}>
-            Connect to SelfTune Cloud
+            View plans
           </Button>
         </DialogFooter>
       </DialogContent>

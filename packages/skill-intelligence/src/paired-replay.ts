@@ -73,7 +73,7 @@ export const ReplayArmAttempt = Schema.Union([
 ]);
 export type ReplayArmAttempt = typeof ReplayArmAttempt.Type;
 
-export class PairedReplayExecutionFailure extends Schema.TaggedErrorClass<PairedReplayExecutionFailure>()(
+export class PairedReplayExecutionFailure extends Schema.TaggedError<PairedReplayExecutionFailure>()(
   "PairedReplayExecutionFailure",
   {
     kind: Schema.Literals(["infrastructure", "cancelled", "budget_exhausted"]),

@@ -64,7 +64,7 @@ export interface TraceCandidateReview {
   } | null;
 }
 
-export class TraceCandidatePreparationError extends Schema.TaggedErrorClass<TraceCandidatePreparationError>()(
+export class TraceCandidatePreparationError extends Schema.TaggedError<TraceCandidatePreparationError>()(
   "TraceCandidatePreparationError",
   { message: Schema.String },
 ) {}

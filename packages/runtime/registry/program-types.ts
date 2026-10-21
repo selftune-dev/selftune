@@ -39,7 +39,7 @@ export interface FormattedRegistryResult {
   readonly exitCode: 0 | 1;
 }
 
-export class RegistryOperationError extends Schema.TaggedErrorClass<RegistryOperationError>()(
+export class RegistryOperationError extends Schema.TaggedError<RegistryOperationError>()(
   "RegistryOperationError",
   { operation: Schema.String, message: Schema.String },
 ) {}

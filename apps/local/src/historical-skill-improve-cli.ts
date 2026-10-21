@@ -8,6 +8,7 @@ import {
 import { LocalDatabaseService, makeLocalDatabaseLive } from "@selftune/local-store";
 import { makeDuckDbNodeApiAnalyticalStoreLive } from "@selftune/observability/duckdb-node-api";
 import { isLlmBackedAgent, type LlmBackedAgent } from "@selftune/runtime/utils/llm-call";
+import { CLIError } from "@selftune/runtime/utils/cli-error";
 import { Effect, Layer } from "effect";
 
 import {
@@ -31,6 +32,46 @@ export interface HistoricalSkillImproveCliInput {
   readonly skill: string;
   readonly skillPath: string;
   readonly agent?: string;
+  readonly budgetRemainingUsd: number;
+  /** Caller estimate for the full run, including candidate generation and replay. */
+  readonly estimatedCostUsd: number;
+}
+
+interface HistoricalSpendPreflight {
+  readonly caller_reported_remaining_usd: number;
+  readonly caller_estimated_total_run_cost_usd: number;
+  readonly outcome: "estimate_within_remaining";
+  readonly provider_spend_measured: false;
+}
+
+function validateHistoricalSpendPreflight(
+  input: Pick<HistoricalSkillImproveCliInput, "budgetRemainingUsd" | "estimatedCostUsd">,
+): HistoricalSpendPreflight {
+  const { budgetRemainingUsd, estimatedCostUsd } = input;
+  if (
+    !Number.isFinite(budgetRemainingUsd) ||
+    budgetRemainingUsd < 0 ||
+    !Number.isFinite(estimatedCostUsd) ||
+    estimatedCostUsd < 0
+  ) {
+    throw new CLIError(
+      "Historical replay requires finite, non-negative caller spend inputs.",
+      "INVALID_ARGUMENT",
+    );
+  }
+  if (estimatedCostUsd > budgetRemainingUsd) {
+    throw new CLIError(
+      `Historical replay was not started: estimated total run cost ($${estimatedCostUsd}) exceeds caller-reported remaining spend ($${budgetRemainingUsd}).`,
+      "GUARD_BLOCKED",
+      "Review the total-run estimate and the remaining amount, then rerun with current caller-provided values.",
+    );
+  }
+  return {
+    caller_reported_remaining_usd: budgetRemainingUsd,
+    caller_estimated_total_run_cost_usd: estimatedCostUsd,
+    outcome: "estimate_within_remaining",
+    provider_spend_measured: false,
+  };
 }
 
 export interface HistoricalSkillImproveCliAttempt {
@@ -79,6 +120,7 @@ export interface HistoricalSkillImproveCliAttempt {
       }[];
     } | null;
     readonly applies_change: false;
+    readonly spend_preflight: HistoricalSpendPreflight;
     readonly before_after?: {
       readonly case_id: string;
       readonly task: string;
@@ -112,10 +154,14 @@ function requestedAgent(value: string | undefined): LlmBackedAgent {
 export async function runHistoricalSkillImproveCli(
   input: HistoricalSkillImproveCliInput,
 ): Promise<HistoricalSkillImproveCliAttempt> {
+  const spendPreflight = validateHistoricalSpendPreflight(input);
   const agent = requestedAgent(input.agent);
   const patternId = executionPatternIdForSkill(input.skill);
   const searchDirs = [dirname(dirname(input.skillPath))];
   const taskQualityReplay = input.skill.trim().toLowerCase() === "to-issues";
+  const qualifiedVerifier = taskQualityReplay
+    ? historicalTaskQualityVerifierQualification()
+    : historicalRoutingVerifierQualification();
 
   const program = Effect.gen(function* () {
     const { sqlite } = yield* LocalDatabaseService;
@@ -155,9 +201,7 @@ export async function runHistoricalSkillImproveCli(
         return yield* improvement.evaluate({
           pattern_id: patternId,
           candidate_count: HISTORICAL_SEARCH_CANDIDATES,
-          qualified_verifier: taskQualityReplay
-            ? historicalTaskQualityVerifierQualification()
-            : historicalRoutingVerifierQualification(),
+          qualified_verifier: qualifiedVerifier,
           runtime: {
             harness: agent === "claude" ? "claude_code" : agent,
             model: agent === "codex" ? CODEX_STUDENT_MODEL : "configured-default",
@@ -172,9 +216,7 @@ export async function runHistoricalSkillImproveCli(
                 replay: taskQualityReplay
                   ? "isolated-host-execution-quality"
                   : "isolated-host-routing",
-                verifier: taskQualityReplay
-                  ? "selftune.to-issues-draft-quality@v2"
-                  : "selftune.skill-routing-selection@v1",
+                verifier: `${qualifiedVerifier.instrument.verifier_id}@${qualifiedVerifier.instrument.version}`,
               }),
             ),
           },
@@ -187,8 +229,8 @@ export async function runHistoricalSkillImproveCli(
             kill_switch_enabled: false,
             active_runs: 0,
             max_concurrency: 1,
-            budget_remaining_usd: 20,
-            estimated_cost_usd: 5,
+            budget_remaining_usd: input.budgetRemainingUsd,
+            estimated_cost_usd: input.estimatedCostUsd,
           },
           recorded_at: new Date().toISOString(),
         });
@@ -229,6 +271,7 @@ export async function runHistoricalSkillImproveCli(
       cases: response.cases,
       search: response.search ?? null,
       applies_change: false,
+      spend_preflight: spendPreflight,
       before_after: response.before_after ?? null,
     },
   };

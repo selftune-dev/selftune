@@ -15,10 +15,10 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 import * as Schema from "effect/Schema";
+import { preservingJsonDecoder } from "./preserving-schema.js";
 
 export function jsonlDecoder<A>(schema: Schema.Codec<A>) {
-  const decode = Schema.decodeUnknownSync(Schema.fromJsonString(schema));
-  return (line: string) => decode(line, { onExcessProperty: "preserve" });
+  return preservingJsonDecoder(schema);
 }
 
 export const decodeJsonLine = jsonlDecoder(Schema.Json);
@@ -119,6 +119,8 @@ export interface FileIngestionFingerprint {
   readonly size: number;
   readonly mtime_ms: number;
   readonly normalizer_version: string;
+  readonly ctime_ns?: string;
+  readonly file_identity?: string;
 }
 
 export type FileIngestionMarker = Map<string, FileIngestionFingerprint>;
@@ -127,6 +129,8 @@ const FileFingerprint = Schema.Struct({
   size: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
   mtime_ms: Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0)),
   normalizer_version: Schema.String.check(Schema.isMinLength(1)),
+  ctime_ns: Schema.optionalKey(Schema.String),
+  file_identity: Schema.optionalKey(Schema.String),
 });
 const SerializedFileIngestionMarker = Schema.Struct({
   marker_version: Schema.Literal(2),
@@ -156,11 +160,13 @@ export function fingerprintIngestionFile(
   path: string,
   normalizerVersion: string,
 ): FileIngestionFingerprint {
-  const stats = statSync(path);
+  const stats = statSync(path, { bigint: true });
   return {
-    size: stats.size,
-    mtime_ms: stats.mtimeMs,
+    size: Number(stats.size),
+    mtime_ms: Number(stats.mtimeNs) / 1_000_000,
     normalizer_version: normalizerVersion,
+    ctime_ns: String(stats.ctimeNs),
+    file_identity: `${stats.dev}:${stats.ino}`,
   };
 }
 
@@ -173,8 +179,19 @@ export function isFileIngestionCurrent(
   return (
     previous?.size === fingerprint.size &&
     previous.mtime_ms === fingerprint.mtime_ms &&
+    previous.ctime_ns === fingerprint.ctime_ns &&
+    previous.file_identity === fingerprint.file_identity &&
     previous.normalizer_version === fingerprint.normalizer_version
   );
+}
+
+export function fileIngestionRevision(fingerprint: FileIngestionFingerprint): string {
+  return [
+    fingerprint.size,
+    fingerprint.mtime_ms,
+    fingerprint.ctime_ns,
+    fingerprint.file_identity,
+  ].join(":");
 }
 
 /** Save deterministic, versioned file fingerprints for append-aware ingestion. */

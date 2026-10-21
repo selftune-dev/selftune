@@ -98,7 +98,10 @@ Search both the telemetry record and the transcript for evidence per
 expectation. Mark as:
 
 - **PASS** if evidence exists and supports the expectation
-- **FAIL** if evidence is absent or contradicts the expectation
+- **FAIL** if specific evidence establishes that the requirement was not met
+- **UNOBSERVED** if the source excerpt or artifact is insufficient to decide.
+  Return it in `unobserved_expectations` with its exact text and missing evidence,
+  instead of assigning a score. The CLI returns `MISSING_DATA` and saves no grade.
 
 Cite specific evidence: transcript line numbers, tool call names, bash output.
 

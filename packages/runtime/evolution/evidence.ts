@@ -26,7 +26,7 @@ export function appendEvidenceEntry(entry: EvolutionEvidenceEntry): void {
 export function readEvidenceTrail(skillName?: string): EvolutionEvidenceEntry[] {
   const db = getDb();
   return queryEvolutionEvidence(db, skillName).flatMap((row) => {
-    const decoded = decodeEvolutionEvidenceRecord(row, { onExcessProperty: "preserve" });
+    const decoded = decodeEvolutionEvidenceRecord(row);
     return Option.isSome(decoded) ? [decoded.value] : [];
   });
 }

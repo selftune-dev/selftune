@@ -123,7 +123,7 @@ export function makeLiveSyncAction(
     runSyncActionWithDependencies(input, jsonRequested, dependencies);
 }
 
-const optionalString = (name: string) => Flag.string(name).pipe(Flag.optional);
+const optionalString = (name: string) => Flag.String(name).pipe(Flag.optional);
 
 function decode(value: Option.Option<string>): string | undefined {
   return decodeSyncInternalValue(Option.getOrUndefined(value));
@@ -150,16 +150,16 @@ export function makeSyncCommand(action: SyncAction = makeLiveSyncAction()) {
       repairedSkillLogPath: optionalString("repaired-skill-log"),
       repairedSessionsPath: optionalString("repaired-sessions-marker"),
       since: optionalString("since"),
-      dryRun: Flag.boolean("dry-run"),
-      force: Flag.boolean("force"),
-      skipClaude: Flag.boolean("no-claude"),
-      skipCodex: Flag.boolean("no-codex"),
-      skipOpenCode: Flag.boolean("no-opencode"),
-      skipOpenClaw: Flag.boolean("no-openclaw"),
-      skipPi: Flag.boolean("no-pi"),
-      skipRepair: Flag.boolean("no-repair"),
-      json: Flag.boolean("json"),
-      internalHelp: Flag.boolean(SYNC_INTERNAL_HELP_FLAG),
+      dryRun: Flag.Boolean("dry-run").pipe(Flag.withDefault(false)),
+      force: Flag.Boolean("force").pipe(Flag.withDefault(false)),
+      skipClaude: Flag.Boolean("no-claude").pipe(Flag.withDefault(false)),
+      skipCodex: Flag.Boolean("no-codex").pipe(Flag.withDefault(false)),
+      skipOpenCode: Flag.Boolean("no-opencode").pipe(Flag.withDefault(false)),
+      skipOpenClaw: Flag.Boolean("no-openclaw").pipe(Flag.withDefault(false)),
+      skipPi: Flag.Boolean("no-pi").pipe(Flag.withDefault(false)),
+      skipRepair: Flag.Boolean("no-repair").pipe(Flag.withDefault(false)),
+      json: Flag.Boolean("json").pipe(Flag.withDefault(false)),
+      internalHelp: Flag.Boolean(SYNC_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false)),
     },
     (input) =>
       input.internalHelp

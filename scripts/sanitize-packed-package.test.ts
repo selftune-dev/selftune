@@ -13,7 +13,7 @@ test("sanitizes the real archive without changing package contents or registry d
       join(packageRoot, "package.json"),
       JSON.stringify({
         name: "selftune",
-        dependencies: { "@selftune/runtime": "1.0.0", effect: "4.0.0-beta.66" },
+        dependencies: { "@selftune/runtime": "1.0.0", effect: "4.0.0-rc.115" },
         bundledDependencies: ["@selftune/runtime"],
       }),
     );
@@ -31,7 +31,7 @@ test("sanitizes the real archive without changing package contents or registry d
       manifestAfter.push(manifest);
       expect(JSON.parse(manifest)).toEqual({
         name: "selftune",
-        dependencies: { effect: "4.0.0-beta.66" },
+        dependencies: { effect: "4.0.0-rc.115" },
         bundledDependencies: ["@selftune/runtime"],
       });
       expect(readFileSync(join(output, "package/payload.bin"))).toEqual(payload);

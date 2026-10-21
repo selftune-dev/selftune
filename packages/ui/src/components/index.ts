@@ -104,3 +104,4 @@ export type {
   SkillCardProps,
   SkillFilterTabsProps,
 } from "./SkillsLibrary";
+export { SkillPackageViewer, type SkillPackageViewerProps } from "./SkillPackageViewer";

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 
 import { createOrGetPreparedEvaluationSubmissionDraft } from "@selftune/local-store";
 import type { DuckDbAnalyticalStoreService } from "@selftune/observability";
+import { reconstructSourceTask } from "@selftune/orchestration/reconstruct-source-task";
 import {
   CohortBodyTeacherOutput,
   type CohortBodyTeacher,
@@ -238,22 +239,64 @@ export const prepareHistoricalTaskCandidate = Effect.fn(
       }),
   });
   const rowsById = new Map(rows.map((row) => [row.skill_invocation_id, row]));
+  const reconstructedTasks = new Map<string, string>();
+  const reconstructionFailures = new Set<string>();
+  // Bound native I/O independently of the discovery page; do not scan 512 originals.
+  const reconstructionCandidates = references
+    .toSorted((left, right) => stableTaskRank(left).localeCompare(stableTaskRank(right)))
+    .filter((reference) => {
+      const row = rowsById.get(reference.skill_invocation_id);
+      return (
+        row?.invocation_mode === "explicit" &&
+        row.triggered &&
+        row.skill_version_hash === options.revision &&
+        row.source === "codex_rollout" &&
+        historicalTaskWithContext(options.sqlite, row, options.installed.name) === null
+      );
+    })
+    .slice(0, 4);
+  for (const reference of reconstructionCandidates) {
+    const resolved = yield* options.analytical
+      .resolveSourceTask({
+        ...reference,
+        skill_revision: options.revision,
+        pin_id: `historical-task-${stableTaskRank(reference)}-${createHash("sha256").update(reference.source_revision).digest("hex").slice(0, 16)}`,
+        replay: reconstructSourceTask,
+      })
+      .pipe(
+        Effect.mapError((error) => new TraceCandidatePreparationError({ message: error.message })),
+      );
+    if (resolved.state === "available")
+      reconstructedTasks.set(reference.skill_invocation_id, resolved.task);
+    else reconstructionFailures.add(resolved.reason);
+  }
   const seenTasks = new Set<string>();
   const tasks = references
     .toSorted((left, right) => stableTaskRank(left).localeCompare(stableTaskRank(right)))
     .flatMap((reference) => {
       const row = rowsById.get(reference.skill_invocation_id);
       if (!row || row.invocation_mode !== "explicit" || !row.triggered) return [];
-      if (row.source !== "claude_code_replay" && row.capture_mode !== "hook") return [];
+      if (
+        row.source !== "claude_code_replay" &&
+        row.capture_mode !== "hook" &&
+        row.source !== "codex_rollout"
+      )
+        return [];
       const occurredAt = row.occurred_at ? Date.parse(row.occurred_at) : Number.NaN;
       const exactRevision =
         row.skill_version_hash === options.revision ||
-        (!row.skill_version_hash &&
+        (row.source !== "codex_rollout" &&
+          !row.skill_version_hash &&
           Number.isFinite(occurredAt) &&
           packageMtimeMs <= occurredAt &&
           pathCanUseInstalledSnapshot(row.skill_path, options.installed.skill_path));
       if (!exactRevision) return [];
-      const task = historicalTaskWithContext(options.sqlite, row, options.installed.name);
+      const task =
+        historicalTaskWithContext(options.sqlite, row, options.installed.name) ??
+        boundedHistoricalTask(
+          reconstructedTasks.get(reference.skill_invocation_id),
+          options.installed.name,
+        );
       if (!task || seenTasks.has(task)) return [];
       seenTasks.add(task);
       return [{ reference, task }];
@@ -267,7 +310,10 @@ export const prepareHistoricalTaskCandidate = Effect.fn(
       target_revision: options.revision,
       readiness: "not_ready",
       failure_reason:
-        "Historical skill links exist, but fewer than 3 unique explicit tasks resolve to the exact installed revision for separate calibration, selection, and audit partitions.",
+        "Historical skill links exist, but fewer than 3 unique explicit tasks resolve to the exact installed revision for separate calibration, selection, and audit partitions." +
+        (reconstructionFailures.size
+          ? ` Source reconstruction unavailable: ${[...reconstructionFailures].join(", ")}.`
+          : ""),
       evidence: { cohort_entries: tasks.length, resolved_entries: tasks.length },
       candidate: null,
     } satisfies TraceCandidateReview;

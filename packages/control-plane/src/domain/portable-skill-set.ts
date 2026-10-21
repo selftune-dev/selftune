@@ -52,7 +52,7 @@ export const PortableSkillSetErrorReason = Schema.Literals([
 ]);
 export type PortableSkillSetErrorReason = typeof PortableSkillSetErrorReason.Type;
 
-export class PortableSkillSetError extends Schema.TaggedErrorClass<PortableSkillSetError>()(
+export class PortableSkillSetError extends Schema.TaggedError<PortableSkillSetError>()(
   "PortableSkillSetError",
   {
     reason: PortableSkillSetErrorReason,
@@ -137,7 +137,7 @@ const PortableSkillSetEnvelopeCardinality = Schema.Struct({
 const decodePortableSkillSetEnvelopeCardinality = Schema.decodeUnknownOption(
   PortableSkillSetEnvelopeCardinality,
 );
-const decodeJsonText = Schema.decodeUnknownEffect(Schema.UnknownFromJsonString);
+const decodeJsonText = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
 
 export class PortableSkillSetEnvelopeComponent extends Schema.Class<PortableSkillSetEnvelopeComponent>(
   "PortableSkillSetEnvelopeComponent",

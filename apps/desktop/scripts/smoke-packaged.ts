@@ -14,7 +14,7 @@ import * as Schema from "effect/Schema";
 import { readServerManifest } from "@selftune/local/local-runtime";
 import { PENDING_WINDOW_IPC_TEST_DOCUMENT } from "../src/desktop-test-contract";
 
-class PackagedSmokeFailure extends Schema.TaggedErrorClass<PackagedSmokeFailure>()(
+class PackagedSmokeFailure extends Schema.TaggedError<PackagedSmokeFailure>()(
   "PackagedSmokeFailure",
   {
     operation: Schema.String,

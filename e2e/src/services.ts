@@ -2,7 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-export class CapabilityUnavailable extends Schema.TaggedErrorClass<CapabilityUnavailable>()(
+export class CapabilityUnavailable extends Schema.TaggedError<CapabilityUnavailable>()(
   "CapabilityUnavailable",
   {
     capability: Schema.String,
@@ -10,7 +10,7 @@ export class CapabilityUnavailable extends Schema.TaggedErrorClass<CapabilityUna
   },
 ) {}
 
-export class ScenarioFailure extends Schema.TaggedErrorClass<ScenarioFailure>()("ScenarioFailure", {
+export class ScenarioFailure extends Schema.TaggedError<ScenarioFailure>()("ScenarioFailure", {
   step: Schema.String,
   message: Schema.String,
 }) {}

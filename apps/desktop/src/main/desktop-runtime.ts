@@ -40,6 +40,7 @@ export interface DesktopRuntimeCallbacks {
 type DesktopRuntimeLogDetails =
   | DesktopRuntimeError
   | ResetStateResult
+  | { readonly recoveryReason: string }
   | { readonly cleanupFailure: DesktopRuntimeError; readonly rebindFailure: DesktopRuntimeError }
   | {
       readonly attempt: number;
@@ -78,7 +79,7 @@ export interface DesktopRuntimeDependencies {
   readonly writeBackgroundPreference: (enabled: boolean) => void;
 }
 
-export class DesktopRuntimeError extends Schema.TaggedErrorClass<DesktopRuntimeError>()(
+export class DesktopRuntimeError extends Schema.TaggedError<DesktopRuntimeError>()(
   "DesktopRuntimeError",
   {
     operation: Schema.String,
@@ -336,6 +337,10 @@ export function makeDesktopRuntimeLayer(
           });
           if (!claimed) return;
 
+          yield* log("warn", "SelfTune local runtime recovery requested", {
+            recoveryReason: cause instanceof Error ? cause.message : String(cause),
+          });
+
           const recovery = yield* Effect.result(runMutation(recoverManagedConnection(generation)));
           if (Result.isSuccess(recovery)) return;
 
@@ -580,6 +585,15 @@ export function makeDesktopRuntimeLayer(
             return;
           }
           const activeConnection = snapshot.connection;
+          if (yield* probeConnection(activeConnection)) {
+            yield* Ref.update(state, (current) => ({
+              ...current,
+              misses: 0,
+              recoveringGeneration: null,
+            }));
+            yield* log("info", "SelfTune local runtime health restored; keeping current window");
+            return;
+          }
           if (isCliOwnedStandalone(activeConnection)) {
             const reattached = yield* attempt(
               "reattach to CLI-owned runtime",
@@ -957,6 +971,34 @@ export function makeDesktopRuntimeLayer(
           const generation = snapshot.generation;
           const connection = snapshot.connection;
           const healthy = yield* probeConnection(connection);
+          if (healthy && snapshot.recoveringGeneration === generation) {
+            yield* runMutation(
+              Effect.gen(function* () {
+                const current = yield* Ref.get(state);
+                if (
+                  current.quitting ||
+                  current.generation !== generation ||
+                  current.recoveringGeneration !== generation
+                )
+                  return;
+                const attached =
+                  connection.supervision === "os-service"
+                    ? yield* attempt(
+                        "reattach recovered background service",
+                        dependencies.attachSupervisedSidecar,
+                      )
+                    : connection;
+                if (!attached) return;
+                yield* activateConnection(attached);
+                yield* log("info", "SelfTune reconnected after delayed local service recovery");
+              }),
+            ).pipe(
+              Effect.catch((failure) =>
+                log("warn", "SelfTune could not reconnect the recovered local service", failure),
+              ),
+            );
+            return;
+          }
           const shouldRecover = yield* Ref.modify(state, (current) => {
             if (
               current.quitting ||

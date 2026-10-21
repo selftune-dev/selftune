@@ -31,7 +31,7 @@ const RequestLimit = Schema.Number.check(
   Schema.isLessThanOrEqualTo(32_768),
 );
 
-export class EvidenceCohortFailure extends Schema.TaggedErrorClass<EvidenceCohortFailure>()(
+export class EvidenceCohortFailure extends Schema.TaggedError<EvidenceCohortFailure>()(
   "EvidenceCohortFailure",
   {
     reason: Schema.Literals([

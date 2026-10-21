@@ -206,7 +206,7 @@ export function DashboardSidebar({
                   aria-label={brand.footerAction.ariaLabel ?? brand.footerAction.label}
                   title={brand.footerAction.ariaLabel ?? brand.footerAction.label}
                   disabled={brand.footerAction.disabled}
-                  className="group/update relative min-w-16 text-sidebar-primary hover:text-sidebar-primary"
+                  className="group/update relative min-w-16 rounded-full bg-primary-accent text-black hover:bg-primary-accent/85 hover:text-black"
                   onClick={() => {
                     onMobileOpenChange(false);
                     brand.footerAction?.onClick();

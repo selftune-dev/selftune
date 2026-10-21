@@ -15,6 +15,7 @@ function renderSettings(url: string, route = "/settings?section=remote-library")
     if (input === "/api/v2/settings") return Response.json(settingsFor(url));
     if (
       [
+        "/api/v2/settings/billing/status",
         "/api/v2/settings/remote-library/status",
         "/api/v2/settings/remote-library/shares",
         "/api/v2/settings/workspace/members",
@@ -45,6 +46,46 @@ afterEach(() => {
 });
 
 describe("Settings remote-library capabilities", () => {
+  it("distinguishes enabled Cloud package backup from local operational data", async () => {
+    const cloud = renderSettings("https://cloud.selftune.dev");
+    await screen.findByText(
+      "Skill packages back up to the destination you enable in Cloud. Prompts, sessions, and evaluations stay local.",
+    );
+    expect(screen.queryByRole("switch", { name: "Decision history backup" })).toBeNull();
+
+    cloud.unmount();
+    renderSettings("https://selftune.example.com");
+    await screen.findByText("Raw transcripts are never synced.");
+    expect(screen.getByRole("switch", { name: "Decision history backup" })).not.toBeNull();
+  });
+
+  it("does not claim a stored Cloud credential is connected when verification fails", async () => {
+    renderSettings("https://cloud.selftune.dev");
+    await screen.findByText(
+      "Cloud could not verify this device. Reconnect your account and retry.",
+    );
+    expect(screen.queryByText("SelfTune Cloud account connected")).toBeNull();
+    expect(screen.queryByText("Checking SelfTune Cloud integrity...")).toBeNull();
+  });
+
+  it("explains the paid sync requirement after verifying a free account", async () => {
+    renderSettings("https://cloud.selftune.dev");
+    await screen.findByText(
+      "Cloud could not verify this device. Reconnect your account and retry.",
+    );
+    act(() =>
+      clients.at(-1)?.setQueryData(["cloud-billing"], {
+        plan: "free",
+        subscriptionStatus: "none",
+      }),
+    );
+    await screen.findByText(
+      "Account connected. An active Pro or Team plan is required for inventory sync and sharing.",
+    );
+    expect(
+      screen.getByText("Your device credential was verified by SelfTune Cloud."),
+    ).not.toBeNull();
+  });
   it("renders a newly available automation job before the draft synchronization effect runs", async () => {
     const url = "https://cloud.selftune.dev";
     renderSettings(url, "/settings?section=automation");
@@ -74,14 +115,14 @@ describe("Settings remote-library capabilities", () => {
     expect(screen.getByRole("combobox", { name: "Collect frequency" })).not.toBeNull();
   });
 
-  it("shows backup controls only for self-hosting, even when remote status is unavailable", async () => {
+  it("shows backup controls for Cloud and self-hosting, even when remote status is unavailable", async () => {
     const cloud = renderSettings("https://cloud.selftune.dev");
 
     await screen.findByRole("heading", {
-      name: "Cloud connection & self-hosted backup",
+      name: "Sync & Backup",
     });
-    expect(screen.queryByTitle("Export complete backup")).toBeNull();
-    expect(screen.queryByTitle("Restore into a new local directory")).toBeNull();
+    expect(screen.getByTitle("Export complete backup")).not.toBeNull();
+    expect(screen.getByTitle("Restore into a new local directory")).not.toBeNull();
 
     cloud.unmount();
     renderSettings("https://selftune.example.com");

@@ -9,6 +9,19 @@ import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 
 import { EvidenceCohortCandidate, EvidenceCohortPattern } from "./evidence-cohort.js";
+import {
+  durableSummaryMigration,
+  retainBatchSummaries,
+  sourceReconstructionMigration,
+  sourceIdentityMigration,
+} from "./durable-summary-sql.js";
+import { SourceIdentities, sourceIdentityKey } from "./source-identity.js";
+import {
+  SourceReconstruction,
+  sourceDigest,
+  type SourceTaskResolution,
+} from "./source-reconstruction.js";
+import { createHash } from "node:crypto";
 
 const TraceId = Schema.String.check(
   Schema.isLengthBetween(32, 32),
@@ -240,6 +253,8 @@ export class DuckDbAnalyticalBatch extends Schema.Class<DuckDbAnalyticalBatch>(
   batch_id: BoundedText,
   source_revision: BoundedText,
   normalizer_version: BoundedText,
+  reconstruction: Schema.optionalKey(SourceReconstruction),
+  source_identities: Schema.optionalKey(SourceIdentities),
   spans: Schema.Array(DuckDbTraceSpan).check(Schema.isMaxLength(256)),
   links: Schema.Array(DuckDbTraceSkillLink).check(Schema.isMaxLength(256)),
   resources: Schema.optionalKey(Schema.Array(DuckDbTraceResource).check(Schema.isMaxLength(64))),
@@ -324,7 +339,7 @@ export class DuckDbAnalyticalStoreHealth extends Schema.Class<DuckDbAnalyticalSt
   "DuckDbAnalyticalStoreHealth",
 )({
   database_path: Schema.String,
-  schema_version: Schema.Literal(9),
+  schema_version: Schema.Literal(12),
   span_count: MetricCount,
   metric_count: MetricCount,
   link_count: MetricCount,
@@ -336,7 +351,7 @@ export class DuckDbAnalyticalStoreHealth extends Schema.Class<DuckDbAnalyticalSt
   span_link_count: MetricCount,
 }) {}
 
-export class DuckDbAnalyticalStoreFailure extends Schema.TaggedErrorClass<DuckDbAnalyticalStoreFailure>()(
+export class DuckDbAnalyticalStoreFailure extends Schema.TaggedError<DuckDbAnalyticalStoreFailure>()(
   "DuckDbAnalyticalStoreFailure",
   { operation: Schema.String, message: Schema.String },
 ) {}
@@ -375,6 +390,9 @@ export interface DuckDbInstanceFactory {
 }
 
 export interface DuckDbAnalyticalStoreService {
+  readonly resolveSourceTask: (
+    input: SourceTaskRequest,
+  ) => Effect.Effect<SourceTaskResolution, DuckDbAnalyticalStoreFailure>;
   /**
    * Verifies the durable analytical receipt for one normalized source revision.
    * This is intentionally a domain operation rather than exposing DuckDB query
@@ -404,6 +422,40 @@ export interface DuckDbAnalyticalStoreService {
     input: typeof DuckDbHistoricalMetricRollupQuery.Encoded,
   ) => Effect.Effect<DuckDbHistoricalMetricRollupPage, DuckDbAnalyticalStoreFailure>;
   readonly health: () => Effect.Effect<DuckDbAnalyticalStoreHealth, DuckDbAnalyticalStoreFailure>;
+}
+
+export interface SourceTaskRequest {
+  readonly trace_id: string;
+  readonly span_id: string;
+  readonly skill_invocation_id: string;
+  readonly skill_revision: string;
+  readonly source_revision: string;
+  readonly pin_id: string;
+  readonly replay: (input: {
+    readonly signal: AbortSignal;
+    readonly batch_id: string;
+    readonly source_revision: string;
+    readonly normalizer_version: string;
+    readonly reconstruction: SourceReconstruction;
+  }) => Promise<
+    | {
+        readonly state: "reconstructed";
+        readonly task: string;
+        readonly batch: typeof DuckDbAnalyticalBatch.Encoded;
+      }
+    | Extract<SourceTaskResolution, { state: "unavailable" }>
+  >;
+}
+
+/** Schema order makes the fingerprint independent of caller object construction order. */
+export function analyticalBatchDigest(input: typeof DuckDbAnalyticalBatch.Encoded): string {
+  const decoded = Schema.decodeUnknownSync(DuckDbAnalyticalBatch)(input);
+  const {
+    reconstruction: _proof,
+    source_identities: _identity,
+    ...facts
+  } = Schema.encodeSync(DuckDbAnalyticalBatch)(decoded);
+  return createHash("sha256").update(JSON.stringify(facts)).digest("hex");
 }
 
 export class DuckDbAnalyticalStore extends Context.Service<
@@ -967,15 +1019,24 @@ const migrate = Effect.fn("DuckDbAnalyticalStore.migrate")(function* (
   const migrationVersion = Schema.is(Schema.Union([Schema.Number, Schema.BigInt]))(existingVersion)
     ? Number(existingVersion)
     : 0;
-  if (migrationVersion > 9) {
+  if (migrationVersion > 12) {
     return yield* Effect.fail(
       DuckDbAnalyticalStoreFailure.make({
         operation: "migrate DuckDB analytical store",
-        message: `DuckDB schema version ${migrationVersion} is newer than supported version 9.`,
+        message: `DuckDB schema version ${migrationVersion} is newer than supported version 12.`,
       }),
     );
   }
-  if (migrationVersion >= 9) return;
+  if (migrationVersion >= 12) return;
+  if (migrationVersion >= 9) {
+    if (migrationVersion === 9)
+      for (const statement of durableSummaryMigration) yield* runStatement(connection, statement);
+    if (migrationVersion < 11)
+      for (const statement of sourceReconstructionMigration)
+        yield* runStatement(connection, statement);
+    for (const statement of sourceIdentityMigration) yield* runStatement(connection, statement);
+    return;
+  }
   const hadMigration = migrationVersion > 0;
   for (const statement of schemaStatements) yield* runStatement(connection, statement);
   if (!hadMigration) {
@@ -989,6 +1050,10 @@ const migrate = Effect.fn("DuckDbAnalyticalStore.migrate")(function* (
     for (const statement of v7MigrationStatements) yield* runStatement(connection, statement);
     for (const statement of v8MigrationStatements) yield* runStatement(connection, statement);
     for (const statement of v9MigrationStatements) yield* runStatement(connection, statement);
+    for (const statement of durableSummaryMigration) yield* runStatement(connection, statement);
+    for (const statement of sourceReconstructionMigration)
+      yield* runStatement(connection, statement);
+    for (const statement of sourceIdentityMigration) yield* runStatement(connection, statement);
     return;
   }
   if (migrationVersion < 4) {
@@ -1001,6 +1066,9 @@ const migrate = Effect.fn("DuckDbAnalyticalStore.migrate")(function* (
   for (const statement of v7MigrationStatements) yield* runStatement(connection, statement);
   for (const statement of v8MigrationStatements) yield* runStatement(connection, statement);
   for (const statement of v9MigrationStatements) yield* runStatement(connection, statement);
+  for (const statement of durableSummaryMigration) yield* runStatement(connection, statement);
+  for (const statement of sourceReconstructionMigration) yield* runStatement(connection, statement);
+  for (const statement of sourceIdentityMigration) yield* runStatement(connection, statement);
 });
 
 const decodeBatch = (input: typeof DuckDbAnalyticalBatch.Encoded) =>
@@ -1061,11 +1129,74 @@ const batchDisposition = Effect.fn("DuckDbAnalyticalStore.batchDisposition")(fun
     : "revised";
 });
 
+const sourceKeys = (batch: DuckDbAnalyticalBatch) =>
+  JSON.stringify([...new Set((batch.source_identities ?? []).map(sourceIdentityKey))]);
+
+const sourceExpired = Effect.fn("DuckDbAnalyticalStore.sourceExpired")(function* (
+  connection: DuckDbConnection,
+  batchId: string,
+  incomingKeys = "[]",
+) {
+  const result = yield* runStatement(
+    connection,
+    `SELECT 1 AS expired FROM observability_expired_sources
+     WHERE source_key IN (
+       SELECT source_key FROM observability_batch_sources WHERE batch_id = $batch_id
+       UNION ALL SELECT json_extract_string(value, '$') FROM json_each($source_keys)
+     )
+     UNION ALL SELECT 1 FROM observability_source_reconstruction
+       WHERE batch_id = $batch_id AND detail_state = 'expired'
+     LIMIT 1`,
+    { batch_id: batchId, source_keys: incomingKeys },
+  );
+  return (yield* readRows(result, "check source expiration")).length > 0;
+});
+
+const assertSourceActive = Effect.fn("DuckDbAnalyticalStore.assertSourceActive")(function* (
+  connection: DuckDbConnection,
+  batch: DuckDbAnalyticalBatch,
+) {
+  if (yield* sourceExpired(connection, batch.batch_id, sourceKeys(batch)))
+    return yield* DuckDbAnalyticalStoreFailure.make({
+      operation: "ingest analytical source",
+      message: "Source detail is expired; force sync cannot resurrect expired evidence.",
+    });
+  if (!batch.source_identities) return;
+  const result = yield* runStatement(
+    connection,
+    `SELECT 1 FROM observability_batch_sources WHERE batch_id = $batch_id
+     AND (source_key NOT IN (SELECT json_extract_string(value, '$') FROM json_each($source_keys))
+       OR (SELECT COUNT(*) FROM observability_batch_sources WHERE batch_id = $batch_id)
+         != (SELECT COUNT(*) FROM json_each($source_keys))) LIMIT 1`,
+    { batch_id: batch.batch_id, source_keys: sourceKeys(batch) },
+  );
+  if ((yield* readRows(result, "verify immutable batch source identities")).length > 0)
+    return yield* DuckDbAnalyticalStoreFailure.make({
+      operation: "ingest analytical source",
+      message: "A qualified batch cannot change its logical source identities.",
+    });
+});
+
+const retainSourceIdentities = Effect.fn("DuckDbAnalyticalStore.retainSourceIdentities")(function* (
+  connection: DuckDbConnection,
+  batch: DuckDbAnalyticalBatch,
+) {
+  if (!batch.source_identities) return;
+  yield* runStatement(
+    connection,
+    `INSERT INTO observability_batch_sources
+     SELECT $batch_id, json_extract_string(value, '$') FROM json_each($source_keys)
+     ON CONFLICT DO NOTHING`,
+    { batch_id: batch.batch_id, source_keys: sourceKeys(batch) },
+  );
+});
+
 const hasExactBatchReceipt = Effect.fn("DuckDbAnalyticalStore.hasExactBatchReceipt")(function* (
   connection: DuckDbConnection,
   input: typeof DuckDbAnalyticalBatch.Encoded,
 ) {
   const batch = yield* decodeBatch(input);
+  yield* assertSourceActive(connection, batch);
   const result = yield* runStatement(
     connection,
     `SELECT 1 AS receipt_exists
@@ -1073,11 +1204,18 @@ const hasExactBatchReceipt = Effect.fn("DuckDbAnalyticalStore.hasExactBatchRecei
      WHERE batch_id = $batch_id
        AND source_revision = $source_revision
        AND normalizer_version = $normalizer_version
+       AND NOT EXISTS (
+         SELECT 1 FROM json_each($source_keys) AS incoming
+         WHERE NOT EXISTS (SELECT 1 FROM observability_batch_sources AS known
+           WHERE known.batch_id = $batch_id
+             AND known.source_key = json_extract_string(incoming.value, '$'))
+       )
      LIMIT 1`,
     {
       batch_id: batch.batch_id,
       source_revision: batch.source_revision,
       normalizer_version: batch.normalizer_version,
+      source_keys: sourceKeys(batch),
     },
   );
   const rows = yield* readRows(result, "verify analytical batch receipt");
@@ -1092,6 +1230,8 @@ const ingestBatch = Effect.fn("DuckDbAnalyticalStore.ingest")(function* (
   yield* runStatement(connection, "BEGIN TRANSACTION");
   const rollback = () => runStatement(connection, "ROLLBACK").pipe(Effect.ignore);
   const outcome = yield* Effect.gen(function* () {
+    yield* assertSourceActive(connection, batch);
+    yield* retainSourceIdentities(connection, batch);
     const disposition = yield* batchDisposition(connection, batch);
     if (disposition === "exact") {
       yield* runStatement(connection, "COMMIT");
@@ -1105,8 +1245,25 @@ const ingestBatch = Effect.fn("DuckDbAnalyticalStore.ingest")(function* (
       });
     }
 
+    const stateResult = yield* runStatement(
+      connection,
+      "SELECT detail_state FROM observability_source_reconstruction WHERE batch_id = $batch_id",
+      { batch_id: batch.batch_id },
+    );
+    const stateRows = yield* readRows(stateResult, "read source detail state");
+    const detailState = stateRows[0]?.detail_state;
     if (disposition === "revised") {
+      yield* runStatement(
+        connection,
+        `CREATE OR REPLACE TEMP TABLE observability_revised_metric_keys AS
+         SELECT DISTINCT trace_id, metric_name
+         FROM observability_retained_metric_candidates WHERE batch_id = $batch_id`,
+        { batch_id: batch.batch_id },
+      );
       for (const table of [
+        "observability_summary_receipts",
+        "observability_span_summaries",
+        "observability_metric_contributions",
         "observability_span_links",
         "observability_logs",
         "observability_historical_log_skill_links",
@@ -1279,6 +1436,9 @@ const ingestBatch = Effect.fn("DuckDbAnalyticalStore.ingest")(function* (
       ]),
     );
     const latestPoints = latestMetricPointsInBatch(batch.metric_points ?? []);
+    for (const statement of retainBatchSummaries) {
+      yield* runStatement(connection, statement, { batch_id: batch.batch_id });
+    }
     yield* runStatement(connection, "DELETE FROM observability_historical_metric_rollup_staging");
     yield* appendRows(
       connection,
@@ -1323,9 +1483,18 @@ const ingestBatch = Effect.fn("DuckDbAnalyticalStore.ingest")(function* (
         )`,
     );
     if (disposition === "revised") {
-      // A revision may remove the current newest point. Rebuild only on this
-      // rare replacement path so an older surviving batch can become current.
-      yield* runStatement(connection, "DELETE FROM observability_historical_metric_rollups");
+      // Include both removed and newly introduced keys; never rebuild unrelated history.
+      yield* runStatement(
+        connection,
+        `INSERT INTO observability_revised_metric_keys
+         SELECT trace_id, metric_name FROM observability_historical_metric_rollup_staging`,
+      );
+      yield* runStatement(
+        connection,
+        `DELETE FROM observability_historical_metric_rollups AS rollup
+         WHERE EXISTS (SELECT 1 FROM observability_revised_metric_keys AS affected
+           WHERE affected.trace_id = rollup.trace_id AND affected.metric_name = rollup.metric_name)`,
+      );
       yield* runStatement(
         connection,
         `INSERT INTO observability_historical_metric_rollups (
@@ -1339,10 +1508,13 @@ const ingestBatch = Effect.fn("DuckDbAnalyticalStore.ingest")(function* (
             PARTITION BY trace_id, metric_name
             ORDER BY observed_at DESC, metric_id DESC
           ) AS point_rank
-          FROM observability_historical_metric_points
+          FROM observability_retained_metric_candidates AS point
+          WHERE EXISTS (SELECT 1 FROM observability_revised_metric_keys AS affected
+            WHERE affected.trace_id = point.trace_id AND affected.metric_name = point.metric_name)
         ) AS latest
         WHERE point_rank = 1`,
       );
+      yield* runStatement(connection, "DROP TABLE observability_revised_metric_keys");
     }
     yield* runStatement(connection, "DELETE FROM observability_historical_metric_rollup_staging");
     yield* appendRows(
@@ -1370,6 +1542,43 @@ const ingestBatch = Effect.fn("DuckDbAnalyticalStore.ingest")(function* (
         batch.batch_id,
       ]),
     );
+    if (batch.reconstruction) {
+      yield* runStatement(
+        connection,
+        `INSERT INTO observability_source_reconstruction
+        VALUES ($batch_id, $source_revision, $normalizer_version, $content_sha256, $descriptor_json, $detail_state)
+        ON CONFLICT (batch_id) DO UPDATE SET
+          source_revision = excluded.source_revision, normalizer_version = excluded.normalizer_version,
+          content_sha256 = excluded.content_sha256, descriptor_json = excluded.descriptor_json`,
+        {
+          batch_id: batch.batch_id,
+          source_revision: batch.source_revision,
+          normalizer_version: batch.normalizer_version,
+          content_sha256: analyticalBatchDigest(batch),
+          descriptor_json: JSON.stringify(batch.reconstruction),
+          detail_state: "resident",
+        },
+      );
+    } else if (detailState !== "evicted") {
+      yield* runStatement(
+        connection,
+        "DELETE FROM observability_source_reconstruction WHERE batch_id = $batch_id",
+        { batch_id: batch.batch_id },
+      );
+    }
+    if (detailState === "evicted") {
+      // Preserve an explicit detail absence across revised imports. No scheduler sets this state.
+      for (const table of [
+        "observability_spans",
+        "observability_metrics",
+        "observability_logs",
+        "observability_historical_metric_points",
+      ]) {
+        yield* runStatement(connection, `DELETE FROM ${table} WHERE batch_id = $batch_id`, {
+          batch_id: batch.batch_id,
+        });
+      }
+    }
     yield* runStatement(connection, "COMMIT");
     if (disposition === "revised") {
       // Revised batches delete and reinsert the same indexed identities. Persist that uncommon
@@ -1387,6 +1596,139 @@ const ingestBatch = Effect.fn("DuckDbAnalyticalStore.ingest")(function* (
     });
   }).pipe(Effect.onError(rollback));
   return outcome;
+});
+
+const ReconstructionRow = Schema.Struct({
+  batch_id: BoundedText,
+  source_revision: BoundedText,
+  normalizer_version: BoundedText,
+  content_sha256: Schema.String,
+  descriptor_json: Schema.String,
+  detail_state: Schema.Literals(["resident", "evicted", "expired"]),
+  pinned: Schema.Boolean,
+});
+const SourceTaskIdentity = Schema.Struct({
+  trace_id: TraceId,
+  span_id: SpanId,
+  skill_invocation_id: BoundedText,
+  skill_revision: BoundedText,
+  source_revision: BoundedText,
+  pin_id: BoundedText,
+});
+
+const resolveSourceTask = Effect.fn("DuckDbAnalyticalStore.resolveSourceTask")(function* (
+  connection: DuckDbConnection,
+  input: SourceTaskRequest,
+): Effect.fn.Return<SourceTaskResolution, DuckDbAnalyticalStoreFailure> {
+  const request = yield* Schema.decodeUnknownEffect(SourceTaskIdentity)(input).pipe(
+    Effect.mapError((error) =>
+      DuckDbAnalyticalStoreFailure.make({
+        operation: "decode source task request",
+        message: error.message,
+      }),
+    ),
+  );
+  const result = yield* runStatement(
+    connection,
+    `SELECT pin.batch_id, pin.source_revision,
+      pin.normalizer_version, pin.content_sha256, pin.descriptor_json,
+      COALESCE(current.detail_state, 'resident') AS detail_state, true AS pinned
+    FROM observability_source_evidence_pins AS pin
+    LEFT JOIN observability_source_reconstruction AS current ON current.batch_id = pin.batch_id
+    WHERE pin.pin_id = $pin_id
+    UNION ALL
+    SELECT proof.batch_id, proof.source_revision, proof.normalizer_version,
+      proof.content_sha256, proof.descriptor_json, proof.detail_state, false AS pinned
+    FROM observability_source_reconstruction AS proof
+    JOIN observability_span_summaries AS span ON span.batch_id = proof.batch_id
+    WHERE span.trace_id = $trace_id AND span.span_id = $span_id
+      AND NOT EXISTS (SELECT 1 FROM observability_source_evidence_pins WHERE pin_id = $pin_id)
+    LIMIT 1`,
+    { pin_id: request.pin_id, trace_id: request.trace_id, span_id: request.span_id },
+  );
+  const rows = yield* readRows(result, "read exact reconstruction descriptor");
+  const [row] = yield* Schema.decodeUnknownEffect(Schema.Array(ReconstructionRow))(rows).pipe(
+    Effect.mapError((error) =>
+      DuckDbAnalyticalStoreFailure.make({
+        operation: "decode reconstruction descriptor",
+        message: error.message,
+      }),
+    ),
+  );
+  if (!row) return { state: "unavailable", reason: "missing" };
+  if (row.detail_state === "expired" || (yield* sourceExpired(connection, row.batch_id)))
+    return { state: "unavailable", reason: "expired" };
+  if (row.source_revision !== request.source_revision)
+    return { state: "unavailable", reason: "projection_changed" };
+  const reconstruction = yield* Schema.decodeUnknownEffect(
+    Schema.fromJsonString(SourceReconstruction),
+  )(row.descriptor_json).pipe(
+    Effect.mapError((error) =>
+      DuckDbAnalyticalStoreFailure.make({
+        operation: "decode source provenance",
+        message: error.message,
+      }),
+    ),
+  );
+  const binding = reconstruction.bindings.find(
+    (item) => item.skill_invocation_id === request.skill_invocation_id,
+  );
+  if (!binding?.skill_revision || binding.skill_revision !== request.skill_revision)
+    return { state: "unavailable", reason: "unverified_skill_revision" };
+  const replayed = yield* Effect.tryPromise({
+    try: (signal) => input.replay({ ...row, reconstruction, signal }),
+    catch: (cause) =>
+      DuckDbAnalyticalStoreFailure.make({
+        operation: "reconstruct bounded source task",
+        message: cause instanceof Error ? cause.message : String(cause),
+      }),
+  });
+  if (replayed.state === "unavailable") return replayed;
+  if (sourceDigest(Buffer.from(replayed.task)) !== reconstruction.snapshot.task_sha256)
+    return { state: "unavailable", reason: "projection_changed" };
+  const batch = yield* decodeBatch(replayed.batch);
+  if (
+    batch.batch_id !== row.batch_id ||
+    batch.source_revision !== row.source_revision ||
+    batch.normalizer_version !== row.normalizer_version ||
+    analyticalBatchDigest(batch) !== row.content_sha256 ||
+    !batch.links.some(
+      (link) =>
+        link.trace_id === request.trace_id &&
+        link.span_id === request.span_id &&
+        link.skill_invocation_id === request.skill_invocation_id &&
+        link.skill_name === binding.skill_name,
+    )
+  )
+    return { state: "unavailable", reason: "projection_changed" };
+  if (Buffer.byteLength(replayed.task, "utf8") > 8192)
+    return { state: "unavailable", reason: "over_budget" };
+  if (!replayed.task.trim()) return { state: "unavailable", reason: "missing" };
+  // Pin the exact recipe, not a copied transcript. Saved evaluation artifacts still own their evidence bytes.
+  if (!row.pinned)
+    yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        yield* runStatement(connection, "BEGIN TRANSACTION");
+        yield* Effect.gen(function* () {
+          yield* runStatement(
+            connection,
+            `INSERT INTO observability_source_evidence_pins
+        VALUES ($pin_id, $batch_id, $source_revision, $normalizer_version, $content_sha256, $descriptor_json)
+        ON CONFLICT (pin_id) DO NOTHING`,
+            {
+              pin_id: request.pin_id,
+              batch_id: row.batch_id,
+              source_revision: row.source_revision,
+              normalizer_version: row.normalizer_version,
+              content_sha256: row.content_sha256,
+              descriptor_json: row.descriptor_json,
+            },
+          );
+          yield* runStatement(connection, "COMMIT");
+        }).pipe(Effect.onError(() => runStatement(connection, "ROLLBACK").pipe(Effect.ignore)));
+      }),
+    );
+  return { state: "available", task: replayed.task, source: "verified_original" };
 });
 
 class SkillSignalRow extends Schema.Class<SkillSignalRow>("SkillSignalRow")({
@@ -1409,7 +1751,7 @@ const querySkillSignals = Effect.fn("DuckDbAnalyticalStore.querySkillSignals")(f
     `WITH linked_facts AS (
       SELECT DISTINCT link.skill_name, link.skill_invocation_id, link.trace_id, link.span_id
       FROM observability_trace_skill_links AS link
-      INNER JOIN observability_spans AS span
+      INNER JOIN observability_discovery_spans AS span
         ON span.trace_id = link.trace_id AND span.span_id = link.span_id
     ), invocation_totals AS (
       SELECT
@@ -1428,7 +1770,7 @@ const querySkillSignals = Effect.fn("DuckDbAnalyticalStore.querySkillSignals")(f
         MAX(CASE WHEN metric_name = 'output_tokens' THEN value ELSE 0 END) AS output_tokens,
         MAX(CASE WHEN metric_name = 'error_count' THEN value ELSE 0 END) AS error_count,
         MAX(CASE WHEN metric_name = 'tool_call_count' THEN value ELSE 0 END) AS tool_call_count
-      FROM observability_metrics
+      FROM observability_discovery_metrics
       WHERE metric_name IN ('input_tokens', 'output_tokens', 'error_count', 'tool_call_count')
       GROUP BY trace_id, span_id
     ), span_totals AS (
@@ -1442,7 +1784,7 @@ const querySkillSignals = Effect.fn("DuckDbAnalyticalStore.querySkillSignals")(f
         CAST(COALESCE(SUM(metric.error_count), 0) AS DOUBLE) AS error_count,
         CAST(COALESCE(SUM(metric.tool_call_count), 0) AS DOUBLE) AS tool_call_count
       FROM skill_spans AS link
-      INNER JOIN observability_spans AS span
+      INNER JOIN observability_discovery_spans AS span
         ON span.trace_id = link.trace_id AND span.span_id = link.span_id
       LEFT JOIN metric_rollup AS metric
         ON metric.trace_id = link.trace_id AND metric.span_id = link.span_id
@@ -1499,7 +1841,7 @@ const queryEvidenceCohortCandidates = Effect.fn(
         MAX(CASE WHEN metric_name = 'output_tokens' THEN value ELSE 0 END) AS output_tokens,
         MAX(CASE WHEN metric_name = 'error_count' THEN value ELSE 0 END) AS error_count,
         MAX(CASE WHEN metric_name = 'tool_call_count' THEN value ELSE 0 END) AS tool_call_count
-      FROM observability_metrics
+      FROM observability_discovery_metrics
       WHERE metric_name IN ('input_tokens', 'output_tokens', 'error_count', 'tool_call_count')
       GROUP BY trace_id, span_id
     )
@@ -1516,7 +1858,7 @@ const queryEvidenceCohortCandidates = Effect.fn(
       CAST(COALESCE(metric.error_count, 0) AS DOUBLE) AS error_count,
       CAST(COALESCE(metric.tool_call_count, 0) AS DOUBLE) AS tool_call_count
     FROM observability_trace_skill_links AS link
-    INNER JOIN observability_spans AS span
+    INNER JOIN observability_discovery_spans AS span
       ON span.trace_id = link.trace_id AND span.span_id = link.span_id
     INNER JOIN observability_ingested_batches AS batch ON batch.batch_id = span.batch_id
     LEFT JOIN metric_rollup AS metric
@@ -1526,7 +1868,11 @@ const queryEvidenceCohortCandidates = Effect.fn(
     ORDER BY span.trace_id, span.span_id, link.skill_invocation_id`,
     { skill_id: query.pattern.skill_id.trim().toLowerCase() },
   );
-  const rows = yield* readRows(result, "read DuckDB evidence cohort candidates");
+  const rows = (yield* readRows(result, "read DuckDB evidence cohort candidates")).map((row) => {
+    const normalized = { ...row };
+    if (normalized.model === null) delete normalized.model;
+    return normalized;
+  });
   return yield* Schema.decodeUnknownEffect(Schema.Array(EvidenceCohortCandidate))(rows).pipe(
     Effect.map((decoded) => decoded.map((candidate) => EvidenceCohortCandidate.make(candidate))),
     Effect.catchTag("SchemaError", (error) =>
@@ -1567,7 +1913,7 @@ const queryHistoricalSkillTaskReferences = Effect.fn(
       span.evidence_quality,
       span.model
     FROM observability_trace_skill_links AS link
-    INNER JOIN observability_spans AS span
+    INNER JOIN observability_discovery_spans AS span
       ON span.trace_id = link.trace_id AND span.span_id = link.span_id
     INNER JOIN observability_ingested_batches AS batch ON batch.batch_id = span.batch_id
     WHERE LOWER(TRIM(link.skill_name)) = $skill_id
@@ -1712,7 +2058,7 @@ const health = Effect.fn("DuckDbAnalyticalStore.health")(function* (
   );
   return DuckDbAnalyticalStoreHealth.make({
     database_path: databasePath,
-    schema_version: 9,
+    schema_version: 12,
     ...row,
   });
 });
@@ -1781,6 +2127,8 @@ export function makeDuckDbAnalyticalStoreLive(
               hasExactBatchReceipt: (input) =>
                 semaphore.withPermit(hasExactBatchReceipt(connection, input)),
               ingest: (input) => semaphore.withPermit(ingestBatch(connection, input)),
+              resolveSourceTask: (input) =>
+                semaphore.withPermit(resolveSourceTask(connection, input)),
               querySkillSignals: () => semaphore.withPermit(querySkillSignals(connection)),
               queryEvidenceCohortCandidates: (input) =>
                 semaphore.withPermit(queryEvidenceCohortCandidates(connection, input)),

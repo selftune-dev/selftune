@@ -90,6 +90,8 @@ export function generateLaunchdPlist(options: LaunchdPlistOptions): string {
   const associatedBundleIdentifiers = bundleIdentifier
     ? `  <key>AssociatedBundleIdentifiers</key>\n  <array><string>${xmlEscape(bundleIdentifier)}</string></array>\n`
     : "";
+  // This service answers the desktop's HTTP requests. Background throttles its
+  // SQLite reads; Adaptive requires XPC activity that our loopback HTTP cannot supply.
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -109,7 +111,7 @@ ${environmentXml}
   <key>KeepAlive</key>
   <dict><key>SuccessfulExit</key><false/></dict>
   <key>ProcessType</key>
-  <string>Background</string>
+  <string>Interactive</string>
   <key>WorkingDirectory</key>
   <string>${xmlEscape(options.workingDirectory)}</string>
   <key>StandardOutPath</key>

@@ -1,6 +1,12 @@
 import { decodeResponse, portfolioRequest, responseError, schemaRequest } from "./dashboard-http";
 export { DashboardApiError } from "./dashboard-http";
 import { Schema } from "effect";
+import { LibrarySnapshot as LibrarySnapshotSchema } from "@selftune/control-plane/domain/library";
+import { LibraryIndexPage } from "@selftune/control-plane/library-index";
+import {
+  CompactLibrarySnapshot,
+  expandLibrarySnapshot,
+} from "@selftune/control-plane/library-transport";
 import { HealthResponse } from "@selftune/runtime/dashboard-contract/health";
 import {
   ApplyOnboardingResponse,
@@ -181,10 +187,62 @@ export function finalizeCloudBillingCheckout(
   );
 }
 
-export async function fetchLibrary(): Promise<LibrarySnapshot> {
-  const res = await fetch(`${BASE}/api/v2/library`);
-  if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
-  return res.json();
+export async function fetchLibrary(selection?: {
+  skillId: string;
+  snapshot?: string;
+}): Promise<LibrarySnapshot> {
+  const params = new URLSearchParams({ format: "compact" });
+  if (selection) {
+    params.set("skill_id", selection.skillId);
+    if (selection.snapshot) params.set("snapshot", selection.snapshot);
+  }
+  const snapshot = await schemaRequest(
+    `${BASE}/api/v2/library?${params}`,
+    Schema.Union([CompactLibrarySnapshot, LibrarySnapshotSchema]),
+  );
+  return "format" in snapshot ? expandLibrarySnapshot(snapshot) : snapshot;
+}
+
+export async function fetchLibraryIndex(
+  search: string,
+  signal?: AbortSignal,
+): Promise<LibraryIndexPage> {
+  const params = new URLSearchParams({ view: "index", limit: "50", search });
+  const first = await schemaRequest(
+    `${BASE}/api/v2/library?${params}`,
+    LibraryIndexPage,
+    undefined,
+    signal,
+  );
+  const skills = [...first.skills];
+  let offset = first.nextOffset;
+  while (offset !== null) {
+    params.set("offset", String(offset));
+    params.set("snapshot", first.generatedAt);
+    // oxlint-disable-next-line no-await-in-loop -- Pages are generation-checked and bounded; do not fan out the full graph.
+    const page = await schemaRequest(
+      `${BASE}/api/v2/library?${params}`,
+      LibraryIndexPage,
+      undefined,
+      signal,
+    );
+    if (
+      page.generatedAt !== first.generatedAt ||
+      page.total !== first.total ||
+      (page.nextOffset !== null && page.nextOffset <= offset)
+    ) {
+      throw new Error("The library changed while loading. Refresh and try again.");
+    }
+    skills.push(...page.skills);
+    offset = page.nextOffset;
+  }
+  if (
+    skills.length !== first.total ||
+    new Set(skills.map((skill) => skill.skillId)).size !== skills.length
+  ) {
+    throw new Error("The library index is incomplete. Refresh and try again.");
+  }
+  return { ...first, skills, nextOffset: null };
 }
 
 export function backupLibrarySkill(skillId: string): Promise<{

@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { CandidateSnapshot } from "@selftune/control-plane";
+import { CandidateSnapshot } from "@selftune/control-plane/domain/synthesis";
 import type { SkillIntelligenceReport } from "@selftune/skill-intelligence";
 import type { PortfolioAuditResult } from "./local-management.js";
 import type { InsightsResponse } from "./requests.js";

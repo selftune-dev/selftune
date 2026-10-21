@@ -57,6 +57,25 @@ afterEach(() => {
 });
 
 describe("Drizzle local database", () => {
+  it("discovers workspace paths from covering indexes instead of wide telemetry rows", () => {
+    const db = openDb(":memory:");
+    try {
+      const plans = db
+        .query<{ detail: string }, []>(`EXPLAIN QUERY PLAN
+        SELECT cwd AS workspace_path FROM session_telemetry WHERE cwd IS NOT NULL AND trim(cwd) <> ''
+        UNION SELECT workspace_path FROM sessions WHERE workspace_path IS NOT NULL AND trim(workspace_path) <> ''
+        ORDER BY workspace_path`)
+        .all();
+      expect(plans.some((row) => row.detail.includes("COVERING INDEX idx_session_tel_cwd"))).toBe(
+        true,
+      );
+      expect(
+        plans.some((row) => row.detail.includes("COVERING INDEX idx_sessions_workspace_path")),
+      ).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
   it("rejects malformed journal metadata before migrations can use it", () => {
     const journal = Schema.decodeUnknownSync(Schema.fromJsonString(MigrationJournal))(
       embeddedMigrations["meta/_journal.json"],
@@ -205,7 +224,7 @@ describe("Drizzle local database", () => {
     const journal = Schema.decodeUnknownSync(Schema.fromJsonString(MigrationJournal))(
       embeddedMigrations["meta/_journal.json"],
     );
-    const previousEntries = journal.entries.slice(0, -1);
+    const previousEntries = journal.entries.filter((entry) => entry.idx < 18);
     writeFileSync(
       join(previousMeta, "_journal.json"),
       JSON.stringify({ ...journal, entries: previousEntries }),
@@ -310,7 +329,7 @@ describe("Drizzle local database", () => {
       "created_at",
       "updated_at",
     ]);
-    expect(latestMigration).toEqual({ created_at: 1786088000000 });
+    expect(latestMigration).toEqual({ created_at: journal.entries.at(-1)?.when });
     expect(legacyEvaluationDraftIdentityIndex).toBeNull();
     expect(signalCandidateColumns.map((column) => column.name)).toEqual(
       expect.arrayContaining(["candidate_id", "idempotency_key", "manifest_digest"]),
@@ -326,6 +345,9 @@ describe("Drizzle local database", () => {
     temporaryRoots.push(root);
     const path = join(root, "selftune.db");
     const preview = new Database(path);
+    const baseline = embeddedMigrations["0000_local_runtime_baseline.sql"];
+    if (!baseline) throw new Error("Expected the preview's baseline schema.");
+    preview.exec(baseline);
     const journal = Schema.decodeUnknownSync(Schema.fromJsonString(MigrationJournal))(
       embeddedMigrations["meta/_journal.json"],
     );

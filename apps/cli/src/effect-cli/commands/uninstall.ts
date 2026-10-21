@@ -82,16 +82,16 @@ export function makeUninstallCommand(action: UninstallAction = runLiveUninstall)
   return Command.make(
     "uninstall",
     {
-      internalHelp: Flag.boolean(UNINSTALL_INTERNAL_HELP_FLAG),
-      dryRun: Flag.boolean("dry-run").pipe(
-        Flag.withDescription("Preview what would be removed without deleting anything"),
-      ),
-      keepLogs: Flag.boolean("keep-logs").pipe(
-        Flag.withDescription("Preserve legacy JSONL telemetry logs"),
-      ),
-      npmUninstall: Flag.boolean("npm-uninstall").pipe(
-        Flag.withDescription("Also run 'npm uninstall -g selftune'"),
-      ),
+      internalHelp: Flag.Boolean(UNINSTALL_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false)),
+      dryRun: Flag.Boolean("dry-run")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Preview what would be removed without deleting anything")),
+      keepLogs: Flag.Boolean("keep-logs")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Preserve legacy JSONL telemetry logs")),
+      npmUninstall: Flag.Boolean("npm-uninstall")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Also run 'npm uninstall -g selftune'")),
     },
     (input) => {
       if (input.internalHelp) return Console.log(UNINSTALL_HELP);

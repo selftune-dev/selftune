@@ -128,7 +128,7 @@ function matchesReceiptExpectation(
   return receipt !== null && sameWindowsServiceInstallationReceipt(receipt, expected.receipt);
 }
 
-export class WindowsServiceInstallationStoreError extends Schema.TaggedErrorClass<WindowsServiceInstallationStoreError>()(
+export class WindowsServiceInstallationStoreError extends Schema.TaggedError<WindowsServiceInstallationStoreError>()(
   "WindowsServiceInstallationStoreError",
   {
     message: Schema.String,

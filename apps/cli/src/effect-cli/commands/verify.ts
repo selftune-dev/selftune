@@ -104,25 +104,27 @@ export function makeVerifyCommand(action: VerifyAction = runVerifyAction) {
   return Command.make(
     "verify",
     {
-      internalHelp: Flag.boolean(VERIFY_INTERNAL_HELP_FLAG),
-      skillPath: Flag.string("skill-path").pipe(
+      internalHelp: Flag.Boolean(VERIFY_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false)),
+      skillPath: Flag.String("skill-path").pipe(
         Flag.withDescription("Path to a skill directory or SKILL.md file (required)"),
         Flag.optional,
       ),
-      agent: Flag.string("agent").pipe(
+      agent: Flag.String("agent").pipe(
         Flag.withDescription("Runtime agent to use for package evaluation once readiness passes"),
         Flag.optional,
       ),
-      evalSet: Flag.string("eval-set").pipe(
+      evalSet: Flag.String("eval-set").pipe(
         Flag.withDescription("Override the eval-set path instead of using the canonical one"),
         Flag.optional,
       ),
-      noAutoFix: Flag.boolean("no-auto-fix").pipe(
-        Flag.withDescription("Skip automatic evidence generation when readiness checks fail"),
-      ),
-      json: Flag.boolean("json").pipe(
-        Flag.withDescription("Emit readiness plus report data as JSON"),
-      ),
+      noAutoFix: Flag.Boolean("no-auto-fix")
+        .pipe(Flag.withDefault(false))
+        .pipe(
+          Flag.withDescription("Skip automatic evidence generation when readiness checks fail"),
+        ),
+      json: Flag.Boolean("json")
+        .pipe(Flag.withDefault(false))
+        .pipe(Flag.withDescription("Emit readiness plus report data as JSON")),
     },
     (input) => {
       if (input.internalHelp) return Console.log(VERIFY_HELP);

@@ -1,4 +1,5 @@
 import type { ComposabilityInput } from "./composability-program.js";
+import type { PluginEvalInput } from "./plugin.js";
 
 export interface EvalGenerateInput {
   readonly skill?: string;
@@ -31,6 +32,7 @@ export interface EvalUnitTestInput {
 }
 
 export interface EvalRunInput {
+  readonly threshold?: string;
   readonly skillPath?: string;
   readonly evals?: string;
   readonly workspace?: string;
@@ -57,6 +59,15 @@ export interface EvalFamilyOverlapInput {
 }
 
 export type EvalCommandRequest =
+  | {
+      readonly action: "report";
+      readonly input: {
+        readonly input: string;
+        readonly threshold: string;
+        readonly json: boolean;
+      };
+    }
+  | { readonly action: "plugin"; readonly input: PluginEvalInput }
   | { readonly action: "generate"; readonly input: EvalGenerateInput }
   | { readonly action: "unit-test"; readonly input: EvalUnitTestInput }
   | { readonly action: "run"; readonly input: EvalRunInput }

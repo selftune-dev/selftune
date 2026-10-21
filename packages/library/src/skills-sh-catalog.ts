@@ -32,22 +32,22 @@ export class SkillsShCatalogEntry extends Schema.Class<SkillsShCatalogEntry>(
   installs: Schema.Number,
 }) {}
 
-export class SkillsShCatalogInputError extends Schema.TaggedErrorClass<SkillsShCatalogInputError>()(
+export class SkillsShCatalogInputError extends Schema.TaggedError<SkillsShCatalogInputError>()(
   "SkillsShCatalogInputError",
   { message: Schema.String },
 ) {}
 
-export class SkillsShCatalogTransportError extends Schema.TaggedErrorClass<SkillsShCatalogTransportError>()(
+export class SkillsShCatalogTransportError extends Schema.TaggedError<SkillsShCatalogTransportError>()(
   "SkillsShCatalogTransportError",
   { message: Schema.String },
 ) {}
 
-export class SkillsShCatalogHttpError extends Schema.TaggedErrorClass<SkillsShCatalogHttpError>()(
+export class SkillsShCatalogHttpError extends Schema.TaggedError<SkillsShCatalogHttpError>()(
   "SkillsShCatalogHttpError",
   { status: Schema.Number, message: Schema.String },
 ) {}
 
-export class SkillsShCatalogDecodeError extends Schema.TaggedErrorClass<SkillsShCatalogDecodeError>()(
+export class SkillsShCatalogDecodeError extends Schema.TaggedError<SkillsShCatalogDecodeError>()(
   "SkillsShCatalogDecodeError",
   { message: Schema.String },
 ) {}

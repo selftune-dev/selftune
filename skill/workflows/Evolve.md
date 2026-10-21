@@ -136,8 +136,15 @@ Claude Code uses `.claude/skills`, Codex uses `.agents/skills`, and OpenCode
 uses `.opencode/skills`. Validation records whether the runtime selected the
 target skill, selected a competing skill, selected an unrelated skill, or made
 no routing decision at all. Reads outside the staged skill set are treated as
-replay failures even on negative evals, because they indicate the runtime left
-the controlled evaluation surface.
+replay failures even when the target was selected or on negative evals, because
+they indicate the runtime left the controlled evaluation surface.
+
+Historical routing verifier v2 qualifies this decision mapping by running
+synthetic runtime observations through the same predicate used by live replay.
+Its controls cover target selection, no selection, boundary cases, repeated or
+multiple skill selections, misleading output text, and off-path reads. This
+qualifies the deterministic predicate only; it does not qualify a host harness,
+provider, or actual runtime journey.
 
 For hosts without runtime replay support today, replay is not available. In
 `auto` mode selftune falls back to `llm_judge`; in `replay` mode it exits with

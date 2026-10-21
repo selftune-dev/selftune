@@ -4,6 +4,270 @@
   "docsUrl": "https://docs.selftune.dev/changelog",
   "entries": [
     {
+      "label": "2026-10-21",
+      "description": "Desktop update runtime",
+      "tags": ["Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-10-20",
+      "description": "macOS desktop loading",
+      "tags": ["Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-30",
+      "description": "Analytical storage safety",
+      "tags": ["Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-29",
+      "description": "Evidence-bound grading",
+      "tags": ["CLI", "Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-20",
+      "description": "Codex historical skill evidence",
+      "tags": ["Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-17",
+      "description": "Effect runtime upgrade",
+      "tags": ["CLI", "Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-12",
+      "description": "Native plugin evaluations",
+      "tags": ["CLI"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-11",
+      "description": "Desktop recovery reconnect",
+      "tags": ["Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-10",
+      "description": "Private backup inspection",
+      "tags": ["Cloud"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-10",
+      "description": "Private skill backup storage",
+      "tags": ["Cloud"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-10",
+      "description": "Cloud workspace foundations",
+      "tags": ["Cloud"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-09",
+      "description": "Cloud library loading hotfix",
+      "tags": ["Cloud"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-09",
+      "description": "Local-first skill reports",
+      "tags": ["Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-09",
+      "description": "Open Team from the Cloud menu",
+      "tags": ["Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-09",
+      "description": "Reports for unused on-demand skills",
+      "tags": ["Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-08",
+      "description": "Automatic local skill revision history",
+      "tags": ["Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-08",
+      "description": "Inspect installed skill packages",
+      "tags": ["Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-08",
+      "description": "Browse Desktop pricing before connecting",
+      "tags": ["Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-08",
+      "description": "Internal workspace access",
+      "tags": ["Cloud"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-08",
+      "description": "Explain Skill Set publishing access",
+      "tags": ["Cloud", "Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-08",
+      "description": "Avoid unnecessary Desktop recovery reloads",
+      "tags": ["Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-08",
+      "description": "One familiar workspace in Desktop and Cloud",
+      "tags": ["Cloud"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-08",
+      "description": "Connect Desktop before upgrading",
+      "tags": ["Cloud", "Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
+      "label": "2026-09-07",
+      "description": "Preserve Desktop approval through Cloud sign-in",
+      "tags": ["Cloud", "Desktop"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [],
+      "versionRange": null
+    },
+    {
       "label": "2026-09-07",
       "description": "Validate redacted contributions and preserve diagnostic errors",
       "tags": ["CLI", "Desktop"],

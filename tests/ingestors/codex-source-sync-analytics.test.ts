@@ -1,5 +1,13 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  utimesSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -192,6 +200,22 @@ test("source sync commits a Codex rollout to SQLite and DuckDB before advancing 
     authoritativeFiles: [rolloutPath],
   });
   expect(progress).toContain("processed 1/1 Codex rollouts");
+  const [reference] = await queryDuckDb((store) =>
+    store.queryHistoricalSkillTaskReferences({ skill_id: "diagnose", limit: 1 }),
+  );
+  if (!reference) throw new Error("fixture discovery reference missing");
+  expect(
+    await queryDuckDb((store) =>
+      store.resolveSourceTask({
+        ...reference,
+        skill_revision: "not-captured",
+        pin_id: "sync-proof-test",
+        replay: async () => {
+          throw new Error("Unknown historical revision must not read source bytes");
+        },
+      }),
+    ),
+  ).toEqual({ state: "unavailable", reason: "unverified_skill_revision" });
 
   expect(getDb().query("SELECT COUNT(*) AS count FROM sessions").get()).toEqual({ count: 1 });
   expect(getDb().query("SELECT COUNT(*) AS count FROM skill_invocations").get()).toEqual({
@@ -231,4 +255,24 @@ test("source sync acknowledges a multi-turn Codex rollout only after its session
     link_count: 1,
   });
   expect(existsSync(markerPath)).toBe(true);
+});
+
+test("same-size corrected source with restored mtime replaces analytical facts once", async () => {
+  const path = writeRollout();
+  const fixedTime = 1_700_000_000;
+  utimesSync(path, fixedTime, fixedTime);
+  const layer = Layer.provide(
+    makeLocalTraceImporterLive(getDb()),
+    makeDuckDbNodeApiAnalyticalStoreLive(analyticalPath),
+  );
+  expect((await runSync(layer)).synced).toBe(1);
+  writeFileSync(
+    path,
+    readFileSync(path, "utf8").replace('"input_tokens":120', '"input_tokens":121'),
+  );
+  utimesSync(path, fixedTime, fixedTime);
+  expect((await runSync(layer)).synced).toBe(1);
+  const signals = await queryDuckDb((store) => store.querySkillSignals());
+  expect(signals.find((item) => item.skill_name === "diagnose")?.input_tokens).toBe(121);
+  expect((await runSync(layer)).synced).toBe(0);
 });

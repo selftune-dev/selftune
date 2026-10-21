@@ -1,18 +1,15 @@
 import * as Schema from "effect/Schema";
 import { GradingResult } from "@selftune/runtime/types";
+import { preservingJsonDecoder } from "@selftune/runtime/utils/preserving-schema";
 
 export const parseGradingOutput = Schema.decodeUnknownSync(Schema.fromJsonString(GradingResult));
 
-const decodeDryRunEvolution = Schema.decodeUnknownSync(
-  Schema.fromJsonString(
-    Schema.Struct({
-      deployed: Schema.Literal(false),
-      reason: Schema.String.check(Schema.isNonEmpty()),
-    }),
-  ),
+export const parseDryRunEvolutionOutput = preservingJsonDecoder(
+  Schema.Struct({
+    deployed: Schema.Literal(false),
+    reason: Schema.String.check(Schema.isNonEmpty()),
+  }),
 );
-export const parseDryRunEvolutionOutput = (raw: string) =>
-  decodeDryRunEvolution(raw, { onExcessProperty: "preserve" });
 
 export const parseDoctorOutput = Schema.decodeUnknownSync(
   Schema.fromJsonString(

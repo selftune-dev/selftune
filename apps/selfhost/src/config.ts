@@ -17,7 +17,7 @@ const ConfiguredUserInput = Schema.Struct({
 
 const ConfiguredUsersInput = Schema.Array(ConfiguredUserInput);
 
-export class SelfHostConfigFailure extends Schema.TaggedErrorClass<SelfHostConfigFailure>()(
+export class SelfHostConfigFailure extends Schema.TaggedError<SelfHostConfigFailure>()(
   "SelfHostConfigFailure",
   { message: Schema.String },
 ) {}

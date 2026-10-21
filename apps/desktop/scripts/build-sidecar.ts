@@ -156,9 +156,6 @@ const target = compileTarget(process.env.BUN_TARGET);
 const windowsTarget = target?.startsWith("bun-windows-") ?? process.platform === "win32";
 const executable = windowsTarget ? "selftune.exe" : "selftune";
 const executablePath = join(resourceRoot, executable);
-const reportWorkerExecutable = windowsTarget
-  ? "selftune-report-worker.exe"
-  : "selftune-report-worker";
 const prebuiltExecutable = process.env.SELFTUNE_PREBUILT_SIDECAR?.trim();
 
 if (prebuiltExecutable) {
@@ -175,7 +172,7 @@ if (prebuiltExecutable) {
   const compile: Bun.CompileBuildOptions = { outfile: executablePath };
   if (target) compile.target = target;
   const result = await Bun.build({
-    entrypoints: [join(selfTuneRoot, "apps/cli/src/main.ts")],
+    entrypoints: [join(desktopRoot, "scripts/sidecar-entry.ts")],
     define: { SELFTUNE_DESKTOP_SIDECAR_BUILD: "true" },
     minify: true,
     compile,
@@ -186,23 +183,8 @@ if (prebuiltExecutable) {
   }
 }
 
-const reportWorkerCompile: Bun.CompileBuildOptions = {
-  outfile: join(resourceRoot, reportWorkerExecutable),
-};
-if (target) reportWorkerCompile.target = target;
-const reportWorkerResult = await Bun.build({
-  entrypoints: [join(selfTuneRoot, "apps/local/src/report-worker.ts")],
-  minify: true,
-  compile: reportWorkerCompile,
-});
-
-if (!reportWorkerResult.success) {
-  throw new Error(reportWorkerResult.logs.map((entry) => entry.message).join("\n"));
-}
-
 if (!windowsTarget) {
   await chmod(executablePath, 0o755);
-  await chmod(join(resourceRoot, reportWorkerExecutable), 0o755);
 }
 await stageDuckDbNativeBindings(target);
 await cp(join(selfTuneRoot, "apps/local-dashboard/dist"), join(resourceRoot, "dashboard"), {

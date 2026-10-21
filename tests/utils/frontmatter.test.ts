@@ -3,6 +3,13 @@ import { describe, expect, test } from "bun:test";
 import { parseFrontmatter, replaceDescription } from "../../packages/runtime/utils/frontmatter.js";
 
 describe("parseFrontmatter", () => {
+  test.each([">-", ">+", "|-", "|+"])("reads descriptions with chomping marker %s", (marker) => {
+    const result = parseFrontmatter(
+      `---\nname: example\ndescription: ${marker}\n  Build a UI.\n  Use for interface work.\n---\n\nInstructions`,
+    );
+    expect(result.description).toBe("Build a UI. Use for interface work.");
+    expect(result.body).toBe("Instructions");
+  });
   test("single-line description", () => {
     const content = `---
 name: seo-audit

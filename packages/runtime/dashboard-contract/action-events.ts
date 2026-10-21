@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import { preservingJsonDecoder } from "../utils/preserving-schema.js";
 import { DashboardActionName } from "./action-name.js";
 import type { DashboardActionEvent, DashboardActionResultSummary } from "../dashboard-contract.js";
 import {
@@ -114,6 +115,4 @@ const ActionEvent: Schema.Codec<DashboardActionEvent> = Schema.Struct({
   ),
 });
 
-const decodeActionLine = Schema.decodeUnknownSync(Schema.fromJsonString(ActionEvent));
-export const decodeDashboardActionLine = (line: string) =>
-  decodeActionLine(line, { onExcessProperty: "preserve" });
+export const decodeDashboardActionLine = preservingJsonDecoder(ActionEvent);

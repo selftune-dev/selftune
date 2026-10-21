@@ -69,7 +69,7 @@ export interface RuntimeStopExpectation {
   readonly pid: number;
 }
 
-export class DaemonFailure extends Schema.TaggedErrorClass<DaemonFailure>()("DaemonFailure", {
+export class DaemonFailure extends Schema.TaggedError<DaemonFailure>()("DaemonFailure", {
   operation: Schema.String,
   message: Schema.String,
 }) {}

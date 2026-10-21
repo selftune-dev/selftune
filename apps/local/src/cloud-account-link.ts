@@ -141,11 +141,10 @@ export function makeCloudAccountLinkManager(options: CloudAccountLinkManagerOpti
       let firstBackup: CompleteCloudAccountLinkResponse["first_backup"];
       try {
         await options.sync();
-        // Hosted sync publishes metadata, not the skill bytes counted by this legacy response.
         firstBackup = {
-          status: "completed",
-          uploaded: 0,
-          unchanged: 0,
+          status: "not_configured",
+          message:
+            "Account connected and inventory synced. Choose a private backup destination in Cloud, then run Sync & Backup to upload skill files.",
         };
       } catch (cause) {
         firstBackup = {

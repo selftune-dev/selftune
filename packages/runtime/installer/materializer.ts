@@ -22,7 +22,7 @@ import type {
 
 const SHA256 = /^[a-f0-9]{64}$/;
 
-export class InstallerMaterializationError extends Schema.TaggedErrorClass<InstallerMaterializationError>()(
+export class InstallerMaterializationError extends Schema.TaggedError<InstallerMaterializationError>()(
   "InstallerMaterializationError",
   {
     code: Schema.String,

@@ -31,7 +31,7 @@ const LOCAL_LIBRARY_CATEGORY_LABELS: Record<SkillCategoryId, string> = {
   general: "General",
 };
 
-const LOCAL_LIBRARY_CATEGORY_OPTIONS = Object.entries(LOCAL_LIBRARY_CATEGORY_LABELS).map(
+export const LOCAL_LIBRARY_CATEGORY_OPTIONS = Object.entries(LOCAL_LIBRARY_CATEGORY_LABELS).map(
   ([id, label]) => ({ id, label }),
 );
 
@@ -101,7 +101,7 @@ function canonicalSourceKey(source: LibrarySourceModel): string {
   return `${source.kind}:${source.label.trim().toLowerCase()}`;
 }
 
-function uniqueSources(sources: readonly LibrarySourceModel[]): LibrarySourceModel[] {
+export function uniqueSources(sources: readonly LibrarySourceModel[]): LibrarySourceModel[] {
   const unique = new Map<string, LibrarySourceModel>();
   for (const source of sources) {
     const key = canonicalSourceKey(source);
@@ -116,11 +116,9 @@ function projectRootForLocation(
 ): string | null {
   if (location.projectRoot) return location.projectRoot;
   return (
-    projectRoots
-      .filter(
-        (root) => location.packagePath === root || location.packagePath.startsWith(`${root}/`),
-      )
-      .sort((left, right) => right.length - left.length)[0] ?? null
+    projectRoots.find(
+      (root) => location.packagePath === root || location.packagePath.startsWith(`${root}/`),
+    ) ?? null
   );
 }
 
@@ -150,6 +148,19 @@ export function mapLocalLibraryInventory(
       ranking.triggered_count,
     ]),
   );
+  const quarantinedByName = new Map<string, PortfolioResponse["quarantined"][number]>();
+  for (const entry of portfolio?.quarantined ?? []) {
+    const name = entry.skill_name.toLowerCase();
+    if (entry.status === "quarantined" && !quarantinedByName.has(name))
+      quarantinedByName.set(name, entry);
+  }
+  const auditByName = new Map<string, PortfolioResponse["audit"]["skills"][number]>();
+  const auditByPath = new Map<string, PortfolioResponse["audit"]["skills"][number]>();
+  for (const entry of portfolio?.audit.skills ?? []) {
+    const name = entry.skill_name.toLowerCase();
+    if (!auditByName.has(name)) auditByName.set(name, entry);
+    if (!auditByPath.has(entry.skill_path)) auditByPath.set(entry.skill_path, entry);
+  }
 
   return {
     categoryOptions: LOCAL_LIBRARY_CATEGORY_OPTIONS,
@@ -160,16 +171,10 @@ export function mapLocalLibraryInventory(
             location.projectRoot ? [location.projectRoot] : [],
           ),
         ),
-      ];
+      ].toSorted((left, right) => right.length - left.length);
       const classification = classificationById.get(skill.skillId.toLowerCase());
-      const archived = portfolio?.quarantined.find(
-        (entry) =>
-          entry.skill_name.toLowerCase() === skill.name.toLowerCase() &&
-          entry.status === "quarantined",
-      );
-      const archiveEvidence = portfolio?.audit.skills.find(
-        (entry) => entry.skill_name.toLowerCase() === skill.name.toLowerCase(),
-      );
+      const archived = quarantinedByName.get(skill.name.toLowerCase());
+      const archiveEvidence = auditByName.get(skill.name.toLowerCase());
       const installedLocations = skill.locations.filter(
         (location) => location.sourceKind === "installed",
       );
@@ -201,7 +206,7 @@ export function mapLocalLibraryInventory(
             }))
           : [];
       const inactiveEvidence = installedLocations.map((location) =>
-        portfolio?.audit.skills.find((entry) => entry.skill_path === location.skillPath),
+        auditByPath.get(location.skillPath),
       );
       return {
         id: skill.skillId,

@@ -101,15 +101,15 @@ export function makeContributeCommand(action: ContributeAction = runContributeAc
   return Command.make(
     "contribute",
     {
-      internalHelp: Flag.boolean(CONTRIBUTE_INTERNAL_HELP_FLAG),
-      skill: Flag.string("skill").pipe(Flag.optional),
-      output: Flag.string("output").pipe(Flag.optional),
-      preview: Flag.boolean("preview"),
-      sanitize: Flag.string("sanitize").pipe(Flag.optional),
-      since: Flag.string("since").pipe(Flag.optional),
-      submit: Flag.boolean("submit"),
-      endpoint: Flag.string("endpoint").pipe(Flag.optional),
-      github: Flag.boolean("github"),
+      internalHelp: Flag.Boolean(CONTRIBUTE_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false)),
+      skill: Flag.String("skill").pipe(Flag.optional),
+      output: Flag.String("output").pipe(Flag.optional),
+      preview: Flag.Boolean("preview").pipe(Flag.withDefault(false)),
+      sanitize: Flag.String("sanitize").pipe(Flag.optional),
+      since: Flag.String("since").pipe(Flag.optional),
+      submit: Flag.Boolean("submit").pipe(Flag.withDefault(false)),
+      endpoint: Flag.String("endpoint").pipe(Flag.optional),
+      github: Flag.Boolean("github").pipe(Flag.withDefault(false)),
     },
     (input) => {
       if (input.internalHelp) return Console.log(CONTRIBUTE_HELP);

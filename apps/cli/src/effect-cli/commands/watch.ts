@@ -121,16 +121,16 @@ export function makeWatchCommand(action: WatchAction = makeLiveWatchAction()) {
   return Command.make(
     "watch",
     {
-      skillName: Flag.string("skill").pipe(Flag.optional),
-      skillPath: Flag.string("skill-path").pipe(Flag.optional),
-      windowSessions: Flag.integer("window").pipe(Flag.optional),
-      regressionThreshold: Flag.float("threshold").pipe(Flag.optional),
-      gradeRegressionThreshold: Flag.float("grade-threshold").pipe(Flag.optional),
-      autoRollback: Flag.boolean("auto-rollback"),
-      disableGradeWatch: Flag.boolean("no-grade-watch"),
-      syncFirst: Flag.boolean("sync-first"),
-      syncForce: Flag.boolean("sync-force"),
-      internalHelp: Flag.boolean(WATCH_INTERNAL_HELP_FLAG),
+      skillName: Flag.String("skill").pipe(Flag.optional),
+      skillPath: Flag.String("skill-path").pipe(Flag.optional),
+      windowSessions: Flag.Int("window").pipe(Flag.optional),
+      regressionThreshold: Flag.Finite("threshold").pipe(Flag.optional),
+      gradeRegressionThreshold: Flag.Finite("grade-threshold").pipe(Flag.optional),
+      autoRollback: Flag.Boolean("auto-rollback").pipe(Flag.withDefault(false)),
+      disableGradeWatch: Flag.Boolean("no-grade-watch").pipe(Flag.withDefault(false)),
+      syncFirst: Flag.Boolean("sync-first").pipe(Flag.withDefault(false)),
+      syncForce: Flag.Boolean("sync-force").pipe(Flag.withDefault(false)),
+      internalHelp: Flag.Boolean(WATCH_INTERNAL_HELP_FLAG).pipe(Flag.withDefault(false)),
     },
     (input) =>
       input.internalHelp

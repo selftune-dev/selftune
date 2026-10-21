@@ -24,7 +24,7 @@ export interface BackgroundServiceOptions {
 
 type BackgroundServiceAction = "install" | "restart" | "start" | "status" | "stop" | "uninstall";
 
-export class BackgroundServiceFailure extends Schema.TaggedErrorClass<BackgroundServiceFailure>()(
+export class BackgroundServiceFailure extends Schema.TaggedError<BackgroundServiceFailure>()(
   "BackgroundServiceFailure",
   {
     operation: Schema.String,

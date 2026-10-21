@@ -68,7 +68,7 @@ export class MarkEvaluationSubmissionDraftStale extends Schema.Class<MarkEvaluat
   stale_at: Schema.optionalKey(Timestamp),
 }) {}
 
-export class EvaluationSubmissionDraftFailure extends Schema.TaggedErrorClass<EvaluationSubmissionDraftFailure>()(
+export class EvaluationSubmissionDraftFailure extends Schema.TaggedError<EvaluationSubmissionDraftFailure>()(
   "EvaluationSubmissionDraftFailure",
   { operation: Schema.String, message: Schema.String },
 ) {}

@@ -19,6 +19,7 @@ interface ActionEventHistoryEntry {
 }
 
 export interface DashboardEventHub {
+  readonly subscriberCount: () => number;
   readonly response: () => Response;
   readonly broadcastAction: (event: DashboardActionEvent) => void;
   readonly broadcastUpdate: (resources: readonly DashboardResource[]) => void;
@@ -90,6 +91,11 @@ export function createDashboardEventHub(options: DashboardEventHubOptions): Dash
     );
     for (const controller of clients) {
       try {
+        if ((controller.desiredSize ?? 0) < -128) {
+          clients.delete(controller);
+          controller.close();
+          continue;
+        }
         controller.enqueue(bytes);
       } catch {
         clients.delete(controller);
@@ -111,6 +117,11 @@ export function createDashboardEventHub(options: DashboardEventHubOptions): Dash
     const bytes = new TextEncoder().encode(": keepalive\n\n");
     for (const controller of clients) {
       try {
+        if ((controller.desiredSize ?? 0) < -128) {
+          clients.delete(controller);
+          controller.close();
+          continue;
+        }
         controller.enqueue(bytes);
       } catch {
         clients.delete(controller);
@@ -144,21 +155,25 @@ export function createDashboardEventHub(options: DashboardEventHubOptions): Dash
   const actionStreamPoller = setInterval(flushActionStream, ACTION_STREAM_POLL_MS);
 
   const response = (): Response => {
+    let subscriber: ReadableStreamDefaultController | undefined;
     const stream = new ReadableStream({
       start(controller) {
+        subscriber = controller;
         clients.add(controller);
         controller.enqueue(new TextEncoder().encode(": connected\n\n"));
         const events = [...actionHistory.values()]
           .sort((left, right) => left.updatedAt - right.updatedAt)
           .flatMap((entry) => entry.events);
-        for (const event of events) {
+        if (events.length > 0) {
           controller.enqueue(
-            new TextEncoder().encode(`event: action\ndata: ${JSON.stringify(event)}\n\n`),
+            new TextEncoder().encode(
+              events.map((event) => `event: action\ndata: ${JSON.stringify(event)}\n\n`).join(""),
+            ),
           );
         }
       },
-      cancel(controller) {
-        clients.delete(controller);
+      cancel() {
+        if (subscriber) clients.delete(subscriber);
       },
     });
     return new Response(stream, {
@@ -190,6 +205,7 @@ export function createDashboardEventHub(options: DashboardEventHubOptions): Dash
   };
 
   return {
+    subscriberCount: () => clients.size,
     response,
     broadcastAction,
     broadcastUpdate,

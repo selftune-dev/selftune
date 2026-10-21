@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { LibraryIcon, Undo2Icon } from "lucide-react";
 import {
   Button,
@@ -23,6 +23,7 @@ export function OnDemandSkillsReview({
   introduction,
   initialOpen = false,
   onDismiss,
+  loadSkills,
 }: {
   skills: readonly LibrarySkillModel[];
   actions: Pick<DashboardLibraryActions, "moveToLibraryMany" | "restore">;
@@ -30,6 +31,7 @@ export function OnDemandSkillsReview({
   introduction?: ReactNode;
   initialOpen?: boolean;
   onDismiss?: () => void;
+  loadSkills?: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(initialOpen);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -37,6 +39,24 @@ export function OnDemandSkillsReview({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [receipts, setReceipts] = useState<readonly { skillName: string; restoreId: string }[]>([]);
+  const [loading, setLoading] = useState(Boolean(initialOpen && loadSkills));
+  const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open || !loadSkills) return;
+    let active = true;
+    setLoading(true);
+    setLoadError(null);
+    void loadSkills()
+      .catch((cause) => {
+        if (active) setLoadError(cause instanceof Error ? cause.message : String(cause));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, loadSkills]);
   const eligible = skills.filter(
     (skill) =>
       skill.lifecycle === "active" &&
@@ -229,55 +249,65 @@ export function OnDemandSkillsReview({
             </DialogDescription>
           </DialogHeader>
           {introduction ? feedback : null}
-          <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="min-w-0">
-              <OnDemandSkillTable
-                skills={eligible}
-                selected={selected}
-                onSelectionChange={setSelected}
-                pending={pending !== null}
-              />
-              {introduction ? (
-                <details className="mt-3 text-xs text-muted-foreground">
-                  <summary className="cursor-pointer">How to load a saved skill later</summary>
-                  <div className="mt-3">{introduction}</div>
-                </details>
-              ) : null}
-            </div>
-            <aside
-              aria-label="Selection impact"
-              className="min-w-0 space-y-4 rounded-lg border bg-muted/20 p-4"
-            >
-              <div>
-                <h3 className="text-base font-semibold">
-                  {chosen.length
-                    ? `${chosen.length} skill${chosen.length === 1 ? "" : "s"} will load only on request`
-                    : "Select skills to preview the change"}
-                </h3>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {chosen.length
-                    ? `${installations} active installation${installations === 1 ? "" : "s"} removed from default discovery. A verified Library copy stays searchable.`
-                    : "Nothing changes until you confirm. Select a row to see its estimated context savings."}
-                </p>
+          {loading ? (
+            <p role="status" className="py-8 text-sm text-muted-foreground">
+              Loading installations and context savings…
+            </p>
+          ) : loadError ? (
+            <p role="alert" className="py-8 text-sm text-destructive">
+              {loadError}
+            </p>
+          ) : (
+            <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="min-w-0">
+                <OnDemandSkillTable
+                  skills={eligible}
+                  selected={selected}
+                  onSelectionChange={setSelected}
+                  pending={pending !== null}
+                />
+                {introduction ? (
+                  <details className="mt-3 text-xs text-muted-foreground">
+                    <summary className="cursor-pointer">How to load a saved skill later</summary>
+                    <div className="mt-3">{introduction}</div>
+                  </details>
+                ) : null}
               </div>
-              {chosen.length ? (
-                <div className="text-sm">
-                  <p className="font-medium">
-                    {chosen.length === 1 ? chosen[0]?.name : "Your selected skills"}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Your agent can find and activate {chosen.length === 1 ? "it" : "them"} for a
-                    task. Identical copies consolidate automatically. Undo restores every original
-                    location.
+              <aside
+                aria-label="Selection impact"
+                className="min-w-0 space-y-4 rounded-lg border bg-muted/20 p-4"
+              >
+                <div>
+                  <h3 className="text-base font-semibold">
+                    {chosen.length
+                      ? `${chosen.length} skill${chosen.length === 1 ? "" : "s"} will load only on request`
+                      : "Select skills to preview the change"}
+                  </h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {chosen.length
+                      ? `${installations} active installation${installations === 1 ? "" : "s"} removed from default discovery. A verified Library copy stays searchable.`
+                      : "Nothing changes until you confirm. Select a row to see its estimated context savings."}
                   </p>
                 </div>
-              ) : null}
-              <ContextSavings skills={skills} selectedIds={selected} />
-              <p className="text-xs text-muted-foreground">
-                Estimates apply to new sessions. Existing conversations do not shrink.
-              </p>
-            </aside>
-          </div>
+                {chosen.length ? (
+                  <div className="text-sm">
+                    <p className="font-medium">
+                      {chosen.length === 1 ? chosen[0]?.name : "Your selected skills"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Your agent can find and activate {chosen.length === 1 ? "it" : "them"} for a
+                      task. Identical copies consolidate automatically. Undo restores every original
+                      location.
+                    </p>
+                  </div>
+                ) : null}
+                <ContextSavings skills={skills} selectedIds={selected} />
+                <p className="text-xs text-muted-foreground">
+                  Estimates apply to new sessions. Existing conversations do not shrink.
+                </p>
+              </aside>
+            </div>
+          )}
           {error ? (
             <p role="alert" className="whitespace-pre-line text-sm text-destructive">
               {error}
@@ -287,7 +317,10 @@ export function OnDemandSkillsReview({
             <Button variant="outline" disabled={pending !== null} onClick={close}>
               {introduction ? "Done" : "Cancel"}
             </Button>
-            <Button disabled={!chosen.length || pending !== null} onClick={() => void move()}>
+            <Button
+              disabled={loading || Boolean(loadError) || !chosen.length || pending !== null}
+              onClick={() => void move()}
+            >
               {pending === "move"
                 ? "Moving to Library"
                 : `Move ${chosen.length} skill${chosen.length === 1 ? "" : "s"} to on-demand`}

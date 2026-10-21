@@ -7,6 +7,7 @@ import {
   ExternalLinkIcon,
   PlusIcon,
   ServerIcon,
+  SettingsIcon,
   Trash2Icon,
 } from "lucide-react";
 import { useState, useSyncExternalStore } from "react";
@@ -56,8 +57,9 @@ export async function activateServerProfile(
   if (profile.kind === "cloud" && cloudConnection) {
     if (cloudConnection.state === "unlinked" || cloudConnection.state === "unavailable") {
       await cloudConnection.connect();
+      cloudConnection.openWorkspace();
     } else if (cloudConnection.state === "linked") {
-      cloudConnection.manage();
+      cloudConnection.openWorkspace();
     }
     return;
   }
@@ -167,6 +169,11 @@ export function ServerProfileSwitcher({
                     {serverProfileStatusLabel(cloudProfile, cloudConnection)}
                   </span>
                 </DropdownMenuItem>
+                {cloudConnection.state === "linked" ? (
+                  <DropdownMenuItem onClick={cloudConnection.manage}>
+                    <SettingsIcon /> Manage connection
+                  </DropdownMenuItem>
+                ) : null}
                 {cloudConnection.state === "linked" ? (
                   <DropdownMenuItem onClick={() => void run(cloudConnection.openDashboard)}>
                     <ExternalLinkIcon /> Open Cloud dashboard

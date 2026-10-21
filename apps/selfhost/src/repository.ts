@@ -47,7 +47,7 @@ const ArtifactArray = Schema.Array(RemoteArtifactSchema);
 const decodeArtifacts = Schema.decodeUnknownSync(ArtifactArray);
 const decodeSetManifest = Schema.decodeUnknownSync(SharedSetManifest);
 
-export class SelfHostFailure extends Schema.TaggedErrorClass<SelfHostFailure>()("SelfHostFailure", {
+export class SelfHostFailure extends Schema.TaggedError<SelfHostFailure>()("SelfHostFailure", {
   code: Schema.String,
   message: Schema.String,
   status: Schema.Number,

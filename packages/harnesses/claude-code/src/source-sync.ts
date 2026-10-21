@@ -15,6 +15,7 @@ import { CLAUDE_CODE_MARKER, QUERY_LOG, TELEMETRY_LOG } from "@selftune/runtime/
 import { NORMALIZER_VERSION } from "@selftune/runtime/normalization";
 import {
   fingerprintIngestionFile,
+  fileIngestionRevision,
   isFileIngestionCurrent,
   loadFileIngestionMarker,
   saveFileIngestionMarker,
@@ -123,7 +124,8 @@ const makeSyncClaudeCodeSource = (markerPath: string) =>
       const importer = yield* LocalTraceImporter;
       const importRequest = LocalTraceImportRequest.make({
         source_kind: "claude_code",
-        source_revision: `${CLAUDE_SOURCE_PROJECTION_VERSION}:${fingerprint.size}:${fingerprint.mtime_ms}`,
+        source_session_ids: [parsed.session_id],
+        source_revision: `${CLAUDE_SOURCE_PROJECTION_VERSION}:${fileIngestionRevision(fingerprint)}`,
         normalizer_version: NORMALIZER_VERSION,
         batch: buildLocalTelemetryBatchFromSession(parsed),
       });

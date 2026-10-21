@@ -9,10 +9,10 @@ export function makeSkillsSearchCommand() {
   return Command.make(
     "search",
     {
-      query: Argument.string("query"),
-      limit: Flag.integer("limit").pipe(Flag.withDefault(5)),
-      searchDirs: Flag.string("search-dir").pipe(Flag.atLeast(0)),
-      json: Flag.boolean("json"),
+      query: Argument.String("query"),
+      limit: Flag.Int("limit").pipe(Flag.withDefault(5)),
+      searchDirs: Flag.String("search-dir").pipe(Flag.atLeast(0)),
+      json: Flag.Boolean("json").pipe(Flag.withDefault(false)),
     },
     Effect.fn(function* ({ query, limit, searchDirs, json }) {
       const result = yield* searchLocalSkillsEffect({

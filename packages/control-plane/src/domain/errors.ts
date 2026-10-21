@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-export class CatalogUnavailable extends Schema.TaggedErrorClass<CatalogUnavailable>()(
+export class CatalogUnavailable extends Schema.TaggedError<CatalogUnavailable>()(
   "CatalogUnavailable",
   {
     operation: Schema.String,

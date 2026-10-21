@@ -836,6 +836,34 @@ describe("getSkillsList", () => {
     expect(browser?.has_evidence).toBe(false);
   });
 
+  it("aggregates confidence including zero without duplicating sessions", () => {
+    seedSkillUsage(db, {
+      query: "first request",
+      confidence: 0,
+      timestamp: "2026-03-17T12:00:00Z",
+    });
+    seedSkillUsage(db, {
+      query: "second request",
+      confidence: 0.8,
+      timestamp: "2026-03-17T10:00:00Z",
+    });
+    seedSkillUsage(db, {
+      query: "third request",
+      confidence: null,
+      triggered: 0,
+      timestamp: "2026-03-17T11:00:00Z",
+    });
+    const [skill] = getSkillsList(db, []);
+    expect(skill).toMatchObject({
+      total_checks: 3,
+      triggered_count: 2,
+      unique_sessions: 1,
+      last_seen: "2026-03-17T12:00:00Z",
+      routing_confidence: 0.4,
+      confidence_coverage: 2 / 3,
+    });
+  });
+
   it("includes draft packages with create readiness even before telemetry exists", () => {
     const root = mkdtempSync(join(tmpdir(), "selftune-draft-skill-"));
     tempDirs.push(root);

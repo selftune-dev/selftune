@@ -63,7 +63,7 @@ export const PortablePackageBundleErrorReason = Schema.Literals([
 ]);
 export type PortablePackageBundleErrorReason = typeof PortablePackageBundleErrorReason.Type;
 
-export class PortablePackageBundleError extends Schema.TaggedErrorClass<PortablePackageBundleError>()(
+export class PortablePackageBundleError extends Schema.TaggedError<PortablePackageBundleError>()(
   "PortablePackageBundleError",
   {
     reason: PortablePackageBundleErrorReason,
@@ -226,7 +226,7 @@ const decodePackageBundleReleaseAuthorityPreflight = Schema.decodeUnknownOption(
 const isTraversableContainer = Schema.is(TraversableContainer);
 const isJsonArray = Schema.is(Schema.Array(Schema.Json));
 const isJsonObject = Schema.is(JsonObject);
-const decodeJsonText = Schema.decodeUnknownEffect(Schema.UnknownFromJsonString);
+const decodeJsonText = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
 
 interface PortablePackageBundleErrorFields {
   reason: PortablePackageBundleErrorReason;

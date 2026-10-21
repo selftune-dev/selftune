@@ -25,6 +25,7 @@ import {
   type DuckDbWalRecoveryDependencies,
 } from "@selftune/observability/duckdb-node-api";
 import * as Effect from "effect/Effect";
+import { availableStorageBytes } from "@selftune/observability/storage-capacity";
 
 const temporaryDirectories: string[] = [];
 
@@ -49,8 +50,9 @@ function recoveryDependencies<A>(
   warnings: string[],
 ): DuckDbWalRecoveryDependencies<A> {
   return {
+    availableBytes: availableStorageBytes,
     copyFile,
-    lstat,
+    lstat: (path) => lstat(path, { bigint: true }),
     mkdir,
     now: () => new Date("2026-08-01T12:34:56.789Z"),
     open,
@@ -257,6 +259,50 @@ test("an ENOENT WAL race retries after another process already moved the WAL", a
   expect(warnings).toEqual([]);
 });
 
+test.each(["before-copy", "after-copy", "capacity-unavailable", "copy-enospc"])(
+  "preserves original checkpoint and WAL when recovery cannot proceed: %s",
+  async (stage) => {
+    const directory = mkdtempSync(join(tmpdir(), "selftune-recovery-pressure-"));
+    temporaryDirectories.push(directory);
+    const databasePath = join(directory, "observability.duckdb");
+    const walPath = `${databasePath}.wal`;
+    writeFileSync(databasePath, "checkpoint");
+    writeFileSync(walPath, "unreplayable wal");
+    const warnings: string[] = [];
+    let copies = 0;
+    let reads = 0;
+    let opens = 0;
+    const dependencies = recoveryDependencies(async () => {
+      opens += 1;
+      throw knownWalReplayFailure();
+    }, warnings);
+    await expect(
+      openDuckDbWithWalRecovery(databasePath, {
+        ...dependencies,
+        availableBytes: async () => {
+          reads += 1;
+          if (stage === "capacity-unavailable") throw new Error("capacity unavailable");
+          return stage === "before-copy" || (stage === "after-copy" && reads > 1)
+            ? 0n
+            : 1024n ** 4n;
+        },
+        copyFile: async (source, destination, mode) => {
+          copies += 1;
+          if (stage === "copy-enospc")
+            throw Object.assign(new Error("disk full"), { code: "ENOSPC" });
+          await copyFile(source, destination, mode);
+        },
+      }),
+    ).rejects.toThrow();
+    expect(opens).toBe(1);
+    expect(copies).toBe(stage === "before-copy" || stage === "capacity-unavailable" ? 0 : 1);
+    expect(readFileSync(databasePath, "utf8")).toBe("checkpoint");
+    expect(readFileSync(walPath, "utf8")).toBe("unreplayable wal");
+    expect(warnings).toEqual([]);
+    if (copies === 0) expect(existsSync(join(directory, "backups"))).toBe(false);
+  },
+);
+
 const batch: typeof DuckDbAnalyticalBatch.Encoded = {
   schema_version: "1.0.0",
   batch_id: "batch-codex-001",
@@ -405,8 +451,8 @@ test("upgrades an indexed v2 span table through the v4 rebuild and restarts clea
       }).pipe(Effect.provide(makeDuckDbNodeApiAnalyticalStoreLive(databasePath)), Effect.scoped),
     );
 
-  expect(await openStore()).toMatchObject({ schema_version: 9 });
-  expect(await openStore()).toMatchObject({ schema_version: 9 });
+  expect(await openStore()).toMatchObject({ schema_version: 12 });
+  expect(await openStore()).toMatchObject({ schema_version: 12 });
 
   const instance = await DuckDBInstance.create(databasePath);
   const connection = await instance.connect();
@@ -434,6 +480,9 @@ test("upgrades an indexed v2 span table through the v4 rebuild and restarts clea
       { version: 7 },
       { version: 8 },
       { version: 9 },
+      { version: 10 },
+      { version: 11 },
+      { version: 12 },
     ]);
     expect(indexes).toEqual(
       expect.arrayContaining([

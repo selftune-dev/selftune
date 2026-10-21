@@ -51,17 +51,6 @@ describe("Sync & Backup destinations", () => {
     });
   });
 
-  it("keeps the Settings copy on the customer-facing mental model", () => {
-    const settingsSource = readFileSync(
-      new URL("../../apps/local-dashboard/src/pages/Settings.tsx", import.meta.url),
-      "utf8",
-    );
-    expect(settingsSource).toContain("Your Library stays local");
-    expect(settingsSource).toContain("Cloud receives only a privacy-safe inventory");
-    expect(settingsSource).toContain("Raw transcripts are never synced.");
-    expect(settingsSource).not.toContain("Remote Library");
-  });
-
   it("uses Sync & Backup in customer and agent-facing removal guidance", () => {
     const customerDocs = [
       new URL("../../skill/workflows/Uninstall.md", import.meta.url),

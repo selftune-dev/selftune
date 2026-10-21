@@ -379,12 +379,12 @@ export class CorrectionStudy extends Schema.Class<CorrectionStudy>("CorrectionSt
   promoted_case: Schema.NullOr(PromotedStudyCase),
 }) {}
 
-export class CorrectionStudyPersistenceFailure extends Schema.TaggedErrorClass<CorrectionStudyPersistenceFailure>()(
+export class CorrectionStudyPersistenceFailure extends Schema.TaggedError<CorrectionStudyPersistenceFailure>()(
   "CorrectionStudyPersistenceFailure",
   { operation: Schema.String, message: Schema.String },
 ) {}
 
-export class CorrectionStudyPersistenceConflict extends Schema.TaggedErrorClass<CorrectionStudyPersistenceConflict>()(
+export class CorrectionStudyPersistenceConflict extends Schema.TaggedError<CorrectionStudyPersistenceConflict>()(
   "CorrectionStudyPersistenceConflict",
   { operation: Schema.String, message: Schema.String },
 ) {}

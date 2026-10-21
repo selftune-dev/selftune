@@ -4,13 +4,10 @@ import { readFileSync } from "node:fs";
 
 import { SelftuneFileConfig } from "./schema.js";
 
-export class ConfigParseError extends Schema.TaggedErrorClass<ConfigParseError>()(
-  "ConfigParseError",
-  {
-    path: Schema.String,
-    message: Schema.String,
-  },
-) {}
+export class ConfigParseError extends Schema.TaggedError<ConfigParseError>()("ConfigParseError", {
+  path: Schema.String,
+  message: Schema.String,
+}) {}
 
 export const loadConfig = Effect.fn("Config.loadConfig")(function* (
   path: string,

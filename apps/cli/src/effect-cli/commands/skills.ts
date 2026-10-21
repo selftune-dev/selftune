@@ -232,11 +232,11 @@ export function makeSkillsCommand(actions: SkillsCommandActions = makeLiveSkills
   const audit = Command.make(
     "audit",
     {
-      internalHelp: Flag.boolean(SKILLS_INTERNAL_AUDIT_HELP_FLAG),
-      minSessions: Flag.string("min-sessions").pipe(Flag.optional),
-      inactiveDays: Flag.string("inactive-days").pipe(Flag.optional),
-      searchDirs: Flag.string("search-dir").pipe(Flag.atLeast(0)),
-      json: Flag.boolean("json"),
+      internalHelp: Flag.Boolean(SKILLS_INTERNAL_AUDIT_HELP_FLAG).pipe(Flag.withDefault(false)),
+      minSessions: Flag.String("min-sessions").pipe(Flag.optional),
+      inactiveDays: Flag.String("inactive-days").pipe(Flag.optional),
+      searchDirs: Flag.String("search-dir").pipe(Flag.atLeast(0)),
+      json: Flag.Boolean("json").pipe(Flag.withDefault(false)),
     },
     (input) =>
       input.internalHelp
@@ -253,20 +253,24 @@ export function makeSkillsCommand(actions: SkillsCommandActions = makeLiveSkills
   const quarantined = Command.make(
     "quarantined",
     {
-      internalHelp: Flag.boolean(SKILLS_INTERNAL_QUARANTINED_HELP_FLAG),
-      json: Flag.boolean("json"),
+      internalHelp: Flag.Boolean(SKILLS_INTERNAL_QUARANTINED_HELP_FLAG).pipe(
+        Flag.withDefault(false),
+      ),
+      json: Flag.Boolean("json").pipe(Flag.withDefault(false)),
     },
     (input) => (input.internalHelp ? Console.log(SKILLS_HELP) : actions.quarantined(input.json)),
   );
   const quarantine = Command.make(
     "quarantine",
     {
-      internalHelp: Flag.boolean(SKILLS_INTERNAL_QUARANTINE_HELP_FLAG),
-      skill: Flag.string("skill").pipe(Flag.optional),
-      skillPath: Flag.string("skill-path").pipe(Flag.optional),
-      yes: Flag.boolean("yes"),
-      dryRun: Flag.boolean("dry-run"),
-      json: Flag.boolean("json"),
+      internalHelp: Flag.Boolean(SKILLS_INTERNAL_QUARANTINE_HELP_FLAG).pipe(
+        Flag.withDefault(false),
+      ),
+      skill: Flag.String("skill").pipe(Flag.optional),
+      skillPath: Flag.String("skill-path").pipe(Flag.optional),
+      yes: Flag.Boolean("yes").pipe(Flag.withDefault(false)),
+      dryRun: Flag.Boolean("dry-run").pipe(Flag.withDefault(false)),
+      json: Flag.Boolean("json").pipe(Flag.withDefault(false)),
     },
     (input) =>
       input.internalHelp
@@ -284,10 +288,10 @@ export function makeSkillsCommand(actions: SkillsCommandActions = makeLiveSkills
   const restore = Command.make(
     "restore",
     {
-      internalHelp: Flag.boolean(SKILLS_INTERNAL_RESTORE_HELP_FLAG),
-      quarantineId: Flag.string("id").pipe(Flag.optional),
-      dryRun: Flag.boolean("dry-run"),
-      json: Flag.boolean("json"),
+      internalHelp: Flag.Boolean(SKILLS_INTERNAL_RESTORE_HELP_FLAG).pipe(Flag.withDefault(false)),
+      quarantineId: Flag.String("id").pipe(Flag.optional),
+      dryRun: Flag.Boolean("dry-run").pipe(Flag.withDefault(false)),
+      json: Flag.Boolean("json").pipe(Flag.withDefault(false)),
     },
     (input) =>
       input.internalHelp
@@ -297,13 +301,15 @@ export function makeSkillsCommand(actions: SkillsCommandActions = makeLiveSkills
   const consolidate = Command.make(
     "consolidate",
     {
-      internalHelp: Flag.boolean(SKILLS_INTERNAL_CONSOLIDATE_HELP_FLAG),
-      skill: Flag.string("skill").pipe(Flag.optional),
-      allSafe: Flag.boolean("all-safe"),
-      searchDirs: Flag.string("search-dir").pipe(Flag.atLeast(0)),
-      yes: Flag.boolean("yes"),
-      dryRun: Flag.boolean("dry-run"),
-      json: Flag.boolean("json"),
+      internalHelp: Flag.Boolean(SKILLS_INTERNAL_CONSOLIDATE_HELP_FLAG).pipe(
+        Flag.withDefault(false),
+      ),
+      skill: Flag.String("skill").pipe(Flag.optional),
+      allSafe: Flag.Boolean("all-safe").pipe(Flag.withDefault(false)),
+      searchDirs: Flag.String("search-dir").pipe(Flag.atLeast(0)),
+      yes: Flag.Boolean("yes").pipe(Flag.withDefault(false)),
+      dryRun: Flag.Boolean("dry-run").pipe(Flag.withDefault(false)),
+      json: Flag.Boolean("json").pipe(Flag.withDefault(false)),
     },
     (input) =>
       input.internalHelp
@@ -322,11 +328,13 @@ export function makeSkillsCommand(actions: SkillsCommandActions = makeLiveSkills
   const consolidationRollback = Command.make(
     "consolidation-rollback",
     {
-      internalHelp: Flag.boolean(SKILLS_INTERNAL_CONSOLIDATION_ROLLBACK_HELP_FLAG),
-      decisionId: Flag.string("id").pipe(Flag.optional),
-      yes: Flag.boolean("yes"),
-      dryRun: Flag.boolean("dry-run"),
-      json: Flag.boolean("json"),
+      internalHelp: Flag.Boolean(SKILLS_INTERNAL_CONSOLIDATION_ROLLBACK_HELP_FLAG).pipe(
+        Flag.withDefault(false),
+      ),
+      decisionId: Flag.String("id").pipe(Flag.optional),
+      yes: Flag.Boolean("yes").pipe(Flag.withDefault(false)),
+      dryRun: Flag.Boolean("dry-run").pipe(Flag.withDefault(false)),
+      json: Flag.Boolean("json").pipe(Flag.withDefault(false)),
     },
     (input) =>
       input.internalHelp
@@ -343,7 +351,7 @@ export function makeSkillsCommand(actions: SkillsCommandActions = makeLiveSkills
 
   return Command.make(
     "skills",
-    { internalHelp: Flag.boolean(SKILLS_INTERNAL_PARENT_HELP_FLAG) },
+    { internalHelp: Flag.Boolean(SKILLS_INTERNAL_PARENT_HELP_FLAG).pipe(Flag.withDefault(false)) },
     ({ internalHelp }) => (internalHelp ? Console.log(SKILLS_HELP) : Effect.void),
   ).pipe(
     Command.withSubcommands([

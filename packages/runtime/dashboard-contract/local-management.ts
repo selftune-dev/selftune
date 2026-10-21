@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { SyncPreferences } from "@selftune/control-plane";
+import { SyncPreferences } from "@selftune/control-plane/domain/remote-library";
 
 export type PortfolioClassification =
   | "protected"
@@ -226,6 +226,7 @@ export interface CompleteCloudAccountLinkResponse {
   settings: DesktopSettingsResponse;
   first_backup:
     | { status: "completed"; uploaded: number; unchanged: number }
+    | { status: "not_configured"; message: string }
     | { status: "failed"; message: string };
 }
 

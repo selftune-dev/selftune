@@ -15,6 +15,7 @@ import { PI_INGEST_MARKER } from "@selftune/runtime/constants";
 import { NORMALIZER_VERSION } from "@selftune/runtime/normalization";
 import {
   fingerprintIngestionFile,
+  fileIngestionRevision,
   isFileIngestionCurrent,
   loadFileIngestionMarker,
   saveFileIngestionMarker,
@@ -55,7 +56,8 @@ const ingestParsedSession = Effect.fn("Pi.syncSource.ingestParsedSession")(funct
   const importer = yield* LocalTraceImporter;
   const importRequest = LocalTraceImportRequest.make({
     source_kind: "pi",
-    source_revision: `${PI_SOURCE_PROJECTION_VERSION}:${fingerprint.size}:${fingerprint.mtime_ms}`,
+    source_session_ids: [session.session_id],
+    source_revision: `${PI_SOURCE_PROJECTION_VERSION}:${fileIngestionRevision(fingerprint)}`,
     normalizer_version: NORMALIZER_VERSION,
     batch: buildLocalTelemetryBatchFromPiSession(session),
   });
@@ -102,6 +104,14 @@ const makeSyncPiSource = (markerPath: string) =>
       `found ${sessions.length} sessions, ${pending.length} pending`,
     );
 
+    if (pending.length === 0)
+      return {
+        available: true,
+        scanned: sessions.length,
+        synced: 0,
+        skipped: 0,
+        authoritativeFiles: sessions.map(({ filePath }) => filePath),
+      };
     const skillNames = yield* Effect.try({
       try: () => findPiSkillNames(),
       catch: (cause) => sourceFailure("discover Pi skills", cause),

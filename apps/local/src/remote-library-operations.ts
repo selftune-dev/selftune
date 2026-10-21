@@ -44,6 +44,9 @@ import {
 } from "@selftune/runtime/remote-library-sync";
 import { CLIError } from "@selftune/runtime/utils/cli-error";
 import { DEFAULT_CLOUD_API_URL } from "@selftune/runtime/auth/device-code";
+import { loadLibraryCatalog } from "@selftune/runtime/library/catalog";
+import { syncPrivateLibrary } from "./private-library-sync";
+import { isSelfTuneCloudUrl } from "./hosted-state";
 
 export type RemoteLibraryAction = "status" | "sync" | "export" | "restore";
 export type RemoteLibraryShareAction = "list" | "create" | "accept" | "import" | "revoke";
@@ -93,6 +96,12 @@ export function makeRemoteLibraryOperations(configRootInput: string) {
         return { url: config.url, capabilities, head, diagnostics };
       }
       if (action === "sync") {
+        if (isSelfTuneCloudUrl(config.url)) {
+          return syncPrivateLibrary({
+            handle,
+            library: await loadLibraryCatalog({ skillSetConfigRoot: configRoot }),
+          });
+        }
         return syncRemoteLibrary({
           handle,
           configRoot,
@@ -121,6 +130,13 @@ export function makeRemoteLibraryOperations(configRootInput: string) {
       apiKey: config.apiKey,
     });
     try {
+      if (isSelfTuneCloudUrl(config.url)) {
+        return await syncPrivateLibrary({
+          handle,
+          library: await loadLibraryCatalog({ skillSetConfigRoot: configRoot }),
+          selectedSkillIds: [skillId],
+        });
+      }
       return await syncRemoteLibrary({
         handle,
         configRoot,

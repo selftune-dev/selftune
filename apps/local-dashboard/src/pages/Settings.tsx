@@ -50,6 +50,7 @@ import {
 import {
   useExportRemoteLibrary,
   useLinkCloudAccount,
+  useCloudBillingStatus,
   usePreviewRemoteLibrary,
   useRemoteLibraryStatus,
   useRemoteLibraryShares,
@@ -315,6 +316,10 @@ export function Settings() {
   const remoteStatus = useRemoteLibraryStatus(
     settingsQuery.data?.remote_library.configured ?? false,
   );
+  const cloudConnection = useCloudBillingStatus(
+    (settingsQuery.data?.cloud_account.linked ?? false) &&
+      syncDestinationFromUrl(settingsQuery.data?.remote_library.url ?? "") === "cloud",
+  );
   const syncRemote = useSyncRemoteLibrary();
   const exportRemote = useExportRemoteLibrary();
   const restoreRemote = useRestoreRemoteLibrary();
@@ -386,6 +391,13 @@ export function Settings() {
 
   const remoteLibraryConfigured = settingsQuery.data?.remote_library.configured ?? false;
   const cloudAccountLinked = settingsQuery.data?.cloud_account.linked ?? false;
+  const cloudConnectionLabel = !cloudAccountLinked
+    ? "No Cloud account"
+    : cloudConnection.isError
+      ? "Cloud connection needs attention"
+      : cloudConnection.isSuccess
+        ? "SelfTune Cloud account connected"
+        : "Checking Cloud connection…";
   const configuredDestination = syncDestinationFromUrl(
     settingsQuery.data?.remote_library.url ?? "",
   );
@@ -493,6 +505,8 @@ export function Settings() {
           toast.success("SelfTune Cloud connected", {
             description: `Cloud inventory updated: ${firstBackup.uploaded} reported, ${firstBackup.unchanged} unchanged.`,
           });
+        } else if (firstBackup.status === "not_configured") {
+          toast.info("SelfTune Cloud connected", { description: firstBackup.message });
         } else {
           toast.warning("SelfTune Cloud connected", {
             description: `The first inventory update did not finish: ${firstBackup.message}`,
@@ -628,7 +642,7 @@ export function Settings() {
       <TabsContent value="billing" className="min-w-0">
         <BillingSettingsPanel
           active={activeSection === "billing"}
-          cloudConfigured={selfHostedWorkspaceConfigured}
+          cloudConfigured={settingsQuery.data?.cloud_account.linked ?? false}
           connectPending={linkCloudAccount.isPending}
           onConnect={connectCloudAccount}
         />
@@ -640,15 +654,17 @@ export function Settings() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 id="remote-library-heading" className="text-base font-semibold text-foreground">
-                  Cloud connection & self-hosted backup
+                  Sync &amp; Backup
                 </h2>
                 <Badge
                   variant="outline"
                   className="border-border bg-muted/20 text-muted-foreground"
                 >
-                  {settingsQuery.data.remote_library.configured
-                    ? configuredDestinationCopy.connected
-                    : draftDestinationCopy.notConnected}
+                  {configuredDestination === "cloud"
+                    ? cloudConnectionLabel
+                    : settingsQuery.data.remote_library.configured
+                      ? configuredDestinationCopy.connected
+                      : draftDestinationCopy.notConnected}
                 </Badge>
                 {credentialProviderLabel(settingsQuery.data.remote_library.credential_provider) && (
                   <Badge variant="outline" className="border-primary/25 bg-primary/10 text-primary">
@@ -657,8 +673,8 @@ export function Settings() {
                 )}
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
-                Your Library stays local. Cloud receives only a privacy-safe inventory; a
-                self-hosted server can store a backup when you choose it.
+                Keep working locally and back up skill files to Cloud or your own server. In Cloud,
+                choose a personal or team destination for each device before syncing files.
               </p>
             </div>
             <div className="flex gap-2">
@@ -763,13 +779,15 @@ export function Settings() {
                       <CloudIcon className="size-5 shrink-0 text-primary" />
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-foreground">
-                          {cloudAccountLinked
-                            ? "SelfTune Cloud account connected"
-                            : "No Cloud account"}
+                          {cloudConnectionLabel}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {cloudAccountLinked
-                            ? "Your credential is stored securely by this device."
+                            ? cloudConnection.isError
+                              ? "Cloud could not verify this device. Reconnect your account and retry."
+                              : cloudConnection.isSuccess
+                                ? "Your device credential was verified by SelfTune Cloud."
+                                : "Verifying the credential stored on this device."
                             : "Create an account or sign in in your browser. Desktop remains usable without one."}
                         </p>
                       </div>
@@ -869,7 +887,7 @@ export function Settings() {
             <div className="flex items-center gap-3 border-t border-border/60 bg-muted/15 px-4 py-3 text-xs text-muted-foreground">
               <CloudIcon className="size-4" />
               {remoteDraft.destination === "cloud"
-                ? "Skill contents, paths, prompts, sessions, and evaluations stay local."
+                ? "Skill packages back up to the destination you enable in Cloud. Prompts, sessions, and evaluations stay local."
                 : "Raw transcripts are never synced."}
             </div>
             {previewRemote.data ? (
@@ -904,7 +922,18 @@ export function Settings() {
               <div className="border-t border-border/60 px-4 py-3">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-xs text-muted-foreground">
-                    {remoteStatus.data?.diagnostics ? (
+                    {configuredDestination === "cloud" ? (
+                      cloudConnection.isSuccess ? (
+                        cloudConnection.data.subscriptionStatus === "active" ||
+                        cloudConnection.data.subscriptionStatus === "trialing" ? (
+                          "Cloud connected. Enable a device backup destination in Cloud to sync and inspect skill files."
+                        ) : (
+                          "Account connected. An active Pro or Team plan is required for inventory sync and sharing."
+                        )
+                      ) : (
+                        cloudConnectionLabel
+                      )
+                    ) : remoteStatus.data?.diagnostics ? (
                       <>
                         {remoteStatus.data.diagnostics.objectCount} objects ·{" "}
                         {remoteStatus.data.diagnostics.snapshotCount} snapshots ·{" "}
@@ -940,7 +969,7 @@ export function Settings() {
                       />{" "}
                       Sync now
                     </Button>
-                    {selfHostedWorkspaceConfigured ? (
+                    {connectedWorkspaceConfigured ? (
                       <>
                         <Button
                           variant="outline"

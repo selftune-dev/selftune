@@ -3,6 +3,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Semaphore from "effect/Semaphore";
 import { LocalDatabaseService } from "@selftune/local-store";
 import {
   makeMaterializedCacheLayer,
@@ -14,11 +15,11 @@ import { computeReportInWorker, resolveReportComputeOptions } from "./report-com
 import { dashboardReportDependencyVersion } from "./report-version.js";
 import {
   reportPayloadSchemas,
-  type DashboardReportName,
+  type CachedDashboardReportName,
   type DashboardReportPayloads,
 } from "./report-contract.js";
 
-type ReportCache<Name extends DashboardReportName> = CachedOperation<
+type ReportCache<Name extends CachedDashboardReportName> = CachedOperation<
   DashboardReportPayloads[Name],
   DashboardOperationError,
   never
@@ -39,10 +40,11 @@ export class LibraryCache extends Context.Service<LibraryCache, ReportCache<"lib
 ) {}
 
 export interface DashboardReportCacheOptions {
+  readonly reportSemaphore?: Semaphore.Semaphore;
   readonly skillSetConfigRoot?: string;
   readonly portfolioSearchDirs?: string[];
   readonly quarantineRoot?: string;
-  readonly reportVersionReaders?: Partial<Record<DashboardReportName, () => string>>;
+  readonly reportVersionReaders?: Partial<Record<CachedDashboardReportName, () => string>>;
   readonly portfolioLoader?: () => DashboardReportPayloads["portfolio-audit"];
   readonly skillIntelligenceLoader?: () =>
     | DashboardReportPayloads["skill-intelligence"]
@@ -70,6 +72,7 @@ function cacheLayer<I, A>(
 export function makeDashboardReportCachesLayer(options: DashboardReportCacheOptions) {
   return Layer.unwrap(
     Effect.gen(function* () {
+      const semaphore = options.reportSemaphore ?? (yield* Semaphore.make(1));
       const database = Option.getOrUndefined(
         yield* Effect.serviceOption(LocalDatabaseService),
       )?.sqlite;
@@ -79,11 +82,11 @@ export function makeDashboardReportCachesLayer(options: DashboardReportCacheOpti
         quarantineRoot: options.quarantineRoot,
       });
       const reportsDir = join(reportOptions.storagePaths.configRoot, "cache", "reports");
-      const readVersion = (name: DashboardReportName) =>
+      const readVersion = (name: CachedDashboardReportName) =>
         options.reportVersionReaders?.[name] ??
         (() => dashboardReportDependencyVersion(name, database));
-      const compute = <Name extends DashboardReportName>(name: Name, operation: string) =>
-        computeReportInWorker(name, reportOptions, reportsDir).pipe(
+      const compute = <Name extends CachedDashboardReportName>(name: Name, operation: string) =>
+        computeReportInWorker(name, reportOptions, reportsDir, { semaphore }).pipe(
           Effect.mapError((cause) => operationError(operation, cause)),
         );
       return Layer.mergeAll(

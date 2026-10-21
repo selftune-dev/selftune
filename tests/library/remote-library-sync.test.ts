@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -43,6 +44,7 @@ import {
 import { listSynthesisReleases } from "../../packages/runtime/synthesis.js";
 import { CLIError } from "../../packages/runtime/utils/cli-error.js";
 import { computeSkillVersionHash } from "../../packages/runtime/utils/skill-discovery.js";
+import { syncPrivateLibrary } from "../../apps/local/src/private-library-sync.js";
 
 function passingPackageEvaluation(skillName: string, skillPath: string) {
   return {
@@ -107,6 +109,87 @@ function memoryHandle(): RemoteLibraryHandle {
 }
 
 describe("Remote Library sync lifecycle", () => {
+  test("private Cloud backup retries without duplicate uploads and restores exact skill files", async () => {
+    const root = mkdtempSync(join(tmpdir(), "private-library-roundtrip-"));
+    const handle = memoryHandle();
+    try {
+      const packagePath = createSkill(join(root, "skills"), "marketing");
+      const library = await loadLibraryCatalog({
+        searchDirs: [join(root, "skills")],
+        skillSetConfigRoot: join(root, "config"),
+        quarantineRoot: join(root, "quarantine"),
+        usageRows: [],
+        workspacePaths: [],
+      });
+      const first = await syncPrivateLibrary({ handle, library });
+      expect(first.uploaded).toBe(1);
+      const second = await syncPrivateLibrary({ handle, library });
+      expect(second.uploaded).toBe(0);
+      expect(second.snapshot.snapshotId).toBe(first.snapshot.snapshotId);
+      const targetRoot = join(root, "restored");
+      const restored = await restoreRemoteLibrary({ handle, targetRoot });
+      expect(restored.restored).toBe(1);
+      const revision = first.snapshot.artifacts[0]!.objectHash;
+      for (const file of ["SKILL.md", "workflow.md"]) {
+        expect(
+          readFileSync(join(targetRoot, "library", "packages", revision, "marketing", file)),
+        ).toEqual(readFileSync(join(packagePath, file)));
+      }
+      await expect(restoreRemoteLibrary({ handle, targetRoot })).rejects.toThrow(
+        "Restore target must be empty",
+      );
+      writeFileSync(
+        join(packagePath, "workflow.md"),
+        "A revised workflow without changing SKILL.md.\n",
+      );
+      const changedLibrary = await loadLibraryCatalog({
+        searchDirs: [join(root, "skills")],
+        skillSetConfigRoot: join(root, "config"),
+        quarantineRoot: join(root, "quarantine"),
+        usageRows: [],
+        workspacePaths: [],
+      });
+      await expect(
+        syncPrivateLibrary({
+          handle: {
+            ...handle,
+            commitSnapshot: async () => {
+              throw new Error("simulated interrupted snapshot commit");
+            },
+          },
+          library: changedLibrary,
+        }),
+      ).rejects.toThrow("simulated interrupted snapshot commit");
+      const changed = await syncPrivateLibrary({ handle, library: changedLibrary });
+      expect(changed.uploaded).toBe(0);
+      expect(changed.snapshot.artifacts).toHaveLength(2);
+      const revised = await restoreRemoteLibrary({
+        handle,
+        targetRoot: join(root, "revised-restore"),
+      });
+      expect(revised.restored).toBe(2);
+      const blocked = createSkill(join(root, "skills"), "blocked");
+      writeFileSync(join(blocked, "private.key"), "test fixture, not a real key");
+      createSkill(join(root, "skills"), "another-safe-skill");
+      const mixed = await loadLibraryCatalog({
+        searchDirs: [join(root, "skills")],
+        skillSetConfigRoot: join(root, "config"),
+        quarantineRoot: join(root, "quarantine"),
+        usageRows: [],
+        workspacePaths: [],
+      });
+      await expect(syncPrivateLibrary({ handle, library: mixed })).rejects.toThrow(
+        "Backup incomplete: 1 package(s) need attention",
+      );
+      expect((await handle.head())?.artifacts).toHaveLength(3);
+      expect(
+        (await handle.head())?.artifacts.some((item) => item.artifactId.includes("/blocked/")),
+      ).toBe(false);
+    } finally {
+      await handle.dispose();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   test("syncs privacy-safe learned state and merges it into another local database", async () => {
     const root = mkdtempSync(join(tmpdir(), "selftune-learned-state-sync-"));
     const handle = memoryHandle();

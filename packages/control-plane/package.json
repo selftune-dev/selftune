@@ -9,10 +9,16 @@
   "exports": {
     ".": "./index.ts",
     "./domain": "./src/domain/index.ts",
+    "./domain/library": "./src/domain/library.ts",
+    "./domain/remote-library": "./src/domain/remote-library.ts",
+    "./domain/synthesis": "./src/domain/synthesis.ts",
+    "./domain/evaluation-report": "./src/domain/evaluation-report.ts",
     "./evidence": "./src/evidence.ts",
     "./orchestration": "./src/orchestration.ts",
     "./library-consolidation": "./src/library-consolidation.ts",
     "./library-selection": "./src/library-selection.ts",
+    "./library-transport": "./src/library-transport.ts",
+    "./library-index": "./src/library-index.ts",
     "./services": "./src/services/index.ts",
     "./programs": "./src/programs/index.ts",
     "./review/portable": "./src/review/portable.ts",
@@ -21,16 +27,16 @@
     "./layers/remote-http": "./src/layers/remote-http.ts"
   },
   "scripts": {
-    "test": "vitest run",
+    "test": "node scripts/test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "effect": "4.0.0-beta.66"
+    "effect": "4.0.0-rc.115"
   },
   "devDependencies": {
-    "@effect/vitest": "4.0.0-beta.66",
+    "@effect/vitest": "4.0.0-rc.115",
     "@types/node": "^20",
     "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
+    "vitest": "5.0.1"
   }
 }

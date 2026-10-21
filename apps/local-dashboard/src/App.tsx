@@ -53,6 +53,7 @@ import {
   getLocalAppCoreNavigation,
   isLocalAppCoreRouteActive,
   LOCAL_APP_CORE_ROUTE_MANIFEST,
+  LOCAL_APP_CORE_ROUTES,
   LOCAL_APP_CORE_ROUTE_REGISTRY,
   matchLocalAppCoreShellRoute,
 } from "@/shared-app-routes";
@@ -220,6 +221,8 @@ function DashboardShell({ runtime }: { runtime: ServerRuntimeProfile }) {
               toast.success("selftune Cloud connected", {
                 description: `Cloud inventory updated: ${firstBackup.uploaded} reported, ${firstBackup.unchanged} unchanged.`,
               });
+            } else if (firstBackup.status === "not_configured") {
+              toast.info("SelfTune Cloud connected", { description: firstBackup.message });
             } else {
               toast.warning("selftune Cloud connected", {
                 description: `The first inventory update did not finish: ${firstBackup.message}`,
@@ -227,6 +230,7 @@ function DashboardShell({ runtime }: { runtime: ServerRuntimeProfile }) {
             }
           },
           manage: () => navigate("/settings?section=remote-library"),
+          openWorkspace: () => navigate(LOCAL_APP_CORE_ROUTES.collaboration.path),
           openDashboard: async () => {
             const url = "https://cloud.selftune.dev";
             if (window.selftuneDesktop) {

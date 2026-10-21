@@ -2,11 +2,25 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { Option, flow } from "effect";
 import { RemoteArtifact, RemoteSnapshot } from "@selftune/control-plane";
+import { compactLibrarySnapshot } from "@selftune/control-plane/library-transport";
+import type { LibrarySnapshot } from "@selftune/control-plane";
+import { libraryIndexPage } from "@selftune/control-plane/library-index";
 
 import { DashboardOperationError, type DashboardOperations } from "../dashboard-operations.js";
 import { dashboardCorsHeaders, sameOriginFailure } from "../dashboard-http.js";
 
 const BackupBody = Schema.Struct({ skill_id: Schema.String });
+const libraryJson = new WeakMap<LibrarySnapshot, { full?: string; compact?: string }>();
+export function librarySnapshotResponse(snapshot: LibrarySnapshot, compact: boolean): Response {
+  const cached = libraryJson.get(snapshot) ?? {};
+  const key = compact ? "compact" : "full";
+  const json = cached[key] ?? JSON.stringify(compact ? compactLibrarySnapshot(snapshot) : snapshot);
+  cached[key] = json;
+  libraryJson.set(snapshot, cached);
+  return new Response(json, {
+    headers: { ...dashboardCorsHeaders(), "Content-Type": "application/json" },
+  });
+}
 const InstallBody = Schema.Struct({
   skill_id: Schema.String,
   target_agent: Schema.Literals(["codex", "claude_code", "opencode", "openclaw", "pi"]),
@@ -120,10 +134,68 @@ export const routeLibraryTransfer = Effect.fn("DashboardApplication.routeLibrary
     operations: DashboardOperations["Service"],
   ) {
     if (url.pathname === "/api/v2/library" && request.method === "GET") {
+      let snapshot = yield* operations.library;
+      const expected = url.searchParams.get("snapshot");
+      if (expected !== null && expected !== snapshot.generatedAt)
+        return {
+          response: Response.json(
+            { error: "The library changed. Refresh and try again." },
+            { status: 409, headers: dashboardCorsHeaders() },
+          ),
+          installed: false,
+        };
+      if (url.searchParams.get("view") === "index") {
+        const offset = Number(url.searchParams.get("offset") ?? 0);
+        const limit = Number(url.searchParams.get("limit") ?? 50);
+        const search = url.searchParams.get("search") ?? "";
+        if (
+          !Number.isSafeInteger(offset) ||
+          offset < 0 ||
+          !Number.isSafeInteger(limit) ||
+          limit < 1 ||
+          limit > 100 ||
+          search.length > 1024
+        )
+          return yield* invalidBody(
+            "library.index",
+            "Use an offset >= 0, limit 1..100, and a search under 1024 characters.",
+          );
+        const classificationText = new Map<string, string>();
+        if (search.trim()) {
+          const report = yield* operations.skillIntelligence;
+          for (const classification of report.classifications)
+            classificationText.set(
+              classification.skill_id.toLowerCase(),
+              [classification.category_label, ...classification.matched_terms].join(" "),
+            );
+        }
+        return {
+          response: Response.json(
+            libraryIndexPage(snapshot, { offset, limit, search, classificationText }),
+            { headers: dashboardCorsHeaders() },
+          ),
+          installed: false,
+        };
+      }
+      const selectedId = url.searchParams.get("skill_id");
+      if (selectedId !== null) {
+        const skill = snapshot.skills.find((item) => item.skillId === selectedId);
+        if (!skill)
+          return {
+            response: Response.json(
+              { error: "Skill is no longer in the library. Refresh and try again." },
+              { status: 404, headers: dashboardCorsHeaders() },
+            ),
+            installed: false,
+          };
+        snapshot = {
+          generatedAt: snapshot.generatedAt,
+          skills: [skill],
+          counts: { total: 1, active: 0, library: 0, draft: 0, archived: 0, [skill.lifecycle]: 1 },
+        };
+      }
       return {
-        response: Response.json(yield* operations.library, {
-          headers: dashboardCorsHeaders(),
-        }),
+        response: librarySnapshotResponse(snapshot, url.searchParams.get("format") === "compact"),
         installed: false,
       };
     }

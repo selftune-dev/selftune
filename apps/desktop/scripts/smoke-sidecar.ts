@@ -17,13 +17,10 @@ import {
 import { INTERNAL_PACKAGE_BUNDLE_SMOKE_COMMAND } from "@selftune/runtime/remote-library/package-bundle-collector-command";
 import { createLineBuffer, parseReadyPort } from "../src/main/sidecar-protocol";
 
-class SidecarSmokeFailure extends Schema.TaggedErrorClass<SidecarSmokeFailure>()(
-  "SidecarSmokeFailure",
-  {
-    operation: Schema.String,
-    message: Schema.String,
-  },
-) {}
+class SidecarSmokeFailure extends Schema.TaggedError<SidecarSmokeFailure>()("SidecarSmokeFailure", {
+  operation: Schema.String,
+  message: Schema.String,
+}) {}
 
 const LocalAuthRecord = Schema.Struct({
   version: Schema.Literal(1),

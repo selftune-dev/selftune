@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-export class WindowsInstallationIOError extends Schema.TaggedErrorClass<WindowsInstallationIOError>()(
+export class WindowsInstallationIOError extends Schema.TaggedError<WindowsInstallationIOError>()(
   "WindowsInstallationIOError",
   {
     operation: Schema.Literals([
@@ -16,7 +16,7 @@ export class WindowsInstallationIOError extends Schema.TaggedErrorClass<WindowsI
       "randomBytes",
     ]),
     message: Schema.String,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
   },
 ) {
   static fromCause(operation: WindowsInstallationIOError["operation"], cause: unknown) {

@@ -13,6 +13,16 @@ An explicit ingest command imports its selected source regardless of onboarding
 source-enable preferences. OpenClaw remains canonical-only, and Cline remains
 hook-only; neither uses this batch trace-import path.
 
+Codex source sync records a bounded reconstruction recipe for eligible rollout
+files (up to 8 MiB): source and task hashes, parser/normalizer identity, captured
+skill-name inventory and canonical skill revision bindings. Unknown historical
+skill revisions remain unknown. Historical candidate preparation can recover a
+missing task only when those checks match; it never substitutes the current
+skill package or changed source bytes. Larger/legacy sources remain readable
+through their existing records but are not qualified for this fallback.
+No automatic detail eviction is enabled, and `--force` cannot revive explicitly
+expired evidence.
+
 ## When to Use Each
 
 | Sub-command         | Platform    | Mode      | When                                                |

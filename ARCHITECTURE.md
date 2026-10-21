@@ -47,6 +47,11 @@ audit entries, and packages the user deliberately shares.
 - Project scoping uses managed filesystem links so an agent sees the right
   skills only where they are needed.
 - SQLite is operational product state; DuckDB is bounded local analytics.
+- DuckDB retains compact per-batch discovery facts and metric contributions separately
+  from detail. Codex reconstruction recipes record hashes and parser inputs, not
+  transcript copies; historical candidate preparation can resolve bounded missing
+  tasks from exact originals. Recipe pins retain provenance, while saved evaluation
+  artifacts remain authoritative for their evidence bytes. Automatic eviction is disabled.
 - JSONL exists for compatibility and recovery, not as a second source of truth.
 - Apps compose capabilities; packages never import app implementations.
 - Destructive library operations require preview, explicit approval, and a
@@ -68,3 +73,14 @@ Managed billing, public signup, unrelated-customer SaaS isolation, abuse
 operations, and fleet administration are not part of the portable seam. Skill
 contents and operational history remain local unless the user explicitly shares
 a package or consents to a bounded contributor signal.
+
+### Local skill revision history
+
+`packages/local-store/src/skill-revisions.ts` owns numbered immutable snapshots in
+`skill_local_revisions`, separate from published Skill Set revisions. The runtime
+`skill-revision-history.ts` adapter captures bounded regular-file packages,
+compares revisions, and restores with a current-content precondition. The local
+host's `skill-revision-service.ts` owns polling and authenticated HTTP access;
+its lifecycle ends with the dashboard server. History remains local and is not a
+hosted-state field. Library history UI is supplied through the optional Skills
+module History component so Cloud does not expose local filesystem operations.

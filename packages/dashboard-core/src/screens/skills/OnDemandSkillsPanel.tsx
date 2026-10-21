@@ -24,10 +24,12 @@ export function OnDemandSkillsPanel({
   skills,
   actions,
   refresh,
+  loadSkills,
 }: {
   skills: readonly LibrarySkillModel[];
   actions?: DashboardLibraryActions;
   refresh?: () => void | Promise<void>;
+  loadSkills?: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(() => {
     try {
@@ -95,6 +97,7 @@ export function OnDemandSkillsPanel({
         introduction={introduction}
         initialOpen={open}
         onDismiss={dismiss}
+        loadSkills={loadSkills}
       />
     );
   }

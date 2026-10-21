@@ -58,7 +58,7 @@ export const BlindBenchmarkAttempt = Schema.Union([
 ]);
 export type BlindBenchmarkAttempt = typeof BlindBenchmarkAttempt.Type;
 
-export class BlindBenchmarkExecutionFailure extends Schema.TaggedErrorClass<BlindBenchmarkExecutionFailure>()(
+export class BlindBenchmarkExecutionFailure extends Schema.TaggedError<BlindBenchmarkExecutionFailure>()(
   "BlindBenchmarkExecutionFailure",
   {
     kind: Schema.Literals(["infrastructure", "cancelled", "budget_exhausted"]),

@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { getDb } from "@selftune/local-store";
-import type { DashboardReportName } from "./report-contract.js";
+import type { CachedDashboardReportName } from "./report-contract.js";
 
 interface ReportDependency {
   readonly table: string;
@@ -8,7 +8,7 @@ interface ReportDependency {
   readonly cursorColumn?: string;
 }
 
-const REPORT_DEPENDENCIES: Record<DashboardReportName, readonly ReportDependency[]> = {
+const REPORT_DEPENDENCIES: Record<CachedDashboardReportName, readonly ReportDependency[]> = {
   "portfolio-audit": [
     { table: "session_telemetry", cursorColumn: "timestamp" },
     { table: "skill_invocations", cursorColumn: "occurred_at" },
@@ -60,7 +60,7 @@ function dependencyCursor(db: Database, dependency: ReportDependency): string {
 }
 
 export function dashboardReportDependencyVersion(
-  report: DashboardReportName,
+  report: CachedDashboardReportName,
   database?: Database,
 ): string {
   const dependencies = REPORT_DEPENDENCIES[report];

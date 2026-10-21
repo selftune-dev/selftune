@@ -30,7 +30,7 @@ export interface AsyncPlatformCredentialStore {
   ) => Promise<CredentialReference>;
 }
 
-export class CredentialStoreFailure extends Schema.TaggedErrorClass<CredentialStoreFailure>()(
+export class CredentialStoreFailure extends Schema.TaggedError<CredentialStoreFailure>()(
   "CredentialStoreFailure",
   {
     operation: Schema.String,

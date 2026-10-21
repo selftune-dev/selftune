@@ -91,12 +91,12 @@ export class ListCorrectionStudyDrafts extends Schema.Class<ListCorrectionStudyD
   limit: Schema.optionalKey(Limit),
 }) {}
 
-export class CorrectionSignalStudyDraftFailure extends Schema.TaggedErrorClass<CorrectionSignalStudyDraftFailure>()(
+export class CorrectionSignalStudyDraftFailure extends Schema.TaggedError<CorrectionSignalStudyDraftFailure>()(
   "CorrectionSignalStudyDraftFailure",
   { operation: Schema.String, message: Schema.String },
 ) {}
 
-export class CorrectionSignalStudyDraftConflict extends Schema.TaggedErrorClass<CorrectionSignalStudyDraftConflict>()(
+export class CorrectionSignalStudyDraftConflict extends Schema.TaggedError<CorrectionSignalStudyDraftConflict>()(
   "CorrectionSignalStudyDraftConflict",
   { operation: Schema.String, message: Schema.String },
 ) {}

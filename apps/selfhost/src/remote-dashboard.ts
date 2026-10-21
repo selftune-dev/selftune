@@ -49,7 +49,7 @@ const StoredSkillSet = Schema.Struct({
   updated_at: Schema.String,
 });
 
-class RemoteDashboardFailure extends Schema.TaggedErrorClass<RemoteDashboardFailure>()(
+class RemoteDashboardFailure extends Schema.TaggedError<RemoteDashboardFailure>()(
   "RemoteDashboardFailure",
   {
     operation: Schema.String,

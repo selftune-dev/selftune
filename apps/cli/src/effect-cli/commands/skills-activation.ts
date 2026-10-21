@@ -33,11 +33,14 @@ const execute = Effect.fn("selftune.skills.activation")(function* <A>(run: () =>
 });
 
 export function makeSkillsActivationCommands() {
-  const project = Flag.string("project").pipe(Flag.withDefault("."));
-  const json = Flag.boolean("json");
-  const task = Flag.string("task");
-  const approval = { yes: Flag.boolean("yes"), dryRun: Flag.boolean("dry-run") };
-  const lookup = { searchDirs: Flag.string("search-dir").pipe(Flag.atLeast(0)) };
+  const project = Flag.String("project").pipe(Flag.withDefault("."));
+  const json = Flag.Boolean("json").pipe(Flag.withDefault(false));
+  const task = Flag.String("task");
+  const approval = {
+    yes: Flag.Boolean("yes").pipe(Flag.withDefault(false)),
+    dryRun: Flag.Boolean("dry-run").pipe(Flag.withDefault(false)),
+  };
+  const lookup = { searchDirs: Flag.String("search-dir").pipe(Flag.atLeast(0)) };
   const activate = Command.make(
     "activate",
     {
@@ -46,9 +49,9 @@ export function makeSkillsActivationCommands() {
       json,
       ...approval,
       ...lookup,
-      ids: Flag.string("id").pipe(Flag.atLeast(0)),
-      set: Flag.string("set").pipe(Flag.optional),
-      harness: Flag.choice("harness", ["codex", "claude_code", "opencode", "openclaw", "pi"]),
+      ids: Flag.String("id").pipe(Flag.atLeast(0)),
+      set: Flag.String("set").pipe(Flag.optional),
+      harness: Flag.Literals("harness", ["codex", "claude_code", "opencode", "openclaw", "pi"]),
     },
     (input) =>
       execute(() => {
@@ -93,7 +96,7 @@ export function makeSkillsActivationCommands() {
       json,
       ...approval,
       task: task.pipe(Flag.optional),
-      receipt: Flag.string("receipt").pipe(Flag.optional),
+      receipt: Flag.String("receipt").pipe(Flag.optional),
     },
     (input) =>
       execute(() => {
@@ -112,7 +115,7 @@ export function makeSkillsActivationCommands() {
       "Remove only this task's temporary project paths; previews unless --yes.",
     ),
   );
-  const load = Command.make("load", { id: Flag.string("id"), json, ...lookup }, (input) =>
+  const load = Command.make("load", { id: Flag.String("id"), json, ...lookup }, (input) =>
     execute(() =>
       loadSkill(input.id, { searchDirs: input.searchDirs.length ? input.searchDirs : undefined }),
     ),

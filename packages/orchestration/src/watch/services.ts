@@ -9,7 +9,7 @@ import type { SyncResult } from "@selftune/source-management/sync";
 
 import type { WatchMemoryUpdate, WatchRollbackRequest, WatchRollbackResult } from "./model.js";
 
-export class WatchInternalFailure extends Schema.TaggedErrorClass<WatchInternalFailure>()(
+export class WatchInternalFailure extends Schema.TaggedError<WatchInternalFailure>()(
   "WatchInternalFailure",
   {
     operation: Schema.String,
