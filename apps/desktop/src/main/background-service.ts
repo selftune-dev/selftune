@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { join } from "node:path";
+import { posix } from "node:path";
 
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -30,7 +30,7 @@ export function backgroundServiceResourceDirectory(options: {
   readonly installedRuntimeDirectory: string;
 }): string {
   return options.platform === "darwin" && options.inApplicationsFolder
-    ? join(options.resourcesPath, "selftune")
+    ? posix.join(options.resourcesPath, "selftune")
     : options.installedRuntimeDirectory;
 }
 
