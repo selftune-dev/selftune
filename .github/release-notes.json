@@ -14,7 +14,8 @@
       "bullets": [
         "Replace only changed or removed summaries, preserving unrelated history and raw evidence.",
         "Report the highest numeric migration version in read-only storage inspection, so schema 12 is not misreported as schema 9.",
-        "Keep the macOS background service inside the signed app bundle when SelfTune is installed in Applications, avoiding version-specific service paths on update."
+        "Keep the macOS background service inside the signed app bundle when SelfTune is installed in Applications, avoiding version-specific service paths on update.",
+        "Update the pinned Electron 41 runtime to 41.10.6 for its sandbox and protocol security fixes."
       ],
       "versionRange": {
         "from": "0.5.3",

@@ -100,7 +100,7 @@
         "@selftune/runtime": "workspace:*",
         "@types/node": "^20",
         "bun-types": "^1.3.11",
-        "electron": "41.10.5",
+        "electron": "41.10.6",
         "electron-builder": "^26.0.12",
         "electron-vite": "^5.0.0",
         "playwright": "1.61.1",
@@ -1770,7 +1770,7 @@
 
     "ejs": ["ejs@3.1.10", "", { "dependencies": { "jake": "^10.8.5" }, "bin": { "ejs": "bin/cli.js" } }, "sha512-UeJmFfOrAQS8OJWPZ4qtgHyWExa088/MtK5UEyoJGFH67cDEXkZSviOiKRCZ4Xij0zxI3JECgYs3oKx+AizQBA=="],
 
-    "electron": ["electron@41.10.5", "", { "dependencies": { "@electron-internal/extract-zip": "^1.0.1", "@electron/get": "^5.0.0", "@types/node": "^24.9.0" }, "bin": { "electron": "cli.js" } }, "sha512-grSJOhLddanWX1UfE8B4xA2kOOduUCfpYoOQ2D4zEYte8lSQtrd1HYbV4xErsZmm+V+1Q3yzCQLBsCxEIiw/QQ=="],
+    "electron": ["electron@41.10.6", "", { "dependencies": { "@electron-internal/extract-zip": "^1.0.1", "@electron/get": "^5.0.0", "@types/node": "^24.9.0" }, "bin": { "electron": "cli.js" } }, "sha512-NEB7QnVpT2p8S9U5jOCPAtCyhl1WjRT/ODvJP6ec1/dZRUmf/EjYVOBb/dthCmJh4bISqpAroGJ/xRRxX7VwJw=="],
 
     "electron-builder": ["electron-builder@26.15.3", "", { "dependencies": { "app-builder-lib": "26.15.3", "builder-util": "26.15.3", "builder-util-runtime": "9.7.0", "chalk": "^4.1.2", "ci-info": "^4.2.0", "dmg-builder": "26.15.3", "fs-extra": "^10.1.0", "lazy-val": "^1.0.5", "simple-update-notifier": "2.0.0", "yargs": "^17.6.2" }, "bin": { "electron-builder": "./cli.js", "install-app-deps": "./install-app-deps.js" } }, "sha512-a1KM5heqS3gQCZzizXEI8RjJy3QVogULPdeSknt76uLDpBIW/HDGsMg/XgP0riP6PI9COsRvFITKKGDqA8fJxA=="],
 
