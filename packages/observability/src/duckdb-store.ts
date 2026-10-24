@@ -16,6 +16,7 @@ import {
   sourceIdentityMigration,
 } from "./durable-summary-sql.js";
 import { SourceIdentities, sourceIdentityKey } from "./source-identity.js";
+import { reconcileRevisedMetricRollups } from "./historical-rollup-sql.js";
 import {
   SourceReconstruction,
   sourceDigest,
@@ -1456,11 +1457,15 @@ const ingestBatch = Effect.fn("DuckDbAnalyticalStore.ingest")(function* (
         point.source_reference,
       ]),
     );
-    // The input schema bounds points at 256 and the reducer only removes rows,
-    // so normal ingest never reads the unbounded raw-point corpus here.
-    yield* runStatement(
-      connection,
-      `INSERT INTO observability_historical_metric_rollups (
+    if (disposition === "revised") {
+      for (const statement of reconcileRevisedMetricRollups) {
+        yield* runStatement(connection, statement);
+      }
+    } else {
+      // New batches upsert their at-most-256 latest points without scanning raw history.
+      yield* runStatement(
+        connection,
+        `INSERT INTO observability_historical_metric_rollups (
         trace_id, metric_name, metric_id, source_id, observed_at, value, unit,
         temporality, evidence_quality, source_reference
       )
@@ -1481,40 +1486,7 @@ const ingestBatch = Effect.fn("DuckDbAnalyticalStore.ingest")(function* (
           excluded.observed_at = observability_historical_metric_rollups.observed_at
           AND excluded.metric_id > observability_historical_metric_rollups.metric_id
         )`,
-    );
-    if (disposition === "revised") {
-      // Include both removed and newly introduced keys; never rebuild unrelated history.
-      yield* runStatement(
-        connection,
-        `INSERT INTO observability_revised_metric_keys
-         SELECT trace_id, metric_name FROM observability_historical_metric_rollup_staging`,
       );
-      yield* runStatement(
-        connection,
-        `DELETE FROM observability_historical_metric_rollups AS rollup
-         WHERE EXISTS (SELECT 1 FROM observability_revised_metric_keys AS affected
-           WHERE affected.trace_id = rollup.trace_id AND affected.metric_name = rollup.metric_name)`,
-      );
-      yield* runStatement(
-        connection,
-        `INSERT INTO observability_historical_metric_rollups (
-          trace_id, metric_name, metric_id, source_id, observed_at, value, unit,
-          temporality, evidence_quality, source_reference
-        )
-        SELECT trace_id, metric_name, metric_id, source_id, observed_at, value, unit,
-          temporality, evidence_quality, source_reference
-        FROM (
-          SELECT *, ROW_NUMBER() OVER (
-            PARTITION BY trace_id, metric_name
-            ORDER BY observed_at DESC, metric_id DESC
-          ) AS point_rank
-          FROM observability_retained_metric_candidates AS point
-          WHERE EXISTS (SELECT 1 FROM observability_revised_metric_keys AS affected
-            WHERE affected.trace_id = point.trace_id AND affected.metric_name = point.metric_name)
-        ) AS latest
-        WHERE point_rank = 1`,
-      );
-      yield* runStatement(connection, "DROP TABLE observability_revised_metric_keys");
     }
     yield* runStatement(connection, "DELETE FROM observability_historical_metric_rollup_staging");
     yield* appendRows(
