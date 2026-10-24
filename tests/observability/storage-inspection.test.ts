@@ -37,7 +37,13 @@ test("catalog diagnostics leave an old schema byte-identical and omit private ro
   expect(readdirSync(directory)).toEqual(["observability.duckdb"]);
 });
 
-test.each([{ versions: [] }, { versions: [1, 8, 9] }, { versions: [1, 42] }])(
+test.each([
+  { versions: [] },
+  { versions: [1, 8, 9] },
+  { versions: [1, 42] },
+  { versions: [1, 8, 9, 10, 11, 12] },
+  { versions: [8, 9, 42] },
+])(
   "reports the stored migration ledger without upgrading or downgrading it: %j",
   async ({ versions }) => {
     const directory = mkdtempSync(join(tmpdir(), "selftune-storage-schema-"));

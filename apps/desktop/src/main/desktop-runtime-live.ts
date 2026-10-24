@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { app, dialog } from "electron";
 import * as Schema from "effect/Schema";
 import {
+  backgroundServiceResourceDirectory,
   getBackgroundServiceStatus,
   installBackgroundService,
   restartBackgroundService,
@@ -59,7 +60,12 @@ function writeBackgroundPreference(configDir: string, enabled: boolean): void {
 }
 
 function backgroundServiceOptions(configDir: string): BackgroundServiceOptions {
-  const resourceDir = installedRuntimeRoot();
+  const resourceDir = backgroundServiceResourceDirectory({
+    platform: process.platform,
+    inApplicationsFolder: process.platform === "darwin" && app.isInApplicationsFolder(),
+    resourcesPath: process.resourcesPath,
+    installedRuntimeDirectory: installedRuntimeRoot(),
+  });
   const executable = process.platform === "win32" ? "selftune.exe" : "selftune";
   return {
     executablePath: join(resourceDir, executable),

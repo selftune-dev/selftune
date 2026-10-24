@@ -4,6 +4,24 @@
   "docsUrl": "https://docs.selftune.dev/changelog",
   "entries": [
     {
+      "label": "2026-10-24",
+      "description": "v0.5.3",
+      "tags": ["Desktop", "CLI"],
+      "rss": {
+        "title": null,
+        "description": null
+      },
+      "bullets": [
+        "Replace only changed or removed summaries, preserving unrelated history and raw evidence.",
+        "Report the highest numeric migration version in read-only storage inspection, so schema 12 is not misreported as schema 9.",
+        "Keep the macOS background service inside the signed app bundle when SelfTune is installed in Applications, avoiding version-specific service paths on update."
+      ],
+      "versionRange": {
+        "from": "0.5.3",
+        "to": "0.5.3"
+      }
+    },
+    {
       "label": "2026-10-21",
       "description": "Desktop update runtime",
       "tags": ["Desktop"],

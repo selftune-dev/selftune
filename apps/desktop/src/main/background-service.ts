@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { join } from "node:path";
 
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -20,6 +21,17 @@ export interface BackgroundServiceOptions {
   readonly executablePath: string;
   readonly resourceDir: string;
   readonly version: string;
+}
+
+export function backgroundServiceResourceDirectory(options: {
+  readonly platform: NodeJS.Platform;
+  readonly inApplicationsFolder: boolean;
+  readonly resourcesPath: string;
+  readonly installedRuntimeDirectory: string;
+}): string {
+  return options.platform === "darwin" && options.inApplicationsFolder
+    ? join(options.resourcesPath, "selftune")
+    : options.installedRuntimeDirectory;
 }
 
 type BackgroundServiceAction = "install" | "restart" | "start" | "status" | "stop" | "uninstall";

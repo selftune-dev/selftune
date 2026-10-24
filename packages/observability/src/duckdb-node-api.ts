@@ -314,7 +314,8 @@ export async function inspectAnalyticalStorage(databasePath: string) {
         ? Schema.decodeUnknownSync(Schema.Array(StoredSchemaVersion))(
             await (
               await connection.run(`SELECT CAST(version AS VARCHAR) AS version
-                FROM main.observability_schema_migrations ORDER BY version DESC LIMIT 1`)
+                FROM main.observability_schema_migrations
+                ORDER BY main.observability_schema_migrations.version DESC LIMIT 1`)
             ).getRowObjects(),
           )[0]?.version
         : undefined;
