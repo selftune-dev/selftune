@@ -240,6 +240,16 @@ describe("Changesets release ownership", () => {
 });
 
 describe("parsed release workflow graph", () => {
+  test("passes dynamic matrix values through the environment rather than shell source", () => {
+    const desktop = workflowText("desktop.yml");
+    expect(desktop).toContain("DESKTOP_PACKAGE_SCRIPT: ${{ matrix.package_script }}");
+    expect(desktop).toContain("DESKTOP_ARCH_FLAG: ${{ matrix.arch_flag }}");
+    expect(desktop).toContain('"$DESKTOP_PACKAGE_SCRIPT" -- "$DESKTOP_ARCH_FLAG"');
+    expect(desktop).not.toContain("run: bun run --cwd apps/desktop ${{ matrix.");
+    expect(desktop).not.toContain('"${{ matrix.package_script }}"');
+    expect(desktop).not.toContain("latest-mac-${{ matrix.target }}");
+  });
+
   test("required PR gates propagate selector failures without resisting cancellation", () => {
     expect(workflow("ci.yml")).toMatchObject({
       jobs: {
@@ -264,10 +274,16 @@ describe("parsed release workflow graph", () => {
   test("cancels only PR runs and retains unfiltered main and merge-queue verification", () => {
     for (const name of ["ci.yml", "desktop.yml", "selfhost-image.yml"]) {
       expect(workflow(name)).toMatchObject({
-        on: { push: { branches: ["main"] }, merge_group: null },
+        on: { merge_group: null },
         concurrency: { "cancel-in-progress": "${{ github.event_name == 'pull_request' }}" },
       });
     }
+    // Publish already owns the full post-merge workspace suite; avoid a duplicate CI push run.
+    expect(workflow("publish.yml")).toMatchObject({ on: { push: { branches: ["main"] } } });
+    for (const name of ["desktop.yml", "selfhost-image.yml"]) {
+      expect(workflow(name)).toMatchObject({ on: { push: { branches: ["main"] } } });
+    }
+    expect(workflowText("ci.yml")).not.toContain("  push:");
   });
 
   test("serializes post-merge releases and gates npm on both immutable candidates", () => {

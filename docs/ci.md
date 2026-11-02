@@ -6,7 +6,7 @@ CI runs on pull requests, including stacked PRs, and keeps the required `lint` a
 
 Desktop and Self-Host Image keep PR path selection because only `lint` and `test` are required by the current main ruleset. Markdown and `docs/` are excluded from those PR triggers. Workflow and selection-script changes trigger validation.
 
-Desktop PRs package and smoke-test Linux and Windows. Pushes to main, merge queues and immutable release builds retain macOS ARM64, macOS Intel, Linux and Windows. All three workflows run their full checks on main pushes and merge queues even when only documentation changed. Release publishing, signing, image provenance and smoke gates are unchanged.
+Desktop PRs package and smoke-test Linux and Windows. Pushes to main, merge queues and immutable release builds retain macOS ARM64, macOS Intel, Linux and Windows. Desktop and Self-Host Image run full checks on main pushes and merge queues even when only documentation changed. CI runs the full workspace suite for merge queues; the existing Publish test job keeps full workspace coverage on main pushes without a duplicate CI push run. Release publishing, signing, image provenance and smoke gates are unchanged.
 
 Local checks:
 
