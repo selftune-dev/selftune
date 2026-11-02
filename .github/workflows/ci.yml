@@ -1,18 +1,47 @@
 name: CI
 
 on:
+  merge_group:
   pull_request:
-    branches: [main]
   workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions: {}
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    outputs:
+      run_heavy: ${{ steps.policy.outputs.run_heavy }}
+      desktop_matrix: ${{ steps.policy.outputs.desktop_matrix }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify CI selection
+        run: node --test .github/scripts/ci-policy.test.mjs
+      - name: Select CI jobs
+        id: policy
+        run: node .github/scripts/ci-policy.mjs
+
   lint:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.run_heavy == 'true') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
+      - name: Require successful change selection
+        env:
+          RESULT: ${{ needs.changes.result }}
+        run: test "$RESULT" = success
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -28,7 +57,8 @@ jobs:
       - run: bun run lint-architecture.ts
 
   build-dashboard:
-    needs: [lint]
+    needs: [changes, lint]
+    if: needs.changes.outputs.run_heavy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -71,11 +101,17 @@ jobs:
         run: bash .github/scripts/generate-sbom.sh
 
   test:
-    needs: [lint]
+    needs: [changes, lint]
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.run_heavy == 'true') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
+      - name: Require successful selection and lint
+        env:
+          SELECTION: ${{ needs.changes.result }}
+          LINT: ${{ needs.lint.result }}
+        run: test "$SELECTION" = success && test "$LINT" = success
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
