@@ -16,3 +16,5 @@ bun test tests/scripts/release-workflows.test.ts
 ```
 
 Before merging CI changes, verify a stacked documentation-only PR and the implementation PR in GitHub Actions. Confirm job conclusions, selected platforms and superseded-run cancellation. Local selection tests do not establish hosted runner results.
+
+Concurrency groups use a distinct prefix per workflow. A newer CI run cannot cancel Desktop or Self-Host Image, and PR cancellation cannot cancel an immutable release candidate.
