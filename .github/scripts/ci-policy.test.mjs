@@ -77,3 +77,8 @@ test("renames out of source, deleted code and newline names cannot masquerade as
     rmSync(root, { force: true, recursive: true });
   }
 });
+
+// Temporary fault probe: this branch must never merge.
+test("deliberate selector failure verifies the required gate", () => {
+  throw new Error("Intentional CI fault probe; close this PR without merging");
+});
