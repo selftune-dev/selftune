@@ -35,7 +35,7 @@ jobs:
 
   lint:
     needs: changes
-    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.run_heavy == 'true')
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.run_heavy == 'true') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -104,7 +104,7 @@ jobs:
 
   test:
     needs: [changes, lint]
-    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.run_heavy == 'true')
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.run_heavy == 'true') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
