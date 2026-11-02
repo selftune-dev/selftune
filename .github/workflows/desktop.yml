@@ -34,6 +34,9 @@ on:
         description: Immutable 40-character source commit for the release tag
         required: true
         type: string
+  push:
+    branches: [main]
+  merge_group:
   pull_request:
     paths:
       - apps/desktop/**
@@ -58,16 +61,41 @@ on:
       - scripts/release-plan.ts
       - scripts/validate-release-ref.ts
       - tests/scripts/release-workflows.test.ts
+      - .github/scripts/ci-policy.mjs
+      - .github/scripts/ci-policy.test.mjs
+      - "!**/*.md"
+      - "!docs/**"
 
 permissions:
   contents: read
 
 concurrency:
-  group: desktop-${{ inputs.release_tag || github.ref }}
-  cancel-in-progress: false
+  group: desktop-${{ inputs.release_tag || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    outputs:
+      run_heavy: ${{ steps.policy.outputs.run_heavy }}
+      desktop_matrix: ${{ steps.policy.outputs.desktop_matrix }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify CI selection
+        run: node --test .github/scripts/ci-policy.test.mjs
+      - name: Select CI jobs
+        id: policy
+        run: node .github/scripts/ci-policy.mjs
+
   build-windows-sidecar:
+    needs: changes
+    if: needs.changes.outputs.run_heavy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -128,35 +156,10 @@ jobs:
           if-no-files-found: error
 
   build:
-    needs: build-windows-sidecar
+    needs: [changes, build-windows-sidecar]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: macos-15
-            platform: mac
-            target: bun-darwin-arm64
-            package_script: package:mac
-            arch_flag: --arm64
-            artifact: selftune-desktop-macos-arm64
-          - os: macos-15-intel
-            platform: mac
-            target: bun-darwin-x64
-            package_script: package:mac
-            arch_flag: --x64
-            artifact: selftune-desktop-macos-x64
-          - os: ubuntu-latest
-            platform: linux
-            target: bun-linux-x64
-            package_script: package:linux
-            arch_flag: --x64
-            artifact: selftune-desktop-linux-x64
-          - os: windows-latest
-            platform: win
-            target: bun-windows-x64
-            package_script: package:win
-            arch_flag: --x64
-            artifact: selftune-desktop-windows-x64
+      matrix: ${{ fromJSON(needs.changes.outputs.desktop_matrix) }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:

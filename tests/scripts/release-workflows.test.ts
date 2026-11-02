@@ -319,7 +319,7 @@ describe("parsed release workflow graph", () => {
             }),
           ]),
         },
-        build: { needs: "build-windows-sidecar", "timeout-minutes": 60 },
+        build: { needs: ["changes", "build-windows-sidecar"], "timeout-minutes": 60 },
         "build-windows-sidecar": {
           env: { BUN_TARGET: "bun-windows-x64" },
           "runs-on": "ubuntu-latest",

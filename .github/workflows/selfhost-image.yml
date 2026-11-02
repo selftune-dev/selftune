@@ -28,6 +28,9 @@ on:
         description: Immutable 40-character source commit for the release tag
         required: true
         type: string
+  push:
+    branches: [main]
+  merge_group:
   pull_request:
     paths:
       - apps/selfhost/**
@@ -46,10 +49,14 @@ on:
       - package.json
       - bun.lock
       - .dockerignore
+      - .github/scripts/ci-policy.mjs
+      - .github/scripts/ci-policy.test.mjs
+      - "!**/*.md"
+      - "!docs/**"
 
 concurrency:
-  group: selfhost-image-${{ inputs.release_tag || github.ref }}
-  cancel-in-progress: false
+  group: selfhost-image-${{ inputs.release_tag || github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -58,7 +65,28 @@ env:
   REGISTRY_IMAGE: ghcr.io/selftune-dev/selftune-selfhost
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    outputs:
+      run_heavy: ${{ steps.policy.outputs.run_heavy }}
+      desktop_matrix: ${{ steps.policy.outputs.desktop_matrix }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify CI selection
+        run: node --test .github/scripts/ci-policy.test.mjs
+      - name: Select CI jobs
+        id: policy
+        run: node .github/scripts/ci-policy.mjs
+
   verify:
+    needs: changes
+    if: needs.changes.outputs.run_heavy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
