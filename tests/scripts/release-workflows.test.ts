@@ -240,6 +240,36 @@ describe("Changesets release ownership", () => {
 });
 
 describe("parsed release workflow graph", () => {
+  test("required PR gates propagate selector failures without resisting cancellation", () => {
+    expect(workflow("ci.yml")).toMatchObject({
+      jobs: {
+        lint: {
+          if: expect.stringContaining("!cancelled() && (needs.changes.result != 'success'"),
+          steps: expect.arrayContaining([
+            expect.objectContaining({ run: 'test "$RESULT" = success' }),
+          ]),
+        },
+        test: {
+          if: expect.stringContaining("!cancelled() && (needs.changes.result != 'success'"),
+          steps: expect.arrayContaining([
+            expect.objectContaining({
+              run: 'test "$SELECTION" = success && test "$LINT" = success',
+            }),
+          ]),
+        },
+      },
+    });
+  });
+
+  test("cancels only PR runs and retains unfiltered main and merge-queue verification", () => {
+    for (const name of ["ci.yml", "desktop.yml", "selfhost-image.yml"]) {
+      expect(workflow(name)).toMatchObject({
+        on: { push: { branches: ["main"] }, merge_group: null },
+        concurrency: { "cancel-in-progress": "${{ github.event_name == 'pull_request' }}" },
+      });
+    }
+  });
+
   test("serializes post-merge releases and gates npm on both immutable candidates", () => {
     expect(workflow("publish.yml")).toMatchObject({
       on: {
